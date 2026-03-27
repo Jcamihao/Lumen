@@ -1,0 +1,302 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum GoalStatus {
+  PLANNED
+  ACTIVE
+  ACHIEVED
+  PAUSED
+}
+
+enum ReminderStatus {
+  SCHEDULED
+  SENT
+  CANCELLED
+}
+
+enum InsightType {
+  PRODUCTIVITY
+  FINANCE
+  GOAL
+  ROUTINE
+}
+
+enum InsightSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum ForecastRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum NotificationType {
+  REMINDER
+  INSIGHT
+  FORECAST
+  IMPORT
+  SYSTEM
+}
+
+enum ImportJobStatus {
+  PREVIEWED
+  IMPORTED
+  FAILED
+}
+
+model User {
+  id                String             @id @default(uuid())
+  name              String
+  email             String             @unique
+  passwordHash      String
+  role              UserRole           @default(USER)
+  preferredCurrency String             @default("BRL")
+  monthlyIncome     Decimal            @default(0) @db.Decimal(12, 2)
+  monthClosingDay   Int                @default(30)
+  timezone          String             @default("America/Sao_Paulo")
+  privacyNoticeAcceptedAt DateTime?
+  privacyNoticeVersion    String?
+  aiAssistantEnabled      Boolean      @default(false)
+  aiAssistantConsentAt    DateTime?
+  aiAssistantConsentVersion String?
+  refreshTokenHash  String?
+  lastLoginAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  tasks             Task[]
+  taskCategories    TaskCategory[]
+  transactions      Transaction[]
+  financeCategories FinanceCategory[]
+  goals             Goal[]
+  reminders         Reminder[]
+  insights          Insight[]
+  forecasts         Forecast[]
+  importJobs        ImportJob[]
+  notifications     Notification[]
+
+  @@index([email])
+}
+
+model TaskCategory {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  color     String
+  icon      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model FinanceCategory {
+  id           String          @id @default(uuid())
+  userId       String
+  name         String
+  color        String
+  icon         String?
+  type         TransactionType
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([userId, name, type])
+  @@index([userId, type])
+}
+
+model Goal {
+  id           String        @id @default(uuid())
+  userId       String
+  title        String
+  description  String?
+  targetAmount Decimal       @db.Decimal(12, 2)
+  currentAmount Decimal      @default(0) @db.Decimal(12, 2)
+  targetDate   DateTime?
+  status       GoalStatus    @default(ACTIVE)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks        Task[]
+  transactions Transaction[]
+  reminders    Reminder[]
+
+  @@index([userId, status])
+}
+
+model Task {
+  id                 String         @id @default(uuid())
+  userId             String
+  title              String
+  description        String?
+  dueDate            DateTime?
+  status             TaskStatus     @default(PENDING)
+  priority           TaskPriority   @default(MEDIUM)
+  categoryId         String?
+  isRecurring        Boolean        @default(false)
+  recurrenceRule     String?
+  hasFinancialImpact Boolean        @default(false)
+  estimatedAmount    Decimal?       @db.Decimal(12, 2)
+  linkedGoalId       String?
+  completedAt        DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category           TaskCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  goal               Goal?          @relation(fields: [linkedGoalId], references: [id], onDelete: SetNull)
+  subtasks           TaskSubtask[]
+  transactions       Transaction[]
+  reminders          Reminder[]
+
+  @@index([userId, status, dueDate])
+  @@index([linkedGoalId])
+}
+
+model TaskSubtask {
+  id          String   @id @default(uuid())
+  taskId       String
+  title       String
+  isCompleted Boolean  @default(false)
+  completedAt DateTime?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, sortOrder])
+}
+
+model Transaction {
+  id              String           @id @default(uuid())
+  userId          String
+  type            TransactionType
+  description     String
+  amount          Decimal          @db.Decimal(12, 2)
+  date            DateTime
+  categoryId      String?
+  linkedTaskId    String?
+  linkedGoalId    String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category        FinanceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  task            Task?            @relation(fields: [linkedTaskId], references: [id], onDelete: SetNull)
+  goal            Goal?            @relation(fields: [linkedGoalId], references: [id], onDelete: SetNull)
+  reminders       Reminder[]
+
+  @@index([userId, type, date])
+  @@index([linkedTaskId])
+  @@index([linkedGoalId])
+}
+
+model Reminder {
+  id            String         @id @default(uuid())
+  userId        String
+  title         String
+  remindAt      DateTime
+  taskId        String?
+  transactionId String?
+  goalId        String?
+  status        ReminderStatus @default(SCHEDULED)
+  sentAt        DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task          Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  transaction   Transaction?   @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  goal          Goal?          @relation(fields: [goalId], references: [id], onDelete: SetNull)
+
+  @@index([userId, remindAt, status])
+}
+
+model Insight {
+  id        String          @id @default(uuid())
+  userId    String
+  type      InsightType
+  message   String
+  severity  InsightSeverity
+  metadata  Json?
+  createdAt DateTime        @default(now())
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, severity, createdAt])
+}
+
+model Forecast {
+  id               String            @id @default(uuid())
+  userId           String
+  predictedBalance Decimal           @db.Decimal(12, 2)
+  riskLevel        ForecastRiskLevel
+  referenceDate    DateTime          @default(now())
+  factors          Json?
+  createdAt        DateTime          @default(now())
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, referenceDate])
+}
+
+model ImportJob {
+  id               String          @id @default(uuid())
+  userId           String
+  fileName         String
+  status           ImportJobStatus @default(PREVIEWED)
+  totalRows        Int             @default(0)
+  importedRows     Int             @default(0)
+  deduplicatedRows Int             @default(0)
+  previewData      Json?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, createdAt])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+}
