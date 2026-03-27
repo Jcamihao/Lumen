@@ -1,0 +1,11 @@
+node_modules
+dist
+coverage
+.angular
+.env
+backend/.env
+frontend/.angular
+frontend/dist
+backend/dist
+backend/node_modules
+frontend/node_modules

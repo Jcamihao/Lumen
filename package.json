@@ -1,0 +1,19 @@
+{
+  "name": "lumen",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev:infra && concurrently -n backend,frontend,selah -c blue,orange,magenta \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:selah\"",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "dev:backend": "npm --prefix backend run start:dev",
+    "dev:frontend": "npm --prefix frontend run start",
+    "dev:selah": "node ./scripts/dev-selah.mjs",
+    "dev:infra": "docker compose up -d --force-recreate postgres redis",
+    "compose:up": "docker compose up --build",
+    "compose:down": "docker compose down -v",
+    "db:seed": "npm --prefix backend run prisma:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
