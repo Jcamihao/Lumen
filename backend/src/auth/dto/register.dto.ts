@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
   Max,
   Min,
   MinLength,
@@ -21,6 +22,11 @@ export class RegisterDto {
   @IsString()
   @MinLength(6)
   password!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4500000)
+  avatarUrl?: string;
 
   @IsBoolean()
   privacyNoticeAccepted!: boolean;

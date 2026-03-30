@@ -105,15 +105,25 @@ describe("AssistantService", () => {
   });
 
   it("uses SelahIA when the integration is enabled and available", async () => {
-    const originalFetch = global.fetch;
+    const service = new AssistantService(
+      buildDashboardService(),
+      buildConfigService({
+        SELAH_ASSISTANT_ENABLED: "true",
+        SELAH_BASE_URL: "http://localhost:3010",
+        SELAH_ASSISTANT_ROUTE: "/v1/adapters/lumen/life-assistant/chat",
+        SELAH_SOURCE_APP: "LumenBack",
+        SELAH_TIMEOUT_MS: "2500",
+      }),
+      buildPrismaService(),
+    );
 
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue({
+    const postJsonSpy = jest.spyOn(service as any, "postJson").mockResolvedValue({
+      statusCode: 200,
+      body: JSON.stringify({
         answer:
-          "Hoje o melhor foco e fechar pendencias com custo e proteger o caixa.",
-        highlights: ["2 tarefas pedem atencao imediata."],
-        suggestedActions: ["Quitar a conta de energia ainda hoje."],
+          "Comece por Pagar energia agora, porque ela vence antes e carrega impacto direto no caixa.",
+        highlights: ["Conta de energia segue como a saida mais urgente do contexto."],
+        suggestedActions: ["Concluir Pagar energia ainda hoje."],
         focusArea: "Prioridades",
         confidence: "high",
         disclaimer: null,
@@ -121,48 +131,32 @@ describe("AssistantService", () => {
         model: "gemini-2.5-flash",
         generatedAt: "2026-03-26T12:00:00.000Z",
       }),
-    }) as any;
+    });
 
-    try {
-      const service = new AssistantService(
-        buildDashboardService(),
-        buildConfigService({
-          SELAH_ASSISTANT_ENABLED: "true",
-          SELAH_BASE_URL: "http://localhost:3010",
-          SELAH_ASSISTANT_ROUTE: "/v1/adapters/lumen/life-assistant/chat",
-          SELAH_SOURCE_APP: "LumenBack",
-          SELAH_TIMEOUT_MS: "2500",
-        }),
-        buildPrismaService(),
-      );
+    const response = await service.ask(
+      "user-1",
+      "O que devo priorizar agora? Meu email e marina@exemplo.com",
+    );
+    const [, body] = postJsonSpy.mock.calls[0];
+    const payload = JSON.parse(String(body));
 
-      const response = await service.ask(
-        "user-1",
-        "O que devo priorizar agora? Meu email e marina@exemplo.com",
-      );
-      const fetchCall = (global.fetch as jest.Mock).mock.calls[0];
-      const fetchOptions = fetchCall[1] as RequestInit;
-      const payload = JSON.parse(String(fetchOptions.body));
-
-      expect(response.source).toBe("selah_ia");
-      expect(response.provider).toBe("SelahIA");
-      expect(response.focusArea).toBe("Prioridades");
-      expect(payload.intent).toBe("priorities");
-      expect(payload.focusAreaHint).toBe("Prioridades");
-      expect(payload.applicationPromptContext).toContain(
-        "Usuario em analise: Marina.",
-      );
-      expect(payload.applicationPromptContext).toContain(
-        "Tarefas abertas relevantes:",
-      );
-      expect(payload.applicationPromptContext).not.toContain(
-        "Hoje eu puxaria a fila",
-      );
-      expect(payload.message).not.toContain("marina@exemplo.com");
-      expect(payload.message).toContain("[email removido]");
-      expect(global.fetch).toHaveBeenCalled();
-    } finally {
-      global.fetch = originalFetch;
-    }
+    expect(response.source).toBe("selah_ia");
+    expect(response.provider).toBe("SelahIA");
+    expect(response.focusArea).toBe("Prioridades");
+    expect(payload.intent).toBe("priorities");
+    expect(payload.focusAreaHint).toBe("Prioridades");
+    expect(payload.applicationPromptContext).toContain(
+      "Usuario em analise: Marina.",
+    );
+    expect(payload.applicationPromptContext).toContain(
+      "Tarefas abertas relevantes:",
+    );
+    expect(payload.applicationPromptContext).not.toContain(
+      "Hoje eu puxaria a fila",
+    );
+    expect(payload.message).not.toContain("marina@exemplo.com");
+    expect(payload.message).toContain("[email removido]");
+    expect(payload.questionContextSummary).toContain("prioridade");
+    expect(postJsonSpy).toHaveBeenCalled();
   });
 });

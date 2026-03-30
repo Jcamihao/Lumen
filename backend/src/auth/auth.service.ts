@@ -43,6 +43,7 @@ export class AuthService {
       name: dto.name,
       email: normalizedEmail,
       passwordHash,
+      avatarUrl: dto.avatarUrl,
       preferredCurrency: dto.preferredCurrency ?? "BRL",
       monthlyIncome: dto.monthlyIncome,
       monthClosingDay: dto.monthClosingDay ?? 30,

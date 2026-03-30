@@ -4,6 +4,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
   Max,
   Min,
   MinLength,
@@ -14,6 +15,11 @@ export class UpdateUserDto {
   @IsString()
   @MinLength(2)
   name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4500000)
+  avatarUrl?: string;
 
   @IsOptional()
   @IsString()

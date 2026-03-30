@@ -1,6 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { randomUUID } from "crypto";
+import { request as httpRequest } from "http";
+import { request as httpsRequest } from "https";
 import { DashboardService } from "../dashboard/dashboard.service";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -172,29 +174,40 @@ export class AssistantService {
     const timeoutMs = this.readTimeout();
     const url = `${baseUrl.replace(/\/+$/, "")}${route.startsWith("/") ? route : `/${route}`}`;
     const requestId = randomUUID();
+    const body = JSON.stringify(this.buildSelahPayload(summary, question));
 
     try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
+      const response = await this.postJson(
+        url,
+        body,
+        {
           "Content-Type": "application/json",
+          "Content-Length": String(Buffer.byteLength(body)),
           "X-Source-App": sourceApp,
           "X-Request-Id": requestId,
           ...(apiKey ? { "X-Selah-Api-Key": apiKey } : {}),
         },
-        body: JSON.stringify(this.buildSelahPayload(summary, question)),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
+        timeoutMs,
+      );
 
-      if (!response.ok) {
-        const responseBody = await response.text();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         this.logger.warn(
-          `[${requestId}] SelahIA respondeu com erro ${response.status}: ${responseBody.slice(0, 240)}`,
+          `[${requestId}] SelahIA respondeu com erro ${response.statusCode}: ${response.body.slice(0, 240)}`,
         );
         return { reply: null, attempted: true, reason: "selah_unavailable" };
       }
 
-      const payload = (await response.json()) as SelahResponse;
+      let payload: SelahResponse;
+
+      try {
+        payload = JSON.parse(response.body) as SelahResponse;
+      } catch (_error) {
+        this.logger.warn(
+          `[${requestId}] SelahIA retornou um payload invalido: ${response.body.slice(0, 240)}`,
+        );
+        return { reply: null, attempted: true, reason: "selah_unavailable" };
+      }
+
       return {
         reply: this.normalizeSelahReply(payload),
         attempted: true,
@@ -218,6 +231,8 @@ export class AssistantService {
     return {
       message: this.sanitizeExternalText(question),
       intent,
+      questionContextSummary: this.buildQuestionContextSummary(summary, question),
+      matchedQuestionTargets: this.matchQuestionTargets(summary, question),
       currentDateLabel: new Intl.DateTimeFormat("pt-BR", {
         weekday: "long",
         day: "2-digit",
@@ -575,6 +590,68 @@ export class AssistantService {
     return "Panorama";
   }
 
+  private buildQuestionContextSummary(
+    summary: DashboardSummary,
+    question: string,
+  ) {
+    const normalizedQuestion = this.normalizeForMatch(question);
+    const matchedTargets = this.matchQuestionTargets(summary, question);
+    const signals = [
+      normalizedQuestion.includes("por que") ? "causa" : null,
+      normalizedQuestion.includes("como") ? "orientacao pratica" : null,
+      normalizedQuestion.includes("devo") || normalizedQuestion.includes("prioriz")
+        ? "decisao de prioridade"
+        : null,
+      normalizedQuestion.includes("risco") ||
+      normalizedQuestion.includes("saldo") ||
+      normalizedQuestion.includes("gasto") ||
+      normalizedQuestion.includes("dinheiro")
+        ? "leitura financeira"
+        : null,
+      normalizedQuestion.includes("meta") ? "progresso de meta" : null,
+      normalizedQuestion.includes("tarefa") ? "execucao de tarefa" : null,
+    ].filter(Boolean);
+
+    if (matchedTargets.length) {
+      return `O usuário citou explicitamente ${matchedTargets.join(", ")}. A resposta deve começar por esse(s) item(ns) e só depois conectar panorama mais amplo se isso ajudar a responder a pergunta. Sinais da pergunta: ${signals.join(", ") || "leitura contextual"}.`;
+    }
+
+    return `A resposta deve priorizar o que a pergunta pede de forma direta, sem cair em panorama padrão quando não for necessário. Sinais da pergunta: ${signals.join(", ") || "leitura contextual"}.`;
+  }
+
+  private matchQuestionTargets(summary: DashboardSummary, question: string) {
+    const normalizedQuestion = this.normalizeForMatch(question);
+    const candidates = [
+      ...summary.tasks.items.map((task) => task.title),
+      ...summary.finances.recentTransactions.map(
+        (transaction) => transaction.description,
+      ),
+      ...summary.goals.map((goal) => goal.title),
+      ...summary.insights.map((insight) => this.firstMeaningfulFragment(insight.message)),
+    ]
+      .map((value) => String(value || "").trim())
+      .filter((value) => value.length >= 4);
+
+    const matches = candidates.filter((candidate) => {
+      const normalizedCandidate = this.normalizeForMatch(candidate);
+
+      if (normalizedQuestion.includes(normalizedCandidate)) {
+        return true;
+      }
+
+      const significantTokens = normalizedCandidate
+        .split(" ")
+        .filter((token) => token.length >= 4);
+      const tokenMatches = significantTokens.filter((token) =>
+        normalizedQuestion.includes(token),
+      ).length;
+
+      return tokenMatches >= Math.min(2, significantTokens.length);
+    });
+
+    return Array.from(new Set(matches)).slice(0, 5);
+  }
+
   private ensureHighlights(items: Array<string | null | undefined>) {
     const normalized = items
       .filter((item): item is string => Boolean(item))
@@ -759,6 +836,22 @@ export class AssistantService {
       .join("\n- ")}`;
   }
 
+  private firstMeaningfulFragment(message: string) {
+    return String(message || "")
+      .split(/[.!?]/)[0]
+      .trim();
+  }
+
+  private normalizeForMatch(value: string) {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9%$ ]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   private async loadPrivacySettings(
     userId: string,
   ): Promise<AssistantPrivacySettings> {
@@ -834,5 +927,49 @@ export class AssistantService {
 
   private readEnv(key: string) {
     return String(this.configService.get<string>(key) || "").trim();
+  }
+
+  private postJson(
+    rawUrl: string,
+    body: string,
+    headers: Record<string, string>,
+    timeoutMs: number,
+  ) {
+    return new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+      const url = new URL(rawUrl);
+      const requester = url.protocol === "https:" ? httpsRequest : httpRequest;
+      const request = requester(
+        {
+          protocol: url.protocol,
+          hostname: url.hostname,
+          port: url.port,
+          path: `${url.pathname}${url.search}`,
+          method: "POST",
+          headers,
+          timeout: timeoutMs,
+        },
+        (response) => {
+          const chunks: Buffer[] = [];
+
+          response.on("data", (chunk) => {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          });
+
+          response.on("end", () => {
+            resolve({
+              statusCode: Number(response.statusCode || 0),
+              body: Buffer.concat(chunks).toString("utf-8"),
+            });
+          });
+        },
+      );
+
+      request.on("error", reject);
+      request.on("timeout", () => {
+        request.destroy(new Error("Timeout ao consultar o SelahIA."));
+      });
+      request.write(body);
+      request.end();
+    });
   }
 }

@@ -15,6 +15,7 @@ type CreateUserInput = {
   name: string;
   email: string;
   passwordHash: string;
+  avatarUrl?: string;
   preferredCurrency?: string;
   monthlyIncome?: number;
   monthClosingDay?: number;
@@ -38,6 +39,7 @@ export class UsersService {
         name: input.name,
         email: input.email,
         passwordHash: input.passwordHash,
+        avatarUrl: input.avatarUrl,
         role: input.role ?? UserRole.USER,
         preferredCurrency: input.preferredCurrency ?? "BRL",
         monthlyIncome:
@@ -166,6 +168,7 @@ export class UsersService {
       where: { id: userId },
       data: {
         name: dto.name,
+        avatarUrl: dto.avatarUrl,
         preferredCurrency: dto.preferredCurrency,
         monthlyIncome:
           dto.monthlyIncome !== undefined
@@ -266,6 +269,14 @@ export class UsersService {
         importJobs: {
           orderBy: { createdAt: "desc" },
         },
+        receiptScans: {
+          include: {
+            items: {
+              orderBy: { sortOrder: "asc" },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+        },
         notifications: {
           orderBy: { createdAt: "desc" },
         },
@@ -351,6 +362,22 @@ export class UsersService {
           predictedBalance: Number(forecast.predictedBalance),
         })),
         importJobs: safeUser.importJobs,
+        receiptScans: safeUser.receiptScans.map((receiptScan) => ({
+          ...receiptScan,
+          totalAmount: Number(receiptScan.totalAmount),
+          subtotalAmount:
+            receiptScan.subtotalAmount !== null
+              ? Number(receiptScan.subtotalAmount)
+              : null,
+          taxAmount:
+            receiptScan.taxAmount !== null ? Number(receiptScan.taxAmount) : null,
+          items: receiptScan.items.map((item) => ({
+            ...item,
+            quantity: Number(item.quantity),
+            unitPrice: item.unitPrice !== null ? Number(item.unitPrice) : null,
+            totalPrice: Number(item.totalPrice),
+          })),
+        })),
         notifications: safeUser.notifications,
       },
     };

@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { randomUUID } from 'crypto';
 import compression = require('compression');
+import { json, urlencoded } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { REQUEST_ID_HEADER } from './common/constants/request-trace.constants';
@@ -63,6 +64,8 @@ async function bootstrap() {
     origin: true,
     credentials: true,
   });
+  app.use(json({ limit: '5mb' }));
+  app.use(urlencoded({ extended: true, limit: '5mb' }));
   app.use(helmet());
   app.use(compression());
   app.useGlobalPipes(

@@ -48,7 +48,8 @@ services:
       SELAH_API_KEY: ${SELAH_API_KEY:-}
       SELAH_SOURCE_APP: ${SELAH_SOURCE_APP:-LumenBack}
       SELAH_ASSISTANT_ROUTE: ${SELAH_ASSISTANT_ROUTE:-/v1/adapters/lumen/life-assistant/chat}
-      SELAH_TIMEOUT_MS: ${SELAH_TIMEOUT_MS:-3500}
+      SELAH_RECEIPT_ROUTE: ${SELAH_RECEIPT_ROUTE:-/v1/adapters/lumen/receipt-parser/parse}
+      SELAH_TIMEOUT_MS: ${SELAH_TIMEOUT_MS:-9000}
     ports:
       - '${BACKEND_HOST_PORT:-3001}:3000'
 

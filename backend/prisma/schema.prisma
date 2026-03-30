@@ -78,11 +78,18 @@ enum ImportJobStatus {
   FAILED
 }
 
+enum ReceiptScanStatus {
+  PREVIEWED
+  IMPORTED
+  FAILED
+}
+
 model User {
   id                String             @id @default(uuid())
   name              String
   email             String             @unique
   passwordHash      String
+  avatarUrl         String?
   role              UserRole           @default(USER)
   preferredCurrency String             @default("BRL")
   monthlyIncome     Decimal            @default(0) @db.Decimal(12, 2)
@@ -106,6 +113,7 @@ model User {
   insights          Insight[]
   forecasts         Forecast[]
   importJobs        ImportJob[]
+  receiptScans      ReceiptScan[]
   notifications     Notification[]
 
   @@index([email])
@@ -219,6 +227,7 @@ model Transaction {
   category        FinanceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   task            Task?            @relation(fields: [linkedTaskId], references: [id], onDelete: SetNull)
   goal            Goal?            @relation(fields: [linkedGoalId], references: [id], onDelete: SetNull)
+  receiptScan     ReceiptScan?
   reminders       Reminder[]
 
   @@index([userId, type, date])
@@ -286,6 +295,49 @@ model ImportJob {
   user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status, createdAt])
+}
+
+model ReceiptScan {
+  id             String            @id @default(uuid())
+  userId         String
+  fileName       String
+  mimeType       String
+  status         ReceiptScanStatus @default(PREVIEWED)
+  merchantName   String?
+  documentNumber String?
+  purchaseDate   DateTime?
+  totalAmount    Decimal           @db.Decimal(12, 2)
+  subtotalAmount Decimal?          @db.Decimal(12, 2)
+  taxAmount      Decimal?          @db.Decimal(12, 2)
+  currency       String            @default("BRL")
+  confidence     String            @default("medium")
+  rawText        String?
+  previewData    Json?
+  importedAt     DateTime?
+  transactionId  String?           @unique
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction    Transaction?      @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  items          ReceiptScanItem[]
+
+  @@index([userId, status, createdAt])
+  @@index([purchaseDate])
+}
+
+model ReceiptScanItem {
+  id            String      @id @default(uuid())
+  receiptScanId String
+  description   String
+  quantity      Decimal     @default(1) @db.Decimal(10, 3)
+  unitPrice     Decimal?    @db.Decimal(12, 2)
+  totalPrice    Decimal     @db.Decimal(12, 2)
+  sortOrder     Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  receiptScan   ReceiptScan @relation(fields: [receiptScanId], references: [id], onDelete: Cascade)
+
+  @@index([receiptScanId, sortOrder])
 }
 
 model Notification {
