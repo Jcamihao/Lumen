@@ -70,6 +70,50 @@ npm --prefix backend run start:dev
 npm --prefix frontend run start
 ```
 
+## Offline e iPhone com Capacitor
+
+O frontend agora tem base offline-first para:
+
+- tarefas
+- fluxo financeiro
+- metas
+- dashboard
+- assistente em fallback local
+
+Quando o app perde conexao, essas areas passam a ler e gravar no armazenamento local do dispositivo. Assim que a rede volta, o LUMEN tenta sincronizar automaticamente as mudancas pendentes.
+
+Fluxo mobile com Capacitor:
+
+```bash
+npm run mobile:build
+npm run mobile:add:ios
+npm run mobile:sync
+```
+
+Atalhos equivalentes no frontend:
+
+```bash
+npm --prefix frontend run build:mobile
+npm --prefix frontend run cap:add:ios
+npm --prefix frontend run cap:sync
+npm --prefix frontend run cap:open:ios
+```
+
+Arquivos principais dessa integracao:
+
+- `frontend/capacitor.config.ts`
+- `frontend/ios/`
+- `frontend/src/app/core/services/network.service.ts`
+- `frontend/src/app/core/services/offline-life.service.ts`
+- `frontend/src/app/core/services/life-api.service.ts`
+
+Observacoes importantes:
+
+- o shell do app ja tem service worker para funcionamento offline do frontend em producao
+- login e cadastro continuam dependendo da API na primeira autenticacao
+- importacao com IA externa e leitura de nota fiscal continuam dependendo de conexao
+- no Linux deste workspace o projeto iOS foi gerado, mas abrir e assinar o app ainda exige Xcode/CocoaPods no macOS
+
 ## Credenciais demo
 
 - Usuario: `demo@lumen.local`
