@@ -1,0 +1,11 @@
+
+    <span
+      class="avatar"
+      [class.sm]="size === 'sm'"
+      [class.lg]="size === 'lg'"
+      [class.circle]="shape === 'circle'"
+    >
+      <img *ngIf="imageUrl; else initialsTemplate" [src]="imageUrl" [alt]="name" />
+      <ng-template #initialsTemplate>{{ initials() }}</ng-template>
+    </span>
+  

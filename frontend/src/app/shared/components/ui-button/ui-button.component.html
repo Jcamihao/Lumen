@@ -1,0 +1,11 @@
+
+    <button
+      class="ui-button"
+      [attr.type]="type"
+      [disabled]="disabled"
+      [ngClass]="[variant, size, fullWidth ? 'full-width' : '']"
+    >
+      <span class="material-symbols-rounded" *ngIf="icon">{{ icon }}</span>
+      <ng-content></ng-content>
+    </button>
+  

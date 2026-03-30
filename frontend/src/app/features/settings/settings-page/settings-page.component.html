@@ -1,0 +1,260 @@
+
+    <div class="page-stack settings-stack">
+      <form class="settings-form" [formGroup]="form" (ngSubmit)="save()">
+        <app-panel
+          title="Perfil e base financeira"
+          caption="Ajuste sua identidade operacional dentro do LUMEN"
+        >
+          <div class="form-grid">
+            <section class="profile-photo-card">
+              <div class="profile-photo-head">
+                <div>
+                  <strong>Foto de perfil</strong>
+                  <p>Atualize a imagem exibida no topo do workspace.</p>
+                </div>
+                <app-avatar
+                  [name]="form.controls.name.value || authService.currentUser()?.name || 'Lumen'"
+                  [imageUrl]="avatarPreview()"
+                  size="lg"
+                  shape="circle"
+                />
+              </div>
+
+              <div class="profile-photo-actions">
+                <label class="upload-button">
+                  <input #settingsAvatarInput type="file" accept="image/*" (change)="handleAvatarSelected($event)" />
+                  <span>Enviar foto</span>
+                </label>
+                <button
+                  *ngIf="avatarPreview()"
+                  type="button"
+                  class="clear-photo"
+                  (click)="clearAvatar(settingsAvatarInput)"
+                >
+                  Remover
+                </button>
+              </div>
+            </section>
+
+            <app-field-shell label="Nome">
+              <input
+                type="text"
+                formControlName="name"
+                placeholder="Seu nome"
+              />
+            </app-field-shell>
+
+            <div class="grid-2">
+              <app-field-shell label="Renda mensal">
+                <input
+                  type="number"
+                  formControlName="monthlyIncome"
+                  placeholder="8500"
+                />
+              </app-field-shell>
+
+              <app-field-shell label="Fechamento do mês">
+                <input
+                  type="number"
+                  formControlName="monthClosingDay"
+                  min="1"
+                  max="31"
+                  placeholder="30"
+                />
+              </app-field-shell>
+            </div>
+
+            <div class="grid-2">
+              <app-field-shell label="Moeda">
+                <input
+                  type="text"
+                  formControlName="preferredCurrency"
+                  placeholder="BRL"
+                />
+              </app-field-shell>
+
+              <app-field-shell label="Timezone">
+                <input
+                  type="text"
+                  formControlName="timezone"
+                  placeholder="America/Sao_Paulo"
+                />
+              </app-field-shell>
+            </div>
+
+            <div class="status-row">
+              <app-ui-badge
+                *ngIf="saved()"
+                label="Preferências salvas"
+                tone="success"
+              />
+            </div>
+
+            <app-ui-button
+              type="submit"
+              [disabled]="form.invalid || saving()"
+              [fullWidth]="true"
+              icon="save"
+            >
+              {{ saving() ? "Salvando..." : "Salvar ajustes" }}
+            </app-ui-button>
+          </div>
+        </app-panel>
+
+        <app-panel
+          title="Privacidade e IA"
+          caption="Controle o uso do SelahIA e acompanhe o histórico de consentimento"
+        >
+          <div class="privacy-grid">
+            <label
+              class="consent-card"
+              [class.invalid]="
+                form.controls.privacyNoticeAccepted.invalid &&
+                form.controls.privacyNoticeAccepted.touched
+              "
+            >
+              <input type="checkbox" formControlName="privacyNoticeAccepted" />
+              <div>
+                <strong>Aviso de privacidade aceito</strong>
+                <p>
+                  Versão {{ privacyNoticeVersion }}.
+                  {{ privacyAcceptedLabel() }}
+                </p>
+              </div>
+            </label>
+
+            <label class="consent-card accent">
+              <input type="checkbox" formControlName="aiAssistantEnabled" />
+              <div>
+                <strong>Permitir processamento com SelahIA</strong>
+                <p>
+                  Versão {{ aiConsentVersion }}. O LUMEN compartilha apenas
+                  contexto minimizado, sem email, com redacão de padrões como
+                  email, CPF e telefone.
+                </p>
+              </div>
+            </label>
+
+            <div class="disclosure-card">
+              <div class="disclosure-copy">
+                <strong>Como o assistente trata seus dados</strong>
+                <p>
+                  O modo local funciona sem provedor externo. Quando o SelahIA
+                  está ativado, a aplicação envia somente o necessário para
+                  responder sua pergunta com mais contexto.
+                </p>
+              </div>
+
+              <div class="badge-row">
+                <app-ui-badge
+                  [label]="
+                    authService.currentUser()?.aiAssistantEnabled
+                      ? 'SelahIA habilitado'
+                      : 'Modo local ativo'
+                  "
+                  [tone]="
+                    authService.currentUser()?.aiAssistantEnabled
+                      ? 'accent'
+                      : 'neutral'
+                  "
+                />
+                <app-ui-badge
+                  [label]="
+                    authService.currentUser()?.aiAssistantConsentAt
+                      ? 'Consentimento registrado'
+                      : 'Sem consentimento externo'
+                  "
+                  [tone]="
+                    authService.currentUser()?.aiAssistantConsentAt
+                      ? 'success'
+                      : 'warning'
+                  "
+                  [showDot]="false"
+                />
+              </div>
+            </div>
+          </div>
+        </app-panel>
+      </form>
+
+      <div class="settings-grid">
+        <app-panel
+          title="Tema"
+          caption="Troque o clima visual do seu workspace"
+        >
+          <div class="theme-card">
+            <div>
+              <strong>{{
+                themeService.mode() === "light"
+                  ? "Modo claro ativo"
+                  : "Modo escuro ativo"
+              }}</strong>
+              <p>
+                O contraste foi calibrado para manter leitura e sofisticação.
+              </p>
+            </div>
+            <app-ui-button
+              variant="secondary"
+              icon="contrast"
+              (click)="themeService.toggle()"
+            >
+              Alternar tema
+            </app-ui-button>
+          </div>
+        </app-panel>
+
+        <app-panel title="Conta" caption="Base atual do seu workspace">
+          <div class="account-card">
+            <strong>{{ authService.currentUser()?.email }}</strong>
+            <p>
+              Configuração principal para autenticação e sincronização do LUMEN.
+            </p>
+          </div>
+        </app-panel>
+      </div>
+
+      <app-panel
+        title="Direitos do titular"
+        caption="Exporte seus dados pessoais ou exclua sua conta de forma facilitada"
+      >
+        <div class="rights-grid">
+          <div class="rights-card">
+            <strong>Exportação de dados</strong>
+            <p>
+              Gera um arquivo JSON com perfil, tarefas, finanças, metas,
+              lembretes, notificações e histórico de consentimento.
+            </p>
+            <app-ui-button
+              variant="secondary"
+              icon="download"
+              [disabled]="exporting()"
+              (click)="downloadPrivacyExport()"
+            >
+              {{ exporting() ? "Gerando arquivo..." : "Baixar meus dados" }}
+            </app-ui-button>
+          </div>
+
+          <div class="rights-card danger">
+            <strong>Excluir conta</strong>
+            <p>
+              Remove sua conta e os dados associados do workspace atual. Essa
+              ação é irreversível.
+            </p>
+            <app-ui-button
+              variant="secondary"
+              icon="delete"
+              [disabled]="deleting()"
+              (click)="deleteAccount()"
+            >
+              {{ deleting() ? "Excluindo..." : "Excluir minha conta" }}
+            </app-ui-button>
+          </div>
+        </div>
+
+        <p class="feedback" *ngIf="feedbackMessage()">
+          {{ feedbackMessage() }}
+        </p>
+        <p class="error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
+      </app-panel>
+    </div>
+  

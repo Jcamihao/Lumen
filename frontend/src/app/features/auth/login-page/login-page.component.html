@@ -1,0 +1,62 @@
+
+    <div class="auth-page">
+      <section class="auth-story ambient-shell">
+        <p class="section-kicker">codeStage Soluções</p>
+        <span class="brand-stage">
+          <span class="brand-orbit brand-orbit-a"></span>
+          <span class="brand-orbit brand-orbit-b"></span>
+          <span class="brand-logo-shell">
+            <img class="brand-logo" src="assets/logo/logo_lumen.png" alt="LUMEN">
+          </span>
+        </span>
+        <h1>Organize sua vida com clareza.</h1>
+        <p class="headline">Clareza para sua vida.</p>
+        <p class="copy">
+          Um workspace que conecta tarefas, dinheiro, rotina e objetivos com a
+          sobriedade de um produto premium.
+        </p>
+
+        <div class="story-grid stagger-reveal">
+          <article>
+            <strong>Visão diária</strong>
+            <p>Dashboard da Vida com prioridades, saldo e previsão.</p>
+          </article>
+          <article>
+            <strong>Decisão conectada</strong>
+            <p>Tarefas com impacto financeiro e metas no mesmo fluxo.</p>
+          </article>
+        </div>
+      </section>
+
+      <form class="auth-card" [formGroup]="form" (ngSubmit)="submit()">
+        <header>
+          <h2>Entrar</h2>
+          <p>Acompanhe seu dia, seu saldo e seus próximos movimentos.</p>
+        </header>
+
+        <app-field-shell label="Email">
+          <input type="email" formControlName="email" placeholder="voce@exemplo.com">
+        </app-field-shell>
+
+        <app-field-shell label="Senha">
+          <input type="password" formControlName="password" placeholder="Sua senha">
+        </app-field-shell>
+
+        <p class="error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
+
+        <app-ui-button type="submit" [disabled]="form.invalid || loading()" [fullWidth]="true" icon="login">
+          {{ loading() ? 'Entrando...' : 'Entrar no LUMEN' }}
+        </app-ui-button>
+
+        <div class="demo-card">
+          <strong>Ambiente demo</strong>
+          <p><span>demo@lumen.local</span> <span>Demo123!</span></p>
+        </div>
+
+        <footer>
+          <span>Ainda não tem conta?</span>
+          <a routerLink="/auth/register">Criar agora</a>
+        </footer>
+      </form>
+    </div>
+  

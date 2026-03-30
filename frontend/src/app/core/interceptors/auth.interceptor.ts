@@ -2,9 +2,11 @@ import { HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { catchError, throwError } from 'rxjs';
 import { AuthService } from '../services/auth.service';
+import { NetworkService } from '../services/network.service';
 
 export const authInterceptor: HttpInterceptorFn = (request, next) => {
   const authService = inject(AuthService);
+  const networkService = inject(NetworkService);
   const accessToken = authService.getAccessToken();
 
   const authorizedRequest = accessToken
@@ -17,7 +19,7 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
 
   return next(authorizedRequest).pipe(
     catchError((error) => {
-      if (error.status === 401) {
+      if (error.status === 401 && networkService.isOnline()) {
         authService.clearSession();
       }
 

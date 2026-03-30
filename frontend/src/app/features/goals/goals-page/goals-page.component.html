@@ -1,0 +1,112 @@
+
+    <div class="page-stack">
+      <section class="metrics">
+        <app-metric-card
+          label="Metas ativas"
+          [value]="goals().length"
+          caption="Objetivos em andamento"
+        />
+        <app-metric-card
+          label="Valor acumulado"
+          [value]="savedTotal()"
+          [currency]="true"
+          [currencyCode]="currencyCode()"
+          caption="Total já guardado"
+          tone="success"
+        />
+        <app-metric-card
+          label="Progresso médio"
+          [value]="averageProgress() + '%'"
+          caption="Ritmo geral das metas"
+          tone="warning"
+        />
+      </section>
+
+      <section class="split-layout goals-layout">
+        <app-panel class="composer-panel" title="Nova meta" caption="Conecte ambição, prazo e valor de forma elegante">
+          <form class="form-grid" [formGroup]="form" (ngSubmit)="createGoal()">
+            <app-field-shell label="Título" hint="Obrigatório">
+              <input type="text" formControlName="title" placeholder="Ex.: Viagem para Lisboa">
+            </app-field-shell>
+
+            <app-field-shell label="Descrição" hint="Opcional">
+              <textarea rows="4" formControlName="description" placeholder="Por que essa meta importa?"></textarea>
+            </app-field-shell>
+
+            <div class="grid-2">
+              <app-field-shell label="Valor alvo">
+                <input type="number" formControlName="targetAmount" placeholder="12000">
+              </app-field-shell>
+
+              <app-field-shell label="Valor atual">
+                <input type="number" formControlName="currentAmount" placeholder="0">
+              </app-field-shell>
+            </div>
+
+            <app-field-shell label="Data alvo">
+              <input type="date" formControlName="targetDate">
+            </app-field-shell>
+
+            <app-ui-button type="submit" [disabled]="form.invalid" [fullWidth]="true" icon="flag">
+              Criar meta
+            </app-ui-button>
+          </form>
+        </app-panel>
+
+        <app-panel title="Metas em andamento" caption="Acompanhe evolução e faça aportes rápidos">
+          <div class="goal-grid" *ngIf="goals().length; else noGoals">
+            <article class="goal-card" *ngFor="let goal of goals()">
+              <div class="goal-card-top">
+                <div>
+                  <strong>{{ goal.title }}</strong>
+                  <p>{{ goal.targetDate ? (goal.targetDate | date: 'dd/MM/yyyy') : 'Sem prazo definido' }}</p>
+                </div>
+                <app-ui-badge
+                  [label]="goal.status === 'ACHIEVED' ? 'Concluída' : 'Ativa'"
+                  [tone]="goal.status === 'ACHIEVED' ? 'success' : 'accent'"
+                  [showDot]="false"
+                />
+              </div>
+
+              <div class="progress-track">
+                <span class="progress-fill" [style.width.%]="progress(goal)"></span>
+              </div>
+
+              <div class="goal-summary">
+                <span>{{ progress(goal) }}%</span>
+                <strong>
+                  {{ goal.currentAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+                </strong>
+              </div>
+
+              <p class="goal-copy">
+                de
+                {{ goal.targetAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+                planejados
+              </p>
+
+              <div class="goal-actions">
+                <app-ui-button variant="secondary" size="sm" (click)="contribute(goal, 100)">
+                  +100
+                </app-ui-button>
+                <app-ui-button variant="secondary" size="sm" (click)="contribute(goal, 500)">
+                  +500
+                </app-ui-button>
+                <app-ui-button variant="ghost" size="sm" (click)="removeGoal(goal.id)">
+                  Excluir
+                </app-ui-button>
+              </div>
+            </article>
+          </div>
+
+          <ng-template #noGoals>
+            <app-empty-state
+              title="Nenhuma meta ativa"
+              description="Crie um destino para o LUMEN orientar melhor suas decisões."
+              icon="flag"
+            />
+          </ng-template>
+        </app-panel>
+      </section>
+    </div>
+  

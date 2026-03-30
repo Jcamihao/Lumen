@@ -1,0 +1,174 @@
+
+      .settings-stack,
+      .settings-form,
+      .form-grid,
+      .settings-grid,
+      .privacy-grid,
+      .rights-grid {
+        display: grid;
+        gap: 1rem;
+      }
+
+      .grid-2 {
+        display: grid;
+        gap: 0.9rem;
+      }
+
+      .status-row {
+        min-height: 1.9rem;
+      }
+
+      .theme-card,
+      .account-card,
+      .disclosure-card,
+      .rights-card,
+      .consent-card,
+      .profile-photo-card {
+        display: grid;
+        gap: 0.7rem;
+        padding: 1rem;
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border);
+        background: var(--card-muted);
+      }
+
+      .consent-card {
+        grid-template-columns: auto 1fr;
+        align-items: start;
+        gap: 0.85rem;
+      }
+
+      .consent-card.invalid {
+        border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+      }
+
+      .consent-card.accent {
+        background: color-mix(in srgb, var(--accent) 5%, var(--card));
+      }
+
+      .consent-card input {
+        margin-top: 0.2rem;
+        inline-size: 1rem;
+        block-size: 1rem;
+        accent-color: var(--accent);
+      }
+
+      .profile-photo-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      .profile-photo-head strong {
+        color: var(--text-primary);
+        font-size: 0.98rem;
+      }
+
+      .profile-photo-head p {
+        margin: 0.28rem 0 0;
+        font-size: 0.92rem;
+      }
+
+      .profile-photo-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+
+      .upload-button,
+      .clear-photo {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 2.85rem;
+        padding: 0.75rem 1rem;
+        border-radius: var(--radius-pill);
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--text-primary);
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .upload-button input {
+        display: none;
+      }
+
+      .clear-photo {
+        background: transparent;
+        color: var(--text-medium);
+      }
+
+      .theme-card p,
+      .account-card p,
+      .disclosure-card p,
+      .rights-card p,
+      .consent-card p,
+      .feedback,
+      .error {
+        margin: 0;
+        color: var(--text-medium);
+      }
+
+      .badge-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+      }
+
+      .rights-card {
+        align-content: start;
+      }
+
+      .rights-card.danger {
+        background: color-mix(in srgb, var(--danger) 4%, var(--card));
+      }
+
+      .feedback {
+        color: var(--success);
+        font-size: 0.92rem;
+      }
+
+      .error {
+        color: var(--danger);
+        font-size: 0.92rem;
+      }
+
+      @media (min-width: 860px) {
+        .grid-2,
+        .settings-grid,
+        .rights-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      @media (min-width: 1700px) {
+        .settings-grid {
+          grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+        }
+      }
+
+      @media (max-width: 520px) {
+        .settings-stack,
+        .settings-grid,
+        .privacy-grid,
+        .rights-grid {
+          gap: 0.85rem;
+        }
+
+        .profile-photo-head {
+          align-items: flex-start;
+        }
+
+        .profile-photo-actions {
+          display: grid;
+        }
+
+        .theme-card app-ui-button,
+        .rights-card app-ui-button {
+          width: 100%;
+        }
+      }
+    

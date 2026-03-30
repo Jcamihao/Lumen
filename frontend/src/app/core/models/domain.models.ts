@@ -2,6 +2,7 @@ export type User = {
   id: string;
   name: string;
   email: string;
+  avatarUrl?: string | null;
   preferredCurrency: string;
   monthlyIncome: number;
   monthClosingDay: number;
@@ -146,6 +147,47 @@ export type ImportPreview = {
     categoryName?: string;
     duplicate: boolean;
   }>;
+};
+
+export type ReceiptImportItem = {
+  id?: string;
+  description: string;
+  quantity: number;
+  unitPrice: number | null;
+  totalPrice: number;
+  categoryHint?: string | null;
+};
+
+export type ReceiptImportPreview = {
+  receiptScanId: string;
+  fileName: string;
+  merchantName: string | null;
+  merchantTaxId: string | null;
+  documentType: string | null;
+  accessKey: string | null;
+  purchaseDate: string | null;
+  totalAmount: number;
+  subtotalAmount: number | null;
+  taxAmount: number | null;
+  confidence: "low" | "medium" | "high";
+  qrCodeDetected: boolean;
+  qrCodeText: string | null;
+  notes: string[];
+  rawTextExcerpt: string | null;
+  possibleDuplicate: boolean;
+  duplicateTransactionId: string | null;
+  duplicateTransactionDescription: string | null;
+  suggestedCategoryId: string | null;
+  suggestedCategoryName: string | null;
+  descriptionSuggestion: string;
+  items: ReceiptImportItem[];
+};
+
+export type ReceiptImportCommitResponse = {
+  success: boolean;
+  receiptScanId: string;
+  importedItems: number;
+  transaction: Transaction;
 };
 
 export type PrivacyExportPayload = {

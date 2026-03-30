@@ -1,0 +1,65 @@
+<aside class="sidebar">
+  <a class="brand" routerLink="/dashboard">
+    <span class="brand-eyebrow">codeStage Soluções</span>
+
+    <span class="brand-row">
+      <span class="brand-mark">
+        <img src="assets/logo/logo_lumen_s_fundo.png" alt="Lumen" />
+      </span>
+
+      <span class="brand-copy">
+        <strong>Lumen</strong>
+        <span>Clareza para sua vida</span>
+      </span>
+    </span>
+  </a>
+
+  <nav class="nav-grid">
+    <a
+      *ngFor="let item of primaryItems"
+      class="nav-card"
+      appSpotlightHover
+      [routerLink]="item.route"
+      routerLinkActive="active"
+      [routerLinkActiveOptions]="{ exact: item.route === '/dashboard' }"
+    >
+      <span class="material-symbols-rounded">{{ item.icon }}</span>
+      <span>{{ item.label }}</span>
+    </a>
+  </nav>
+
+  <section class="group" [class.collapsed]="!toolsExpanded()">
+    <button
+      type="button"
+      class="group-toggle"
+      (click)="toggleTools()"
+      [attr.aria-expanded]="toolsExpanded()"
+      aria-controls="tools-menu"
+    >
+      <span class="group-title">Ferramentas</span>
+      <span class="group-chevron material-symbols-rounded">expand_more</span>
+    </button>
+
+    <div id="tools-menu" class="group-menu" [class.open]="toolsExpanded()">
+      <a
+        *ngFor="let item of toolItems"
+        class="tool-link"
+        appSpotlightHover
+        [routerLink]="item.route"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="{ exact: false }"
+      >
+        <span class="tool-icon material-symbols-rounded">{{ item.icon }}</span>
+        <span>{{ item.label }}</span>
+      </a>
+    </div>
+  </section>
+
+  <section class="sidebar-note" appSpotlightHover>
+    <p class="section-kicker">Lumen Flow</p>
+    <strong>Tempo, tarefas e dinheiro na mesma cadência.</strong>
+    <span
+      >Uma navegação mais clara para decidir o próximo passo sem ruído.</span
+    >
+  </section>
+</aside>

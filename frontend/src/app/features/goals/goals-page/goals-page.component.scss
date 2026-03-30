@@ -1,0 +1,100 @@
+
+    .metrics,
+    .form-grid,
+    .goal-grid {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .grid-2 {
+      display: grid;
+      gap: 0.9rem;
+    }
+
+    .goal-card {
+      display: grid;
+      gap: 0.9rem;
+      padding: 1rem;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--card-muted);
+    }
+
+    .goal-card-top,
+    .goal-summary,
+    .goal-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .goal-card-top p,
+    .goal-copy {
+      margin: 0.22rem 0 0;
+      color: var(--text-medium);
+      font-size: 0.9rem;
+    }
+
+.goal-copy {
+  margin: 0;
+}
+
+.composer-panel {
+  width: min(100%, 456px);
+}
+
+    .goal-summary span {
+      color: var(--text-secondary);
+      font-weight: 700;
+      font-size: 0.84rem;
+    }
+
+    @media (min-width: 860px) {
+      .metrics {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .goals-layout {
+        grid-template-columns: 456px minmax(0, 1fr);
+      }
+
+      .grid-2 {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (min-width: 1700px) {
+      .goals-layout {
+        grid-template-columns: 456px minmax(760px, 1fr);
+      }
+
+      .goal-grid {
+        grid-template-columns: repeat(3, minmax(240px, 1fr));
+      }
+    }
+
+    @media (max-width: 520px) {
+      .goals-layout,
+      .metrics,
+      .goal-grid {
+        gap: 0.85rem;
+      }
+
+      .goal-card-top,
+      .goal-summary,
+      .goal-actions {
+        display: grid;
+        justify-content: stretch;
+      }
+
+      .goal-actions app-ui-button {
+        width: 100%;
+      }
+
+      .composer-panel {
+        width: 100%;
+      }
+    }
+  

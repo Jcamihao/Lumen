@@ -1,0 +1,18 @@
+
+<section
+  class="panel"
+  appSpotlightHover
+  [class.has-bounded-height]="!!height || !!maxHeight"
+  [style.height]="height || null"
+  [style.maxHeight]="maxHeight || null"
+>
+      <header class="panel-header" *ngIf="title || caption">
+        <div>
+          <h2>{{ title }}</h2>
+          <p *ngIf="caption">{{ caption }}</p>
+        </div>
+        <ng-content select="[panel-actions]"></ng-content>
+      </header>
+      <ng-content></ng-content>
+    </section>
+  

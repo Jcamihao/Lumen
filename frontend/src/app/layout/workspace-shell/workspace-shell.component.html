@@ -1,0 +1,35 @@
+
+    <div class="workspace-shell">
+      <div class="sidebar-column">
+        <app-sidebar></app-sidebar>
+      </div>
+
+      <main class="content-column">
+        <div class="content-frame">
+          <app-app-header
+            [eyebrow]="currentMeta().eyebrow"
+            [title]="currentMeta().title"
+            [subtitle]="currentMeta().subtitle"
+            [actionLabel]="currentMeta().actionLabel"
+            [userName]="authService.currentUser()?.name || 'Você'"
+            [userMeta]="authService.currentUser()?.email || 'workspace pessoal'"
+            [userAvatarUrl]="authService.currentUser()?.avatarUrl || null"
+            [themeMode]="themeService.mode()"
+            [isOffline]="lifeApiService.offlineMode()"
+            [pendingSyncCount]="lifeApiService.pendingSyncCount()"
+            [syncing]="lifeApiService.syncing()"
+            (toggleTheme)="themeService.toggle()"
+            (quickAction)="navigateTo(currentMeta().actionRoute)"
+            (openSettings)="navigateTo('/settings')"
+            (logout)="logout()"
+          />
+
+          <section class="page-content">
+            <router-outlet></router-outlet>
+          </section>
+        </div>
+      </main>
+
+      <app-bottom-nav></app-bottom-nav>
+    </div>
+  

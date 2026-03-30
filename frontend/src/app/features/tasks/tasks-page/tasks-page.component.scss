@@ -1,0 +1,100 @@
+
+    .metrics,
+    .form-grid,
+    .stack-list {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .toolbar,
+    .row-actions {
+      display: flex;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+    }
+
+    .toolbar {
+      margin-bottom: 0.45rem;
+    }
+
+.grid-2 {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.composer-panel .form-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.composer-panel {
+  width: min(100%, 456px);
+}
+
+    @media (min-width: 860px) {
+      .tasks-layout {
+        align-items: start;
+      }
+
+      .metrics {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .tasks-layout {
+        grid-template-columns: 456px minmax(0, 1fr);
+      }
+
+      .grid-2 {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .composer-panel {
+        position: sticky;
+        top: 6.5rem;
+      }
+    }
+
+    @media (min-width: 1320px) {
+      .tasks-layout {
+        grid-template-columns: 456px minmax(0, 1fr);
+      }
+    }
+
+    @media (min-width: 1700px) {
+      .tasks-layout {
+        grid-template-columns: 456px minmax(760px, 1fr);
+      }
+    }
+
+    @media (max-width: 520px) {
+      .tasks-layout,
+      .metrics {
+        gap: 0.85rem;
+      }
+
+      .toolbar {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 0.2rem;
+        scrollbar-width: none;
+      }
+
+      .toolbar::-webkit-scrollbar {
+        display: none;
+      }
+
+      .row-actions {
+        width: 100%;
+      }
+
+      .row-actions app-ui-button {
+        flex: 1 1 100%;
+      }
+
+      .composer-panel {
+        width: 100%;
+      }
+    }
+  

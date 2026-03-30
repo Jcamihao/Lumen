@@ -1,0 +1,69 @@
+
+    <header class="app-header" [class.theme-dark]="themeMode === 'dark'">
+      <div class="copy">
+        <p class="section-kicker">{{ eyebrow }}</p>
+        <h1>{{ title }}</h1>
+        <p class="subtitle">{{ subtitle }}</p>
+        <div class="status-strip" *ngIf="isOffline || pendingSyncCount || syncing">
+          <span class="status-pill" [class.offline]="isOffline">
+            {{ isOffline ? 'Modo offline' : syncing ? 'Sincronizando' : 'Online' }}
+          </span>
+          <span class="status-pill neutral" *ngIf="pendingSyncCount">
+            {{ pendingSyncCount }} pendência(s)
+          </span>
+        </div>
+      </div>
+
+      <div class="actions">
+        <app-ui-button
+          class="theme-toggle"
+          variant="secondary"
+          icon="{{ themeMode === 'light' ? 'dark_mode' : 'light_mode' }}"
+          (click)="toggleTheme.emit()"
+        >
+          {{ themeMode === 'light' ? 'Dark mode' : 'Light mode' }}
+        </app-ui-button>
+
+        <app-ui-button class="quick-action" icon="add" [fullWidth]="true" (click)="quickAction.emit()">
+          {{ actionLabel }}
+        </app-ui-button>
+
+        <div class="profile-shell">
+          <div class="profile">
+            <span class="profile-avatar-shell">
+              <app-avatar [name]="userName" [imageUrl]="userAvatarUrl" size="sm" shape="circle"></app-avatar>
+              <span class="profile-status"></span>
+            </span>
+
+            <div class="profile-copy">
+              <strong>{{ shortUserName() }}</strong>
+              <span class="profile-meta">{{ userMeta }}</span>
+            </div>
+
+            <button
+              class="profile-trigger"
+              type="button"
+              aria-label="Abrir menu da conta"
+              [attr.aria-expanded]="menuOpen"
+              (click)="toggleMenu($event)"
+            >
+              <span class="profile-chevron-shell">
+                <span class="profile-chevron material-symbols-rounded">expand_more</span>
+              </span>
+            </button>
+          </div>
+
+          <div class="profile-menu" *ngIf="menuOpen">
+            <button type="button" class="menu-item" (click)="handleSettings()">
+              <span class="material-symbols-rounded">settings</span>
+              Configurações
+            </button>
+            <button type="button" class="menu-item danger" (click)="handleLogout()">
+              <span class="material-symbols-rounded">logout</span>
+              Sair
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+  

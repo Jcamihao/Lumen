@@ -1,0 +1,120 @@
+
+    <div class="page-stack">
+      <section class="metrics">
+        <app-metric-card
+          label="Receitas"
+          [value]="incomeTotal()"
+          [currency]="true"
+          [currencyCode]="currencyCode()"
+          caption="Entradas registradas"
+          tone="success"
+        />
+        <app-metric-card
+          label="Despesas"
+          [value]="expenseTotal()"
+          [currency]="true"
+          [currencyCode]="currencyCode()"
+          caption="Saídas monitoradas"
+          tone="warning"
+        />
+        <app-metric-card
+          label="Saldo líquido"
+          [value]="netFlow()"
+          [currency]="true"
+          [currencyCode]="currencyCode()"
+          caption="Diferença entre entradas e saídas"
+          [tone]="netFlow() >= 0 ? 'success' : 'danger'"
+        />
+      </section>
+
+      <section class="split-layout finance-layout">
+        <div class="page-stack">
+          <app-panel class="composer-panel" title="Nova transação" caption="Registre dinheiro com contexto de vida">
+            <form class="form-grid" [formGroup]="form" (ngSubmit)="createTransaction()">
+              <app-field-shell label="Descrição" hint="Obrigatório">
+                <input type="text" formControlName="description" placeholder="Ex.: Conta de luz">
+              </app-field-shell>
+
+              <div class="grid-2">
+                <app-field-shell label="Tipo">
+                  <select formControlName="type">
+                    <option value="EXPENSE">Despesa</option>
+                    <option value="INCOME">Receita</option>
+                    <option value="TRANSFER">Transferência</option>
+                  </select>
+                </app-field-shell>
+
+                <app-field-shell label="Valor">
+                  <input type="number" formControlName="amount" placeholder="0">
+                </app-field-shell>
+              </div>
+
+              <div class="grid-2">
+                <app-field-shell label="Data">
+                  <input type="date" formControlName="date">
+                </app-field-shell>
+
+                <app-field-shell label="Categoria">
+                  <select formControlName="categoryId">
+                    <option value="">Sem categoria</option>
+                    <option *ngFor="let category of financeCategories()" [value]="category.id">
+                      {{ category.name }} · {{ category.type }}
+                    </option>
+                  </select>
+                </app-field-shell>
+              </div>
+
+              <div class="surface-note finance-note">
+                <div>
+                  <strong>Importação inteligente</strong>
+                  <p>Traga movimentações em lote com preview e deduplicação.</p>
+                </div>
+                <app-ui-button variant="secondary" routerLink="/imports" size="sm">
+                  Importar CSV
+                </app-ui-button>
+              </div>
+
+              <app-ui-button type="submit" [disabled]="form.invalid" [fullWidth]="true" icon="payments">
+                Salvar transação
+              </app-ui-button>
+            </form>
+          </app-panel>
+        </div>
+
+        <app-panel class="feed-panel" title="Movimentos" caption="Receitas, despesas e transferências recentes">
+          <div class="toolbar">
+            <app-ui-badge [label]="transactions().length + ' registros'" tone="accent" />
+            <app-ui-badge [label]="incomeCount() + ' receitas'" tone="success" />
+            <app-ui-badge [label]="expenseCount() + ' saídas'" tone="warning" />
+          </div>
+
+          <div class="stack-list" *ngIf="transactions().length; else emptyState">
+            <app-list-item
+              *ngFor="let transaction of transactions()"
+              [title]="transaction.description"
+              [subtitle]="transactionSubtitle(transaction)"
+              [meta]="transactionAmount(transaction)"
+              [metaTone]="transaction.type === 'INCOME' ? 'positive' : 'negative'"
+              [badge]="typeLabel(transaction.type)"
+              [badgeTone]="transaction.type === 'INCOME' ? 'success' : transaction.type === 'EXPENSE' ? 'warning' : 'neutral'"
+              [avatar]="transaction.description"
+            >
+              <div list-actions class="row-actions">
+                <app-ui-button variant="ghost" size="sm" (click)="removeTransaction(transaction.id)">
+                  Excluir
+                </app-ui-button>
+              </div>
+            </app-list-item>
+          </div>
+
+          <ng-template #emptyState>
+            <app-empty-state
+              title="Nenhuma transação registrada"
+              description="Adicione receitas ou despesas para destravar previsões e insights."
+              icon="account_balance_wallet"
+            />
+          </ng-template>
+        </app-panel>
+      </section>
+    </div>
+  

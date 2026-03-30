@@ -1,15 +1,15 @@
 import { Routes } from '@angular/router';
 import { guestGuard, authGuard } from './core/guards/auth.guard';
-import { AssistantPageComponent } from './features/assistant/assistant-page.component';
-import { DashboardPageComponent } from './features/dashboard/dashboard-page.component';
-import { FinancesPageComponent } from './features/finances/finances-page.component';
-import { ImportsPageComponent } from './features/imports/imports-page.component';
-import { LoginPageComponent } from './features/auth/login-page.component';
-import { RegisterPageComponent } from './features/auth/register-page.component';
-import { GoalsPageComponent } from './features/goals/goals-page.component';
-import { SettingsPageComponent } from './features/settings/settings-page.component';
-import { TasksPageComponent } from './features/tasks/tasks-page.component';
-import { WorkspaceShellComponent } from './layout/workspace-shell.component';
+import { AssistantPageComponent } from './features/assistant/assistant-page/assistant-page.component';
+import { DashboardPageComponent } from './features/dashboard/dashboard-page/dashboard-page.component';
+import { FinancesPageComponent } from './features/finances/finances-page/finances-page.component';
+import { ImportsPageComponent } from './features/imports/imports-page/imports-page.component';
+import { LoginPageComponent } from './features/auth/login-page/login-page.component';
+import { RegisterPageComponent } from './features/auth/register-page/register-page.component';
+import { GoalsPageComponent } from './features/goals/goals-page/goals-page.component';
+import { SettingsPageComponent } from './features/settings/settings-page/settings-page.component';
+import { TasksPageComponent } from './features/tasks/tasks-page/tasks-page.component';
+import { WorkspaceShellComponent } from './layout/workspace-shell/workspace-shell.component';
 
 export const routes: Routes = [
   {

@@ -1,0 +1,215 @@
+
+    .upload-card,
+    .stack-list {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .upload-card {
+      place-items: center;
+      text-align: center;
+      padding: 1.4rem;
+      border-radius: var(--radius-lg);
+      border: 1px dashed var(--border);
+      background: var(--card-muted);
+    }
+
+    .upload-card .material-symbols-rounded {
+      font-size: 2rem;
+      color: var(--accent);
+    }
+
+    .upload-card p,
+    .preview-meta p,
+    .duplicate-warning p {
+      margin: 0;
+      color: var(--text-medium);
+    }
+
+    .preview-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.7rem;
+      margin: 1rem 0;
+    }
+
+    .notes {
+      margin-top: 0;
+    }
+
+    .preview-meta {
+      display: grid;
+      gap: 0.25rem;
+      margin-bottom: 1rem;
+    }
+
+    .receipt-preview {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .receipt-meta-grid {
+      display: grid;
+      gap: 0.9rem;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .field {
+      display: grid;
+      gap: 0.45rem;
+    }
+
+    .field span {
+      font-size: 0.82rem;
+      color: var(--text-medium);
+      font-weight: 600;
+    }
+
+    .field input,
+    .field select,
+    .items-table input {
+      width: 100%;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      background: var(--card-muted);
+      color: var(--text-strong);
+      padding: 0.8rem 0.9rem;
+      outline: none;
+    }
+
+    .field input:focus,
+    .field select:focus,
+    .items-table input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+
+    .field-full,
+    .field-total {
+      grid-column: span 2;
+    }
+
+    .duplicate-warning {
+      display: grid;
+      gap: 0.25rem;
+      padding: 1rem;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(245, 158, 11, 0.24);
+      background: rgba(245, 158, 11, 0.08);
+    }
+
+    .receipt-fiscal-meta {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    }
+
+    .meta-card {
+      display: grid;
+      gap: 0.2rem;
+      padding: 0.85rem 0.95rem;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: var(--card-muted);
+    }
+
+    .meta-card span {
+      font-size: 0.78rem;
+      color: var(--text-medium);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+    }
+
+    .meta-card strong {
+      color: var(--text-strong);
+      overflow-wrap: anywhere;
+    }
+
+    .items-table {
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .items-head,
+    .item-row {
+      display: grid;
+      gap: 0.75rem;
+      grid-template-columns: minmax(0, 2.3fr) 0.85fr 0.95fr 0.95fr minmax(120px, 0.95fr);
+      align-items: center;
+    }
+
+    .items-head {
+      padding: 0 0.2rem;
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-medium);
+      font-weight: 700;
+    }
+
+    .item-category {
+      min-height: 48px;
+      display: grid;
+      align-items: center;
+      padding: 0.8rem 0.9rem;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      background: var(--card-muted);
+      color: var(--text-medium);
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    .receipt-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .receipt-summary {
+      display: grid;
+      gap: 0.15rem;
+    }
+
+    .receipt-summary span {
+      color: var(--text-medium);
+    }
+
+    .error-message {
+      margin: 0;
+      color: var(--danger);
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 920px) {
+      .receipt-meta-grid,
+      .items-head,
+      .item-row {
+        grid-template-columns: 1fr;
+      }
+
+      .field-full,
+      .field-total {
+        grid-column: auto;
+      }
+
+      .items-head {
+        display: none;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .upload-card {
+        padding: 1.1rem;
+      }
+    }
+
+    @media (min-width: 860px) {
+      .imports-layout {
+        grid-template-columns: 360px minmax(0, 1fr);
+      }
+    }
+  

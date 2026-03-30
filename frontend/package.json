@@ -7,8 +7,13 @@
     "start": "ng serve",
     "prebuild": "node ./scripts/generate-runtime-config.mjs",
     "build": "ng build",
+    "build:mobile": "ng build --configuration production",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "cap:sync": "npx cap sync",
+    "cap:copy": "npx cap copy",
+    "cap:add:ios": "npx cap add ios",
+    "cap:open:ios": "npx cap open ios"
   },
   "private": true,
   "dependencies": {
@@ -21,6 +26,9 @@
     "@angular/platform-browser-dynamic": "^16.2.0",
     "@angular/router": "^16.2.0",
     "@angular/service-worker": "^16.2.12",
+    "@capacitor/cli": "^5.7.8",
+    "@capacitor/core": "^5.7.8",
+    "@capacitor/ios": "^5.7.8",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "zone.js": "~0.13.0"

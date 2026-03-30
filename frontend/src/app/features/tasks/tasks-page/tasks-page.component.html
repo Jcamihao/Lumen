@@ -1,0 +1,132 @@
+
+    <div class="page-stack">
+      <section class="metrics">
+        <app-metric-card
+          label="Tarefas totais"
+          [value]="tasks().length"
+          caption="Tudo que já entrou no seu fluxo"
+        />
+        <app-metric-card
+          label="Concluídas"
+          [value]="doneCount()"
+          caption="Itens já resolvidos"
+          tone="success"
+        />
+        <app-metric-card
+          label="Com impacto"
+          [value]="impactCount()"
+          caption="Tarefas com efeito financeiro"
+          tone="warning"
+        />
+      </section>
+
+      <section class="split-layout tasks-layout">
+        <app-panel
+          class="composer-panel"
+          title="Nova tarefa"
+          caption="Transforme intenção em ação com contexto"
+          maxHeight="456px"
+        >
+          <form class="form-grid" [formGroup]="form" (ngSubmit)="createTask()">
+            <app-field-shell label="Título" hint="Obrigatório">
+              <input type="text" formControlName="title" placeholder="Ex.: Pagar conta de energia">
+            </app-field-shell>
+
+            <app-field-shell label="Descrição" hint="Opcional">
+              <textarea
+                rows="4"
+                formControlName="description"
+                placeholder="Contexto, detalhe importante ou próximo passo"
+              ></textarea>
+            </app-field-shell>
+
+            <div class="grid-2">
+              <app-field-shell label="Prazo">
+                <input type="date" formControlName="dueDate">
+              </app-field-shell>
+
+              <app-field-shell label="Prioridade">
+                <select formControlName="priority">
+                  <option value="MEDIUM">Média</option>
+                  <option value="LOW">Baixa</option>
+                  <option value="HIGH">Alta</option>
+                  <option value="CRITICAL">Crítica</option>
+                </select>
+              </app-field-shell>
+            </div>
+
+            <div class="grid-2">
+              <app-field-shell label="Categoria">
+                <select formControlName="categoryId">
+                  <option value="">Sem categoria</option>
+                  <option *ngFor="let category of taskCategories()" [value]="category.id">
+                    {{ category.name }}
+                  </option>
+                </select>
+              </app-field-shell>
+
+              <app-field-shell label="Impacto estimado" hint="BRL">
+                <input type="number" formControlName="estimatedAmount" placeholder="0">
+              </app-field-shell>
+            </div>
+
+            <div class="surface-note">
+              <app-ui-badge
+                [label]="form.value.estimatedAmount ? 'Com impacto financeiro' : 'Tarefa operacional'"
+                [tone]="form.value.estimatedAmount ? 'warning' : 'accent'"
+              />
+            </div>
+
+            <app-ui-button type="submit" [disabled]="form.invalid" [fullWidth]="true" icon="add_task">
+              Criar tarefa
+            </app-ui-button>
+          </form>
+        </app-panel>
+
+        <app-panel class="queue-panel" title="Fila atual" caption="Prioridades, ritmo e pontos de atenção">
+          <div class="toolbar">
+            <app-ui-badge [label]="doneCount() + ' concluídas'" tone="success" />
+            <app-ui-badge [label]="pendingCount() + ' abertas'" tone="accent" />
+            <app-ui-badge [label]="impactCount() + ' com custo'" tone="warning" />
+          </div>
+
+          <div class="stack-list" *ngIf="tasks().length; else noTasks">
+            <app-list-item
+              *ngFor="let task of tasks()"
+              [title]="task.title"
+              [subtitle]="taskSubtitle(task)"
+              [meta]="taskMeta(task)"
+              [metaTone]="task.hasFinancialImpact ? 'warning' : 'neutral'"
+              [badge]="priorityLabel(task.priority)"
+              [badgeTone]="priorityTone(task.priority)"
+              badgePlacement="trailing"
+              [checkable]="true"
+              [checked]="task.status === 'DONE'"
+            >
+              <div list-actions class="row-actions">
+                <app-ui-button
+                  variant="secondary"
+                  size="sm"
+                  [disabled]="task.status === 'DONE'"
+                  (click)="markDone(task)"
+                >
+                  {{ task.status === 'DONE' ? 'Concluída' : 'Concluir' }}
+                </app-ui-button>
+                <app-ui-button variant="ghost" size="sm" (click)="removeTask(task.id)">
+                  Excluir
+                </app-ui-button>
+              </div>
+            </app-list-item>
+          </div>
+
+          <ng-template #noTasks>
+            <app-empty-state
+              title="Nenhuma tarefa por aqui"
+              description="Crie sua primeira prioridade conectada ao seu contexto real."
+              icon="checklist"
+            />
+          </ng-template>
+        </app-panel>
+      </section>
+    </div>
+  

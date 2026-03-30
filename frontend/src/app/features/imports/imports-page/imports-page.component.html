@@ -1,0 +1,293 @@
+
+    <div class="page-stack">
+      <section class="split-layout imports-layout">
+        <app-panel
+          title="Ler nota fiscal com IA"
+          caption="Extraia total, estabelecimento e itens da compra a partir da foto"
+        >
+          <ng-container *ngIf="canUseReceiptAi(); else aiDisabled">
+            <div class="upload-card">
+              <span class="material-symbols-rounded">receipt_long</span>
+              <strong>Envie a foto da nota fiscal</strong>
+              <p>O SelahIA lê a imagem, organiza os itens e monta um preview antes de gravar.</p>
+              <input
+                #receiptInput
+                type="file"
+                accept="image/*"
+                hidden
+                (change)="handleReceiptFile($event)"
+              >
+              <app-ui-button
+                icon="photo_camera"
+                [disabled]="receiptLoading()"
+                (click)="receiptInput.click()"
+              >
+                {{ receiptLoading() ? 'Lendo nota...' : 'Selecionar imagem' }}
+              </app-ui-button>
+            </div>
+
+            <div class="preview-badges" *ngIf="receiptPreview() as receipt">
+              <app-ui-badge [label]="confidenceLabel(receipt.confidence)" tone="accent" />
+              <app-ui-badge
+                *ngIf="receipt.documentType"
+                [label]="documentTypeLabel(receipt.documentType)"
+                tone="neutral"
+              />
+              <app-ui-badge
+                *ngIf="receipt.qrCodeDetected"
+                label="QR fiscal detectado"
+                tone="accent"
+              />
+              <app-ui-badge
+                *ngIf="receipt.possibleDuplicate"
+                label="Possível duplicada"
+                tone="warning"
+              />
+              <app-ui-badge
+                *ngIf="receipt.suggestedCategoryName"
+                [label]="'Sugestão: ' + receipt.suggestedCategoryName"
+                tone="success"
+              />
+            </div>
+
+            <p class="error-message" *ngIf="receiptError()">{{ receiptError() }}</p>
+          </ng-container>
+
+          <ng-template #aiDisabled>
+            <app-empty-state
+              title="IA externa desativada"
+              description="Ative o SelahIA nas configurações para importar notas fiscais por foto."
+              icon="shield_lock"
+            />
+          </ng-template>
+        </app-panel>
+
+        <app-panel
+          title="Preview da nota"
+          caption="Revise os itens antes de lançar a compra no financeiro"
+        >
+          <div *ngIf="receiptPreview() as receipt; else noReceiptPreview" class="receipt-preview">
+            <div class="receipt-meta-grid">
+              <label class="field">
+                <span>Estabelecimento</span>
+                <input
+                  type="text"
+                  [ngModel]="receiptMerchantName()"
+                  (ngModelChange)="receiptMerchantName.set($event)"
+                >
+              </label>
+
+              <label class="field">
+                <span>Data da compra</span>
+                <input
+                  type="date"
+                  [ngModel]="receiptPurchaseDate()"
+                  (ngModelChange)="receiptPurchaseDate.set($event)"
+                >
+              </label>
+
+              <label class="field field-total">
+                <span>Total da compra</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  [ngModel]="receiptTotalAmount()"
+                  (ngModelChange)="receiptTotalAmount.set(toNumber($event, receipt.totalAmount))"
+                >
+              </label>
+
+              <label class="field">
+                <span>Categoria financeira</span>
+                <select
+                  [ngModel]="receiptCategoryId()"
+                  (ngModelChange)="receiptCategoryId.set($event)"
+                >
+                  <option value="">Sem categoria</option>
+                  <option
+                    *ngFor="let category of expenseCategories()"
+                    [value]="category.id"
+                  >
+                    {{ category.name }}
+                  </option>
+                </select>
+              </label>
+
+              <label class="field field-full">
+                <span>Descrição da transação</span>
+                <input
+                  type="text"
+                  [ngModel]="receiptDescription()"
+                  (ngModelChange)="receiptDescription.set($event)"
+                >
+              </label>
+            </div>
+
+            <div class="preview-badges notes" *ngIf="receipt.notes.length">
+              <app-ui-badge
+                *ngFor="let note of receipt.notes"
+                [label]="note"
+                tone="neutral"
+              />
+            </div>
+
+            <div
+              class="receipt-fiscal-meta"
+              *ngIf="
+                receipt.documentType ||
+                receipt.merchantTaxId ||
+                receipt.accessKey ||
+                receipt.qrCodeText
+              "
+            >
+              <div class="meta-card" *ngIf="receipt.documentType">
+                <span>Documento</span>
+                <strong>{{ documentTypeLabel(receipt.documentType) }}</strong>
+              </div>
+              <div class="meta-card" *ngIf="receipt.merchantTaxId">
+                <span>CNPJ/CPF</span>
+                <strong>{{ receipt.merchantTaxId }}</strong>
+              </div>
+              <div class="meta-card" *ngIf="receipt.accessKey">
+                <span>Chave de acesso</span>
+                <strong>{{ receipt.accessKey }}</strong>
+              </div>
+              <div class="meta-card" *ngIf="receipt.qrCodeText">
+                <span>QR fiscal</span>
+                <strong>{{ shortenQrText(receipt.qrCodeText) }}</strong>
+              </div>
+            </div>
+
+            <div class="duplicate-warning" *ngIf="receipt.possibleDuplicate">
+              <strong>Compra possivelmente já registrada</strong>
+              <p>{{ receipt.duplicateTransactionDescription || 'Existe uma transação parecida no mesmo dia e valor.' }}</p>
+            </div>
+
+            <div class="items-table">
+              <div class="items-head">
+                <span>Produto</span>
+                <span>Qtd.</span>
+                <span>Unit.</span>
+                <span>Total</span>
+                <span>Categoria</span>
+              </div>
+
+              <div class="item-row" *ngFor="let item of receipt.items; let index = index">
+                <input
+                  type="text"
+                  [ngModel]="item.description"
+                  (ngModelChange)="updateReceiptItem(index, 'description', $event)"
+                >
+                <input
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  [ngModel]="item.quantity"
+                  (ngModelChange)="updateReceiptItem(index, 'quantity', toNumber($event, item.quantity), true)"
+                >
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  [ngModel]="item.unitPrice"
+                  (ngModelChange)="updateReceiptItem(index, 'unitPrice', toNullableNumber($event), true)"
+                >
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  [ngModel]="item.totalPrice"
+                  (ngModelChange)="updateReceiptItem(index, 'totalPrice', toNumber($event, item.totalPrice))"
+                >
+                <div class="item-category">
+                  {{ item.categoryHint || 'Sem sugestão' }}
+                </div>
+              </div>
+            </div>
+
+            <div class="receipt-actions">
+              <div class="receipt-summary">
+                <strong>{{ receipt.items.length }} item(ns)</strong>
+                <span>{{ previewAmount(receiptTotalAmount()) }}</span>
+              </div>
+
+              <app-ui-button
+                icon="receipt"
+                [disabled]="receiptSaving()"
+                (click)="commitReceipt()"
+              >
+                {{ receiptSaving() ? 'Registrando compra...' : 'Registrar compra' }}
+              </app-ui-button>
+            </div>
+          </div>
+
+          <ng-template #noReceiptPreview>
+            <app-empty-state
+              title="Nenhuma nota lida ainda"
+              description="Envie uma imagem da nota fiscal para revisar os itens antes de salvar."
+              icon="photo"
+            />
+          </ng-template>
+        </app-panel>
+      </section>
+
+      <section class="split-layout imports-layout">
+        <app-panel title="Importar CSV" caption="Preview com deduplicação antes de gravar">
+          <div class="upload-card">
+            <span class="material-symbols-rounded">upload_file</span>
+            <strong>Envie seu extrato em CSV</strong>
+            <p>O LUMEN identifica duplicidades antes de confirmar a importação.</p>
+            <input #fileInput type="file" accept=".csv,text/csv" hidden (change)="handleFile($event)">
+            <app-ui-button icon="upload" (click)="fileInput.click()">
+              Selecionar arquivo
+            </app-ui-button>
+          </div>
+
+          <div class="preview-badges" *ngIf="preview()">
+            <app-ui-badge [label]="preview()!.totalRows + ' linhas'" tone="accent" />
+            <app-ui-badge [label]="preview()!.duplicates + ' duplicadas'" [tone]="preview()!.duplicates ? 'warning' : 'success'" />
+          </div>
+
+          <app-ui-button
+            *ngIf="preview()"
+            variant="secondary"
+            icon="done_all"
+            [fullWidth]="true"
+            (click)="commitImport()"
+          >
+            Confirmar importação
+          </app-ui-button>
+        </app-panel>
+
+        <app-panel title="Preview CSV" caption="Linhas identificadas antes da gravação">
+          <div *ngIf="preview(); else noPreview">
+            <div class="preview-meta">
+              <strong>{{ preview()!.fileName }}</strong>
+              <p>{{ preview()!.duplicates }} duplicada(s) em {{ preview()!.totalRows }} linha(s)</p>
+            </div>
+
+            <div class="stack-list">
+              <app-list-item
+                *ngFor="let row of preview()!.rows"
+                [title]="row.description"
+                [subtitle]="row.type + ' · ' + row.date"
+                [meta]="previewAmount(row.amount)"
+                [metaTone]="row.type === 'INCOME' ? 'positive' : 'negative'"
+                [badge]="row.duplicate ? 'Duplicada' : 'Nova'"
+                [badgeTone]="row.duplicate ? 'warning' : 'success'"
+                icon="table_chart"
+              />
+            </div>
+          </div>
+
+          <ng-template #noPreview>
+            <app-empty-state
+              title="Nenhum arquivo carregado"
+              description="Envie um CSV para ver o preview inteligente antes de importar."
+              icon="table_chart"
+            />
+          </ng-template>
+        </app-panel>
+      </section>
+    </div>
+  

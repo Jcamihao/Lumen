@@ -9,14 +9,17 @@ import {
   of,
   shareReplay,
   tap,
+  throwError,
 } from "rxjs";
 import { environment } from "../../../environments/environment";
 import { AuthResponse, User } from "../models/domain.models";
+import { NetworkService } from "./network.service";
 
 @Injectable({ providedIn: "root" })
 export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
+  private readonly networkService = inject(NetworkService);
   private readonly storage = globalThis.localStorage;
   private readonly accessTokenKey = "lumen.accessToken";
   private readonly refreshTokenKey = "lumen.refreshToken";
@@ -36,6 +39,9 @@ export class AuthService {
   readonly hasSession = computed(
     () => !!this.accessTokenSignal() || !!this.refreshTokenSignal(),
   );
+  readonly canUseOfflineSession = computed(
+    () => !!this.userSignal() && this.hasSession(),
+  );
 
   login(payload: { email: string; password: string }) {
     return this.http
@@ -47,6 +53,7 @@ export class AuthService {
     name: string;
     email: string;
     password: string;
+    avatarUrl?: string;
     privacyNoticeAccepted: boolean;
     aiAssistantEnabled?: boolean;
     monthlyIncome?: number;
@@ -60,15 +67,32 @@ export class AuthService {
   }
 
   loadMe() {
+    if (!this.networkService.isOnline()) {
+      return of(this.userSignal()).pipe(
+        map((user) => user as User),
+      );
+    }
+
     return this.http.get<User>(`${environment.apiBaseUrl}/auth/me`).pipe(
       tap((user) => {
         this.userSignal.set(user);
         this.storage.setItem(this.userKey, JSON.stringify(user));
       }),
+      catchError((error) => {
+        if (!this.networkService.isOnline() && this.userSignal()) {
+          return of(this.userSignal() as User);
+        }
+
+        return throwError(() => error);
+      }),
     );
   }
 
   restoreSession(force = false) {
+    if (!this.networkService.isOnline() && this.canUseOfflineSession()) {
+      return of(true);
+    }
+
     if (!this.refreshTokenSignal()) {
       return of(false);
     }
@@ -88,7 +112,11 @@ export class AuthService {
       .pipe(
         tap((response) => this.setSession(response)),
         map(() => true),
-        catchError(() => {
+        catchError((error) => {
+          if (!this.networkService.isOnline() && this.canUseOfflineSession()) {
+            return of(true);
+          }
+
           this.clearSession();
           return of(false);
         }),
