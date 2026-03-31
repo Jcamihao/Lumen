@@ -173,6 +173,30 @@ Observacoes importantes:
 - `POST /imports/transactions/preview`
 - `POST /imports/transactions/commit`
 
+## Email com Resend
+
+O backend agora inclui uma camada de envio por Resend para emails transacionais.
+
+Fluxos conectados nesta integracao:
+
+- email de boas-vindas apos cadastro
+- email de lembrete quando o worker dispara um reminder agendado
+
+Variaveis de ambiente no `backend/.env`:
+
+- `RESEND_ENABLED=false`
+- `RESEND_API_KEY=`
+- `RESEND_BASE_URL=https://api.resend.com`
+- `RESEND_FROM_EMAIL=` com um endereco do dominio verificado no Resend
+- `RESEND_FROM_NAME=LUMEN`
+- `RESEND_REPLY_TO=`
+- `RESEND_TIMEOUT_MS=10000`
+
+Observacoes:
+
+- depois de verificar um dominio no Resend, voce pode enviar usando qualquer endereco desse dominio
+- se `RESEND_ENABLED=false`, o app continua funcionando normalmente e apenas nao envia emails
+
 ## Seeds e comportamento demo
 
 O seed cria:

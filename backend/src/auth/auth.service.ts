@@ -9,6 +9,7 @@ import { JwtService } from "@nestjs/jwt";
 import { UserRole } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 import { JwtPayload } from "../common/interfaces/jwt-payload.interface";
+import { MailService } from "../mail/mail.service";
 import { UsersService } from "../users/users.service";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshDto } from "./dto/refresh.dto";
@@ -22,6 +23,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly mailService: MailService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -53,6 +55,17 @@ export class AuthService {
     });
 
     this.logger.log(`register_success userId=${user.id} email=${user.email}`);
+    void this.mailService
+      .sendWelcomeEmail({
+        email: user.email,
+        name: user.name,
+      })
+      .catch((error) => {
+        this.logger.warn(
+          `welcome_email_failed userId=${user.id} email=${user.email} reason=${this.getErrorMessage(error)}`,
+        );
+      });
+
     return this.issueTokens(user.id, user.email, user.role, user);
   }
 
@@ -116,6 +129,14 @@ export class AuthService {
   async me(userId: string) {
     const user = await this.usersService.findById(userId);
     return this.usersService.sanitizeUser(user);
+  }
+
+  private getErrorMessage(error: unknown) {
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return String(error);
   }
 
   private async issueTokens(
