@@ -106,6 +106,8 @@ type SelahAttemptReason =
   | "selah_unavailable"
   | null;
 
+const ASSISTANT_REPLY_LIST_LIMIT = 6;
+
 @Injectable()
 export class AssistantService {
   private readonly logger = new Logger(AssistantService.name);
@@ -318,8 +320,14 @@ export class AssistantService {
 
     return {
       answer,
-      highlights: this.readStringList(payload.highlights, 4),
-      suggestedActions: this.readStringList(payload.suggestedActions, 4),
+      highlights: this.readStringList(
+        payload.highlights,
+        ASSISTANT_REPLY_LIST_LIMIT,
+      ),
+      suggestedActions: this.readStringList(
+        payload.suggestedActions,
+        ASSISTANT_REPLY_LIST_LIMIT,
+      ),
       source: "selah_ia",
       provider:
         typeof payload.provider === "string" && payload.provider.trim()
@@ -560,7 +568,21 @@ export class AssistantService {
     if (
       normalizedQuestion.includes("finance") ||
       normalizedQuestion.includes("saldo") ||
-      normalizedQuestion.includes("dinheiro")
+      normalizedQuestion.includes("dinheiro") ||
+      normalizedQuestion.includes("divid") ||
+      normalizedQuestion.includes("dívida") ||
+      normalizedQuestion.includes("quitar") ||
+      normalizedQuestion.includes("renegoci") ||
+      normalizedQuestion.includes("juros") ||
+      normalizedQuestion.includes("parcela") ||
+      normalizedQuestion.includes("cartão") ||
+      normalizedQuestion.includes("cartao") ||
+      normalizedQuestion.includes("emprést") ||
+      normalizedQuestion.includes("emprest") ||
+      normalizedQuestion.includes("despesa") ||
+      normalizedQuestion.includes("gasto") ||
+      normalizedQuestion.includes("orçamento") ||
+      normalizedQuestion.includes("orcamento")
     ) {
       return "finance_overview" as const;
     }
@@ -605,18 +627,31 @@ export class AssistantService {
       normalizedQuestion.includes("risco") ||
       normalizedQuestion.includes("saldo") ||
       normalizedQuestion.includes("gasto") ||
-      normalizedQuestion.includes("dinheiro")
+      normalizedQuestion.includes("dinheiro") ||
+      normalizedQuestion.includes("divid") ||
+      normalizedQuestion.includes("dívida") ||
+      normalizedQuestion.includes("quitar") ||
+      normalizedQuestion.includes("renegoci") ||
+      normalizedQuestion.includes("juros") ||
+      normalizedQuestion.includes("parcela")
         ? "leitura financeira"
+        : null,
+      normalizedQuestion.includes("rotina") ||
+      normalizedQuestion.includes("vida pessoal") ||
+      normalizedQuestion.includes("foco") ||
+      normalizedQuestion.includes("cansa") ||
+      normalizedQuestion.includes("procrast")
+        ? "organizacao de vida pessoal"
         : null,
       normalizedQuestion.includes("meta") ? "progresso de meta" : null,
       normalizedQuestion.includes("tarefa") ? "execucao de tarefa" : null,
     ].filter(Boolean);
 
     if (matchedTargets.length) {
-      return `O usuário citou explicitamente ${matchedTargets.join(", ")}. A resposta deve começar por esse(s) item(ns) e só depois conectar panorama mais amplo se isso ajudar a responder a pergunta. Sinais da pergunta: ${signals.join(", ") || "leitura contextual"}.`;
+      return `O usuário citou explicitamente ${matchedTargets.join(", ")}. A resposta deve começar por esse(s) item(ns) e só depois conectar panorama mais amplo se isso ajudar a responder a pergunta. Sinais da pergunta: ${signals.join(", ") || "leitura contextual"}. Formato esperado: resposta mais detalhada, em 2 ou 3 blocos curtos, cobrindo resposta direta, contexto e próximos passos.`;
     }
 
-    return `A resposta deve priorizar o que a pergunta pede de forma direta, sem cair em panorama padrão quando não for necessário. Sinais da pergunta: ${signals.join(", ") || "leitura contextual"}.`;
+    return `A resposta deve priorizar o que a pergunta pede de forma direta, sem cair em panorama padrão quando não for necessário. Sinais da pergunta: ${signals.join(", ") || "leitura contextual"}. Formato esperado: resposta mais detalhada, em 2 ou 3 blocos curtos, cobrindo resposta direta, contexto e próximos passos.`;
   }
 
   private matchQuestionTargets(summary: DashboardSummary, question: string) {
@@ -655,7 +690,7 @@ export class AssistantService {
   private ensureHighlights(items: Array<string | null | undefined>) {
     const normalized = items
       .filter((item): item is string => Boolean(item))
-      .slice(0, 4);
+      .slice(0, ASSISTANT_REPLY_LIST_LIMIT);
 
     if (normalized.length) {
       return normalized;
@@ -667,7 +702,7 @@ export class AssistantService {
   private ensureActions(items: Array<string | null | undefined>) {
     const normalized = items
       .filter((item): item is string => Boolean(item))
-      .slice(0, 4);
+      .slice(0, ASSISTANT_REPLY_LIST_LIMIT);
 
     if (normalized.length >= 2) {
       return normalized;
@@ -676,7 +711,7 @@ export class AssistantService {
     return [
       ...normalized,
       "Revisar o panorama do dia antes de abrir novas demandas.",
-    ].slice(0, 4);
+    ].slice(0, ASSISTANT_REPLY_LIST_LIMIT);
   }
 
   private describeTasks(

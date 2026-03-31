@@ -842,7 +842,21 @@ export class OfflineLifeService {
     if (
       normalized.includes("finance") ||
       normalized.includes("saldo") ||
-      normalized.includes("dinheiro")
+      normalized.includes("dinheiro") ||
+      normalized.includes("divid") ||
+      normalized.includes("dívida") ||
+      normalized.includes("quitar") ||
+      normalized.includes("renegoci") ||
+      normalized.includes("juros") ||
+      normalized.includes("parcela") ||
+      normalized.includes("cartão") ||
+      normalized.includes("cartao") ||
+      normalized.includes("emprést") ||
+      normalized.includes("emprest") ||
+      normalized.includes("despesa") ||
+      normalized.includes("gasto") ||
+      normalized.includes("orçamento") ||
+      normalized.includes("orcamento")
     ) {
       return "finance_overview" as const;
     }
