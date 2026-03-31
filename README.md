@@ -1,246 +1,132 @@
-# LUMEN
+<p align="center">
+  <img src="docs/assets/lumen-banner.svg" alt="LUMEN Banner" width="100%" />
+</p>
 
-Clareza para sua vida.
+<h1 align="center">✨ LUMEN</h1>
 
-LUMEN e um SaaS de gestao de vida criado pela `codeStage Solucoes` para conectar tarefas, dinheiro, tempo e objetivos em uma unica experiencia. O produto foi desenhado como um monolito modular em NestJS com frontend Angular mobile-first, preparado para escalar sem perder velocidade de iteracao.
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.1.0-22c55e" alt="Version" />
+  <img src="https://img.shields.io/badge/Backend-NestJS%2010-e0234e?logo=nestjs&logoColor=white" alt="NestJS" />
+  <img src="https://img.shields.io/badge/Frontend-Angular%2016-dd0031?logo=angular&logoColor=white" alt="Angular" />
+  <img src="https://img.shields.io/badge/Status-Em%20Desenvolvimento-0ea5e9" alt="Status" />
+  <img src="https://img.shields.io/badge/Mobile-Offline%20First-0f766e" alt="Mobile" />
+</p>
 
-## Stack
+# Tudo mais claro. Tudo mais simples.
+O LUMEN é um SaaS de organização de vida criado pela `codeStage Solucoes` para conectar tarefas, dinheiro, metas, tempo e decisões em uma única experiência. A versão 1.1.0 consolida a base mobile-first do produto com shell responsivo, identidade visual própria, personalização de tema e assistente mais orientado a perguntas reais sobre rotina e finanças.
 
-- Backend: NestJS, Prisma ORM, PostgreSQL, Redis, JWT, Swagger
-- Frontend: Angular standalone, TypeScript, SCSS, PWA, design system customizado
-- Infra: Docker Compose, seeds realistas, cache e filas BullMQ/Redis
+## ✨ Visão rápida
 
-## Estrutura
+- 🎯 **Objetivo:** transformar panorama pessoal em próximos passos claros.
+- 📱 **Experiência mobile-first:** sidebar, bottom nav e telas desenhadas para uso diário no celular.
+- 🎨 **Identidade visual própria:** novos temas, logo oficial e auth flow alinhado à marca.
+- 🧠 **Assistente contextual:** respostas mais específicas para finanças, dívida, foco e vida pessoal.
+- 🔐 **Base de privacidade:** consentimento de IA, exportação e exclusão de conta.
 
-```text
-Lumen/
-├── backend
-│   ├── prisma
-│   └── src
-├── frontend
-│   └── src
-├── docs
-├── docker-compose.yml
-└── .env.example
-```
+## 🧩 Funcionalidades resumidas
 
-## Dominios
+### 🆕 Destaques da versão 1.1.0
+- **Workspace redesenhado** com shell autenticado, navegação lateral/mobile e superfícies unificadas.
+- **Módulos refeitos** para Dashboard, Tarefas, Finanças, Metas, Importações, Notificações, Configurações, Suporte e Selah IA.
+- **Auth e branding atualizados** com a logo oficial do LUMEN, slogan e PWA branding.
+- **Sistema de temas expandido** com quatro atmosferas visuais: Atelier, Jardim, Brasa e Maré.
+- **Assistente mais preciso** para leitura financeira, quitação de dívida, rotina e decisões práticas.
 
-- Usuarios e autenticacao
-- Tarefas e categorias
-- Financeiro e categorias
-- Metas
-- Lembretes
-- Dashboard agregado
-- Insights
-- Forecast financeiro
-- Importacao CSV
-- Assistente de vida
-- Notificacoes
+### 🧭 1) Núcleo do workspace
+- Dashboard agregado com prioridades, metas, dinheiro, lembretes e notificações.
+- Tarefas com categorias, impacto financeiro e foco operacional do dia.
+- Metas com progresso, aportes e horizonte de conclusão.
+- Finanças com saldo, risco, previsão e histórico recente.
 
-## Como rodar
+### 📥 2) Importação e operação
+- Preview e commit de transações por CSV.
+- Notificações locais e feed interno de alertas.
+- Suporte integrado ao workspace.
 
-### Recomendado com Docker
+### 🧠 3) Selah IA e leitura contextual
+- Perguntas guiadas por foco, finanças e organização pessoal.
+- Respostas com highlights, próximos passos e confiança declarada.
+- Fallback local para cenários offline.
+
+### ⚙️ 4) Conta, privacidade e preferências
+- Cadastro com consentimento de privacidade e IA.
+- Exportação e exclusão da conta.
+- Preferências financeiras, visuais e operacionais.
+
+## 🧱 Stack
+
+- Backend: NestJS 10, Prisma ORM, PostgreSQL, Redis, JWT, Swagger
+- Frontend: Angular 16 standalone, TypeScript, SCSS, PWA
+- Infra: Docker Compose, Redis/BullMQ, seeds realistas, Capacitor para iOS
+
+## 🚀 Como executar
+
+### 1. Instalar dependências
 
 ```bash
-cp .env.example .env
-docker compose up --build
+npm install
+npm --prefix backend install
+npm --prefix frontend install
 ```
 
-URLs:
-
-- Frontend: `http://localhost:4201`
-- Backend: `http://localhost:3001/api/v1`
-- Swagger: `http://localhost:3001/api/docs`
-
-### Desenvolvimento local
-
-Node 20 e o caminho recomendado. O workspace atual conseguiu compilar com Node 16, mas varias dependencias modernas emitem alertas de engine e o setup mais estavel continua sendo Node 20.
+### 2. Desenvolvimento completo
 
 ```bash
 cp .env.example .env
 cp backend/.env.example backend/.env
-npm install
-npm --prefix backend install
-npm --prefix frontend install
-npm run dev:infra
-npm --prefix backend run prisma:generate
-npm --prefix backend run prisma:seed
-npm --prefix backend run start:dev
-npm --prefix frontend run start
+npm run dev
 ```
 
-## Offline e iPhone com Capacitor
+### 3. Subir backend e frontend separadamente
 
-O frontend agora tem base offline-first para:
+```bash
+npm run dev:infra
+npm run dev:backend
+npm run dev:frontend
+```
 
-- tarefas
-- fluxo financeiro
-- metas
-- dashboard
-- assistente em fallback local
+### 4. Build de produção
 
-Quando o app perde conexao, essas areas passam a ler e gravar no armazenamento local do dispositivo. Assim que a rede volta, o LUMEN tenta sincronizar automaticamente as mudancas pendentes.
+```bash
+npm run build
+```
 
-Fluxo mobile com Capacitor:
+## 📱 Mobile e offline
+
+- O frontend opera em base **offline-first** para dashboard, tarefas, metas, finanças e assistente local.
+- O fluxo mobile usa Capacitor para build/sync do iOS.
+- O shell mobile mantém sidebar e navegação inferior integradas na mesma linguagem visual.
+
+Atalhos principais:
 
 ```bash
 npm run mobile:build
-npm run mobile:add:ios
 npm run mobile:sync
+npm run mobile:add:ios
+npm run mobile:open:ios
 ```
 
-Atalhos equivalentes no frontend:
+## ⚙️ Configuração rápida
+
+- Frontend: `src/assets/app-config.js` é gerado via `frontend/scripts/generate-runtime-config.mjs`.
+- Backend: configure `DATABASE_URL` ou `POSTGRES_*`, `JWT_SECRET` e, se necessário, variáveis de Redis.
+- Selah IA: configure a URL/base key do serviço para respostas externas.
+
+## ✅ Verificação rápida
 
 ```bash
-npm --prefix frontend run build:mobile
-npm --prefix frontend run cap:add:ios
-npm --prefix frontend run cap:sync
-npm --prefix frontend run cap:open:ios
+npm run build
+npm --prefix backend test -- --runInBand
+npm --prefix frontend run build
 ```
 
-Arquivos principais dessa integracao:
+## 🔐 Credenciais demo
 
-- `frontend/capacitor.config.ts`
-- `frontend/ios/`
-- `frontend/src/app/core/services/network.service.ts`
-- `frontend/src/app/core/services/offline-life.service.ts`
-- `frontend/src/app/core/services/life-api.service.ts`
-
-Observacoes importantes:
-
-- o shell do app ja tem service worker para funcionamento offline do frontend em producao
-- login e cadastro continuam dependendo da API na primeira autenticacao
-- importacao com IA externa e leitura de nota fiscal continuam dependendo de conexao
-- no Linux deste workspace o projeto iOS foi gerado, mas abrir e assinar o app ainda exige Xcode/CocoaPods no macOS
-
-## Credenciais demo
-
-- Usuario: `demo@lumen.local`
+- Usuário: `demo@lumen.local`
 - Senha: `Demo123!`
 
-## Endpoints principais
+## 📌 Documentação complementar
 
-### Auth
-
-- `POST /auth/register`
-- `POST /auth/login`
-- `POST /auth/refresh`
-- `GET /auth/me`
-
-### Usuario
-
-- `GET /users/me`
-- `PATCH /users/me`
-- `GET /users/me/privacy-export`
-- `DELETE /users/me`
-
-### Tasks
-
-- `GET /tasks`
-- `POST /tasks`
-- `PATCH /tasks/:id`
-- `DELETE /tasks/:id`
-
-### Financas
-
-- `GET /transactions`
-- `POST /transactions`
-- `PATCH /transactions/:id`
-- `DELETE /transactions/:id`
-
-### Metas
-
-- `GET /goals`
-- `POST /goals`
-- `PATCH /goals/:id`
-- `PATCH /goals/:id/contribute`
-- `DELETE /goals/:id`
-
-### Inteligencia
-
-- `GET /dashboard/summary`
-- `GET /insights`
-- `POST /insights/refresh`
-- `GET /forecasts/current`
-- `POST /assistant/ask`
-
-### Extras
-
-- `GET /reminders`
-- `POST /reminders`
-- `GET /notifications`
-- `POST /imports/transactions/preview`
-- `POST /imports/transactions/commit`
-
-## Email com Resend
-
-O backend agora inclui uma camada de envio por Resend para emails transacionais.
-
-Fluxos conectados nesta integracao:
-
-- email de boas-vindas apos cadastro
-- email de lembrete quando o worker dispara um reminder agendado
-
-Variaveis de ambiente no `backend/.env`:
-
-- `RESEND_ENABLED=false`
-- `RESEND_API_KEY=`
-- `RESEND_BASE_URL=https://api.resend.com`
-- `RESEND_FROM_EMAIL=` com um endereco do dominio verificado no Resend
-- `RESEND_FROM_NAME=LUMEN`
-- `RESEND_REPLY_TO=`
-- `RESEND_TIMEOUT_MS=10000`
-
-Observacoes:
-
-- depois de verificar um dominio no Resend, voce pode enviar usando qualquer endereco desse dominio
-- se `RESEND_ENABLED=false`, o app continua funcionando normalmente e apenas nao envia emails
-
-## Seeds e comportamento demo
-
-O seed cria:
-
-- categorias padrao de tarefas e financas
-- tarefas com impacto financeiro
-- historico financeiro mensal
-- uma meta ativa
-- lembretes futuros
-
-Isso permite demonstrar:
-
-- dashboard agregado
-- insights de atraso e gastos
-- forecast de 30 dias
-- assistente respondendo com contexto real
-
-## Privacidade e LGPD
-
-O LUMEN agora inclui uma base tecnica de adequacao para LGPD no contexto do assistente com IA:
-
-- aceite explicito do aviso de privacidade no cadastro
-- consentimento separado e revogavel para uso do SelahIA
-- minimizacao de dados enviados ao assistente externo
-- redacao automatica de padroes como email, CPF e telefone antes do envio externo
-- exportacao estruturada dos dados do titular em `GET /users/me/privacy-export`
-- exclusao da conta e dos dados associados em `DELETE /users/me`
-
-Observacao importante: isso melhora substancialmente a aderencia tecnica do produto, mas nao substitui validacao juridica, politica de privacidade publicada, contratos com operadores e governanca interna.
-
-## Qualidade verificada
-
-Validado neste workspace:
-
-- `npm --prefix backend run build`
-- `npm --prefix frontend run build`
-- `npm --prefix backend test -- --runInBand`
-
-Nao foi executado nesta rodada:
-
-- `docker compose up --build`
-- `npm --prefix backend run test:e2e`
-
-## Documentacao adicional
-
-- [Arquitetura](docs/architecture.md)
-- [Design System](docs/design-system.md)
+- 🧱 Arquitetura: `docs/architecture.md`
+- 🎨 Design system: `docs/design-system.md`
+- 📝 Release notes 1.1.0: `docs/releases/v1.1.0.md`
