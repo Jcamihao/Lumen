@@ -1,13 +1,31 @@
 
-    <nav class="bottom-nav">
-      <a
-        *ngFor="let item of navItems"
-        [routerLink]="item.route"
-        routerLinkActive="active"
-        [routerLinkActiveOptions]="{ exact: item.route === '/dashboard' }"
+<nav class="bottom-nav">
+  <ng-container *ngFor="let item of navItems">
+    <a
+      *ngIf="item.route; else actionItem"
+      class="nav-item"
+      [class.route-transitioning]="animatingItemKey() === navKey(item)"
+      [routerLink]="item.route"
+      routerLinkActive="active"
+      [routerLinkActiveOptions]="{ exact: item.route === '/dashboard' }"
+      (click)="handleNavTap(item)"
+    >
+      <span class="material-symbols-rounded">{{ item.icon }}</span>
+      <span>{{ item.label }}</span>
+    </a>
+
+    <ng-template #actionItem>
+      <button
+        type="button"
+        class="nav-item"
+        [class.active]="false"
+        [class.route-transitioning]="animatingItemKey() === navKey(item)"
+        (click)="handleNavTap(item); handleMenuClick()"
       >
         <span class="material-symbols-rounded">{{ item.icon }}</span>
         <span>{{ item.label }}</span>
-      </a>
-    </nav>
+      </button>
+    </ng-template>
+  </ng-container>
+</nav>
   

@@ -6,8 +6,14 @@
   color-scheme: light;
   --font-body: 'Inter', sans-serif;
   --font-display: 'Inter', sans-serif;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
   --page-width: 1480px;
   --page-width-wide: 1660px;
+  --workspace-max-width: 1480px;
+  --app-max-width: 34rem;
   --shell-padding: clamp(0.9rem, 1.2vw, 1.35rem);
   --section-gap: clamp(1rem, 1.5vw, 1.5rem);
   --primary-dark: #111111;
@@ -95,12 +101,14 @@ body {
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
   background-attachment: fixed;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   position: relative;
   isolation: isolate;
+  overscroll-behavior-y: contain;
 }
 
 :root[data-theme='dark'] body {
@@ -157,6 +165,7 @@ body::after {
 app-root {
   display: block;
   min-height: 100vh;
+  min-height: 100dvh;
   position: relative;
   z-index: 1;
 }
@@ -179,6 +188,7 @@ input,
 select,
 textarea {
   width: 100%;
+  max-width: 100%;
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text-primary);
@@ -206,6 +216,34 @@ textarea:focus {
 
 textarea {
   resize: vertical;
+}
+
+input[type='date'],
+input[type='time'],
+input[type='month'],
+input[type='datetime-local'] {
+  min-width: 0;
+  max-width: 100%;
+  display: block;
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 0.85rem;
+}
+
+input[type='date']::-webkit-date-and-time-value,
+input[type='time']::-webkit-date-and-time-value,
+input[type='month']::-webkit-date-and-time-value,
+input[type='datetime-local']::-webkit-date-and-time-value {
+  min-height: 1.2em;
+  text-align: left;
+}
+
+input[type='date']::-webkit-calendar-picker-indicator,
+input[type='time']::-webkit-calendar-picker-indicator,
+input[type='month']::-webkit-calendar-picker-indicator,
+input[type='datetime-local']::-webkit-calendar-picker-indicator {
+  margin: 0;
+  opacity: 0.88;
 }
 
 a {
@@ -356,6 +394,7 @@ strong {
   :root {
     --shell-padding: 0.85rem;
     --section-gap: 0.95rem;
+    --app-max-width: 100%;
   }
 }
 
@@ -431,14 +470,16 @@ strong {
 }
 
 @media (max-width: 899px) {
-  body {
-    padding-bottom: 5.75rem;
-  }
-
   input,
   select,
   textarea {
     font-size: 16px;
+  }
+}
+
+@media (display-mode: standalone) {
+  body {
+    background-attachment: scroll;
   }
 }
 

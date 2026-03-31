@@ -531,7 +531,7 @@ export class ImportsService {
       '/v1/adapters/lumen/receipt-parser/parse';
     const apiKey = this.readEnv('SELAH_API_KEY');
     const sourceApp = this.readEnv('SELAH_SOURCE_APP') || 'LumenBack';
-    const timeoutMs = this.readTimeout();
+    const timeoutMs = this.readReceiptTimeout();
     const url = `${baseUrl.replace(/\/+$/, '')}${route.startsWith('/') ? route : `/${route}`}`;
 
     const body = JSON.stringify({
@@ -607,8 +607,15 @@ export class ImportsService {
     return String(process.env[key] || '').trim() || null;
   }
 
-  private readTimeout() {
-    return Math.max(6000, Number(process.env.SELAH_TIMEOUT_MS || 9000));
+  private readReceiptTimeout() {
+    return Math.max(
+      15000,
+      Number(
+        process.env.SELAH_RECEIPT_TIMEOUT_MS ||
+          process.env.SELAH_TIMEOUT_MS ||
+          60000,
+      ),
+    );
   }
 
   private optionalString(value: unknown) {

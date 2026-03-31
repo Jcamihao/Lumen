@@ -2,6 +2,7 @@ import { CommonModule } from "@angular/common";
 import { Component, DestroyRef, inject, signal } from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
+import { Router } from "@angular/router";
 import {
   CURRENT_AI_CONSENT_VERSION,
   CURRENT_PRIVACY_NOTICE_VERSION,
@@ -37,6 +38,7 @@ export class SettingsPageComponent {
   private readonly api = inject(LifeApiService);
   private readonly fb = inject(FormBuilder);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly router = inject(Router);
   protected readonly saved = signal(false);
   protected readonly saving = signal(false);
   protected readonly exporting = signal(false);
@@ -196,6 +198,10 @@ export class SettingsPageComponent {
           this.errorMessage.set("Não foi possível excluir a conta agora.");
         },
       });
+  }
+
+  protected openSupport() {
+    void this.router.navigate(['/support']);
   }
 
   protected privacyAcceptedLabel() {

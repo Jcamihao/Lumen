@@ -57,42 +57,67 @@
           <div class="goal-grid" *ngIf="goals().length; else noGoals">
             <article class="goal-card" *ngFor="let goal of goals()">
               <div class="goal-card-top">
-                <div>
+                <div class="goal-heading">
+                  <span class="goal-kicker">Meta ativa</span>
                   <strong>{{ goal.title }}</strong>
-                  <p>{{ goal.targetDate ? (goal.targetDate | date: 'dd/MM/yyyy') : 'Sem prazo definido' }}</p>
+                  <p>{{ goal.description || goalDeadlineLabel(goal) }}</p>
                 </div>
-                <app-ui-badge
-                  [label]="goal.status === 'ACHIEVED' ? 'Concluída' : 'Ativa'"
-                  [tone]="goal.status === 'ACHIEVED' ? 'success' : 'accent'"
-                  [showDot]="false"
-                />
+                <div class="goal-meta-chips">
+                  <app-ui-badge
+                    [label]="goal.status === 'ACHIEVED' ? 'Concluída' : 'Ativa'"
+                    [tone]="goal.status === 'ACHIEVED' ? 'success' : 'accent'"
+                    [showDot]="false"
+                  />
+                  <span class="goal-deadline-chip">{{ goalDeadlineLabel(goal) }}</span>
+                </div>
               </div>
 
-              <div class="progress-track">
-                <span class="progress-fill" [style.width.%]="progress(goal)"></span>
-              </div>
+              <div class="goal-progress-shell">
+                <div class="goal-summary">
+                  <div class="goal-progress-copy">
+                    <span>Progresso atual</span>
+                    <strong>{{ progress(goal) }}%</strong>
+                  </div>
+                  <div class="goal-amount-copy">
+                    <strong>
+                      {{ goal.currentAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+                    </strong>
+                    <span>
+                      de {{ goal.targetAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+                    </span>
+                  </div>
+                </div>
 
-              <div class="goal-summary">
-                <span>{{ progress(goal) }}%</span>
-                <strong>
-                  {{ goal.currentAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
-                </strong>
-              </div>
+                <div class="progress-track" aria-hidden="true">
+                  <span class="progress-fill" [style.width.%]="progress(goal)"></span>
+                </div>
 
-              <p class="goal-copy">
-                de
-                {{ goal.targetAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
-                planejados
-              </p>
+                <div class="goal-stats">
+                  <div class="goal-stat">
+                    <span>Falta</span>
+                    <strong>
+                      {{ remainingAmount(goal) | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+                    </strong>
+                  </div>
+                  <div class="goal-stat">
+                    <span>Planejado</span>
+                    <strong>
+                      {{ goal.targetAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+                    </strong>
+                  </div>
+                </div>
+              </div>
 
               <div class="goal-actions">
-                <app-ui-button variant="secondary" size="sm" (click)="contribute(goal, 100)">
-                  +100
-                </app-ui-button>
-                <app-ui-button variant="secondary" size="sm" (click)="contribute(goal, 500)">
-                  +500
-                </app-ui-button>
-                <app-ui-button variant="ghost" size="sm" (click)="removeGoal(goal.id)">
+                <div class="goal-quick-actions">
+                  <app-ui-button variant="secondary" size="sm" (click)="contribute(goal, 100)">
+                    +100
+                  </app-ui-button>
+                  <app-ui-button variant="secondary" size="sm" (click)="contribute(goal, 500)">
+                    +500
+                  </app-ui-button>
+                </div>
+                <app-ui-button class="goal-delete-action" variant="ghost" size="sm" (click)="removeGoal(goal.id)">
                   Excluir
                 </app-ui-button>
               </div>

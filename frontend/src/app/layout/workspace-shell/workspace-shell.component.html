@@ -1,40 +1,52 @@
 
-    <div class="workspace-shell">
-      <div class="sidebar-column">
-        <app-sidebar></app-sidebar>
-      </div>
+<div class="workspace-shell">
+  <div class="sidebar-column">
+    <app-sidebar></app-sidebar>
+  </div>
 
-      <main class="content-column">
-        <div class="content-frame">
-          <app-app-header
-            [eyebrow]="currentMeta().eyebrow"
-            [title]="currentMeta().title"
-            [subtitle]="currentMeta().subtitle"
-            [actionLabel]="currentMeta().actionLabel"
-            [userName]="authService.currentUser()?.name || 'Você'"
-            [userMeta]="authService.currentUser()?.email || 'workspace pessoal'"
-            [userAvatarUrl]="authService.currentUser()?.avatarUrl || null"
-            [themeMode]="themeService.mode()"
-            [isOffline]="lifeApiService.offlineMode()"
-            [pendingSyncCount]="lifeApiService.pendingSyncCount()"
-            [syncing]="lifeApiService.syncing()"
-            [notificationEntries]="notificationCenter.recentEntries()"
-            [unreadNotificationsCount]="notificationCenter.unreadCount()"
-            [notificationsLoading]="notificationCenter.loading()"
-            (toggleTheme)="themeService.toggle()"
-            (quickAction)="navigateTo(currentMeta().actionRoute)"
-            (openNotifications)="navigateTo('/notifications')"
-            (markNotificationRead)="markNotificationAsRead($event)"
-            (openSettings)="navigateTo('/settings')"
-            (logout)="logout()"
-          />
-
-          <section class="page-content">
-            <router-outlet></router-outlet>
-          </section>
-        </div>
-      </main>
-
-      <app-bottom-nav></app-bottom-nav>
+  <div
+    class="mobile-sidebar-backdrop"
+    *ngIf="mobileSidebarOpen()"
+    (click)="closeMobileSidebar()"
+  >
+    <div class="mobile-sidebar-panel" (click)="$event.stopPropagation()">
+      <app-sidebar
+        [mobile]="true"
+        (closeRequested)="closeMobileSidebar()"
+      ></app-sidebar>
     </div>
-  
+  </div>
+
+  <main class="content-column">
+    <div class="content-frame">
+      <app-app-header
+        [eyebrow]="currentMeta().eyebrow"
+        [title]="currentMeta().title"
+        [subtitle]="currentMeta().subtitle"
+        [actionLabel]="currentMeta().actionLabel"
+        [userName]="authService.currentUser()?.name || 'Você'"
+        [userMeta]="authService.currentUser()?.email || 'workspace pessoal'"
+        [userAvatarUrl]="authService.currentUser()?.avatarUrl || null"
+        [themeMode]="themeService.mode()"
+        [isOffline]="lifeApiService.offlineMode()"
+        [pendingSyncCount]="lifeApiService.pendingSyncCount()"
+        [syncing]="lifeApiService.syncing()"
+        [notificationEntries]="notificationCenter.recentEntries()"
+        [unreadNotificationsCount]="notificationCenter.unreadCount()"
+        [notificationsLoading]="notificationCenter.loading()"
+        (toggleTheme)="themeService.toggle()"
+        (quickAction)="navigateTo(currentMeta().actionRoute)"
+        (openNotifications)="navigateTo('/notifications')"
+        (markNotificationRead)="markNotificationAsRead($event)"
+        (openSettings)="navigateTo('/settings')"
+        (logout)="logout()"
+      />
+
+      <section class="page-content">
+        <router-outlet></router-outlet>
+      </section>
+    </div>
+  </main>
+
+  <app-bottom-nav (menuRequested)="openMobileSidebar()"></app-bottom-nav>
+</div>

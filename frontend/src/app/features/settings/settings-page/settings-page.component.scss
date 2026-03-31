@@ -136,7 +136,7 @@
         font-size: 0.92rem;
       }
 
-      @media (min-width: 860px) {
+      @media (min-width: 1080px) {
         .grid-2,
         .settings-grid,
         .rights-grid {
@@ -144,7 +144,7 @@
         }
       }
 
-      @media (min-width: 1700px) {
+      @media (min-width: 1440px) {
         .settings-grid {
           grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
         }
@@ -160,10 +160,15 @@
 
         .profile-photo-head {
           align-items: flex-start;
+          flex-direction: column;
         }
 
         .profile-photo-actions {
           display: grid;
+        }
+
+        .consent-card {
+          grid-template-columns: 1fr;
         }
 
         .theme-card app-ui-button,

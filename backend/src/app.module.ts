@@ -27,6 +27,7 @@ import { RemindersModule } from "./reminders/reminders.module";
 import { TaskCategoriesModule } from "./task-categories/task-categories.module";
 import { TasksModule } from "./tasks/tasks.module";
 import { TransactionsModule } from "./transactions/transactions.module";
+import { SupportRequestsModule } from "./support-requests/support-requests.module";
 import { UsersModule } from "./users/users.module";
 
 @Module({
@@ -52,6 +53,7 @@ import { UsersModule } from "./users/users.module";
     InsightsModule,
     ForecastsModule,
     NotificationsModule,
+    SupportRequestsModule,
     DashboardModule,
     ImportsModule,
     AssistantModule,

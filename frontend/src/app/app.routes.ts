@@ -9,6 +9,7 @@ import { NotificationsPageComponent } from './features/notifications/notificatio
 import { RegisterPageComponent } from './features/auth/register-page/register-page.component';
 import { GoalsPageComponent } from './features/goals/goals-page/goals-page.component';
 import { SettingsPageComponent } from './features/settings/settings-page/settings-page.component';
+import { SupportPageComponent } from './features/support/support-page/support-page.component';
 import { TasksPageComponent } from './features/tasks/tasks-page/tasks-page.component';
 import { WorkspaceShellComponent } from './layout/workspace-shell/workspace-shell.component';
 
@@ -36,6 +37,7 @@ export const routes: Routes = [
       { path: 'notifications', component: NotificationsPageComponent },
       { path: 'imports', component: ImportsPageComponent },
       { path: 'settings', component: SettingsPageComponent },
+      { path: 'support', component: SupportPageComponent },
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
     ],
   },

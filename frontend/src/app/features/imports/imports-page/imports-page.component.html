@@ -163,46 +163,111 @@
               <p>{{ receipt.duplicateTransactionDescription || 'Existe uma transação parecida no mesmo dia e valor.' }}</p>
             </div>
 
-            <div class="items-table">
-              <div class="items-head">
-                <span>Produto</span>
-                <span>Qtd.</span>
-                <span>Unit.</span>
-                <span>Total</span>
-                <span>Categoria</span>
-              </div>
+            <div class="items-table-shell">
+              <table class="items-table">
+                <thead>
+                  <tr>
+                    <th class="col-index">#</th>
+                    <th class="col-description">Produto</th>
+                    <th class="col-quantity">Qtd.</th>
+                    <th class="col-unit">Unit.</th>
+                    <th class="col-total">Total</th>
+                    <th class="col-category">Categoria</th>
+                    <th class="col-actions">Ajuste</th>
+                  </tr>
+                </thead>
 
-              <div class="item-row" *ngFor="let item of receipt.items; let index = index">
-                <input
-                  type="text"
-                  [ngModel]="item.description"
-                  (ngModelChange)="updateReceiptItem(index, 'description', $event)"
-                >
-                <input
-                  type="number"
-                  min="0"
-                  step="0.001"
-                  [ngModel]="item.quantity"
-                  (ngModelChange)="updateReceiptItem(index, 'quantity', toNumber($event, item.quantity), true)"
-                >
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  [ngModel]="item.unitPrice"
-                  (ngModelChange)="updateReceiptItem(index, 'unitPrice', toNullableNumber($event), true)"
-                >
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  [ngModel]="item.totalPrice"
-                  (ngModelChange)="updateReceiptItem(index, 'totalPrice', toNumber($event, item.totalPrice))"
-                >
-                <div class="item-category">
-                  {{ item.categoryHint || 'Sem sugestão' }}
-                </div>
-              </div>
+                <tbody>
+                  <tr *ngFor="let item of receipt.items; let index = index">
+                    <td class="item-index">{{ index + 1 }}</td>
+                    <td>
+                      <ng-container *ngIf="isEditingReceiptItem(index); else descriptionValue">
+                        <input
+                          type="text"
+                          [ngModel]="item.description"
+                          (ngModelChange)="updateReceiptItem(index, 'description', $event)"
+                        >
+                      </ng-container>
+                      <ng-template #descriptionValue>
+                        <div class="item-value item-description">{{ item.description }}</div>
+                      </ng-template>
+                    </td>
+                    <td>
+                      <ng-container *ngIf="isEditingReceiptItem(index); else quantityValue">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.001"
+                          [ngModel]="item.quantity"
+                          (ngModelChange)="updateReceiptItem(index, 'quantity', toNumber($event, item.quantity), true)"
+                        >
+                      </ng-container>
+                      <ng-template #quantityValue>
+                        <div class="item-value">{{ item.quantity }}</div>
+                      </ng-template>
+                    </td>
+                    <td>
+                      <ng-container *ngIf="isEditingReceiptItem(index); else unitValue">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          [ngModel]="item.unitPrice"
+                          (ngModelChange)="updateReceiptItem(index, 'unitPrice', toNullableNumber($event), true)"
+                        >
+                      </ng-container>
+                      <ng-template #unitValue>
+                        <div class="item-value">
+                          {{ item.unitPrice !== null ? previewAmount(item.unitPrice) : 'Sem valor' }}
+                        </div>
+                      </ng-template>
+                    </td>
+                    <td>
+                      <ng-container *ngIf="isEditingReceiptItem(index); else totalValue">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          [ngModel]="item.totalPrice"
+                          (ngModelChange)="updateReceiptItem(index, 'totalPrice', toNumber($event, item.totalPrice))"
+                        >
+                      </ng-container>
+                      <ng-template #totalValue>
+                        <div class="item-value">{{ previewAmount(item.totalPrice) }}</div>
+                      </ng-template>
+                    </td>
+                    <td>
+                      <div class="item-category">
+                        {{ item.categoryHint || 'Sem sugestão' }}
+                      </div>
+                    </td>
+                    <td>
+                      <div class="item-edit-actions">
+                        <app-ui-button
+                          *ngIf="!isEditingReceiptItem(index); else doneEditingButton"
+                          variant="ghost"
+                          size="sm"
+                          icon="edit"
+                          (click)="startEditingReceiptItem(index)"
+                        >
+                          Ajustar
+                        </app-ui-button>
+
+                        <ng-template #doneEditingButton>
+                          <app-ui-button
+                            variant="secondary"
+                            size="sm"
+                            icon="done"
+                            (click)="stopEditingReceiptItem()"
+                          >
+                            Concluir
+                          </app-ui-button>
+                        </ng-template>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
 
             <div class="receipt-actions">

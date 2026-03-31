@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, signal } from '@angular/core';
+import { Component, EventEmitter, Input, Output, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { SpotlightHoverDirective } from '../../shared/directives/spotlight-hover/spotlight-hover.directive';
 
@@ -15,8 +15,14 @@ type NavItem = {
   imports: [CommonModule, RouterLink, RouterLinkActive, SpotlightHoverDirective],
   templateUrl: './sidebar.component.html',
   styleUrls: ['./sidebar.component.scss'],
+  host: {
+    '[class.mobile-drawer]': 'mobile',
+  },
 })
 export class SidebarComponent {
+  @Input() mobile = false;
+  @Output() readonly closeRequested = new EventEmitter<void>();
+
   protected readonly toolsExpanded = signal(true);
   protected readonly primaryItems: NavItem[] = [
     { label: 'Painel', icon: 'space_dashboard', route: '/dashboard' },
@@ -30,12 +36,16 @@ export class SidebarComponent {
   protected readonly toolItems: NavItem[] = [
     { label: 'Notificações', icon: 'notifications', route: '/notifications' },
     { label: 'Importações', icon: 'upload_file', route: '/imports' },
+    { label: 'Suporte', icon: 'support_agent', route: '/support' },
     { label: 'Assistente', icon: 'psychology', route: '/assistant' },
-    { label: 'Metas', icon: 'target', route: '/goals' },
     { label: 'Configurações', icon: 'tune', route: '/settings' },
   ];
 
   protected toggleTools() {
     this.toolsExpanded.update((value) => !value);
+  }
+
+  protected requestClose() {
+    this.closeRequested.emit();
   }
 }

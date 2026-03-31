@@ -105,6 +105,12 @@
         border-radius: var(--radius-lg);
       }
 
+      .panel.has-bounded-height {
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible;
+      }
+
       .panel-header {
         margin-bottom: 1rem;
       }

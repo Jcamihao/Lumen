@@ -39,6 +39,7 @@ export class ImportsPageComponent {
   protected readonly receiptPreview = signal<ReceiptImportPreview | null>(null);
   protected readonly receiptLoading = signal(false);
   protected readonly receiptSaving = signal(false);
+  protected readonly editingReceiptItemIndex = signal<number | null>(null);
   protected readonly receiptError = signal<string | null>(null);
   protected readonly receiptMerchantName = signal('');
   protected readonly receiptPurchaseDate = signal('');
@@ -104,6 +105,7 @@ export class ImportsPageComponent {
       .subscribe({
         next: (preview) => {
           this.receiptPreview.set(preview);
+          this.editingReceiptItemIndex.set(null);
           this.receiptMerchantName.set(preview.merchantName || '');
           this.receiptPurchaseDate.set(
             preview.purchaseDate ? preview.purchaseDate.slice(0, 10) : '',
@@ -190,6 +192,7 @@ export class ImportsPageComponent {
         next: () => {
           this.receiptSaving.set(false);
           this.receiptPreview.set(null);
+          this.editingReceiptItemIndex.set(null);
           this.receiptMerchantName.set('');
           this.receiptPurchaseDate.set('');
           this.receiptTotalAmount.set(0);
@@ -273,5 +276,17 @@ export class ImportsPageComponent {
 
     const normalized = Number(value);
     return Number.isFinite(normalized) ? normalized : null;
+  }
+
+  protected isEditingReceiptItem(index: number) {
+    return this.editingReceiptItemIndex() === index;
+  }
+
+  protected startEditingReceiptItem(index: number) {
+    this.editingReceiptItemIndex.set(index);
+  }
+
+  protected stopEditingReceiptItem() {
+    this.editingReceiptItemIndex.set(null);
   }
 }

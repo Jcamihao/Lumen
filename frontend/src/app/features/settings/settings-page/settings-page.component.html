@@ -211,6 +211,28 @@
             </p>
           </div>
         </app-panel>
+
+        <app-panel
+          title="Suporte"
+          caption="Canal para feedbacks, relatos de bugs e contexto do usuário"
+        >
+          <div class="theme-card">
+            <div>
+              <strong>Fale com a equipe do LUMEN</strong>
+              <p>
+                Abra a central de suporte para registrar sugestões, impressões
+                de uso e problemas encontrados no app.
+              </p>
+            </div>
+            <app-ui-button
+              variant="secondary"
+              icon="support_agent"
+              (click)="openSupport()"
+            >
+              Abrir suporte
+            </app-ui-button>
+          </div>
+        </app-panel>
       </div>
 
       <app-panel

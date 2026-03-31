@@ -1,0 +1,162 @@
+.support-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.metrics-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.support-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.support-form {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.type-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  padding: 0.35rem;
+  border-radius: var(--radius-lg);
+  background: var(--card-muted);
+  border: 1px solid var(--border);
+}
+
+.type-chip {
+  min-height: 2.9rem;
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  color: var(--text-medium);
+  font-weight: 700;
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.type-chip.active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.context-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.95rem 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+  background: color-mix(in srgb, var(--accent) 5%, var(--card));
+}
+
+.context-card strong {
+  color: var(--text-primary);
+}
+
+.context-card p {
+  margin: 0;
+  color: var(--text-medium);
+  line-height: 1.6;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.feedback {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.feedback.success {
+  color: var(--success);
+}
+
+.feedback.error {
+  color: var(--danger);
+}
+
+.submission-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.submission-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem 1.05rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--card-muted);
+}
+
+.submission-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.submission-copy {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.submission-copy strong {
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.submission-copy p {
+  margin: 0;
+  color: var(--text-medium);
+  line-height: 1.58;
+  white-space: pre-wrap;
+}
+
+.submission-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.submission-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+@media (min-width: 1180px) {
+  .support-grid {
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+    align-items: start;
+  }
+}
+
+@media (max-width: 720px) {
+  .submission-head,
+  .form-actions {
+    flex-direction: column;
+  }
+
+  .submission-badges {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}

@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter, map, startWith } from 'rxjs';
@@ -38,6 +38,7 @@ export class WorkspaceShellComponent {
   protected readonly themeService = inject(ThemeService);
   protected readonly lifeApiService = inject(LifeApiService);
   protected readonly notificationCenter = inject(NotificationCenterService);
+  protected readonly mobileSidebarOpen = signal(false);
   private readonly router = inject(Router);
   private readonly currentUrl = toSignal(
     this.router.events.pipe(
@@ -50,6 +51,13 @@ export class WorkspaceShellComponent {
   protected readonly currentMeta = computed(() =>
     this.resolveMeta(this.currentUrl()),
   );
+
+  constructor() {
+    effect(() => {
+      this.currentUrl();
+      this.mobileSidebarOpen.set(false);
+    });
+  }
 
   private resolveMeta(url: string): RouteMeta {
     if (url.startsWith('/notifications')) {
@@ -126,6 +134,17 @@ export class WorkspaceShellComponent {
       };
     }
 
+    if (url.startsWith('/support')) {
+      return {
+        eyebrow: 'Support',
+        title: 'Suporte do usuário',
+        subtitle:
+          'Colete feedbacks, reporte bugs e acompanhe o histórico enviado pelo usuário.',
+        actionLabel: 'Abrir ajustes',
+        actionRoute: '/settings',
+      };
+    }
+
     return {
       eyebrow: 'Lumen',
       title: 'Dashboard da Vida',
@@ -138,6 +157,14 @@ export class WorkspaceShellComponent {
 
   protected navigateTo(route: string) {
     this.router.navigate([route]);
+  }
+
+  protected openMobileSidebar() {
+    this.mobileSidebarOpen.set(true);
+  }
+
+  protected closeMobileSidebar() {
+    this.mobileSidebarOpen.set(false);
   }
 
   protected logout() {

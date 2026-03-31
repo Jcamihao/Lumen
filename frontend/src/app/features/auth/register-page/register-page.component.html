@@ -1,69 +1,123 @@
+<div class="auth-page auth-page--register">
+  <div class="auth-layout">
+    <section class="hero-panel">
+      <div class="hero-panel__aurora hero-panel__aurora--a"></div>
+      <div class="hero-panel__aurora hero-panel__aurora--b"></div>
 
-    <div class="auth-page">
-      <section class="auth-story">
-        <p class="section-kicker">Nova conta</p>
-        <span class="brand-stage">
-          <span class="brand-orbit brand-orbit-a"></span>
-          <span class="brand-orbit brand-orbit-b"></span>
-          <span class="brand-logo-shell">
-            <img
-              class="brand-logo"
-              src="assets/logo/logo_lumen.png"
-              alt="LUMEN"
-            />
-          </span>
-        </span>
-        <h1>Monte sua base com visão integrada.</h1>
-        <p class="copy">
-          Em poucos minutos você conecta prioridades, rotina e visão financeira
-          no mesmo painel.
-        </p>
-
-        <div class="story-grid">
-          <article>
-            <strong>Tasks + Finance</strong>
-            <p>O LUMEN entende o impacto real de cada compromisso.</p>
-          </article>
-          <article>
-            <strong>Metas + Assistente</strong>
-            <p>
-              Objetivos ficam mais tangíveis quando o sistema orienta o caminho.
-            </p>
-          </article>
-        </div>
-      </section>
-
-      <form class="auth-card" [formGroup]="form" (ngSubmit)="submit()">
-        <header>
-          <h2>Criar conta</h2>
-          <p>
-            Comece com seus dados principais. Depois você ajusta tudo no app.
-          </p>
-        </header>
-
-        <app-field-shell label="Nome">
-          <input type="text" formControlName="name" placeholder="Seu nome" />
-        </app-field-shell>
-
-        <section class="profile-photo-card">
-          <div class="profile-photo-head">
-            <div>
-              <strong>Foto de perfil</strong>
-              <p>Escolha uma imagem para personalizar sua conta desde o início.</p>
+      <div class="hero-visual">
+        <div class="device-stage">
+          <div class="device-stage__screen">
+            <div class="profile-emblem">
+              <app-avatar
+                [name]="form.controls.name.value || 'Lumen'"
+                [imageUrl]="avatarPreview()"
+                size="lg"
+                shape="circle"
+              />
             </div>
+            <div class="device-stage__stats">
+              <span>BRL</span>
+              <strong>Setup inicial</strong>
+              <p>Perfil, renda e metas no mesmo ponto de partida.</p>
+            </div>
+          </div>
+
+          <div class="wallet-card">
+            <div class="wallet-card__chip"></div>
+            <div class="wallet-card__meta">
+              <strong>LUMEN</strong>
+              <span>Conta pessoal</span>
+            </div>
+            <div class="wallet-card__brand"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-copy">
+        <p class="section-kicker">LUMEN workspace</p>
+        <h1>Tudo mais claro, Tudo mais simples.</h1>
+        <p class="hero-copy__description">
+          Crie sua conta com um setup visualmente leve e já alinhado ao restante
+          da experiência do produto.
+        </p>
+      </div>
+
+      <div class="feature-pills">
+        <span>Tasks + Finance</span>
+        <span>Privacidade clara</span>
+        <span>SelahIA opcional</span>
+      </div>
+
+      <article class="balance-card">
+        <span>Prévia do perfil</span>
+        <strong>{{ form.controls.name.value || 'Seu nome' }}</strong>
+        <p>{{ form.controls.email.value || 'voce@exemplo.com' }}</p>
+      </article>
+    </section>
+
+    <section class="form-panel">
+      <header class="form-panel__header">
+        <p class="section-kicker">Criar conta</p>
+        <h2>Monte sua base</h2>
+        <p>Preencha os dados essenciais e personalize seu workspace.</p>
+      </header>
+
+      <form class="auth-form" [formGroup]="form" (ngSubmit)="submit()">
+        <div class="field-grid field-grid--pair">
+          <label class="auth-field">
+            <span class="auth-field__label">Nome</span>
+            <input type="text" formControlName="name" placeholder="Seu nome" />
+          </label>
+
+          <label class="auth-field">
+            <span class="auth-field__label">Email</span>
+            <input type="email" formControlName="email" placeholder="voce@exemplo.com" />
+          </label>
+        </div>
+
+        <label class="auth-field">
+          <span class="auth-field__label">Senha</span>
+          <span class="auth-field__control auth-field__control--password">
+            <input
+              [type]="showPassword() ? 'text' : 'password'"
+              formControlName="password"
+              [attr.minlength]="passwordMinLength"
+              [placeholder]="'No mínimo ' + passwordMinLength + ' caracteres'"
+            />
+            <button
+              type="button"
+              class="password-toggle"
+              (click)="togglePasswordVisibility()"
+              [attr.aria-label]="showPassword() ? 'Ocultar senha' : 'Mostrar senha'"
+            >
+              <span class="material-symbols-rounded">
+                {{ showPassword() ? 'visibility_off' : 'visibility' }}
+              </span>
+            </button>
+          </span>
+        </label>
+
+        <section class="profile-card">
+          <div class="profile-card__top">
             <app-avatar
               [name]="form.controls.name.value || 'Lumen'"
               [imageUrl]="avatarPreview()"
               size="lg"
               shape="circle"
             />
+
+            <div class="profile-card__copy">
+              <span class="auth-field__label">Foto de perfil</span>
+              <p>Envie uma imagem para começar sua conta com identidade própria.</p>
+            </div>
           </div>
 
-          <div class="profile-photo-actions">
+          <div class="profile-card__actions">
             <label class="upload-button">
               <input #registerAvatarInput type="file" accept="image/*" (change)="handleAvatarSelected($event)" />
               <span>Enviar foto</span>
             </label>
+
             <button
               *ngIf="avatarPreview()"
               type="button"
@@ -75,43 +129,26 @@
           </div>
         </section>
 
-        <app-field-shell label="Email">
-          <input
-            type="email"
-            formControlName="email"
-            placeholder="voce@exemplo.com"
-          />
-        </app-field-shell>
+        <div class="field-grid field-grid--compact">
+          <label class="auth-field">
+            <span class="auth-field__label">Renda</span>
+            <input type="number" formControlName="monthlyIncome" placeholder="8500" />
+          </label>
 
-        <app-field-shell label="Senha">
-          <input
-            type="password"
-            formControlName="password"
-            placeholder="No mínimo 6 caracteres"
-          />
-        </app-field-shell>
+          <label class="auth-field">
+            <span class="auth-field__label">Fechamento</span>
+            <input type="number" formControlName="monthClosingDay" min="1" max="31" />
+          </label>
 
-        <app-field-shell label="Renda mensal">
-          <input
-            type="number"
-            formControlName="monthlyIncome"
-            placeholder="8500"
-          />
-        </app-field-shell>
-
-        <div class="grid-2">
-          <app-field-shell label="Fechamento">
-            <input
-              type="number"
-              formControlName="monthClosingDay"
-              min="1"
-              max="31"
-            />
-          </app-field-shell>
-
-          <app-field-shell label="Moeda">
+          <label class="auth-field">
+            <span class="auth-field__label">Moeda</span>
             <input type="text" formControlName="preferredCurrency" />
-          </app-field-shell>
+          </label>
+
+          <label class="auth-field">
+            <span class="auth-field__label">Timezone</span>
+            <input type="text" formControlName="timezone" />
+          </label>
         </div>
 
         <div class="consent-stack">
@@ -124,43 +161,39 @@
           >
             <input type="checkbox" formControlName="privacyNoticeAccepted" />
             <div>
-              <strong>Aceito o aviso de privacidade</strong>
-              <p>
-                Versão {{ privacyNoticeVersion }}. O LUMEN usa seus dados para
-                operar conta, dashboard e lembretes com transparência e
-                possibilidade de exportação e exclusão.
-              </p>
+              <strong>Aceito a política e os termos</strong>
+              <p>Versão {{ privacyNoticeVersion }} do aviso de privacidade do LUMEN.</p>
             </div>
           </label>
 
-          <label class="consent-card optional">
+          <label class="consent-card consent-card--optional">
             <input type="checkbox" formControlName="aiAssistantEnabled" />
             <div>
-              <strong>Quero habilitar o SelahIA</strong>
-              <p>
-                Consentimento opcional para enviar contexto minimizado ao
-                assistente externo. Versão {{ aiConsentVersion }}. Você pode
-                desligar depois em Settings.
-              </p>
+              <strong>Ativar SelahIA</strong>
+              <p>Versão {{ aiConsentVersion }}. Você pode desligar depois em Settings.</p>
             </div>
           </label>
         </div>
 
         <p class="error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
 
-        <app-ui-button
-          type="submit"
-          [disabled]="form.invalid || loading()"
-          [fullWidth]="true"
-          icon="person_add"
-        >
-          {{ loading() ? "Criando..." : "Criar conta" }}
+        <app-ui-button type="submit" [disabled]="form.invalid || loading()" [fullWidth]="true" icon="person_add">
+          {{ loading() ? 'Criando...' : 'Criar conta' }}
         </app-ui-button>
-
-        <footer>
-          <span>Já tem conta?</span>
-          <a routerLink="/auth/login">Entrar</a>
-        </footer>
       </form>
-    </div>
-  
+
+      <article class="reading-card">
+        <strong>Setup sem atrito</strong>
+        <p>
+          Avatar, renda, moeda e consentimentos ficam organizados num único fluxo
+          para o dashboard já nascer com contexto.
+        </p>
+      </article>
+
+      <footer class="form-panel__footer">
+        <span>Já tem conta?</span>
+        <a routerLink="/auth/login">Entrar</a>
+      </footer>
+    </section>
+  </div>
+</div>

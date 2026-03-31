@@ -1,62 +1,115 @@
+<div class="auth-page auth-page--login">
+  <div class="auth-layout">
+    <section class="hero-panel">
+      <div class="hero-panel__aurora hero-panel__aurora--a"></div>
+      <div class="hero-panel__aurora hero-panel__aurora--b"></div>
 
-    <div class="auth-page">
-      <section class="auth-story ambient-shell">
-        <p class="section-kicker">codeStage Soluções</p>
-        <span class="brand-stage">
-          <span class="brand-orbit brand-orbit-a"></span>
-          <span class="brand-orbit brand-orbit-b"></span>
-          <span class="brand-logo-shell">
-            <img class="brand-logo" src="assets/logo/logo_lumen.png" alt="LUMEN">
-          </span>
-        </span>
-        <h1>Organize sua vida com clareza.</h1>
-        <p class="headline">Clareza para sua vida.</p>
-        <p class="copy">
-          Um workspace que conecta tarefas, dinheiro, rotina e objetivos com a
-          sobriedade de um produto premium.
-        </p>
-
-        <div class="story-grid stagger-reveal">
-          <article>
-            <strong>Visão diária</strong>
-            <p>Dashboard da Vida com prioridades, saldo e previsão.</p>
-          </article>
-          <article>
-            <strong>Decisão conectada</strong>
-            <p>Tarefas com impacto financeiro e metas no mesmo fluxo.</p>
-          </article>
+      <div class="hero-visual">
+        <div class="device-stage">
+          <div class="device-stage__screen">
+            <div class="brand-badge">
+              <img class="brand-logo" src="assets/logo/logo_lumen.png" alt="LUMEN" />
+            </div>
+            <span class="device-stage__dot device-stage__dot--a"></span>
+            <span class="device-stage__dot device-stage__dot--b"></span>
+            <span class="device-stage__line device-stage__line--a"></span>
+            <span class="device-stage__line device-stage__line--b"></span>
+          </div>
+          <div class="wallet-card">
+            <div class="wallet-card__chip"></div>
+            <div class="wallet-card__meta">
+              <strong>LUMEN</strong>
+              <span>Workspace card</span>
+            </div>
+            <div class="wallet-card__brand"></div>
+          </div>
         </div>
-      </section>
+      </div>
 
-      <form class="auth-card" [formGroup]="form" (ngSubmit)="submit()">
-        <header>
-          <h2>Entrar</h2>
-          <p>Acompanhe seu dia, seu saldo e seus próximos movimentos.</p>
-        </header>
+      <div class="hero-copy">
+        <p class="section-kicker">LUMEN workspace</p>
+        <h1>Tudo mais claro, Tudo mais simples.</h1>
+        <p class="hero-copy__description">
+          Retome prioridades, finanças e rotina em um painel mais leve, visual e
+          direto ao ponto.
+        </p>
+      </div>
 
-        <app-field-shell label="Email">
-          <input type="email" formControlName="email" placeholder="voce@exemplo.com">
-        </app-field-shell>
+      <article class="balance-card">
+        <span>Meu saldo</span>
+        <strong>R$ 25.520</strong>
+        <p>Cards, resumo financeiro e próximas ações no mesmo fluxo.</p>
+      </article>
+    </section>
 
-        <app-field-shell label="Senha">
-          <input type="password" formControlName="password" placeholder="Sua senha">
-        </app-field-shell>
+    <section class="form-panel">
+      <header class="form-panel__header">
+        <p class="section-kicker">Entrar</p>
+        <h2>Bem-vindo de volta</h2>
+        <p>Faça login para continuar de onde você parou.</p>
+      </header>
+
+      <form class="auth-form" [formGroup]="form" (ngSubmit)="submit()">
+        <div class="demo-strip">
+          <span class="demo-strip__label">Ambiente demo</span>
+          <div class="demo-strip__values">
+            <span>demo@lumen.local</span>
+            <span>Demo123!</span>
+          </div>
+        </div>
+
+        <label class="auth-field">
+          <span class="auth-field__label">Email</span>
+          <input type="email" formControlName="email" placeholder="voce@exemplo.com" />
+        </label>
+
+        <label class="auth-field">
+          <span class="auth-field__label">Senha</span>
+          <span class="auth-field__control auth-field__control--password">
+            <input
+              [type]="showPassword() ? 'text' : 'password'"
+              formControlName="password"
+              [attr.minlength]="passwordMinLength"
+              [placeholder]="'No mínimo ' + passwordMinLength + ' caracteres'"
+            />
+            <button
+              type="button"
+              class="password-toggle"
+              (click)="togglePasswordVisibility()"
+              [attr.aria-label]="showPassword() ? 'Ocultar senha' : 'Mostrar senha'"
+            >
+              <span class="material-symbols-rounded">
+                {{ showPassword() ? 'visibility_off' : 'visibility' }}
+              </span>
+            </button>
+          </span>
+        </label>
 
         <p class="error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
 
         <app-ui-button type="submit" [disabled]="form.invalid || loading()" [fullWidth]="true" icon="login">
-          {{ loading() ? 'Entrando...' : 'Entrar no LUMEN' }}
+          {{ loading() ? 'Entrando...' : 'Entrar no workspace' }}
         </app-ui-button>
-
-        <div class="demo-card">
-          <strong>Ambiente demo</strong>
-          <p><span>demo@lumen.local</span> <span>Demo123!</span></p>
-        </div>
-
-        <footer>
-          <span>Ainda não tem conta?</span>
-          <a routerLink="/auth/register">Criar agora</a>
-        </footer>
       </form>
-    </div>
-  
+
+      <div class="feature-pills">
+        <span>Tasks + Finance</span>
+        <span>Forecast diário</span>
+        <span>Metas em contexto</span>
+      </div>
+
+      <article class="reading-card">
+        <strong>Leitura contínua</strong>
+        <p>
+          Visão diária, saldo, lembretes e próximos passos aparecem no mesmo
+          ritmo visual do restante do projeto.
+        </p>
+      </article>
+
+      <footer class="form-panel__footer">
+        <span>Novo por aqui?</span>
+        <a routerLink="/auth/register">Criar conta</a>
+      </footer>
+    </section>
+  </div>
+</div>

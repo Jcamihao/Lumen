@@ -571,3 +571,19 @@
     line-height: 1.2;
   }
 }
+
+@media (max-width: 520px) {
+  .slice-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: flex-start;
+  }
+
+  .slice-share {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .chart-footer {
+    grid-template-columns: 1fr;
+  }
+}

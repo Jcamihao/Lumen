@@ -3,14 +3,14 @@ import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AUTH_PASSWORD_MIN_LENGTH } from '../../../core/constants/auth.constants';
 import { AuthService } from '../../../core/services/auth.service';
-import { FieldShellComponent } from '../../../shared/components/field-shell/field-shell.component';
 import { UiButtonComponent } from '../../../shared/components/ui-button/ui-button.component';
 
 @Component({
   selector: 'app-login-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink, FieldShellComponent, UiButtonComponent],
+  imports: [CommonModule, ReactiveFormsModule, RouterLink, UiButtonComponent],
   templateUrl: './login-page.component.html',
   styleUrls: ['./login-page.component.scss'],
 })
@@ -22,14 +22,20 @@ export class LoginPageComponent {
 
   protected readonly loading = signal(false);
   protected readonly errorMessage = signal('');
+  protected readonly showPassword = signal(false);
+  protected readonly passwordMinLength = AUTH_PASSWORD_MIN_LENGTH;
 
   protected readonly form = this.fb.nonNullable.group({
     email: ['demo@lumen.local', [Validators.required, Validators.email]],
-    password: ['Demo123!', [Validators.required, Validators.minLength(6)]],
+    password: [
+      'Demo123!',
+      [Validators.required, Validators.minLength(AUTH_PASSWORD_MIN_LENGTH)],
+    ],
   });
 
   protected submit() {
     if (this.form.invalid) {
+      this.form.markAllAsTouched();
       return;
     }
 
@@ -49,5 +55,9 @@ export class LoginPageComponent {
           this.errorMessage.set(error?.error?.message ?? 'Não foi possível entrar.');
         },
       });
+  }
+
+  protected togglePasswordVisibility() {
+    this.showPassword.update((value) => !value);
   }
 }

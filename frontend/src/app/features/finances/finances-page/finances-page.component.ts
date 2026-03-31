@@ -9,9 +9,9 @@ import { LifeApiService } from '../../../core/services/life-api.service';
 import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
 import { FieldShellComponent } from '../../../shared/components/field-shell/field-shell.component';
-import { ListItemComponent } from '../../../shared/components/list-item/list-item.component';
 import { MetricCardComponent } from '../../../shared/components/metric-card/metric-card.component';
 import { PanelComponent } from '../../../shared/components/panel/panel.component';
+import { AvatarComponent } from '../../../shared/components/avatar/avatar.component';
 import { UiBadgeComponent } from '../../../shared/components/ui-badge/ui-badge.component';
 import { UiButtonComponent } from '../../../shared/components/ui-button/ui-button.component';
 
@@ -29,7 +29,7 @@ import { UiButtonComponent } from '../../../shared/components/ui-button/ui-butto
     FieldShellComponent,
     UiButtonComponent,
     UiBadgeComponent,
-    ListItemComponent,
+    AvatarComponent,
     MetricCardComponent,
   ],
   templateUrl: './finances-page.component.html',
@@ -114,6 +114,10 @@ export class FinancesPageComponent {
       maximumFractionDigits: 0,
     }).format(transaction.amount);
 
+    if (transaction.type === 'TRANSFER') {
+      return formatted;
+    }
+
     return `${transaction.type === 'INCOME' ? '+' : '-'} ${formatted}`;
   }
 
@@ -123,6 +127,18 @@ export class FinancesPageComponent {
       EXPENSE: 'Despesa',
       TRANSFER: 'Transferência',
     }[type];
+  }
+
+  protected transactionAmountTone(transaction: Transaction) {
+    if (transaction.type === 'INCOME') {
+      return 'positive' as const;
+    }
+
+    if (transaction.type === 'EXPENSE') {
+      return 'negative' as const;
+    }
+
+    return 'neutral' as const;
   }
 
   private reload() {

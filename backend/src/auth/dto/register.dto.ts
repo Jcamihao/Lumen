@@ -10,6 +10,7 @@ import {
   Min,
   MinLength,
 } from "class-validator";
+import { AUTH_PASSWORD_MIN_LENGTH } from "../constants/password.constants";
 
 export class RegisterDto {
   @IsString()
@@ -20,7 +21,7 @@ export class RegisterDto {
   email!: string;
 
   @IsString()
-  @MinLength(6)
+  @MinLength(AUTH_PASSWORD_MIN_LENGTH)
   password!: string;
 
   @IsOptional()

@@ -1,0 +1,158 @@
+<div class="page-stack support-stack">
+  <section class="metrics-row">
+    <app-ui-badge
+      [label]="metrics().total + ' envio(s)'"
+      [tone]="metrics().total ? 'accent' : 'neutral'"
+      [showDot]="metrics().total > 0"
+    />
+    <app-ui-badge
+      [label]="metrics().feedbacks + ' feedback(s)'"
+      tone="success"
+      [showDot]="metrics().feedbacks > 0"
+    />
+    <app-ui-badge
+      [label]="metrics().bugs + ' bug report(s)'"
+      tone="danger"
+      [showDot]="metrics().bugs > 0"
+    />
+    <app-ui-badge
+      [label]="metrics().open + ' aberto(s)'"
+      [tone]="metrics().open ? 'warning' : 'neutral'"
+      [showDot]="metrics().open > 0"
+    />
+  </section>
+
+  <div class="support-grid">
+    <app-panel
+      title="Nova solicitação"
+      caption="Colete a percepção do usuário e registre falhas com contexto mínimo para análise."
+    >
+      <form class="support-form" [formGroup]="form" (ngSubmit)="submit()">
+        <div class="type-switch">
+          <button
+            type="button"
+            class="type-chip"
+            [class.active]="selectedType() === 'FEEDBACK'"
+            (click)="selectType('FEEDBACK')"
+          >
+            Feedback
+          </button>
+          <button
+            type="button"
+            class="type-chip"
+            [class.active]="selectedType() === 'BUG_REPORT'"
+            (click)="selectType('BUG_REPORT')"
+          >
+            Bug report
+          </button>
+        </div>
+
+        <app-field-shell label="Assunto">
+          <input
+            type="text"
+            formControlName="subject"
+            [placeholder]="
+              bugMode()
+                ? 'Ex.: Importação fecha sozinha após anexar recibo'
+                : 'Ex.: Gostei do fluxo de metas, mas faltou contexto'
+            "
+          />
+        </app-field-shell>
+
+        <app-field-shell
+          *ngIf="bugMode()"
+          label="Severidade"
+        >
+          <select formControlName="severity">
+            <option value="LOW">Baixa</option>
+            <option value="MEDIUM">Média</option>
+            <option value="HIGH">Alta</option>
+            <option value="CRITICAL">Crítica</option>
+          </select>
+        </app-field-shell>
+
+        <app-field-shell label="Mensagem">
+          <textarea
+            rows="8"
+            formControlName="message"
+            [placeholder]="draftHint()"
+          ></textarea>
+        </app-field-shell>
+
+        <div class="context-card">
+          <strong>{{ authService.currentUser()?.email }}</strong>
+          <p>
+            O envio inclui automaticamente a rota atual do app e informações
+            básicas do dispositivo para facilitar a análise.
+          </p>
+        </div>
+
+        <div class="form-actions">
+          <app-ui-button
+            type="submit"
+            icon="send"
+            [disabled]="submitting()"
+          >
+            {{ submitting() ? "Enviando..." : "Enviar para suporte" }}
+          </app-ui-button>
+
+          <app-ui-button
+            variant="secondary"
+            [disabled]="loading()"
+            (click)="reload()"
+          >
+            Atualizar histórico
+          </app-ui-button>
+        </div>
+
+        <p class="feedback success" *ngIf="feedbackMessage()">{{ feedbackMessage() }}</p>
+        <p class="feedback error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
+      </form>
+    </app-panel>
+
+    <app-panel
+      title="Histórico recente"
+      caption="Últimos envios registrados para esta conta."
+    >
+      <div class="submission-list" *ngIf="submissions().length; else noSubmissions">
+        <article class="submission-card" *ngFor="let item of submissions()">
+          <div class="submission-head">
+            <div class="submission-copy">
+              <strong>{{ item.subject }}</strong>
+              <p>{{ item.message }}</p>
+            </div>
+
+            <div class="submission-badges">
+              <app-ui-badge
+                [label]="typeLabel(item.type)"
+                [tone]="typeTone(item.type)"
+              />
+              <app-ui-badge
+                [label]="statusLabel(item.status)"
+                [tone]="statusTone(item.status)"
+              />
+              <app-ui-badge
+                *ngIf="item.severity"
+                [label]="severityLabel(item.severity)"
+                tone="warning"
+              />
+            </div>
+          </div>
+
+          <div class="submission-meta">
+            <span>{{ item.createdAt | date: "dd/MM/yyyy HH:mm" }}</span>
+            <span *ngIf="item.screenPath">{{ item.screenPath }}</span>
+          </div>
+        </article>
+      </div>
+
+      <ng-template #noSubmissions>
+        <app-empty-state
+          title="Nenhum envio até agora"
+          description="Os feedbacks e bug reports enviados pelo usuário passam a aparecer aqui."
+          icon="support_agent"
+        />
+      </ng-template>
+    </app-panel>
+  </div>
+</div>

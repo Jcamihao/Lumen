@@ -270,7 +270,17 @@
       border-radius: var(--radius-xl);
     }
 
-    @media (min-width: 860px) {
+    @media (min-width: 760px) {
+      .metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .goal-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (min-width: 1140px) {
       .hero-card {
         grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.65fr);
         align-items: stretch;
@@ -327,6 +337,14 @@
 
       .hero-stats {
         grid-template-columns: 1fr;
+      }
+
+      .hero-actions {
+        display: grid;
+      }
+
+      .hero-actions app-ui-badge {
+        justify-self: start;
       }
 
       .goal-card-top,

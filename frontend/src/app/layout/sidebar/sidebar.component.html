@@ -1,18 +1,30 @@
 <aside class="sidebar">
-  <a class="brand" routerLink="/dashboard">
-    <span class="brand-eyebrow">codeStage Soluções</span>
+  <div class="sidebar-top">
+    <a class="brand" routerLink="/dashboard" (click)="requestClose()">
+      <span class="brand-eyebrow">codeStage Soluções</span>
 
-    <span class="brand-row">
-      <span class="brand-mark">
-        <img src="assets/logo/logo_lumen_s_fundo.png" alt="Lumen" />
-      </span>
+      <span class="brand-row">
+        <span class="brand-mark">
+          <img src="assets/logo/logo_lumen_s_fundo.png" alt="Lumen" />
+        </span>
 
-      <span class="brand-copy">
-        <strong>Lumen</strong>
-        <span>Clareza para sua vida</span>
+        <span class="brand-copy">
+          <strong>Lumen</strong>
+          <span>Clareza para sua vida</span>
+        </span>
       </span>
-    </span>
-  </a>
+    </a>
+
+    <button
+      *ngIf="mobile"
+      type="button"
+      class="close-button"
+      aria-label="Fechar menu"
+      (click)="requestClose()"
+    >
+      <span class="material-symbols-rounded">close</span>
+    </button>
+  </div>
 
   <nav class="nav-grid">
     <a
@@ -22,6 +34,7 @@
       [routerLink]="item.route"
       routerLinkActive="active"
       [routerLinkActiveOptions]="{ exact: item.route === '/dashboard' }"
+      (click)="requestClose()"
     >
       <span class="material-symbols-rounded">{{ item.icon }}</span>
       <span>{{ item.label }}</span>
@@ -48,6 +61,7 @@
         [routerLink]="item.route"
         routerLinkActive="active"
         [routerLinkActiveOptions]="{ exact: false }"
+        (click)="requestClose()"
       >
         <span class="tool-icon material-symbols-rounded">{{ item.icon }}</span>
         <span>{{ item.label }}</span>

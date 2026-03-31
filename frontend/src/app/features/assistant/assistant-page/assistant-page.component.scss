@@ -290,7 +290,7 @@
         flex-wrap: wrap;
       }
 
-      @media (min-width: 1080px) {
+      @media (min-width: 1180px) {
         .assistant-results {
           grid-template-columns: minmax(0, 1.45fr) minmax(20rem, 0.85fr);
           align-items: start;
@@ -298,7 +298,7 @@
 
         .recent-panel {
           position: sticky;
-          top: 1.5rem;
+          top: calc(var(--safe-top) + 8.6rem);
         }
       }
 
@@ -338,6 +338,12 @@
 
         .meta-date {
           margin-left: 0;
+        }
+
+        .privacy-note app-ui-badge,
+        .offline-note app-ui-badge,
+        .consent-actions app-ui-button {
+          width: 100%;
         }
 
         .consent-modal {

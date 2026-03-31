@@ -89,22 +89,38 @@
           </div>
 
           <div class="stack-list" *ngIf="transactions().length; else emptyState">
-            <app-list-item
+            <article
+              class="transaction-card"
               *ngFor="let transaction of transactions()"
-              [title]="transaction.description"
-              [subtitle]="transactionSubtitle(transaction)"
-              [meta]="transactionAmount(transaction)"
-              [metaTone]="transaction.type === 'INCOME' ? 'positive' : 'negative'"
-              [badge]="typeLabel(transaction.type)"
-              [badgeTone]="transaction.type === 'INCOME' ? 'success' : transaction.type === 'EXPENSE' ? 'warning' : 'neutral'"
-              [avatar]="transaction.description"
             >
-              <div list-actions class="row-actions">
-                <app-ui-button variant="ghost" size="sm" (click)="removeTransaction(transaction.id)">
+              <div class="transaction-leading">
+                <app-avatar [name]="transaction.description" size="sm"></app-avatar>
+              </div>
+
+              <div class="transaction-content">
+                <strong class="transaction-title">{{ transaction.description }}</strong>
+                <app-ui-badge
+                  class="transaction-badge"
+                  [label]="typeLabel(transaction.type)"
+                  [tone]="transaction.type === 'INCOME' ? 'success' : transaction.type === 'EXPENSE' ? 'warning' : 'neutral'"
+                />
+                <p class="transaction-subtitle">{{ transactionSubtitle(transaction) }}</p>
+              </div>
+
+              <div class="transaction-footer">
+                <span class="transaction-meta" [ngClass]="transactionAmountTone(transaction)">
+                  {{ transactionAmount(transaction) }}
+                </span>
+                <app-ui-button
+                  class="transaction-action"
+                  variant="ghost"
+                  size="sm"
+                  (click)="removeTransaction(transaction.id)"
+                >
                   Excluir
                 </app-ui-button>
               </div>
-            </app-list-item>
+            </article>
           </div>
 
           <ng-template #emptyState>

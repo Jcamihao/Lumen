@@ -5,9 +5,17 @@ import Capacitor
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
+    private let lumenBackgroundColor = UIColor(
+        red: 21.0 / 255.0,
+        green: 25.0 / 255.0,
+        blue: 35.0 / 255.0,
+        alpha: 1
+    )
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        DispatchQueue.main.async { [weak self] in
+            self?.applyLumenWebViewAppearance()
+        }
         return true
     }
 
@@ -26,7 +34,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        applyLumenWebViewAppearance()
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
@@ -46,4 +54,21 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
+    private func applyLumenWebViewAppearance() {
+        let activeWindow = window ?? UIApplication.shared.windows.first
+        activeWindow?.backgroundColor = lumenBackgroundColor
+
+        guard let bridgeViewController = activeWindow?.rootViewController as? CAPBridgeViewController,
+              let webView = bridgeViewController.webView else {
+            return
+        }
+
+        bridgeViewController.view.backgroundColor = lumenBackgroundColor
+        webView.backgroundColor = lumenBackgroundColor
+        webView.isOpaque = false
+        webView.scrollView.backgroundColor = lumenBackgroundColor
+        webView.scrollView.bounces = false
+        webView.scrollView.alwaysBounceVertical = false
+        webView.scrollView.alwaysBounceHorizontal = false
+    }
 }

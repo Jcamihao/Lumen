@@ -6,7 +6,7 @@
       overflow: hidden;
       display: grid;
       grid-template-columns: auto minmax(0, 1fr);
-      align-items: center;
+      align-items: flex-start;
       gap: 0.95rem;
       padding: 1rem;
       border-radius: var(--radius-md);
@@ -109,7 +109,7 @@
       display: block;
       font-size: 0.96rem;
       font-weight: 700;
-      line-height: 1.02;
+      line-height: 1.25;
       color: var(--text-primary);
       word-break: break-word;
     }
@@ -118,14 +118,14 @@
       margin: -0.08rem 0 0;
       color: var(--text-medium);
       font-size: 0.88rem;
-      line-height: 1.02;
+      line-height: 1.4;
       word-break: break-word;
     }
 
     .trailing {
       grid-column: 1 / -1;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
       gap: 0.75rem;
       flex-wrap: wrap;
@@ -135,12 +135,11 @@
     .meta {
       display: inline-flex;
       align-items: center;
-      min-height: 2.5rem;
+      min-height: 0;
       font-size: 0.88rem;
       font-weight: 600;
-      line-height: 1;
+      line-height: 1.35;
       color: var(--text-medium);
-      transform: translateY(1px);
       word-break: break-word;
     }
 
@@ -159,15 +158,14 @@
     .trailing app-ui-badge {
       display: inline-flex;
       align-items: center;
-      min-height: 2.5rem;
-      transform: translateY(3px);
+      min-height: 0;
       flex-shrink: 0;
     }
 
     .trailing > [list-actions] {
       display: inline-flex;
       align-items: center;
-      min-height: 2.5rem;
+      min-height: 0;
     }
 
     @media (min-width: 640px) {
@@ -196,6 +194,7 @@
       .trailing {
         padding-left: 0;
         justify-content: flex-start;
+        gap: 0.65rem;
       }
     }
   

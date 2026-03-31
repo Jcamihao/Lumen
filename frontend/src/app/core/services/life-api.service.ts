@@ -12,6 +12,7 @@ import {
   Reminder,
   ReceiptImportCommitResponse,
   ReceiptImportPreview,
+  SupportRequest,
   Task,
   Transaction,
   User,
@@ -396,6 +397,27 @@ export class LifeApiService {
   deleteMyAccount() {
     return this.http.delete<{ message: string; deletedAt: string }>(
       `${environment.apiBaseUrl}/users/me`,
+    );
+  }
+
+  listSupportRequests() {
+    return this.http.get<SupportRequest[]>(
+      `${environment.apiBaseUrl}/support-requests`,
+    );
+  }
+
+  createSupportRequest(payload: {
+    type: SupportRequest["type"];
+    subject: string;
+    message: string;
+    severity?: SupportRequest["severity"];
+    screenPath?: string;
+    appVersion?: string;
+    deviceInfo?: string;
+  }) {
+    return this.http.post<SupportRequest>(
+      `${environment.apiBaseUrl}/support-requests`,
+      payload,
     );
   }
 

@@ -90,6 +90,21 @@ export type Notification = {
   createdAt: string;
 };
 
+export type SupportRequest = {
+  id: string;
+  type: "FEEDBACK" | "BUG_REPORT";
+  status: "OPEN" | "REVIEWED" | "RESOLVED";
+  severity?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | null;
+  subject: string;
+  message: string;
+  emailSnapshot: string;
+  screenPath?: string | null;
+  appVersion?: string | null;
+  deviceInfo?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type NotificationCenterEntry = {
   id: string;
   kind: "notification" | "reminder";

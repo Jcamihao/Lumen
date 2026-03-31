@@ -105,6 +105,18 @@ export class GoalsPageComponent {
     return Math.min(Math.round((goal.currentAmount / goal.targetAmount) * 100), 100);
   }
 
+  protected remainingAmount(goal: Goal) {
+    return Math.max(goal.targetAmount - goal.currentAmount, 0);
+  }
+
+  protected goalDeadlineLabel(goal: Goal) {
+    if (!goal.targetDate) {
+      return 'Sem prazo definido';
+    }
+
+    return `Prazo ${new Intl.DateTimeFormat('pt-BR').format(new Date(goal.targetDate))}`;
+  }
+
   private reload() {
     this.api
       .listGoals()
