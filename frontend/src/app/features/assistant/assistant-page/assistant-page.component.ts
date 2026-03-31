@@ -5,6 +5,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
 import { AssistantReply } from "../../../core/models/domain.models";
 import { AuthService } from "../../../core/services/auth.service";
 import { LifeApiService } from "../../../core/services/life-api.service";
+import { NativeStorageService } from "../../../core/services/native-storage.service";
 import { EmptyStateComponent } from "../../../shared/components/empty-state/empty-state.component";
 import { PanelComponent } from "../../../shared/components/panel/panel.component";
 import { UiBadgeComponent } from "../../../shared/components/ui-badge/ui-badge.component";
@@ -37,6 +38,7 @@ export class AssistantPageComponent {
   protected readonly authService = inject(AuthService);
   private readonly fb = inject(FormBuilder);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly storageService = inject(NativeStorageService);
 
   protected readonly history = signal<AssistantMessage[]>([]);
   protected readonly activeMessageId = signal<string | null>(null);
@@ -60,6 +62,7 @@ export class AssistantPageComponent {
   protected readonly recentMessages = computed(() =>
     this.history().slice(0, 8),
   );
+  protected readonly offlineMode = this.api.offlineMode;
   protected readonly form = this.fb.nonNullable.group({
     question: [
       "Como estou hoje?",
@@ -201,7 +204,7 @@ export class AssistantPageComponent {
 
   private requiresFirstAiConsent() {
     const user = this.authService.currentUser();
-    return Boolean(user && !user.aiAssistantConsentAt);
+    return Boolean(!this.offlineMode() && user && !user.aiAssistantConsentAt);
   }
 
   private submitAssistantQuestion(question: string) {
@@ -259,14 +262,8 @@ export class AssistantPageComponent {
     history: AssistantMessage[],
     activeMessageId: string | null,
   ) {
-    const storage = this.storage();
-
-    if (!storage) {
-      return;
-    }
-
     try {
-      storage.setItem(
+      this.storageService.setItem(
         this.storageKey(),
         JSON.stringify({
           history,
@@ -281,14 +278,8 @@ export class AssistantPageComponent {
   private readPersistedSnapshot():
     | { history: AssistantMessage[]; activeMessageId: string | null }
     | null {
-    const storage = this.storage();
-
-    if (!storage) {
-      return null;
-    }
-
     try {
-      const raw = storage.getItem(this.storageKey());
+      const raw = this.storageService.getItem(this.storageKey());
 
       if (!raw) {
         return null;
@@ -327,13 +318,5 @@ export class AssistantPageComponent {
 
   private storageKey() {
     return `lumen:assistant-history:${this.authService.currentUser()?.id ?? "anonymous"}`;
-  }
-
-  private storage() {
-    try {
-      return typeof window !== "undefined" ? window.localStorage : null;
-    } catch {
-      return null;
-    }
   }
 }

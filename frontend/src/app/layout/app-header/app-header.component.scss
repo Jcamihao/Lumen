@@ -84,6 +84,207 @@
       position: relative;
     }
 
+    .notification-shell {
+      position: relative;
+    }
+
+    .notification-trigger {
+      position: relative;
+      display: inline-grid;
+      place-items: center;
+      width: 3.1rem;
+      height: 3.1rem;
+      padding: 0;
+      border-radius: 999px;
+      border: 1px solid rgba(229, 231, 235, 0.96);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 248, 252, 0.96)),
+        var(--card);
+      box-shadow:
+        0 10px 22px rgba(17, 17, 17, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+      cursor: pointer;
+      transition:
+        transform 160ms ease,
+        box-shadow 160ms ease,
+        border-color 160ms ease;
+    }
+
+    .notification-trigger .material-symbols-rounded {
+      font-size: 1.25rem;
+      color: var(--text-medium);
+    }
+
+    .notification-trigger:hover,
+    .notification-trigger:focus-visible {
+      transform: translateY(-1px);
+      border-color: rgba(99, 102, 241, 0.22);
+      box-shadow:
+        0 16px 32px rgba(99, 102, 241, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+      outline: none;
+    }
+
+    .app-header.theme-dark .notification-trigger {
+      border-color: rgba(255, 255, 255, 0.08);
+      background:
+        linear-gradient(180deg, rgba(28, 29, 35, 0.94), rgba(21, 22, 28, 0.92)),
+        var(--card);
+      box-shadow:
+        0 18px 36px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .app-header.theme-dark .notification-trigger .material-symbols-rounded {
+      color: rgba(255, 255, 255, 0.92);
+    }
+
+    .notification-count {
+      position: absolute;
+      top: -0.1rem;
+      right: -0.1rem;
+      min-width: 1.2rem;
+      height: 1.2rem;
+      padding: 0 0.28rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: var(--accent);
+      color: white;
+      font-size: 0.68rem;
+      font-weight: 700;
+      line-height: 1;
+      box-shadow: 0 8px 18px rgba(99, 102, 241, 0.3);
+    }
+
+    .notification-menu {
+      position: absolute;
+      top: calc(100% + 0.7rem);
+      right: 0;
+      width: min(24rem, calc(100vw - 2rem));
+      display: grid;
+      gap: 0.7rem;
+      padding: 0.75rem;
+      border-radius: 1rem;
+      border: 1px solid rgba(229, 231, 235, 0.96);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 248, 252, 0.96)),
+        var(--card);
+      box-shadow:
+        0 20px 40px rgba(17, 17, 17, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
+      z-index: 45;
+    }
+
+    .app-header.theme-dark .notification-menu {
+      border-color: rgba(255, 255, 255, 0.08);
+      background:
+        linear-gradient(180deg, rgba(28, 29, 35, 0.98), rgba(21, 22, 28, 0.96)),
+        var(--card);
+      box-shadow:
+        0 22px 42px rgba(0, 0, 0, 0.34),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .notification-menu-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.8rem;
+    }
+
+    .notification-menu-head strong {
+      color: var(--text-primary);
+      font-size: 0.98rem;
+    }
+
+    .notification-menu-head p {
+      margin: 0.2rem 0 0;
+      color: var(--text-secondary);
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+
+    .notification-loading,
+    .notification-empty {
+      padding: 0.85rem 0.15rem 0.15rem;
+      color: var(--text-medium);
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+
+    .notification-list {
+      display: grid;
+      gap: 0.65rem;
+      max-height: 22rem;
+      overflow-y: auto;
+      padding-right: 0.15rem;
+    }
+
+    .notification-item {
+      display: grid;
+      gap: 0.65rem;
+      width: 100%;
+      padding: 0.9rem;
+      border-radius: 0.95rem;
+      border: 1px solid var(--border);
+      background: var(--card-muted);
+      text-align: left;
+      cursor: pointer;
+      transition:
+        transform 160ms ease,
+        border-color 160ms ease,
+        background-color 160ms ease,
+        box-shadow 160ms ease;
+    }
+
+    .notification-item.unread {
+      border-color: rgba(99, 102, 241, 0.24);
+      background: color-mix(in srgb, var(--accent) 6%, var(--card));
+    }
+
+    .notification-item:hover,
+    .notification-item:focus-visible {
+      transform: translateY(-1px);
+      border-color: rgba(99, 102, 241, 0.22);
+      box-shadow: var(--shadow-soft);
+      outline: none;
+    }
+
+    .notification-copy {
+      display: grid;
+      gap: 0.45rem;
+      min-width: 0;
+    }
+
+    .notification-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+
+    .notification-top strong {
+      color: var(--text-primary);
+      font-size: 0.94rem;
+      line-height: 1.35;
+    }
+
+    .notification-top span {
+      color: var(--text-secondary);
+      font-size: 0.76rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .notification-copy p {
+      margin: 0;
+      color: var(--text-medium);
+      font-size: 0.87rem;
+      line-height: 1.5;
+    }
+
     .profile {
       display: inline-flex;
       align-items: center;
@@ -362,12 +563,17 @@
   .actions {
     width: 100%;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     grid-template-areas:
-      'theme profile'
+      'theme bell profile'
       'cta cta';
     gap: 0.75rem;
     align-items: center;
+  }
+
+  .notification-shell {
+    grid-area: bell;
+    justify-self: end;
   }
 
   app-ui-button.theme-toggle {
@@ -404,6 +610,11 @@
     left: auto;
     min-width: min(13.5rem, calc(100vw - 2rem));
   }
+
+  .notification-menu {
+    right: 0;
+    left: auto;
+  }
 }
 
 @media (max-width: 420px) {
@@ -417,7 +628,7 @@
   }
 
   .actions {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 0.65rem;
   }
 

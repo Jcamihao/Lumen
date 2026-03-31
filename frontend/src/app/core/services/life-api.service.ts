@@ -1,6 +1,6 @@
 import { HttpClient } from "@angular/common/http";
 import { computed, effect, inject, Injectable, signal } from "@angular/core";
-import { firstValueFrom, Observable, of, tap } from "rxjs";
+import { firstValueFrom, map, Observable, of, tap } from "rxjs";
 import { environment } from "../../../environments/environment";
 import {
   AssistantReply,
@@ -9,6 +9,7 @@ import {
   ImportPreview,
   Notification,
   PrivacyExportPayload,
+  Reminder,
   ReceiptImportCommitResponse,
   ReceiptImportPreview,
   Task,
@@ -128,6 +129,24 @@ export class LifeApiService {
       );
   }
 
+  updateTransaction(id: string, payload: Record<string, unknown>) {
+    if (!this.networkService.isOnline()) {
+      return of(this.offlineLifeService.queueTransactionUpdate(id, payload) as Transaction);
+    }
+
+    return this.http.patch<Transaction>(`${environment.apiBaseUrl}/transactions/${id}`, payload).pipe(
+      tap((transaction) =>
+        this.offlineLifeService.reconcileTransaction(
+          transaction,
+          id.startsWith("offline-") ? id : undefined,
+        ),
+      ),
+      this.withMutationOfflineFallback(
+        () => this.offlineLifeService.queueTransactionUpdate(id, payload) as Transaction,
+      ),
+    );
+  }
+
   deleteTransaction(id: string) {
     if (!this.networkService.isOnline()) {
       return of(this.offlineLifeService.queueTransactionDelete(id));
@@ -158,6 +177,21 @@ export class LifeApiService {
     return this.http.post<Goal>(`${environment.apiBaseUrl}/goals`, payload).pipe(
       tap((goal) => this.offlineLifeService.reconcileGoal(goal)),
       this.withMutationOfflineFallback(() => this.offlineLifeService.queueGoalCreate(payload)),
+    );
+  }
+
+  updateGoal(id: string, payload: Record<string, unknown>) {
+    if (!this.networkService.isOnline()) {
+      return of(this.offlineLifeService.queueGoalUpdate(id, payload) as Goal);
+    }
+
+    return this.http.patch<Goal>(`${environment.apiBaseUrl}/goals/${id}`, payload).pipe(
+      tap((goal) =>
+        this.offlineLifeService.reconcileGoal(goal, id.startsWith("offline-") ? id : undefined),
+      ),
+      this.withMutationOfflineFallback(
+        () => this.offlineLifeService.queueGoalUpdate(id, payload) as Goal,
+      ),
     );
   }
 
@@ -200,6 +234,59 @@ export class LifeApiService {
           this.offlineLifeService.buildOfflineAssistantReply(question),
         ),
       );
+  }
+
+  listReminders() {
+    if (!this.networkService.isOnline() || this.offlineLifeService.hasPendingSync()) {
+      void this.flushPendingSync();
+      return of(this.offlineLifeService.readReminders());
+    }
+
+    return this.http.get<Reminder[]>(`${environment.apiBaseUrl}/reminders`).pipe(
+      tap((reminders) => this.offlineLifeService.cacheReminders(reminders)),
+      this.withOfflineFallback(() => this.offlineLifeService.readReminders()),
+    );
+  }
+
+  createReminder(payload: Record<string, unknown>) {
+    if (!this.networkService.isOnline()) {
+      return of(this.offlineLifeService.queueReminderCreate(payload));
+    }
+
+    return this.http.post<Reminder>(`${environment.apiBaseUrl}/reminders`, payload).pipe(
+      tap((reminder) => this.offlineLifeService.reconcileReminder(reminder)),
+      this.withMutationOfflineFallback(() =>
+        this.offlineLifeService.queueReminderCreate(payload),
+      ),
+    );
+  }
+
+  updateReminder(id: string, payload: Record<string, unknown>) {
+    if (!this.networkService.isOnline()) {
+      return of(this.offlineLifeService.queueReminderUpdate(id, payload) as Reminder);
+    }
+
+    return this.http.patch<Reminder>(`${environment.apiBaseUrl}/reminders/${id}`, payload).pipe(
+      tap((reminder) =>
+        this.offlineLifeService.reconcileReminder(
+          reminder,
+          id.startsWith("offline-") ? id : undefined,
+        ),
+      ),
+      this.withMutationOfflineFallback(
+        () => this.offlineLifeService.queueReminderUpdate(id, payload) as Reminder,
+      ),
+    );
+  }
+
+  deleteReminder(id: string) {
+    if (!this.networkService.isOnline()) {
+      return of(this.offlineLifeService.queueReminderDelete(id));
+    }
+
+    return this.http.delete<{ success: boolean }>(`${environment.apiBaseUrl}/reminders/${id}`).pipe(
+      this.withMutationOfflineFallback(() => this.offlineLifeService.queueReminderDelete(id)),
+    );
   }
 
   previewImport(file: File) {
@@ -251,7 +338,8 @@ export class LifeApiService {
   }
 
   listNotifications() {
-    if (!this.networkService.isOnline()) {
+    if (!this.networkService.isOnline() || this.offlineLifeService.hasPendingSync()) {
+      void this.flushPendingSync();
       return of(this.offlineLifeService.readNotifications());
     }
 
@@ -267,21 +355,17 @@ export class LifeApiService {
 
   markNotificationAsRead(id: string) {
     if (!this.networkService.isOnline()) {
-      const notifications = this.offlineLifeService
-        .readNotifications()
-        .map((notification) =>
-          notification.id === id
-            ? { ...notification, isRead: true }
-            : notification,
-        );
-      this.offlineLifeService.cacheNotifications(notifications);
-      return of({ success: true });
+      return of(this.offlineLifeService.queueNotificationRead(id));
     }
 
-    return this.http.patch(
-      `${environment.apiBaseUrl}/notifications/${id}/read`,
-      {},
-    );
+    return this.http
+      .patch<Notification>(`${environment.apiBaseUrl}/notifications/${id}/read`, {})
+      .pipe(
+        map(() => ({ success: true })),
+        this.withMutationOfflineFallback(() =>
+          this.offlineLifeService.queueNotificationRead(id),
+        ),
+      );
   }
 
   updateUser(
@@ -383,8 +467,8 @@ export class LifeApiService {
   }
 
   private async flushQueueItem(item: {
-    entity: "task" | "transaction" | "goal" | "user";
-    action: "create" | "update" | "delete" | "contribute";
+    entity: "task" | "transaction" | "goal" | "user" | "reminder" | "notification";
+    action: "create" | "update" | "delete" | "contribute" | "read";
     recordId?: string;
     payload?: Record<string, unknown>;
   }) {
@@ -403,6 +487,16 @@ export class LifeApiService {
       return;
     }
 
+    if (item.entity === "reminder") {
+      await this.flushReminderItem(item);
+      return;
+    }
+
+    if (item.entity === "notification") {
+      await this.flushNotificationItem(item);
+      return;
+    }
+
     if (item.entity === "user" && item.action === "update") {
       const user = await firstValueFrom(
         this.http.patch<User>(`${environment.apiBaseUrl}/users/me`, item.payload ?? {}),
@@ -412,7 +506,7 @@ export class LifeApiService {
   }
 
   private async flushTaskItem(item: {
-    action: "create" | "update" | "delete" | "contribute";
+    action: "create" | "update" | "delete" | "contribute" | "read";
     recordId?: string;
     payload?: Record<string, unknown>;
   }) {
@@ -443,7 +537,7 @@ export class LifeApiService {
   }
 
   private async flushTransactionItem(item: {
-    action: "create" | "update" | "delete" | "contribute";
+    action: "create" | "update" | "delete" | "contribute" | "read";
     recordId?: string;
     payload?: Record<string, unknown>;
   }) {
@@ -458,6 +552,17 @@ export class LifeApiService {
       return;
     }
 
+    if (item.action === "update" && item.recordId) {
+      const transaction = await firstValueFrom(
+        this.http.patch<Transaction>(
+          `${environment.apiBaseUrl}/transactions/${item.recordId}`,
+          item.payload ?? {},
+        ),
+      );
+      this.offlineLifeService.reconcileTransaction(transaction);
+      return;
+    }
+
     if (item.action === "delete" && item.recordId) {
       await firstValueFrom(
         this.http.delete(`${environment.apiBaseUrl}/transactions/${item.recordId}`),
@@ -466,7 +571,7 @@ export class LifeApiService {
   }
 
   private async flushGoalItem(item: {
-    action: "create" | "update" | "delete" | "contribute";
+    action: "create" | "update" | "delete" | "contribute" | "read";
     recordId?: string;
     payload?: Record<string, unknown>;
   }) {
@@ -475,6 +580,17 @@ export class LifeApiService {
         this.http.post<Goal>(`${environment.apiBaseUrl}/goals`, item.payload ?? {}),
       );
       this.offlineLifeService.reconcileGoal(goal, item.recordId);
+      return;
+    }
+
+    if (item.action === "update" && item.recordId) {
+      const goal = await firstValueFrom(
+        this.http.patch<Goal>(
+          `${environment.apiBaseUrl}/goals/${item.recordId}`,
+          item.payload ?? {},
+        ),
+      );
+      this.offlineLifeService.reconcileGoal(goal);
       return;
     }
 
@@ -492,6 +608,49 @@ export class LifeApiService {
     if (item.action === "delete" && item.recordId) {
       await firstValueFrom(
         this.http.delete(`${environment.apiBaseUrl}/goals/${item.recordId}`),
+      );
+    }
+  }
+
+  private async flushReminderItem(item: {
+    action: "create" | "update" | "delete" | "contribute" | "read";
+    recordId?: string;
+    payload?: Record<string, unknown>;
+  }) {
+    if (item.action === "create") {
+      const reminder = await firstValueFrom(
+        this.http.post<Reminder>(`${environment.apiBaseUrl}/reminders`, item.payload ?? {}),
+      );
+      this.offlineLifeService.reconcileReminder(reminder, item.recordId);
+      return;
+    }
+
+    if (item.action === "update" && item.recordId) {
+      const reminder = await firstValueFrom(
+        this.http.patch<Reminder>(
+          `${environment.apiBaseUrl}/reminders/${item.recordId}`,
+          item.payload ?? {},
+        ),
+      );
+      this.offlineLifeService.reconcileReminder(reminder);
+      return;
+    }
+
+    if (item.action === "delete" && item.recordId) {
+      await firstValueFrom(
+        this.http.delete(`${environment.apiBaseUrl}/reminders/${item.recordId}`),
+      );
+    }
+  }
+
+  private async flushNotificationItem(item: {
+    action: "create" | "update" | "delete" | "contribute" | "read";
+    recordId?: string;
+    payload?: Record<string, unknown>;
+  }) {
+    if (item.action === "read" && item.recordId) {
+      await firstValueFrom(
+        this.http.patch(`${environment.apiBaseUrl}/notifications/${item.recordId}/read`, {}),
       );
     }
   }

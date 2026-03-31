@@ -28,6 +28,7 @@ export class SidebarComponent {
   ];
 
   protected readonly toolItems: NavItem[] = [
+    { label: 'Notificações', icon: 'notifications', route: '/notifications' },
     { label: 'Importações', icon: 'upload_file', route: '/imports' },
     { label: 'Assistente', icon: 'psychology', route: '/assistant' },
     { label: 'Metas', icon: 'target', route: '/goals' },

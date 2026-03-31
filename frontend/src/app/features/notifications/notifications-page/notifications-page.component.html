@@ -1,0 +1,128 @@
+<div class="page-stack notifications-stack">
+  <section class="metrics-row">
+    <app-ui-badge
+      [label]="notificationCenter.unreadCount() + ' não lidas'"
+      [tone]="notificationCenter.unreadCount() ? 'accent' : 'neutral'"
+      [showDot]="notificationCenter.unreadCount() > 0"
+    />
+    <app-ui-badge
+      [label]="notificationCenter.reminders().length + ' lembrete(s)'"
+      tone="success"
+      [showDot]="notificationCenter.reminders().length > 0"
+    />
+    <app-ui-badge
+      [label]="nativeAlertsLabel()"
+      [tone]="notificationCenter.localReminders.notificationsEnabled() ? 'success' : 'warning'"
+      [showDot]="notificationCenter.localReminders.notificationsEnabled()"
+    />
+  </section>
+
+  <div class="notifications-grid">
+    <app-panel
+      title="Notificações do sistema"
+      caption="Alertas gerados pelo LUMEN para importações, insights, previsões e lembretes."
+    >
+      <div class="feed-list" *ngIf="notificationCenter.notifications().length; else noNotifications">
+        <article
+          class="feed-item"
+          *ngFor="let notification of notificationCenter.notifications()"
+          [class.unread]="!notification.isRead"
+        >
+          <div class="feed-copy">
+            <div class="feed-head">
+              <strong>{{ notification.title }}</strong>
+              <span>{{ notification.createdAt | date: "dd/MM HH:mm" }}</span>
+            </div>
+            <p>{{ notification.message }}</p>
+          </div>
+
+          <div class="feed-actions">
+            <app-ui-badge
+              [label]="notification.isRead ? 'Lida' : 'Nova'"
+              [tone]="notification.isRead ? 'neutral' : 'accent'"
+              [showDot]="!notification.isRead"
+            />
+            <app-ui-button
+              *ngIf="!notification.isRead"
+              variant="ghost"
+              size="sm"
+              (click)="markAsRead(notification.id)"
+            >
+              Marcar como lida
+            </app-ui-button>
+          </div>
+        </article>
+      </div>
+
+      <ng-template #noNotifications>
+        <app-empty-state
+          title="Sem notificações por agora"
+          description="Quando o LUMEN detectar eventos importantes, eles passam a aparecer aqui."
+          icon="notifications"
+        />
+      </ng-template>
+    </app-panel>
+
+    <app-panel
+      title="Lembretes programados"
+      caption="Próximos lembretes sincronizados com o dispositivo quando houver permissão."
+    >
+      <div class="feed-list" *ngIf="notificationCenter.reminders().length; else noReminders">
+        <article class="feed-item reminder" *ngFor="let reminder of notificationCenter.reminders()">
+          <div class="feed-copy">
+            <div class="feed-head">
+              <strong>{{ reminder.title }}</strong>
+              <span>{{ reminder.remindAt | date: "dd/MM HH:mm" }}</span>
+            </div>
+            <p>Lembrete programado no fluxo do LUMEN.</p>
+          </div>
+
+          <div class="feed-actions">
+            <app-ui-badge
+              label="Agendado"
+              tone="success"
+              [showDot]="true"
+            />
+          </div>
+        </article>
+      </div>
+
+      <ng-template #noReminders>
+        <app-empty-state
+          title="Sem lembretes ativos"
+          description="Os próximos lembretes do seu workspace vão aparecer aqui."
+          icon="alarm"
+        />
+      </ng-template>
+    </app-panel>
+  </div>
+
+  <app-panel
+    title="Alertas no dispositivo"
+    caption="No iPhone, os lembretes podem ser espelhados como notificações locais do app."
+  >
+    <div class="device-status">
+      <div>
+        <strong>{{ nativeAlertsLabel() }}</strong>
+        <p>
+          {{
+            notificationCenter.localReminders.isNative
+              ? "Quando a permissão estiver ativa, o LUMEN agenda lembretes locais para continuar avisando mesmo sem internet."
+              : "Na web, as notificações locais do dispositivo não ficam disponíveis. No iPhone via Capacitor, elas passam a funcionar."
+          }}
+        </p>
+      </div>
+
+      <app-ui-button
+        *ngIf="
+          notificationCenter.localReminders.isNative &&
+          !notificationCenter.localReminders.notificationsEnabled()
+        "
+        variant="secondary"
+        (click)="enableLocalNotifications()"
+      >
+        Ativar alertas locais
+      </app-ui-button>
+    </div>
+  </app-panel>
+</div>

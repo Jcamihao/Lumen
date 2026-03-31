@@ -5,6 +5,7 @@ import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter, map, startWith } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { LifeApiService } from '../../core/services/life-api.service';
+import { NotificationCenterService } from '../../core/services/notification-center.service';
 import { ThemeService } from '../../core/services/theme.service';
 import { AppHeaderComponent } from '../app-header/app-header.component';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
@@ -36,6 +37,7 @@ export class WorkspaceShellComponent {
   protected readonly authService = inject(AuthService);
   protected readonly themeService = inject(ThemeService);
   protected readonly lifeApiService = inject(LifeApiService);
+  protected readonly notificationCenter = inject(NotificationCenterService);
   private readonly router = inject(Router);
   private readonly currentUrl = toSignal(
     this.router.events.pipe(
@@ -50,6 +52,17 @@ export class WorkspaceShellComponent {
   );
 
   private resolveMeta(url: string): RouteMeta {
+    if (url.startsWith('/notifications')) {
+      return {
+        eyebrow: 'Notificações',
+        title: 'Central de notificações',
+        subtitle:
+          'Lembretes, alertas do sistema e sinais do LUMEN em uma visão só.',
+        actionLabel: 'Ver dashboard',
+        actionRoute: '/dashboard',
+      };
+    }
+
     if (url.startsWith('/tasks')) {
       return {
         eyebrow: 'Tasks',
@@ -129,5 +142,9 @@ export class WorkspaceShellComponent {
 
   protected logout() {
     this.authService.logout();
+  }
+
+  protected markNotificationAsRead(id: string) {
+    this.notificationCenter.markAsRead(id);
   }
 }

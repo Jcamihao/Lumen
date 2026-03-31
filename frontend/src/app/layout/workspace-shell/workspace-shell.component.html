@@ -18,8 +18,13 @@
             [isOffline]="lifeApiService.offlineMode()"
             [pendingSyncCount]="lifeApiService.pendingSyncCount()"
             [syncing]="lifeApiService.syncing()"
+            [notificationEntries]="notificationCenter.recentEntries()"
+            [unreadNotificationsCount]="notificationCenter.unreadCount()"
+            [notificationsLoading]="notificationCenter.loading()"
             (toggleTheme)="themeService.toggle()"
             (quickAction)="navigateTo(currentMeta().actionRoute)"
+            (openNotifications)="navigateTo('/notifications')"
+            (markNotificationRead)="markNotificationAsRead($event)"
             (openSettings)="navigateTo('/settings')"
             (logout)="logout()"
           />

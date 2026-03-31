@@ -177,6 +177,29 @@
         line-height: 1.55;
       }
 
+      .offline-note {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.95rem 1rem;
+        border-radius: var(--radius-lg);
+        border: 1px solid color-mix(in srgb, var(--warning) 22%, var(--border));
+        background: color-mix(in srgb, var(--warning) 7%, var(--card));
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+      }
+
+      .offline-note strong {
+        color: var(--text-primary);
+      }
+
+      .offline-note p {
+        margin: 0.25rem 0 0;
+        color: var(--text-medium);
+        line-height: 1.55;
+      }
+
       .consent-overlay {
         position: fixed;
         inset: 0;

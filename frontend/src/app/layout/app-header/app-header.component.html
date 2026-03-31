@@ -28,6 +28,65 @@
           {{ actionLabel }}
         </app-ui-button>
 
+        <div class="notification-shell">
+          <button
+            class="notification-trigger"
+            type="button"
+            aria-label="Abrir notificações"
+            [attr.aria-expanded]="notificationsOpen"
+            (click)="toggleNotifications($event)"
+          >
+            <span class="material-symbols-rounded">notifications</span>
+            <span class="notification-count" *ngIf="unreadNotificationsCount">
+              {{ unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount }}
+            </span>
+          </button>
+
+          <div class="notification-menu" *ngIf="notificationsOpen">
+            <div class="notification-menu-head">
+              <div>
+                <strong>Notificações</strong>
+                <p>Radar recente do seu workspace</p>
+              </div>
+              <app-ui-button variant="ghost" size="sm" (click)="handleOpenNotifications()">
+                Abrir central
+              </app-ui-button>
+            </div>
+
+            <div class="notification-loading" *ngIf="notificationsLoading">Atualizando sinais...</div>
+
+            <div class="notification-list" *ngIf="notificationEntries.length; else noNotifications">
+              <button
+                type="button"
+                class="notification-item"
+                *ngFor="let entry of notificationEntries"
+                [class.unread]="entry.kind === 'notification' && !entry.isRead"
+                (click)="handleNotificationEntry(entry)"
+              >
+                <div class="notification-copy">
+                  <div class="notification-top">
+                    <strong>{{ entry.title }}</strong>
+                    <span>{{ entry.date | date: 'dd/MM HH:mm' }}</span>
+                  </div>
+                  <p>{{ entry.description }}</p>
+                </div>
+
+                <app-ui-badge
+                  [label]="notificationLabel(entry)"
+                  [tone]="notificationTone(entry)"
+                  [showDot]="entry.kind === 'notification' && !entry.isRead"
+                />
+              </button>
+            </div>
+
+            <ng-template #noNotifications>
+              <div class="notification-empty">
+                Nenhum alerta recente apareceu por aqui.
+              </div>
+            </ng-template>
+          </div>
+        </div>
+
         <div class="profile-shell">
           <div class="profile">
             <span class="profile-avatar-shell">

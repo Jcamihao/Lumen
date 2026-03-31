@@ -1,12 +1,14 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
+import { NativeStorageService } from './native-storage.service';
 
 export type ThemeMode = 'light' | 'dark';
 
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
+  private readonly storage = inject(NativeStorageService);
   private readonly storageKey = 'lumen.theme';
   private readonly modeSignal = signal<ThemeMode>(
-    (localStorage.getItem(this.storageKey) as ThemeMode | null) ?? 'light',
+    (this.storage.getItem(this.storageKey) as ThemeMode | null) ?? 'light',
   );
 
   readonly mode = this.modeSignal.asReadonly();
@@ -23,6 +25,6 @@ export class ThemeService {
 
   private applyTheme(mode: ThemeMode) {
     document.documentElement.dataset['theme'] = mode;
-    localStorage.setItem(this.storageKey, mode);
+    this.storage.setItem(this.storageKey, mode);
   }
 }

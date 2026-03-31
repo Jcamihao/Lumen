@@ -54,6 +54,17 @@
           />
         </div>
 
+        <div class="offline-note" *ngIf="offlineMode()">
+          <div>
+            <strong>Você está offline</strong>
+            <p>
+              O assistente vai responder só com a leitura local do dispositivo.
+              Nenhuma pergunta será enviada ao SelahIA até a conexão voltar.
+            </p>
+          </div>
+          <app-ui-badge label="Modo offline" tone="warning" />
+        </div>
+
         <form class="form-grid" [formGroup]="form" (ngSubmit)="ask()">
           <textarea
             rows="5"

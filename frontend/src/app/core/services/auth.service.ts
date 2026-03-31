@@ -14,13 +14,14 @@ import {
 import { environment } from "../../../environments/environment";
 import { AuthResponse, User } from "../models/domain.models";
 import { NetworkService } from "./network.service";
+import { NativeStorageService } from "./native-storage.service";
 
 @Injectable({ providedIn: "root" })
 export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private readonly networkService = inject(NetworkService);
-  private readonly storage = globalThis.localStorage;
+  private readonly storage = inject(NativeStorageService);
   private readonly accessTokenKey = "lumen.accessToken";
   private readonly refreshTokenKey = "lumen.refreshToken";
   private readonly userKey = "lumen.user";

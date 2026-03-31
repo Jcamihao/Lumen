@@ -13,10 +13,15 @@ import {
 import { formatLocalDateLabel, todayLocalInputValue } from "../utils/date.utils";
 import { AuthService } from "./auth.service";
 
+import { NativeStorageService } from "./native-storage.service";
+
+type SyncEntity = "task" | "transaction" | "goal" | "user" | "reminder" | "notification";
+type SyncAction = "create" | "update" | "delete" | "contribute" | "read";
+
 type SyncQueueItem = {
   id: string;
-  entity: "task" | "transaction" | "goal" | "user";
-  action: "create" | "update" | "delete" | "contribute";
+  entity: SyncEntity;
+  action: SyncAction;
   recordId?: string;
   payload?: Record<string, unknown>;
   createdAt: string;
@@ -30,6 +35,7 @@ type DashboardCache = Pick<
 @Injectable({ providedIn: "root" })
 export class OfflineLifeService {
   private readonly authService = inject(AuthService);
+  private readonly storageService = inject(NativeStorageService);
   private readonly queueSignal = signal<SyncQueueItem[]>([]);
 
   readonly pendingSyncCount = computed(() => this.queueSignal().length);
@@ -73,6 +79,7 @@ export class OfflineLifeService {
     this.writeScopedValue("tasks", summary.tasks.items);
     this.writeScopedValue("transactions", summary.finances.recentTransactions);
     this.writeScopedValue("goals", summary.goals);
+    this.writeScopedValue("reminders", summary.reminders);
     this.writeScopedValue("notifications", summary.notifications);
   }
 
@@ -127,7 +134,7 @@ export class OfflineLifeService {
         recentTransactions: transactions.slice(0, 8),
       },
       goals,
-      reminders: cache.reminders ?? [],
+      reminders: this.readReminders(cache.reminders ?? []),
       insights: this.buildInsights(tasks, transactions, goals, cache.insights ?? []),
       forecast: {
         id: cache.forecast?.id ?? "offline-forecast",
@@ -229,6 +236,28 @@ export class OfflineLifeService {
     return transaction;
   }
 
+  queueTransactionUpdate(id: string, payload: Record<string, unknown>) {
+    const transactions = this.readTransactions().map((transaction) =>
+      transaction.id === id
+        ? this.applyTransactionPatch(transaction, payload)
+        : transaction,
+    );
+    this.cacheTransactions(transactions);
+
+    if (this.mergeIntoPendingCreate("transaction", id, payload)) {
+      return transactions.find((transaction) => transaction.id === id) ?? null;
+    }
+
+    this.enqueue({
+      entity: "transaction",
+      action: "update",
+      recordId: id,
+      payload,
+    });
+
+    return transactions.find((transaction) => transaction.id === id) ?? null;
+  }
+
   queueTransactionDelete(id: string) {
     this.cacheTransactions(
       this.readTransactions().filter((transaction) => transaction.id !== id),
@@ -314,6 +343,28 @@ export class OfflineLifeService {
     return currentGoal;
   }
 
+  queueGoalUpdate(id: string, payload: Record<string, unknown>) {
+    const goals = this.readGoals().map((goal) =>
+      goal.id === id
+        ? this.applyGoalPatch(goal, payload)
+        : goal,
+    );
+    this.cacheGoals(goals);
+
+    if (this.mergeIntoPendingCreate("goal", id, payload)) {
+      return goals.find((goal) => goal.id === id) ?? null;
+    }
+
+    this.enqueue({
+      entity: "goal",
+      action: "update",
+      recordId: id,
+      payload,
+    });
+
+    return goals.find((goal) => goal.id === id) ?? null;
+  }
+
   queueGoalDelete(id: string) {
     this.cacheGoals(this.readGoals().filter((goal) => goal.id !== id));
 
@@ -343,12 +394,102 @@ export class OfflineLifeService {
     }
   }
 
+  readReminders(fallback: Reminder[] = []) {
+    return this.sortReminders(this.readScopedValue("reminders", fallback));
+  }
+
+  cacheReminders(reminders: Reminder[]) {
+    this.writeScopedValue("reminders", this.sortReminders(reminders));
+  }
+
+  queueReminderCreate(payload: Record<string, unknown>) {
+    const reminder = this.buildOfflineReminder(payload);
+    this.cacheReminders([reminder, ...this.readReminders()]);
+    this.enqueue({
+      entity: "reminder",
+      action: "create",
+      recordId: reminder.id,
+      payload,
+    });
+    return reminder;
+  }
+
+  queueReminderUpdate(id: string, payload: Record<string, unknown>) {
+    const reminders = this.readReminders().map((reminder) =>
+      reminder.id === id
+        ? this.applyReminderPatch(reminder, payload)
+        : reminder,
+    );
+    this.cacheReminders(reminders);
+
+    if (this.mergeIntoPendingCreate("reminder", id, payload)) {
+      return reminders.find((reminder) => reminder.id === id) ?? null;
+    }
+
+    this.enqueue({
+      entity: "reminder",
+      action: "update",
+      recordId: id,
+      payload,
+    });
+
+    return reminders.find((reminder) => reminder.id === id) ?? null;
+  }
+
+  queueReminderDelete(id: string) {
+    this.cacheReminders(this.readReminders().filter((reminder) => reminder.id !== id));
+
+    if (this.dropPendingCreateChain("reminder", id)) {
+      return { success: true };
+    }
+
+    this.dropPendingMutations("reminder", id);
+    this.enqueue({
+      entity: "reminder",
+      action: "delete",
+      recordId: id,
+    });
+    return { success: true };
+  }
+
+  reconcileReminder(remoteReminder: Reminder, previousId?: string) {
+    const reminders = this.readReminders();
+    const nextReminders = previousId
+      ? reminders.map((reminder) =>
+          reminder.id === previousId ? remoteReminder : reminder,
+        )
+      : this.upsertById(reminders, remoteReminder);
+
+    this.cacheReminders(nextReminders);
+
+    if (previousId && previousId !== remoteReminder.id) {
+      this.replaceQueueRecordId("reminder", previousId, remoteReminder.id);
+    }
+  }
+
   readNotifications(fallback: Notification[] = []) {
     return this.readScopedValue("notifications", fallback);
   }
 
   cacheNotifications(notifications: Notification[]) {
     this.writeScopedValue("notifications", notifications);
+  }
+
+  queueNotificationRead(id: string) {
+    const notifications = this.readNotifications().map((notification) =>
+      notification.id === id
+        ? { ...notification, isRead: true }
+        : notification,
+    );
+    this.cacheNotifications(notifications);
+
+    this.dropPendingMutations("notification", id);
+    this.enqueue({
+      entity: "notification",
+      action: "read",
+      recordId: id,
+    });
+    return { success: true };
   }
 
   queueUserUpdate(payload: Record<string, unknown>) {
@@ -487,6 +628,14 @@ export class OfflineLifeService {
     };
   }
 
+  private buildOfflineReminder(payload: Record<string, unknown>): Reminder {
+    return {
+      id: this.tempId("reminder"),
+      title: String(payload["title"] || "Novo lembrete"),
+      remindAt: String(payload["remindAt"] || new Date().toISOString()),
+    };
+  }
+
   private applyTaskPatch(task: Task, payload: Record<string, unknown>): Task {
     return {
       ...task,
@@ -514,6 +663,81 @@ export class OfflineLifeService {
         payload["categoryId"] !== undefined
           ? this.resolveTaskCategory(this.optionalString(payload["categoryId"]))
           : task.category,
+    };
+  }
+
+  private applyTransactionPatch(
+    transaction: Transaction,
+    payload: Record<string, unknown>,
+  ): Transaction {
+    const nextType =
+      (payload["type"] as Transaction["type"] | undefined) ?? transaction.type;
+
+    return {
+      ...transaction,
+      description:
+        typeof payload["description"] === "string"
+          ? String(payload["description"])
+          : transaction.description,
+      type: nextType,
+      amount:
+        payload["amount"] !== undefined
+          ? Math.abs(Number(payload["amount"] || 0))
+          : transaction.amount,
+      date:
+        payload["date"] !== undefined
+          ? String(payload["date"] || transaction.date)
+          : transaction.date,
+      category:
+        payload["categoryId"] !== undefined
+          ? this.resolveFinanceCategory(
+              this.optionalString(payload["categoryId"]),
+              nextType,
+            )
+          : transaction.category,
+    };
+  }
+
+  private applyGoalPatch(goal: Goal, payload: Record<string, unknown>): Goal {
+    return {
+      ...goal,
+      title:
+        typeof payload["title"] === "string" ? String(payload["title"]) : goal.title,
+      description:
+        payload["description"] !== undefined
+          ? this.optionalString(payload["description"])
+          : goal.description,
+      targetAmount:
+        payload["targetAmount"] !== undefined
+          ? Number(payload["targetAmount"] || 0)
+          : goal.targetAmount,
+      currentAmount:
+        payload["currentAmount"] !== undefined
+          ? Number(payload["currentAmount"] || 0)
+          : goal.currentAmount,
+      targetDate:
+        payload["targetDate"] !== undefined
+          ? this.optionalString(payload["targetDate"])
+          : goal.targetDate,
+      status:
+        (payload["status"] as Goal["status"] | undefined) ?? goal.status,
+    };
+  }
+
+  private applyReminderPatch(
+    reminder: Reminder,
+    payload: Record<string, unknown>,
+  ): Reminder {
+    return {
+      ...reminder,
+      title:
+        typeof payload["title"] === "string"
+          ? String(payload["title"])
+          : reminder.title,
+      remindAt:
+        payload["remindAt"] !== undefined
+          ? String(payload["remindAt"] || reminder.remindAt)
+          : reminder.remindAt,
     };
   }
 
@@ -661,7 +885,7 @@ export class OfflineLifeService {
   }
 
   private mergeIntoPendingCreate(
-    entity: SyncQueueItem["entity"],
+    entity: SyncEntity,
     recordId: string,
     payload: Record<string, unknown>,
   ) {
@@ -692,7 +916,7 @@ export class OfflineLifeService {
   }
 
   private dropPendingCreateChain(
-    entity: SyncQueueItem["entity"],
+    entity: SyncEntity,
     recordId: string,
   ) {
     const before = this.queueSignal().length;
@@ -712,7 +936,7 @@ export class OfflineLifeService {
   }
 
   private dropPendingMutations(
-    entity: SyncQueueItem["entity"],
+    entity: SyncEntity,
     recordId: string,
   ) {
     this.updateQueue((queue) =>
@@ -774,6 +998,13 @@ export class OfflineLifeService {
     });
   }
 
+  private sortReminders(reminders: Reminder[]) {
+    return [...reminders].sort(
+      (left, right) =>
+        new Date(left.remindAt).getTime() - new Date(right.remindAt).getTime(),
+    );
+  }
+
   private formatCurrency(amount: number, currency: string) {
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
@@ -783,14 +1014,8 @@ export class OfflineLifeService {
   }
 
   private readScopedValue<T>(name: string, fallback: T): T {
-    const storage = this.storage();
-
-    if (!storage) {
-      return fallback;
-    }
-
     try {
-      const raw = storage.getItem(this.scopedKey(name));
+      const raw = this.storageService.getItem(this.scopedKey(name));
       return raw ? (JSON.parse(raw) as T) : fallback;
     } catch {
       return fallback;
@@ -798,14 +1023,8 @@ export class OfflineLifeService {
   }
 
   private writeScopedValue<T>(name: string, value: T) {
-    const storage = this.storage();
-
-    if (!storage) {
-      return;
-    }
-
     try {
-      storage.setItem(this.scopedKey(name), JSON.stringify(value));
+      this.storageService.setItem(this.scopedKey(name), JSON.stringify(value));
     } catch {
       // Ignore storage quota issues.
     }
@@ -813,14 +1032,6 @@ export class OfflineLifeService {
 
   private scopedKey(name: string) {
     return `lumen:offline:${this.authService.currentUser()?.id ?? "anonymous"}:${name}`;
-  }
-
-  private storage() {
-    try {
-      return typeof window !== "undefined" ? window.localStorage : null;
-    } catch {
-      return null;
-    }
   }
 
   private tempId(prefix: string) {

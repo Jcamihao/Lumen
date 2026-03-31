@@ -90,6 +90,15 @@ export type Notification = {
   createdAt: string;
 };
 
+export type NotificationCenterEntry = {
+  id: string;
+  kind: "notification" | "reminder";
+  title: string;
+  description: string;
+  date: string;
+  isRead: boolean;
+};
+
 export type DashboardSummary = {
   user: {
     id: string;
