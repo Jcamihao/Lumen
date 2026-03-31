@@ -1,358 +1,249 @@
+<div class="proto-page imports-page">
+  <header class="proto-header imports-page__header">
+    <div class="proto-header__copy">
+      <p class="section-kicker">Entrada de dados</p>
+      <h2>Importações</h2>
+      <p>Traga transações para o Lumen por CSV ou pela leitura de nota fiscal com IA.</p>
+    </div>
+  </header>
 
-    <div class="page-stack">
-      <section class="split-layout imports-layout">
-        <app-panel
-          title="Ler nota fiscal com IA"
-          caption="Extraia total, estabelecimento e itens da compra a partir da foto"
-        >
-          <ng-container *ngIf="canUseReceiptAi(); else aiDisabled">
-            <div class="upload-card">
-              <span class="material-symbols-rounded">receipt_long</span>
-              <strong>Envie a foto da nota fiscal</strong>
-              <p>O SelahIA lê a imagem, organiza os itens e monta um preview antes de gravar.</p>
-              <input
-                #receiptInput
-                type="file"
-                accept="image/*"
-                hidden
-                (change)="handleReceiptFile($event)"
-              >
-              <app-ui-button
-                icon="photo_camera"
-                [disabled]="receiptLoading()"
-                (click)="receiptInput.click()"
-              >
-                {{ receiptLoading() ? 'Lendo nota...' : 'Selecionar imagem' }}
-              </app-ui-button>
-            </div>
+  <div class="imports-tabs">
+    <button
+      type="button"
+      class="imports-tab"
+      [class.active]="activeTab() === 'receipt'"
+      (click)="selectTab('receipt')"
+    >
+      Nota fiscal
+    </button>
+    <button
+      type="button"
+      class="imports-tab"
+      [class.active]="activeTab() === 'csv'"
+      (click)="selectTab('csv')"
+    >
+      Arquivo CSV
+    </button>
+  </div>
 
-            <div class="preview-badges" *ngIf="receiptPreview() as receipt">
-              <app-ui-badge [label]="confidenceLabel(receipt.confidence)" tone="accent" />
-              <app-ui-badge
-                *ngIf="receipt.documentType"
-                [label]="documentTypeLabel(receipt.documentType)"
-                tone="neutral"
-              />
-              <app-ui-badge
-                *ngIf="receipt.qrCodeDetected"
-                label="QR fiscal detectado"
-                tone="accent"
-              />
-              <app-ui-badge
-                *ngIf="receipt.possibleDuplicate"
-                label="Possível duplicada"
-                tone="warning"
-              />
-              <app-ui-badge
-                *ngIf="receipt.suggestedCategoryName"
-                [label]="'Sugestão: ' + receipt.suggestedCategoryName"
-                tone="success"
-              />
-            </div>
+  <article class="proto-surface" *ngIf="activeTab() === 'receipt'">
+    <div class="proto-surface__head">
+      <div>
+        <h3>Importar nota fiscal por imagem</h3>
+        <p>Use IA para extrair automaticamente itens, total e estabelecimento.</p>
+      </div>
+      <span class="proto-tag" [attr.data-tone]="canUseReceiptAi() ? 'accent' : 'warning'">
+        {{ canUseReceiptAi() ? 'IA ativa' : 'IA indisponível' }}
+      </span>
+    </div>
 
-            <p class="error-message" *ngIf="receiptError()">{{ receiptError() }}</p>
-          </ng-container>
+    <div class="proto-surface__body" *ngIf="canUseReceiptAi(); else aiDisabled">
+      <div class="imports-upload-box imports-upload-box--receipt" *ngIf="!receiptPreview()">
+        <span class="imports-upload-box__eyebrow">Fluxo guiado</span>
+        <span class="material-symbols-rounded">photo_camera</span>
+        <strong>Leve a nota para a mesa</strong>
+        <p>Selecione uma imagem para o Lumen extrair os itens, sugerir categoria e montar a compra.</p>
 
-          <ng-template #aiDisabled>
-            <app-empty-state
-              title="IA externa desativada"
-              description="Ative o SelahIA nas configurações para importar notas fiscais por foto."
-              icon="shield_lock"
+        <div class="imports-upload-box__notes">
+          <span>Extrai itens</span>
+          <span>Resume o estabelecimento</span>
+          <span>Revisa antes de salvar</span>
+        </div>
+
+        <div class="proto-actions-row">
+          <input #receiptInput type="file" accept="image/*" hidden (change)="handleReceiptFile($event)" />
+          <button type="button" class="proto-button" [disabled]="receiptLoading()" (click)="receiptInput.click()">
+            {{ receiptLoading() ? 'Lendo nota...' : 'Selecionar imagem' }}
+          </button>
+        </div>
+      </div>
+
+      <p class="import-error" *ngIf="receiptError()">{{ receiptError() }}</p>
+
+      <div *ngIf="receiptPreview() as receipt" class="imports-preview-stack">
+        <div class="proto-note">
+          <strong class="proto-inline-title">
+            {{ receipt.merchantName || 'Estabelecimento não identificado' }}
+          </strong>
+          <p>{{ confidenceLabel(receipt.confidence) }} · {{ documentTypeLabel(receipt.documentType || 'Documento') }}</p>
+        </div>
+
+        <div class="proto-form-grid">
+          <div class="proto-field">
+            <label>Estabelecimento</label>
+            <input [ngModel]="receiptMerchantName()" (ngModelChange)="receiptMerchantName.set($event)" />
+          </div>
+
+          <div class="proto-field">
+            <label>Data da compra</label>
+            <input type="date" [ngModel]="receiptPurchaseDate()" (ngModelChange)="receiptPurchaseDate.set($event)" />
+          </div>
+
+          <div class="proto-field">
+            <label>Total</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              [ngModel]="receiptTotalAmount()"
+              (ngModelChange)="receiptTotalAmount.set(toNumber($event, receipt.totalAmount))"
             />
-          </ng-template>
-        </app-panel>
+          </div>
 
-        <app-panel
-          title="Preview da nota"
-          caption="Revise os itens antes de lançar a compra no financeiro"
-        >
-          <div *ngIf="receiptPreview() as receipt; else noReceiptPreview" class="receipt-preview">
-            <div class="receipt-meta-grid">
-              <label class="field">
-                <span>Estabelecimento</span>
+          <div class="proto-field">
+            <label>Categoria financeira</label>
+            <select [ngModel]="receiptCategoryId()" (ngModelChange)="receiptCategoryId.set($event)">
+              <option value="">Sem categoria</option>
+              <option *ngFor="let category of expenseCategories()" [value]="category.id">
+                {{ category.name }}
+              </option>
+            </select>
+          </div>
+
+          <div class="proto-field proto-field--full">
+            <label>Descrição da transação</label>
+            <input [ngModel]="receiptDescription()" (ngModelChange)="receiptDescription.set($event)" />
+          </div>
+        </div>
+
+        <div class="proto-actions-row" *ngIf="receipt.notes.length">
+          <span class="proto-chip" *ngFor="let note of receipt.notes">{{ note }}</span>
+        </div>
+
+        <div class="proto-list">
+          <article class="proto-list-item" *ngFor="let item of receipt.items; let index = index">
+            <div class="proto-list-item__top">
+              <strong>{{ item.description }}</strong>
+              <span class="proto-tag">{{ item.categoryHint || 'Sem sugestão' }}</span>
+            </div>
+
+            <p>Qtd. {{ item.quantity }} · {{ item.unitPrice !== null ? previewAmount(item.unitPrice) : 'Sem valor unitário' }}</p>
+
+            <div class="proto-list-item__meta-row">
+              <strong>{{ previewAmount(item.totalPrice) }}</strong>
+              <button
+                type="button"
+                class="proto-button proto-button--ghost"
+                *ngIf="!isEditingReceiptItem(index)"
+                (click)="startEditingReceiptItem(index)"
+              >
+                Ajustar
+              </button>
+            </div>
+
+            <div class="proto-form-grid" *ngIf="isEditingReceiptItem(index)">
+              <div class="proto-field proto-field--full">
+                <label>Descrição</label>
+                <input [ngModel]="item.description" (ngModelChange)="updateReceiptItem(index, 'description', $event)" />
+              </div>
+              <div class="proto-field">
+                <label>Quantidade</label>
                 <input
-                  type="text"
-                  [ngModel]="receiptMerchantName()"
-                  (ngModelChange)="receiptMerchantName.set($event)"
-                >
-              </label>
-
-              <label class="field">
-                <span>Data da compra</span>
-                <input
-                  type="date"
-                  [ngModel]="receiptPurchaseDate()"
-                  (ngModelChange)="receiptPurchaseDate.set($event)"
-                >
-              </label>
-
-              <label class="field field-total">
-                <span>Total da compra</span>
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  [ngModel]="item.quantity"
+                  (ngModelChange)="updateReceiptItem(index, 'quantity', toNumber($event, item.quantity), true)"
+                />
+              </div>
+              <div class="proto-field">
+                <label>Valor unitário</label>
                 <input
                   type="number"
                   min="0"
                   step="0.01"
-                  [ngModel]="receiptTotalAmount()"
-                  (ngModelChange)="receiptTotalAmount.set(toNumber($event, receipt.totalAmount))"
-                >
-              </label>
-
-              <label class="field">
-                <span>Categoria financeira</span>
-                <select
-                  [ngModel]="receiptCategoryId()"
-                  (ngModelChange)="receiptCategoryId.set($event)"
-                >
-                  <option value="">Sem categoria</option>
-                  <option
-                    *ngFor="let category of expenseCategories()"
-                    [value]="category.id"
-                  >
-                    {{ category.name }}
-                  </option>
-                </select>
-              </label>
-
-              <label class="field field-full">
-                <span>Descrição da transação</span>
+                  [ngModel]="item.unitPrice"
+                  (ngModelChange)="updateReceiptItem(index, 'unitPrice', toNullableNumber($event), true)"
+                />
+              </div>
+              <div class="proto-field">
+                <label>Total</label>
                 <input
-                  type="text"
-                  [ngModel]="receiptDescription()"
-                  (ngModelChange)="receiptDescription.set($event)"
-                >
-              </label>
-            </div>
-
-            <div class="preview-badges notes" *ngIf="receipt.notes.length">
-              <app-ui-badge
-                *ngFor="let note of receipt.notes"
-                [label]="note"
-                tone="neutral"
-              />
-            </div>
-
-            <div
-              class="receipt-fiscal-meta"
-              *ngIf="
-                receipt.documentType ||
-                receipt.merchantTaxId ||
-                receipt.accessKey ||
-                receipt.qrCodeText
-              "
-            >
-              <div class="meta-card" *ngIf="receipt.documentType">
-                <span>Documento</span>
-                <strong>{{ documentTypeLabel(receipt.documentType) }}</strong>
-              </div>
-              <div class="meta-card" *ngIf="receipt.merchantTaxId">
-                <span>CNPJ/CPF</span>
-                <strong>{{ receipt.merchantTaxId }}</strong>
-              </div>
-              <div class="meta-card" *ngIf="receipt.accessKey">
-                <span>Chave de acesso</span>
-                <strong>{{ receipt.accessKey }}</strong>
-              </div>
-              <div class="meta-card" *ngIf="receipt.qrCodeText">
-                <span>QR fiscal</span>
-                <strong>{{ shortenQrText(receipt.qrCodeText) }}</strong>
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  [ngModel]="item.totalPrice"
+                  (ngModelChange)="updateReceiptItem(index, 'totalPrice', toNumber($event, item.totalPrice))"
+                />
               </div>
             </div>
+          </article>
+        </div>
 
-            <div class="duplicate-warning" *ngIf="receipt.possibleDuplicate">
-              <strong>Compra possivelmente já registrada</strong>
-              <p>{{ receipt.duplicateTransactionDescription || 'Existe uma transação parecida no mesmo dia e valor.' }}</p>
-            </div>
-
-            <div class="items-table-shell">
-              <table class="items-table">
-                <thead>
-                  <tr>
-                    <th class="col-index">#</th>
-                    <th class="col-description">Produto</th>
-                    <th class="col-quantity">Qtd.</th>
-                    <th class="col-unit">Unit.</th>
-                    <th class="col-total">Total</th>
-                    <th class="col-category">Categoria</th>
-                    <th class="col-actions">Ajuste</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  <tr *ngFor="let item of receipt.items; let index = index">
-                    <td class="item-index">{{ index + 1 }}</td>
-                    <td>
-                      <ng-container *ngIf="isEditingReceiptItem(index); else descriptionValue">
-                        <input
-                          type="text"
-                          [ngModel]="item.description"
-                          (ngModelChange)="updateReceiptItem(index, 'description', $event)"
-                        >
-                      </ng-container>
-                      <ng-template #descriptionValue>
-                        <div class="item-value item-description">{{ item.description }}</div>
-                      </ng-template>
-                    </td>
-                    <td>
-                      <ng-container *ngIf="isEditingReceiptItem(index); else quantityValue">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.001"
-                          [ngModel]="item.quantity"
-                          (ngModelChange)="updateReceiptItem(index, 'quantity', toNumber($event, item.quantity), true)"
-                        >
-                      </ng-container>
-                      <ng-template #quantityValue>
-                        <div class="item-value">{{ item.quantity }}</div>
-                      </ng-template>
-                    </td>
-                    <td>
-                      <ng-container *ngIf="isEditingReceiptItem(index); else unitValue">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          [ngModel]="item.unitPrice"
-                          (ngModelChange)="updateReceiptItem(index, 'unitPrice', toNullableNumber($event), true)"
-                        >
-                      </ng-container>
-                      <ng-template #unitValue>
-                        <div class="item-value">
-                          {{ item.unitPrice !== null ? previewAmount(item.unitPrice) : 'Sem valor' }}
-                        </div>
-                      </ng-template>
-                    </td>
-                    <td>
-                      <ng-container *ngIf="isEditingReceiptItem(index); else totalValue">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          [ngModel]="item.totalPrice"
-                          (ngModelChange)="updateReceiptItem(index, 'totalPrice', toNumber($event, item.totalPrice))"
-                        >
-                      </ng-container>
-                      <ng-template #totalValue>
-                        <div class="item-value">{{ previewAmount(item.totalPrice) }}</div>
-                      </ng-template>
-                    </td>
-                    <td>
-                      <div class="item-category">
-                        {{ item.categoryHint || 'Sem sugestão' }}
-                      </div>
-                    </td>
-                    <td>
-                      <div class="item-edit-actions">
-                        <app-ui-button
-                          *ngIf="!isEditingReceiptItem(index); else doneEditingButton"
-                          variant="ghost"
-                          size="sm"
-                          icon="edit"
-                          (click)="startEditingReceiptItem(index)"
-                        >
-                          Ajustar
-                        </app-ui-button>
-
-                        <ng-template #doneEditingButton>
-                          <app-ui-button
-                            variant="secondary"
-                            size="sm"
-                            icon="done"
-                            (click)="stopEditingReceiptItem()"
-                          >
-                            Concluir
-                          </app-ui-button>
-                        </ng-template>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div class="receipt-actions">
-              <div class="receipt-summary">
-                <strong>{{ receipt.items.length }} item(ns)</strong>
-                <span>{{ previewAmount(receiptTotalAmount()) }}</span>
-              </div>
-
-              <app-ui-button
-                icon="receipt"
-                [disabled]="receiptSaving()"
-                (click)="commitReceipt()"
-              >
-                {{ receiptSaving() ? 'Registrando compra...' : 'Registrar compra' }}
-              </app-ui-button>
-            </div>
-          </div>
-
-          <ng-template #noReceiptPreview>
-            <app-empty-state
-              title="Nenhuma nota lida ainda"
-              description="Envie uma imagem da nota fiscal para revisar os itens antes de salvar."
-              icon="photo"
-            />
-          </ng-template>
-        </app-panel>
-      </section>
-
-      <section class="split-layout imports-layout">
-        <app-panel title="Importar CSV" caption="Preview com deduplicação antes de gravar">
-          <div class="upload-card">
-            <span class="material-symbols-rounded">upload_file</span>
-            <strong>Envie seu extrato em CSV</strong>
-            <p>O LUMEN identifica duplicidades antes de confirmar a importação.</p>
-            <input #fileInput type="file" accept=".csv,text/csv" hidden (change)="handleFile($event)">
-            <app-ui-button icon="upload" (click)="fileInput.click()">
-              Selecionar arquivo
-            </app-ui-button>
-          </div>
-
-          <div class="preview-badges" *ngIf="preview()">
-            <app-ui-badge [label]="preview()!.totalRows + ' linhas'" tone="accent" />
-            <app-ui-badge [label]="preview()!.duplicates + ' duplicadas'" [tone]="preview()!.duplicates ? 'warning' : 'success'" />
-          </div>
-
-          <app-ui-button
-            *ngIf="preview()"
-            variant="secondary"
-            icon="done_all"
-            [fullWidth]="true"
-            (click)="commitImport()"
-          >
-            Confirmar importação
-          </app-ui-button>
-        </app-panel>
-
-        <app-panel title="Preview CSV" caption="Linhas identificadas antes da gravação">
-          <div *ngIf="preview(); else noPreview">
-            <div class="preview-meta">
-              <strong>{{ preview()!.fileName }}</strong>
-              <p>{{ preview()!.duplicates }} duplicada(s) em {{ preview()!.totalRows }} linha(s)</p>
-            </div>
-
-            <div class="stack-list">
-              <app-list-item
-                *ngFor="let row of preview()!.rows"
-                [title]="row.description"
-                [subtitle]="row.type + ' · ' + row.date"
-                [meta]="previewAmount(row.amount)"
-                [metaTone]="row.type === 'INCOME' ? 'positive' : 'negative'"
-                [badge]="row.duplicate ? 'Duplicada' : 'Nova'"
-                [badgeTone]="row.duplicate ? 'warning' : 'success'"
-                icon="table_chart"
-              />
-            </div>
-          </div>
-
-          <ng-template #noPreview>
-            <app-empty-state
-              title="Nenhum arquivo carregado"
-              description="Envie um CSV para ver o preview inteligente antes de importar."
-              icon="table_chart"
-            />
-          </ng-template>
-        </app-panel>
-      </section>
+        <div class="proto-actions-row">
+          <button type="button" class="proto-button proto-button--secondary" [disabled]="receiptSaving()" (click)="commitReceipt()">
+            {{ receiptSaving() ? 'Registrando...' : 'Confirmar importação' }}
+          </button>
+        </div>
+      </div>
     </div>
-  
+
+    <ng-template #aiDisabled>
+      <div class="proto-empty">
+        <strong>IA externa desativada</strong>
+        <p>Ative o assistente nas configurações para importar notas fiscais por foto.</p>
+      </div>
+    </ng-template>
+  </article>
+
+  <article class="proto-surface" *ngIf="activeTab() === 'csv'">
+    <div class="proto-surface__head">
+      <div>
+        <h3>Importar arquivo CSV</h3>
+        <p>Faça upload do extrato e revise a prévia antes de registrar no Lumen.</p>
+      </div>
+    </div>
+
+    <div class="proto-surface__body">
+      <div class="imports-upload-box imports-upload-box--csv" *ngIf="!preview()">
+        <span class="imports-upload-box__eyebrow">Entrada em lote</span>
+        <span class="material-symbols-rounded">upload_file</span>
+        <strong>Traga o extrato para dentro</strong>
+        <p>Arquivos CSV do seu banco ou planilha pessoal, com revisão antes da confirmação.</p>
+
+        <div class="imports-upload-box__notes">
+          <span>Prévia das linhas</span>
+          <span>Detecção de duplicadas</span>
+          <span>Confirmação manual</span>
+        </div>
+
+        <div class="proto-actions-row">
+          <input #csvInput type="file" accept=".csv,text/csv" hidden (change)="handleFile($event)" />
+          <button type="button" class="proto-button" (click)="csvInput.click()">
+            Selecionar arquivo CSV
+          </button>
+        </div>
+      </div>
+
+      <div *ngIf="preview() as importPreview" class="imports-preview-stack">
+        <div class="proto-note">
+          <strong class="proto-inline-title">{{ importPreview.fileName }}</strong>
+          <p>
+            {{ importPreview.totalRows }} linhas encontradas, com
+            {{ importPreview.duplicates }} possível(is) duplicada(s).
+          </p>
+        </div>
+
+        <div class="proto-list">
+          <article class="proto-list-item" *ngFor="let row of importPreview.rows | slice:0:10">
+            <div class="proto-list-item__top">
+              <strong>{{ row.description }}</strong>
+              <span class="proto-tag">{{ row.type }}</span>
+            </div>
+            <p>{{ row.date | date: 'dd/MM/yyyy' }} · {{ row.categoryName || 'Sem categoria' }}</p>
+            <div class="proto-list-item__meta-row">
+              <strong>{{ row.amount | currency: 'BRL' : 'symbol' : '1.2-2' : 'pt-BR' }}</strong>
+              <span class="proto-chip" *ngIf="row.duplicate">Duplicada</span>
+            </div>
+          </article>
+        </div>
+
+        <div class="proto-actions-row">
+          <button type="button" class="proto-button proto-button--secondary" (click)="commitImport()">
+            Confirmar importação
+          </button>
+        </div>
+      </div>
+    </div>
+  </article>
+</div>

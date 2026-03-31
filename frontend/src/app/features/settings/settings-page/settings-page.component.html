@@ -1,282 +1,264 @@
+<div class="proto-page">
+  <header class="proto-header">
+    <div class="proto-header__copy">
+      <h2>Configurações</h2>
+      <p>Gerencie perfil, base financeira, privacidade, aparência e direitos da conta.</p>
+    </div>
+  </header>
 
-    <div class="page-stack settings-stack">
-      <form class="settings-form" [formGroup]="form" (ngSubmit)="save()">
-        <app-panel
-          title="Perfil e base financeira"
-          caption="Ajuste sua identidade operacional dentro do LUMEN"
-        >
-          <div class="form-grid">
-            <section class="profile-photo-card">
-              <div class="profile-photo-head">
-                <div>
-                  <strong>Foto de perfil</strong>
-                  <p>Atualize a imagem exibida no topo do workspace.</p>
-                </div>
-                <app-avatar
-                  [name]="form.controls.name.value || authService.currentUser()?.name || 'Lumen'"
-                  [imageUrl]="avatarPreview()"
-                  size="lg"
-                  shape="circle"
-                />
-              </div>
+  <div class="settings-tabs">
+    <button
+      *ngFor="let tab of settingsTabs"
+      type="button"
+      class="settings-tab"
+      [class.active]="activeTab() === tab.id"
+      (click)="selectTab(tab.id)"
+    >
+      {{ tab.label }}
+    </button>
+  </div>
 
-              <div class="profile-photo-actions">
-                <label class="upload-button">
-                  <input #settingsAvatarInput type="file" accept="image/*" (change)="handleAvatarSelected($event)" />
-                  <span>Enviar foto</span>
-                </label>
-                <button
-                  *ngIf="avatarPreview()"
-                  type="button"
-                  class="clear-photo"
-                  (click)="clearAvatar(settingsAvatarInput)"
-                >
-                  Remover
-                </button>
-              </div>
-            </section>
+  <article class="proto-surface" *ngIf="activeTab() === 'profile'">
+    <div class="proto-surface__head">
+      <div>
+        <h3>Informações pessoais</h3>
+        <p>Atualize nome, foto e os dados principais da conta.</p>
+      </div>
+    </div>
 
-            <app-field-shell label="Nome">
-              <input
-                type="text"
-                formControlName="name"
-                placeholder="Seu nome"
-              />
-            </app-field-shell>
+    <form class="proto-surface__body" [formGroup]="form" (ngSubmit)="save()">
+      <div class="settings-profile-hero">
+        <div class="settings-profile-avatar">
+          <img *ngIf="avatarPreview(); else fallbackAvatar" [src]="avatarPreview()!" alt="Avatar" />
+          <ng-template #fallbackAvatar>
+            <span>{{ authService.currentUser()?.name?.slice(0, 2)?.toUpperCase() || 'LU' }}</span>
+          </ng-template>
+        </div>
 
-            <div class="grid-2">
-              <app-field-shell label="Renda mensal">
-                <input
-                  type="number"
-                  formControlName="monthlyIncome"
-                  placeholder="8500"
-                />
-              </app-field-shell>
-
-              <app-field-shell label="Fechamento do mês">
-                <input
-                  type="number"
-                  formControlName="monthClosingDay"
-                  min="1"
-                  max="31"
-                  placeholder="30"
-                />
-              </app-field-shell>
-            </div>
-
-            <div class="grid-2">
-              <app-field-shell label="Moeda">
-                <input
-                  type="text"
-                  formControlName="preferredCurrency"
-                  placeholder="BRL"
-                />
-              </app-field-shell>
-
-              <app-field-shell label="Timezone">
-                <input
-                  type="text"
-                  formControlName="timezone"
-                  placeholder="America/Sao_Paulo"
-                />
-              </app-field-shell>
-            </div>
-
-            <div class="status-row">
-              <app-ui-badge
-                *ngIf="saved()"
-                label="Preferências salvas"
-                tone="success"
-              />
-            </div>
-
-            <app-ui-button
-              type="submit"
-              [disabled]="form.invalid || saving()"
-              [fullWidth]="true"
-              icon="save"
-            >
-              {{ saving() ? "Salvando..." : "Salvar ajustes" }}
-            </app-ui-button>
-          </div>
-        </app-panel>
-
-        <app-panel
-          title="Privacidade e IA"
-          caption="Controle o uso do SelahIA e acompanhe o histórico de consentimento"
-        >
-          <div class="privacy-grid">
-            <label
-              class="consent-card"
-              [class.invalid]="
-                form.controls.privacyNoticeAccepted.invalid &&
-                form.controls.privacyNoticeAccepted.touched
-              "
-            >
-              <input type="checkbox" formControlName="privacyNoticeAccepted" />
-              <div>
-                <strong>Aviso de privacidade aceito</strong>
-                <p>
-                  Versão {{ privacyNoticeVersion }}.
-                  {{ privacyAcceptedLabel() }}
-                </p>
-              </div>
-            </label>
-
-            <label class="consent-card accent">
-              <input type="checkbox" formControlName="aiAssistantEnabled" />
-              <div>
-                <strong>Permitir processamento com SelahIA</strong>
-                <p>
-                  Versão {{ aiConsentVersion }}. O LUMEN compartilha apenas
-                  contexto minimizado, sem email, com redacão de padrões como
-                  email, CPF e telefone.
-                </p>
-              </div>
-            </label>
-
-            <div class="disclosure-card">
-              <div class="disclosure-copy">
-                <strong>Como o assistente trata seus dados</strong>
-                <p>
-                  O modo local funciona sem provedor externo. Quando o SelahIA
-                  está ativado, a aplicação envia somente o necessário para
-                  responder sua pergunta com mais contexto.
-                </p>
-              </div>
-
-              <div class="badge-row">
-                <app-ui-badge
-                  [label]="
-                    authService.currentUser()?.aiAssistantEnabled
-                      ? 'SelahIA habilitado'
-                      : 'Modo local ativo'
-                  "
-                  [tone]="
-                    authService.currentUser()?.aiAssistantEnabled
-                      ? 'accent'
-                      : 'neutral'
-                  "
-                />
-                <app-ui-badge
-                  [label]="
-                    authService.currentUser()?.aiAssistantConsentAt
-                      ? 'Consentimento registrado'
-                      : 'Sem consentimento externo'
-                  "
-                  [tone]="
-                    authService.currentUser()?.aiAssistantConsentAt
-                      ? 'success'
-                      : 'warning'
-                  "
-                  [showDot]="false"
-                />
-              </div>
-            </div>
-          </div>
-        </app-panel>
-      </form>
-
-      <div class="settings-grid">
-        <app-panel
-          title="Tema"
-          caption="Troque o clima visual do seu workspace"
-        >
-          <div class="theme-card">
-            <div>
-              <strong>{{
-                themeService.mode() === "light"
-                  ? "Modo claro ativo"
-                  : "Modo escuro ativo"
-              }}</strong>
-              <p>
-                O contraste foi calibrado para manter leitura e sofisticação.
-              </p>
-            </div>
-            <app-ui-button
-              variant="secondary"
-              icon="contrast"
-              (click)="themeService.toggle()"
-            >
-              Alternar tema
-            </app-ui-button>
-          </div>
-        </app-panel>
-
-        <app-panel title="Conta" caption="Base atual do seu workspace">
-          <div class="account-card">
-            <strong>{{ authService.currentUser()?.email }}</strong>
-            <p>
-              Configuração principal para autenticação e sincronização do LUMEN.
-            </p>
-          </div>
-        </app-panel>
-
-        <app-panel
-          title="Suporte"
-          caption="Canal para feedbacks, relatos de bugs e contexto do usuário"
-        >
-          <div class="theme-card">
-            <div>
-              <strong>Fale com a equipe do LUMEN</strong>
-              <p>
-                Abra a central de suporte para registrar sugestões, impressões
-                de uso e problemas encontrados no app.
-              </p>
-            </div>
-            <app-ui-button
-              variant="secondary"
-              icon="support_agent"
-              (click)="openSupport()"
-            >
-              Abrir suporte
-            </app-ui-button>
-          </div>
-        </app-panel>
+        <div class="settings-profile-copy">
+          <strong>{{ authService.currentUser()?.name || 'Sua conta' }}</strong>
+          <span>{{ authService.currentUser()?.email || 'workspace pessoal' }}</span>
+        </div>
       </div>
 
-      <app-panel
-        title="Direitos do titular"
-        caption="Exporte seus dados pessoais ou exclua sua conta de forma facilitada"
-      >
-        <div class="rights-grid">
-          <div class="rights-card">
-            <strong>Exportação de dados</strong>
-            <p>
-              Gera um arquivo JSON com perfil, tarefas, finanças, metas,
-              lembretes, notificações e histórico de consentimento.
-            </p>
-            <app-ui-button
-              variant="secondary"
-              icon="download"
-              [disabled]="exporting()"
-              (click)="downloadPrivacyExport()"
-            >
-              {{ exporting() ? "Gerando arquivo..." : "Baixar meus dados" }}
-            </app-ui-button>
-          </div>
-
-          <div class="rights-card danger">
-            <strong>Excluir conta</strong>
-            <p>
-              Remove sua conta e os dados associados do workspace atual. Essa
-              ação é irreversível.
-            </p>
-            <app-ui-button
-              variant="secondary"
-              icon="delete"
-              [disabled]="deleting()"
-              (click)="deleteAccount()"
-            >
-              {{ deleting() ? "Excluindo..." : "Excluir minha conta" }}
-            </app-ui-button>
+      <div class="proto-form-grid">
+        <div class="proto-field proto-field--full">
+          <label for="settings-avatar">Foto de perfil</label>
+          <input
+            #avatarInput
+            id="settings-avatar"
+            type="file"
+            accept="image/*"
+            (change)="handleAvatarSelected($event)"
+          />
+          <div class="avatar-preview" *ngIf="avatarPreview()">
+            <img [src]="avatarPreview()!" alt="Prévia do avatar" />
+            <button type="button" class="proto-button proto-button--ghost" (click)="clearAvatar(avatarInput)">
+              Remover foto
+            </button>
           </div>
         </div>
 
-        <p class="feedback" *ngIf="feedbackMessage()">
-          {{ feedbackMessage() }}
-        </p>
-        <p class="error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
-      </app-panel>
+        <div class="proto-field">
+          <label for="settings-name">Nome completo</label>
+          <input id="settings-name" type="text" formControlName="name" />
+        </div>
+
+        <div class="proto-field">
+          <label for="settings-email">Email</label>
+          <input id="settings-email" type="email" [value]="authService.currentUser()?.email || ''" disabled />
+        </div>
+      </div>
+
+      <p class="settings-feedback settings-feedback--ok" *ngIf="feedbackMessage()">{{ feedbackMessage() }}</p>
+      <p class="settings-feedback settings-feedback--error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
+
+      <div class="proto-actions-row">
+        <button type="submit" class="proto-button" [disabled]="saving()">
+          <span class="material-symbols-rounded">save</span>
+          {{ saving() ? 'Salvando...' : 'Salvar alterações' }}
+        </button>
+      </div>
+    </form>
+  </article>
+
+  <article class="proto-surface" *ngIf="activeTab() === 'finance'">
+    <div class="proto-surface__head">
+      <div>
+        <h3>Base financeira</h3>
+        <p>Defina renda mensal, fechamento do mês, moeda e fuso do workspace.</p>
+      </div>
     </div>
-  
+
+    <form class="proto-surface__body" [formGroup]="form" (ngSubmit)="save()">
+      <div class="proto-form-grid">
+        <div class="proto-field">
+          <label for="settings-income">Renda mensal estimada</label>
+          <input id="settings-income" type="number" min="0" formControlName="monthlyIncome" />
+        </div>
+
+        <div class="proto-field">
+          <label for="settings-closing-day">Dia de fechamento</label>
+          <input id="settings-closing-day" type="number" min="1" max="31" formControlName="monthClosingDay" />
+        </div>
+
+        <div class="proto-field">
+          <label for="settings-currency">Moeda</label>
+          <select id="settings-currency" formControlName="preferredCurrency">
+            <option value="BRL">BRL</option>
+            <option value="USD">USD</option>
+            <option value="EUR">EUR</option>
+          </select>
+        </div>
+
+        <div class="proto-field">
+          <label for="settings-timezone">Fuso horário</label>
+          <select id="settings-timezone" formControlName="timezone">
+            <option value="America/Sao_Paulo">America/Sao_Paulo</option>
+            <option value="America/New_York">America/New_York</option>
+            <option value="Europe/Lisbon">Europe/Lisbon</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="proto-actions-row">
+        <button type="submit" class="proto-button" [disabled]="saving()">
+          <span class="material-symbols-rounded">save</span>
+          {{ saving() ? 'Salvando...' : 'Salvar alterações' }}
+        </button>
+      </div>
+    </form>
+  </article>
+
+  <article class="proto-surface" *ngIf="activeTab() === 'privacy'">
+    <div class="proto-surface__head">
+      <div>
+        <h3>Privacidade e IA</h3>
+        <p>Gerencie o uso do assistente e o aceite de privacidade desta conta.</p>
+      </div>
+    </div>
+
+    <form class="proto-surface__body" [formGroup]="form" (ngSubmit)="save()">
+      <label class="settings-switch-card">
+        <div>
+          <strong>Aviso de privacidade</strong>
+          <p>Aceite o aviso de privacidade versão {{ privacyNoticeVersion }}.</p>
+        </div>
+        <input type="checkbox" formControlName="privacyNoticeAccepted" />
+      </label>
+
+      <label class="settings-switch-card">
+        <div>
+          <strong>Assistente com IA</strong>
+          <p>Ative o assistente inteligente para análises e sugestões personalizadas.</p>
+        </div>
+        <input type="checkbox" formControlName="aiAssistantEnabled" />
+      </label>
+
+      <div class="proto-note">
+        <strong class="proto-inline-title">Status do aceite</strong>
+        <p>{{ privacyAcceptedLabel() }}</p>
+      </div>
+
+      <p class="settings-feedback settings-feedback--error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
+
+      <div class="proto-actions-row">
+        <button type="submit" class="proto-button" [disabled]="saving()">
+          <span class="material-symbols-rounded">shield</span>
+          {{ saving() ? 'Salvando...' : 'Salvar preferências' }}
+        </button>
+      </div>
+    </form>
+  </article>
+
+  <article class="proto-surface" *ngIf="activeTab() === 'theme'">
+    <div class="proto-surface__head">
+      <div>
+        <h3>Aparência</h3>
+        <p>Personalize a aparência geral do Lumen.</p>
+      </div>
+    </div>
+
+    <div class="proto-surface__body">
+      <div class="theme-grid">
+        <button
+          *ngFor="let theme of themes"
+          type="button"
+          class="theme-card"
+          [class.active]="isThemeActive(theme.id)"
+          [style.--theme-preview-start]="theme.preview.start"
+          [style.--theme-preview-mid]="theme.preview.mid"
+          [style.--theme-preview-end]="theme.preview.end"
+          [style.--theme-preview-surface]="theme.preview.surface"
+          [style.--theme-preview-ink]="theme.preview.ink"
+          [style.--theme-preview-accent]="theme.preview.accent"
+          (click)="setTheme(theme.id)"
+        >
+          <div class="theme-card__preview" aria-hidden="true">
+            <span class="theme-card__preview-bar"></span>
+            <span class="theme-card__preview-panel"></span>
+            <span class="theme-card__preview-chip"></span>
+          </div>
+
+          <div class="theme-card__copy">
+            <div class="theme-card__meta">
+              <strong>{{ theme.label }}</strong>
+              <small>{{ theme.badge }}</small>
+            </div>
+
+            <span>{{ isThemeActive(theme.id) ? 'Ativo agora' : theme.description }}</span>
+          </div>
+        </button>
+      </div>
+
+      <div class="proto-note">
+        <strong class="proto-inline-title">Tema atual</strong>
+        <p>
+          O workspace está usando {{ themeService.currentTheme().label }}
+          em modo {{ themeService.mode() === 'light' ? 'claro' : 'escuro' }}.
+        </p>
+      </div>
+    </div>
+  </article>
+
+  <article class="proto-surface" *ngIf="activeTab() === 'account'">
+    <div class="proto-surface__head">
+      <div>
+        <h3>Gerenciamento da conta</h3>
+        <p>Acesse exportação, suporte e ações permanentes da conta.</p>
+      </div>
+    </div>
+
+    <div class="proto-surface__body account-stack">
+      <div class="settings-action-card">
+        <div>
+          <strong>Exportar meus dados</strong>
+          <p>Baixe uma cópia completa dos seus dados em formato JSON.</p>
+        </div>
+        <button type="button" class="proto-button proto-button--secondary" [disabled]="exporting()" (click)="downloadPrivacyExport()">
+          {{ exporting() ? 'Gerando...' : 'Exportar' }}
+        </button>
+      </div>
+
+      <div class="settings-action-card">
+        <div>
+          <strong>Suporte e ajuda</strong>
+          <p>Abra a central de suporte para feedback, bugs e dúvidas.</p>
+        </div>
+        <button type="button" class="proto-button proto-button--secondary" (click)="openSupport()">
+          Abrir suporte
+        </button>
+      </div>
+
+      <div class="settings-danger-zone">
+        <div>
+          <strong>Zona de perigo</strong>
+          <p>Excluir a conta é uma ação permanente e remove os dados associados.</p>
+        </div>
+        <button type="button" class="proto-button proto-button--ghost" [disabled]="deleting()" (click)="deleteAccount()">
+          {{ deleting() ? 'Excluindo...' : 'Excluir minha conta' }}
+        </button>
+      </div>
+    </div>
+  </article>
+</div>

@@ -1,27 +1,38 @@
-import { CommonModule, DatePipe } from "@angular/common";
+import { CommonModule } from "@angular/common";
 import { Component, computed, inject } from "@angular/core";
-import { EmptyStateComponent } from "../../../shared/components/empty-state/empty-state.component";
-import { PanelComponent } from "../../../shared/components/panel/panel.component";
-import { UiBadgeComponent } from "../../../shared/components/ui-badge/ui-badge.component";
-import { UiButtonComponent } from "../../../shared/components/ui-button/ui-button.component";
 import { NotificationCenterService } from "../../../core/services/notification-center.service";
 
 @Component({
   selector: "app-notifications-page",
   standalone: true,
-  imports: [
-    CommonModule,
-    DatePipe,
-    PanelComponent,
-    UiBadgeComponent,
-    UiButtonComponent,
-    EmptyStateComponent,
-  ],
+  imports: [CommonModule],
   templateUrl: "./notifications-page.component.html",
   styleUrls: ["./notifications-page.component.scss"],
 })
 export class NotificationsPageComponent {
   protected readonly notificationCenter = inject(NotificationCenterService);
+  protected readonly preferenceItems = [
+    {
+      id: "tasks",
+      label: "Lembretes de tarefas",
+      description: "Receba alertas para tarefas com prazo próximo.",
+    },
+    {
+      id: "finance",
+      label: "Alertas financeiros",
+      description: "Notificações sobre vencimentos e despesas incomuns.",
+    },
+    {
+      id: "goals",
+      label: "Progresso de metas",
+      description: "Atualizações sobre metas e marcos alcançados.",
+    },
+    {
+      id: "assistant",
+      label: "Insights da IA",
+      description: "Receba análises e sugestões do assistente.",
+    },
+  ];
   protected readonly nativeAlertsLabel = computed(() => {
     if (!this.notificationCenter.localReminders.isNative) {
       return "Web / PWA";
@@ -44,5 +55,12 @@ export class NotificationsPageComponent {
     void this.notificationCenter.localReminders.requestPermission().then(() => {
       void this.notificationCenter.load();
     });
+  }
+
+  protected markAllAsRead() {
+    this.notificationCenter
+      .notifications()
+      .filter((item) => !item.isRead)
+      .forEach((item) => this.notificationCenter.markAsRead(item.id));
   }
 }

@@ -1,279 +1,334 @@
+<div class="proto-page dashboard-page stagger-reveal" *ngIf="summary() as data; else loadingState">
+  <span class="dashboard-page__parallax-orb dashboard-page__parallax-orb--warm" aria-hidden="true"></span>
+  <span class="dashboard-page__parallax-orb dashboard-page__parallax-orb--cool" aria-hidden="true"></span>
 
-    <div class="page-stack ambient-shell" *ngIf="summary() as data; else skeleton">
-      <section class="hero-card">
-        <div class="hero-copy">
-          <p class="section-kicker">Visão integrada</p>
-          <h2>{{ greeting(data.user.name) }}</h2>
-          <p class="hero-text">
-            Hoje o LUMEN cruzou suas prioridades, movimentos financeiros e metas
-            para sugerir um ritmo mais claro para o restante do dia.
-          </p>
-
-          <div class="hero-actions">
-            <app-ui-badge
-              [label]="'Risco ' + data.forecast.riskLevel.toLowerCase()"
-              [tone]="forecastTone(data.forecast.riskLevel)"
-            />
-            <app-ui-badge
-              [label]="data.tasks.todayCount + ' tarefas hoje'"
-              tone="dark"
-            />
-          </div>
-        </div>
-
-        <div class="hero-aside">
-          <span class="eyebrow">Saldo previsto</span>
-          <strong class="hero-balance">
-            {{ data.forecast.predictedBalance | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}
-          </strong>
-          <p>
-            Considerando gastos atuais, tarefas com custo e o comportamento do
-            seu mês.
-          </p>
-
-          <div class="hero-stats">
-            <div>
-              <span>Entradas</span>
-              <strong class="hero-stat-value">
-                {{ data.finances.monthlyIncome | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}
-              </strong>
-            </div>
-            <div>
-              <span>Saídas</span>
-              <strong class="hero-stat-value">
-                {{ data.finances.monthlyExpenses | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}
-              </strong>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="metrics stagger-reveal">
-        <app-metric-card
-          label="Saldo atual"
-          [value]="data.finances.balance"
-          [currency]="true"
-          [currencyCode]="data.user.preferredCurrency"
-          caption="Seu caixa visível agora"
-          tone="success"
-        />
-        <app-metric-card
-          label="Despesas do mês"
-          [value]="data.finances.monthlyExpenses"
-          [currency]="true"
-          [currencyCode]="data.user.preferredCurrency"
-          caption="Saída consolidada até aqui"
-          tone="warning"
-        />
-        <app-metric-card
-          label="Prioridades"
-          [value]="data.tasks.todayCount"
-          caption="Tarefas previstas para hoje"
-        />
-        <app-metric-card
-          label="Atenções"
-          [value]="data.tasks.overdueCount"
-          caption="Itens que já passaram do ponto"
-          tone="danger"
-        />
-      </section>
-
-      <section class="dashboard-grid stagger-reveal">
-        <app-chart-card
-          class="span-two"
-          title="Composição financeira da semana"
-          caption="Uma leitura em pizza do peso de cada dia dentro do fluxo previsto."
-          [value]="(data.finances.balance | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR') ?? ''"
-          helper="Veja onde a semana concentra mais saldo previsto e como o fluxo se distribui."
-          [delta]="projectionDelta(data)"
-          [deltaTone]="forecastTone(data.forecast.riskLevel)"
-          [data]="projectionSeries(data)"
-          [labels]="projectionLabels()"
-          [currencyCode]="data.user.preferredCurrency"
-          [signals]="projectionSignals(data)"
-        />
-
-    <app-panel
-      title="Foco de hoje"
-      caption="O que mais move sua vida agora"
-      height="358.08px"
-    >
-          <div class="stack-list" *ngIf="data.tasks.items.length; else noTasks">
-            <app-list-item
-              *ngFor="let task of data.tasks.items"
-              [title]="task.title"
-              [subtitle]="taskSubtitle(task)"
-              [meta]="taskMeta(task)"
-              [metaTone]="task.hasFinancialImpact ? 'warning' : 'neutral'"
-              [badge]="priorityLabel(task.priority)"
-              [badgeTone]="priorityTone(task.priority)"
-              [checkable]="true"
-              [checked]="task.status === 'DONE'"
-            >
-              <div list-actions class="row-actions">
-                <app-ui-button variant="ghost" size="sm" routerLink="/tasks">
-                  Abrir
-                </app-ui-button>
-              </div>
-            </app-list-item>
-          </div>
-
-          <ng-template #noTasks>
-            <app-empty-state
-              title="Agenda leve"
-              description="Nenhuma tarefa registrada para hoje."
-              icon="nest_clock_farsight_analog"
-            />
-          </ng-template>
-        </app-panel>
-
-        <app-panel title="Insights do Lumen" caption="Leitura rápida do seu momento">
-          <div class="insight-list" *ngIf="data.insights.length; else noInsights">
-            <article
-              class="insight-card"
-              *ngFor="let insight of data.insights"
-              [ngClass]="severityTone(insight)"
-            >
-              <div class="insight-top">
-                <app-ui-badge
-                  [label]="insight.type"
-                  [tone]="severityTone(insight)"
-                  [showDot]="false"
-                />
-                <span>{{ insight.severity }}</span>
-              </div>
-              <p>{{ insight.message }}</p>
-            </article>
-          </div>
-
-          <ng-template #noInsights>
-            <app-empty-state
-              title="Sem alertas relevantes"
-              description="Seu cenário está equilibrado neste momento."
-              icon="lightbulb"
-            />
-          </ng-template>
-        </app-panel>
-
-        <app-panel
-          class="span-two"
-          title="Metas conectadas"
-          caption="Objetivos com leitura de progresso e contexto financeiro"
-        >
-          <div class="goals-overview" *ngIf="data.goals.length; else noGoals">
-            <div class="goal-summary">
-              <span>Progresso total</span>
-              <strong>
-                {{ totalGoalCurrent(data.goals) | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}
-              </strong>
-              <p>
-                de
-                {{ totalGoalTarget(data.goals) | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}
-                acumulados nas metas ativas.
-              </p>
-            </div>
-
-            <div class="goal-grid">
-              <article class="goal-card" *ngFor="let goal of data.goals">
-                <div class="goal-card-top">
-                  <div>
-                    <strong>{{ goal.title }}</strong>
-                    <p>{{ goal.targetDate ? (goal.targetDate | date: 'dd MMM yyyy') : 'Sem data alvo' }}</p>
-                  </div>
-                  <app-ui-badge
-                    [label]="goalStatus(goal)"
-                    [tone]="goal.status === 'ACHIEVED' ? 'success' : 'accent'"
-                    [showDot]="false"
-                  />
-                </div>
-                <div class="progress-track">
-                  <span class="progress-fill" [style.width.%]="progress(goal)"></span>
-                </div>
-                <div class="goal-card-bottom">
-                  <span>{{ progress(goal) }}%</span>
-                  <strong>
-                    {{ goal.currentAmount | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}
-                  </strong>
-                </div>
-              </article>
-            </div>
-          </div>
-
-          <ng-template #noGoals>
-            <app-empty-state
-              title="Sem metas ativas"
-              description="Crie um destino para o LUMEN equilibrar tempo e dinheiro."
-              icon="flag"
-            />
-          </ng-template>
-        </app-panel>
-
-        <app-panel title="Últimos movimentos" caption="Dinheiro recente com contexto">
-          <div class="stack-list" *ngIf="data.finances.recentTransactions.length; else noTransactions">
-            <app-list-item
-              *ngFor="let transaction of data.finances.recentTransactions"
-              [title]="transaction.description"
-              [subtitle]="transactionSubtitle(transaction)"
-              [meta]="transactionAmount(transaction, data.user.preferredCurrency)"
-              [metaTone]="transaction.type === 'INCOME' ? 'positive' : 'negative'"
-              [avatar]="transaction.description"
-            >
-              <div list-actions class="row-actions">
-                <app-ui-button variant="ghost" size="sm" routerLink="/finances">
-                  Detalhes
-                </app-ui-button>
-              </div>
-            </app-list-item>
-          </div>
-
-          <ng-template #noTransactions>
-            <app-empty-state
-              title="Sem movimentações"
-              description="Registre receitas e despesas para destravar previsões melhores."
-              icon="payments"
-            />
-          </ng-template>
-        </app-panel>
-
-        <app-panel
-          title="Radar do dia"
-          caption="Lembretes e sinais que merecem atenção"
-          height="320.08px"
-        >
-          <div class="radar-list" *ngIf="data.reminders.length || data.notifications.length; else noRadar">
-            <article class="radar-item" *ngFor="let reminder of data.reminders">
-              <div>
-                <strong>{{ reminder.title }}</strong>
-                <p>Lembrete programado</p>
-              </div>
-              <span>{{ reminder.remindAt | date: 'dd/MM HH:mm' }}</span>
-            </article>
-
-            <article class="radar-item" *ngFor="let notification of data.notifications | slice:0:3">
-              <div>
-                <strong>{{ notification.title }}</strong>
-                <p>{{ notification.message }}</p>
-              </div>
-              <span>{{ notification.createdAt | date: 'dd/MM HH:mm' }}</span>
-            </article>
-          </div>
-
-          <ng-template #noRadar>
-            <app-empty-state
-              title="Tudo em silêncio"
-              description="Nenhum lembrete ou alerta extra apareceu até agora."
-              icon="notifications"
-            />
-          </ng-template>
-        </app-panel>
-      </section>
+  <header class="proto-header dashboard-page__header">
+    <div class="proto-header__copy">
+      <p class="section-kicker">Ritmo do dia</p>
+      <h2>{{ greeting(data.user.name) }}</h2>
+      <p>Hoje o Lumen reuniu o que pede foco, o que mexe no seu caixa e o que já pode respirar.</p>
     </div>
 
-    <ng-template #skeleton>
-      <section class="skeleton-grid">
-        <div class="hero-skeleton skeleton-shimmer"></div>
-        <div class="metric-skeleton skeleton-shimmer" *ngFor="let item of [1, 2, 3, 4]"></div>
-        <div class="panel-skeleton skeleton-shimmer" *ngFor="let item of [1, 2, 3, 4]"></div>
-      </section>
-    </ng-template>
-  
+    <div class="proto-header__action">
+      <span class="proto-chip">
+        <span class="material-symbols-rounded">schedule</span>
+        Hoje, {{ todayLabel() }}
+      </span>
+
+      <a class="proto-button proto-button--secondary" routerLink="/assistant">
+        <span class="material-symbols-rounded">chat</span>
+        Conversar com o assistente
+      </a>
+    </div>
+  </header>
+
+  <section class="proto-hero dashboard-hero">
+    <div class="proto-hero__layout dashboard-hero__layout">
+      <div class="dashboard-hero__copy">
+        <span class="dashboard-hero__eyebrow">Caderno do dia</span>
+        <h3>Menos controle pelo controle. Mais clareza sobre o que realmente merece energia agora.</h3>
+        <p>
+          {{ data.tasks.todayCount }} tarefas pendentes, {{ data.notifications.length }}
+          notificações recentes e {{ data.goals.length }} metas conectadas ao seu momento.
+        </p>
+
+        <div class="dashboard-hero__facts">
+          <article class="dashboard-hero__fact">
+            <span>Foco imediato</span>
+            <strong>{{ data.tasks.todayCount }} tarefas para hoje</strong>
+          </article>
+
+          <article class="dashboard-hero__fact">
+            <span>Radar ativo</span>
+            <strong>{{ data.reminders.length }} lembretes e {{ data.notifications.length }} sinais</strong>
+          </article>
+
+          <article class="dashboard-hero__fact">
+            <span>Metas vivas</span>
+            <strong>
+              {{ totalGoalCurrent(data.goals) | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}
+              de
+              {{ totalGoalTarget(data.goals) | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}
+            </strong>
+          </article>
+        </div>
+
+        <div class="proto-actions-row dashboard-hero__actions">
+          <a class="proto-button" routerLink="/tasks">
+            Organizar meu dia
+          </a>
+
+          <a class="proto-button proto-button--secondary" routerLink="/finance">
+            Olhar o caixa
+          </a>
+        </div>
+      </div>
+
+      <aside class="proto-hero__aside dashboard-hero__aside">
+        <span class="proto-tag" [attr.data-tone]="forecastTone(data.forecast.riskLevel)">
+          Risco {{ riskLabel(data.forecast.riskLevel) }}
+        </span>
+        <strong class="proto-balance">
+          {{ data.forecast.predictedBalance | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}
+        </strong>
+        <p>
+          {{ projectionDelta(data) }}
+          em relação ao saldo atual, com previsão de fechamento do mês.
+        </p>
+
+        <div class="dashboard-hero__mini-grid">
+          <article>
+            <span>Saldo atual</span>
+            <strong>
+              {{ data.finances.balance | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}
+            </strong>
+          </article>
+
+          <article>
+            <span>Receitas no período</span>
+            <strong>
+              {{ data.finances.monthlyIncome | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}
+            </strong>
+          </article>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="proto-grid proto-grid--metrics">
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">trending_up</span></span>
+        <span class="proto-chip">Receitas</span>
+      </div>
+      <strong>{{ data.finances.monthlyIncome | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
+      <p>Entradas do mês</p>
+    </article>
+
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">trending_down</span></span>
+        <span class="proto-chip">Despesas</span>
+      </div>
+      <strong>{{ data.finances.monthlyExpenses | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
+      <p>Saídas registradas</p>
+    </article>
+
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">task_alt</span></span>
+        <span class="proto-chip">Hoje</span>
+      </div>
+      <strong>{{ data.tasks.items.length }}</strong>
+      <p>Tarefas visíveis na fila</p>
+    </article>
+
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">flag</span></span>
+        <span class="proto-chip">Metas</span>
+      </div>
+      <strong>{{ data.goals.length }}</strong>
+      <p>Objetivos acompanhados</p>
+    </article>
+  </section>
+
+  <section class="dashboard-grid">
+    <article class="proto-surface dashboard-grid__wide">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Visão financeira</h3>
+          <p>Evolução projetada da semana com leitura rápida do caixa.</p>
+        </div>
+      </div>
+
+      <div class="proto-surface__body">
+        <div class="projection-list">
+          <div class="projection-row" *ngFor="let amount of projectionSeries(data); let i = index">
+            <span>{{ projectionLabels()[i] }}</span>
+            <div class="proto-progress">
+              <span [style.width.%]="40 + i * 8"></span>
+            </div>
+            <strong>
+              {{ amount | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}
+            </strong>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="proto-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Insights IA</h3>
+          <p>Leituras rápidas do momento.</p>
+        </div>
+      </div>
+
+      <div class="proto-surface__body" *ngIf="data.insights.length; else noInsights">
+        <div class="proto-list">
+          <article class="proto-list-item" *ngFor="let insight of data.insights">
+            <div class="proto-list-item__top">
+              <strong>{{ insight.type }}</strong>
+              <span class="proto-tag" [attr.data-tone]="severityTone(insight)">{{ insight.severity }}</span>
+            </div>
+            <p>{{ insight.message }}</p>
+          </article>
+        </div>
+      </div>
+
+      <ng-template #noInsights>
+        <div class="proto-empty">
+          <strong>Sem alertas relevantes</strong>
+          <p>Seu cenário está equilibrado neste momento.</p>
+        </div>
+      </ng-template>
+    </article>
+
+    <article class="proto-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Tarefas de hoje</h3>
+          <p>{{ data.tasks.todayCount }} tarefas pendentes</p>
+        </div>
+        <a class="proto-button proto-button--ghost" routerLink="/tasks">Ver todas</a>
+      </div>
+
+      <div class="proto-surface__body" *ngIf="data.tasks.items.length; else noTasks">
+        <div class="proto-list">
+          <article class="proto-list-item" *ngFor="let task of data.tasks.items | slice:0:4">
+            <div class="proto-list-item__top">
+              <strong>{{ task.title }}</strong>
+              <span class="proto-tag">{{ priorityLabel(task.priority) }}</span>
+            </div>
+            <p>{{ taskSubtitle(task) }}</p>
+            <div class="proto-list-item__meta-row">
+              <span class="proto-list-item__meta">{{ taskMeta(task) }}</span>
+              <a class="proto-button proto-button--ghost" routerLink="/tasks">Abrir</a>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <ng-template #noTasks>
+        <div class="proto-empty">
+          <strong>Agenda leve</strong>
+          <p>Nenhuma tarefa registrada para hoje.</p>
+        </div>
+      </ng-template>
+    </article>
+
+    <article class="proto-surface dashboard-grid__wide">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Metas conectadas</h3>
+          <p>Objetivos com progresso e contexto financeiro.</p>
+        </div>
+        <a class="proto-button proto-button--secondary" routerLink="/goals">
+          Ver metas
+        </a>
+      </div>
+
+      <div class="proto-surface__body" *ngIf="data.goals.length; else noGoals">
+        <div class="goal-grid">
+          <article class="proto-list-item" *ngFor="let goal of data.goals">
+            <div class="proto-list-item__top">
+              <strong>{{ goal.title }}</strong>
+              <span class="proto-tag">{{ goalStatus(goal) }}</span>
+            </div>
+            <p>{{ goal.targetDate ? (goal.targetDate | date: 'dd/MM/yyyy') : 'Sem prazo alvo' }}</p>
+            <div class="proto-progress">
+              <span [style.width.%]="progress(goal)"></span>
+            </div>
+            <div class="proto-list-item__meta-row">
+              <span class="proto-list-item__meta">{{ progress(goal) }}%</span>
+              <strong>
+                {{ goal.currentAmount | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}
+              </strong>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <ng-template #noGoals>
+        <div class="proto-empty">
+          <strong>Sem metas ativas</strong>
+          <p>Crie um objetivo para o Lumen equilibrar tempo e dinheiro.</p>
+        </div>
+      </ng-template>
+    </article>
+
+    <article class="proto-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Movimentações recentes</h3>
+          <p>As entradas e saídas mais recentes do seu mês.</p>
+        </div>
+      </div>
+
+      <div class="proto-surface__body" *ngIf="data.finances.recentTransactions.length; else noTransactions">
+        <div class="proto-list">
+          <article class="proto-list-item" *ngFor="let transaction of data.finances.recentTransactions">
+            <div class="proto-list-item__top">
+              <strong>{{ transaction.description }}</strong>
+              <strong>{{ transactionAmount(transaction, data.user.preferredCurrency) }}</strong>
+            </div>
+            <p>{{ transactionSubtitle(transaction) }}</p>
+          </article>
+        </div>
+      </div>
+
+      <ng-template #noTransactions>
+        <div class="proto-empty">
+          <strong>Sem movimentações</strong>
+          <p>Registre receitas e despesas para destravar previsões melhores.</p>
+        </div>
+      </ng-template>
+    </article>
+
+    <article class="proto-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Radar do dia</h3>
+          <p>Lembretes e sinais que merecem atenção.</p>
+        </div>
+      </div>
+
+      <div class="proto-surface__body" *ngIf="data.reminders.length || data.notifications.length; else noRadar">
+        <div class="proto-list">
+          <article class="proto-list-item" *ngFor="let reminder of data.reminders">
+            <div class="proto-list-item__top">
+              <strong>{{ reminder.title }}</strong>
+              <span class="proto-tag">Lembrete</span>
+            </div>
+            <p>{{ reminder.remindAt | date: 'dd/MM HH:mm' }}</p>
+          </article>
+
+          <article class="proto-list-item" *ngFor="let notification of data.notifications | slice:0:3">
+            <div class="proto-list-item__top">
+              <strong>{{ notification.title }}</strong>
+              <span class="proto-tag">Nova</span>
+            </div>
+            <p>{{ notification.message }}</p>
+          </article>
+        </div>
+      </div>
+
+      <ng-template #noRadar>
+        <div class="proto-empty">
+          <strong>Sem sinais pendentes</strong>
+          <p>Os próximos lembretes e alertas vão aparecer aqui.</p>
+        </div>
+      </ng-template>
+    </article>
+  </section>
+</div>
+
+<ng-template #loadingState>
+  <div class="proto-page">
+    <div class="proto-empty">
+      <strong>Carregando dashboard</strong>
+      <p>O Lumen está montando a visão do seu dia.</p>
+    </div>
+  </div>
+</ng-template>

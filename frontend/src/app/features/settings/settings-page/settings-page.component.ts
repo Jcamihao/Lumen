@@ -9,25 +9,15 @@ import {
 } from "../../../core/constants/privacy.constants";
 import { AuthService } from "../../../core/services/auth.service";
 import { LifeApiService } from "../../../core/services/life-api.service";
-import { ThemeService } from "../../../core/services/theme.service";
-import { AvatarComponent } from "../../../shared/components/avatar/avatar.component";
-import { FieldShellComponent } from "../../../shared/components/field-shell/field-shell.component";
-import { PanelComponent } from "../../../shared/components/panel/panel.component";
-import { UiBadgeComponent } from "../../../shared/components/ui-badge/ui-badge.component";
-import { UiButtonComponent } from "../../../shared/components/ui-button/ui-button.component";
+import {
+  ThemeId,
+  ThemeService,
+} from "../../../core/services/theme.service";
 
 @Component({
   selector: "app-settings-page",
   standalone: true,
-  imports: [
-    CommonModule,
-    ReactiveFormsModule,
-    PanelComponent,
-    AvatarComponent,
-    FieldShellComponent,
-    UiButtonComponent,
-    UiBadgeComponent,
-  ],
+  imports: [CommonModule, ReactiveFormsModule],
   templateUrl: './settings-page.component.html',
   styleUrls: ['./settings-page.component.scss'],
   
@@ -43,6 +33,7 @@ export class SettingsPageComponent {
   protected readonly saving = signal(false);
   protected readonly exporting = signal(false);
   protected readonly deleting = signal(false);
+  protected readonly themes = this.themeService.themes;
   protected readonly feedbackMessage = signal("");
   protected readonly errorMessage = signal("");
   protected readonly avatarPreview = signal<string | null>(
@@ -50,6 +41,16 @@ export class SettingsPageComponent {
   );
   protected readonly privacyNoticeVersion = CURRENT_PRIVACY_NOTICE_VERSION;
   protected readonly aiConsentVersion = CURRENT_AI_CONSENT_VERSION;
+  protected readonly activeTab = signal<
+    "profile" | "finance" | "privacy" | "theme" | "account"
+  >("profile");
+  protected readonly settingsTabs = [
+    { id: "profile" as const, label: "Perfil" },
+    { id: "finance" as const, label: "Finanças" },
+    { id: "privacy" as const, label: "Privacidade" },
+    { id: "theme" as const, label: "Tema" },
+    { id: "account" as const, label: "Conta" },
+  ];
 
   protected readonly form = this.fb.nonNullable.group({
     name: [
@@ -202,6 +203,20 @@ export class SettingsPageComponent {
 
   protected openSupport() {
     void this.router.navigate(['/support']);
+  }
+
+  protected selectTab(
+    tab: "profile" | "finance" | "privacy" | "theme" | "account",
+  ) {
+    this.activeTab.set(tab);
+  }
+
+  protected setTheme(themeId: ThemeId) {
+    this.themeService.setTheme(themeId);
+  }
+
+  protected isThemeActive(themeId: ThemeId) {
+    return this.themeService.themeId() === themeId;
   }
 
   protected privacyAcceptedLabel() {

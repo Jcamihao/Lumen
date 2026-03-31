@@ -1,293 +1,232 @@
+<div class="proto-page">
+  <header class="proto-header">
+    <div class="proto-header__copy">
+      <h2>Selah IA</h2>
+      <p>Obtenha insights personalizados sobre finanças, rotina e metas.</p>
+    </div>
+  </header>
 
-    <div class="page-stack assistant-stack">
-      <app-panel
-        title="Converse com o LUMEN"
-        caption="Peca prioridade, leitura financeira e proximos passos em linguagem clara."
-      >
-        <div class="prompt-list">
-          <app-ui-button
-            variant="ghost"
-            size="sm"
-            (click)="usePrompt('Como estou hoje?')"
-          >
-            Como estou hoje?
-          </app-ui-button>
-          <app-ui-button
-            variant="ghost"
-            size="sm"
-            (click)="usePrompt('O que devo priorizar agora?')"
-          >
-            O que priorizar?
-          </app-ui-button>
-          <app-ui-button
-            variant="ghost"
-            size="sm"
-            (click)="usePrompt('Como está minha vida financeira?')"
-          >
-            Como está minha vida financeira?
-          </app-ui-button>
-        </div>
+  <article class="proto-surface assistant-privacy-card">
+    <div class="assistant-privacy-card__icon">
+      <span class="material-symbols-rounded">shield</span>
+    </div>
 
-        <div class="privacy-note" [class.accent]="assistantExternalMode()">
-          <div>
-            <strong>{{
-              assistantExternalMode()
-                ? "SelahIA autorizado"
-                : "Modo local ativo"
-            }}</strong>
-            <p>
-              {{
-                assistantExternalMode()
-                  ? "As perguntas usam contexto minimizado e redigem padrões como email, CPF e telefone antes do envio externo."
-                  : "No primeiro uso da IA, o LUMEN vai pedir seu consentimento antes de enviar qualquer pergunta ao SelahIA."
-              }}
-            </p>
-          </div>
-          <app-ui-badge
-            [label]="
-              assistantExternalMode()
-                ? 'IA externa com consentimento'
-                : 'Consentimento pendente'
-            "
-            [tone]="assistantExternalMode() ? 'accent' : 'neutral'"
-            [showDot]="assistantExternalMode()"
-          />
-        </div>
-
-        <div class="offline-note" *ngIf="offlineMode()">
-          <div>
-            <strong>Você está offline</strong>
-            <p>
-              O assistente vai responder só com a leitura local do dispositivo.
-              Nenhuma pergunta será enviada ao SelahIA até a conexão voltar.
-            </p>
-          </div>
-          <app-ui-badge label="Modo offline" tone="warning" />
-        </div>
-
-        <form class="form-grid" [formGroup]="form" (ngSubmit)="ask()">
-          <textarea
-            rows="5"
-            formControlName="question"
-            placeholder="Ex.: Como estou hoje?"
-          ></textarea>
-          <app-ui-button
-            type="submit"
-            [disabled]="form.invalid || loading()"
-            [fullWidth]="true"
-            icon="auto_awesome"
-          >
-            {{
-              loading()
-                ? "Consultando assistente..."
-                : "Perguntar ao assistente"
-            }}
-          </app-ui-button>
-        </form>
-
-        <p class="error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
-      </app-panel>
-
-      <div class="assistant-results">
-        <app-panel
-          class="active-panel"
-          [title]="activeMessage()?.question || 'Resposta em destaque'"
-          [caption]="
-            activeMessage()
-              ? 'Analise atual do assistente'
-              : 'Sua proxima pergunta aparece aqui.'
-          "
+    <div class="assistant-privacy-card__copy">
+      <strong class="proto-inline-title">Privacidade e consentimento</strong>
+      <p>
+        Este assistente utiliza IA externa para processar suas informações.
+        Você pode revisar e alterar esse consentimento a qualquer momento.
+      </p>
+      <div class="proto-actions-row">
+        <span class="proto-chip">
+          Status: {{ assistantExternalMode() ? 'consentimento ativo' : 'consentimento pendente' }}
+        </span>
+        <button
+          *ngIf="!assistantExternalMode()"
+          type="button"
+          class="proto-button proto-button--secondary"
+          (click)="openConsentDialog()"
         >
-          <ng-container *ngIf="activeMessage() as message; else noMessages">
-            <div class="response-meta">
-              <app-ui-badge
-                [label]="sourceLabel(message.reply)"
-                [tone]="sourceTone(message.reply)"
-              />
-              <app-ui-badge
-                *ngIf="message.reply.confidence"
-                [label]="confidenceLabel(message.reply)"
-                [tone]="confidenceTone(message.reply)"
-                [showDot]="false"
-              />
-              <app-ui-badge
-                *ngIf="message.reply.focusArea"
-                [label]="message.reply.focusArea"
-                tone="neutral"
-                [showDot]="false"
-              />
-              <span class="meta-date">{{
-                message.createdAt | date: "dd/MM HH:mm"
-              }}</span>
-            </div>
-
-            <p class="answer">{{ message.reply.answer }}</p>
-            <p class="disclaimer" *ngIf="message.reply.disclaimer">
-              {{ message.reply.disclaimer }}
-            </p>
-
-            <div class="block" *ngIf="message.reply.highlights.length">
-              <div class="block-head">
-                <strong>Destaques</strong>
-                <app-ui-badge
-                  [label]="message.reply.highlights.length + ' pontos'"
-                  tone="accent"
-                />
-              </div>
-              <ul>
-                <li *ngFor="let item of message.reply.highlights">
-                  {{ item }}
-                </li>
-              </ul>
-            </div>
-
-            <div class="block" *ngIf="message.reply.suggestedActions.length">
-              <div class="block-head">
-                <strong>Próximas ações</strong>
-                <app-ui-badge
-                  [label]="message.reply.suggestedActions.length + ' sugestões'"
-                  tone="success"
-                />
-              </div>
-              <ul>
-                <li *ngFor="let item of message.reply.suggestedActions">
-                  {{ item }}
-                </li>
-              </ul>
-            </div>
-          </ng-container>
-
-          <ng-template #noMessages>
-            <app-empty-state
-              icon="forum"
-              title="Nenhuma resposta ainda"
-              description="Pergunte ao assistente sobre seu dia, finanças ou prioridades para abrir a primeira conversa."
-            />
-          </ng-template>
-        </app-panel>
-
-        <app-panel
-          class="recent-panel"
-          title="Mensagens recentes"
-          caption="Cada nova pergunta entra aqui sem empilhar a tela."
-          maxHeight="483.28px"
-        >
-          <ng-container *ngIf="recentMessages().length; else noRecentMessages">
-            <div class="recent-list">
-              <button
-                *ngFor="let message of recentMessages(); trackBy: trackMessage"
-                type="button"
-                class="recent-item"
-                [class.active]="message.id === activeMessageId()"
-                (click)="selectMessage(message.id)"
-              >
-                <div class="recent-head">
-                  <strong>{{ message.question }}</strong>
-                  <span>{{ message.createdAt | date: "HH:mm" }}</span>
-                </div>
-
-                <p>{{ summarize(message.reply.answer) }}</p>
-
-                <div class="recent-meta">
-                  <app-ui-badge
-                    [label]="sourceLabel(message.reply)"
-                    [tone]="sourceTone(message.reply)"
-                  />
-                  <app-ui-badge
-                    *ngIf="message.reply.focusArea"
-                    [label]="message.reply.focusArea"
-                    tone="neutral"
-                    [showDot]="false"
-                  />
-                </div>
-              </button>
-            </div>
-          </ng-container>
-
-          <ng-template #noRecentMessages>
-            <app-empty-state
-              icon="history"
-              title="Sem histórico recente"
-              description="As respostas do assistente passam a aparecer aqui conforme você conversa com o LUMEN."
-            />
-          </ng-template>
-        </app-panel>
-      </div>
-
-      <div
-        class="consent-overlay"
-        *ngIf="consentDialogOpen()"
-        (click)="closeConsentDialog()"
-      >
-        <section
-          class="consent-modal"
-          (click)="$event.stopPropagation()"
-          aria-labelledby="assistant-consent-title"
-          aria-modal="true"
-          role="dialog"
-        >
-          <div class="consent-header">
-            <div>
-              <p class="section-kicker">Primeiro uso da IA</p>
-              <h3 id="assistant-consent-title">
-                Autorizar o SelahIA para esta conversa
-              </h3>
-              <p>
-                Para responder com IA externa, o LUMEN precisa do seu
-                consentimento. A pergunta só será enviada depois da confirmação.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              class="consent-close"
-              (click)="closeConsentDialog()"
-              aria-label="Fechar aviso de consentimento"
-            >
-              ×
-            </button>
-          </div>
-
-          <label class="consent-check">
-            <input
-              type="checkbox"
-              [checked]="consentChecked()"
-              (change)="consentChecked.set($any($event.target).checked)"
-            >
-            <div>
-              <strong>
-                Consinto com o uso do SelahIA e com o tratamento necessário para
-                essa função.
-              </strong>
-              <p>
-                O LUMEN compartilha apenas contexto minimizado, com redação de
-                padrões como email, CPF e telefone. Você poderá desligar isso
-                depois em Settings.
-              </p>
-            </div>
-          </label>
-
-          <p class="error" *ngIf="consentErrorMessage()">
-            {{ consentErrorMessage() }}
-          </p>
-
-          <div class="consent-actions">
-            <app-ui-button variant="ghost" (click)="closeConsentDialog()">
-              Agora não
-            </app-ui-button>
-            <app-ui-button
-              [disabled]="!consentChecked() || consentSaving()"
-              icon="verified_user"
-              (click)="confirmAssistantConsent()"
-            >
-              {{
-                consentSaving()
-                  ? "Salvando consentimento..."
-                  : "Concordar e perguntar"
-              }}
-            </app-ui-button>
-          </div>
-        </section>
+          Ativar IA
+        </button>
       </div>
     </div>
-  
+  </article>
+
+  <section class="assistant-prompts">
+    <button
+      type="button"
+      class="assistant-prompt"
+      *ngFor="let prompt of quickPrompts"
+      (click)="usePrompt(prompt)"
+    >
+      <span class="material-symbols-rounded">auto_awesome</span>
+      <span>{{ prompt }}</span>
+    </button>
+  </section>
+
+  <section class="assistant-grid">
+    <article class="proto-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Faça uma pergunta</h3>
+          <p>Digite sua dúvida ou solicite uma análise personalizada.</p>
+        </div>
+      </div>
+
+      <div class="proto-surface__body">
+        <form [formGroup]="form" (ngSubmit)="ask()" class="proto-form-grid assistant-form">
+          <div class="proto-field proto-field--full">
+            <label for="assistant-question">Pergunta</label>
+            <textarea
+              id="assistant-question"
+              rows="6"
+              formControlName="question"
+              placeholder="Ex.: Como posso economizar mais este mês?"
+            ></textarea>
+          </div>
+
+          <div class="proto-actions-row assistant-actions">
+            <button type="submit" class="proto-button" [disabled]="loading() || form.invalid">
+              <span class="material-symbols-rounded">send</span>
+              {{ loading() ? 'Consultando...' : 'Enviar pergunta' }}
+            </button>
+
+            <span class="proto-tag">
+              {{ offlineMode() ? 'Sem internet' : sourceLabel(activeMessage()?.reply || { answer: '', highlights: [], suggestedActions: [] }) }}
+            </span>
+          </div>
+        </form>
+
+        <p class="assistant-error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
+
+        <div class="proto-note assistant-answer" *ngIf="activeMessage() as message">
+          <div class="assistant-answer__head">
+            <strong class="proto-inline-title">Resposta do assistente</strong>
+            <div class="proto-actions-row assistant-answer__meta">
+              <span class="proto-chip">{{ focusAreaLabel(message.reply) }}</span>
+              <span class="proto-chip" [attr.data-tone]="confidenceTone(message.reply)">
+                {{ confidenceLabel(message.reply) }}
+              </span>
+              <span class="proto-tag" [attr.data-tone]="sourceTone(message.reply)">
+                {{ sourceLabel(message.reply) }}
+              </span>
+            </div>
+          </div>
+
+          <div class="assistant-answer__body">
+            <p *ngFor="let paragraph of answerParagraphs(message.reply.answer)">
+              {{ paragraph }}
+            </p>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="proto-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Conversas recentes</h3>
+          <p>Suas últimas interações com o assistente.</p>
+        </div>
+      </div>
+
+      <div class="proto-surface__body" *ngIf="history().length; else noHistory">
+        <div class="proto-list">
+          <article class="proto-list-item" *ngFor="let message of recentMessages(); trackBy: trackMessage">
+            <div class="proto-list-item__top">
+              <strong>{{ summarize(message.question) }}</strong>
+              <span class="proto-tag">{{ message.createdAt | date: 'dd/MM HH:mm' }}</span>
+            </div>
+            <p>{{ summarize(message.reply.answer) }}</p>
+            <div class="proto-actions-row">
+              <button type="button" class="proto-button proto-button--ghost" (click)="selectMessage(message.id)">
+                Abrir resposta
+              </button>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <ng-template #noHistory>
+        <div class="proto-empty">
+          <strong>Sem histórico salvo</strong>
+          <p>As próximas conversas do assistente vão aparecer aqui.</p>
+        </div>
+      </ng-template>
+    </article>
+  </section>
+
+  <article class="proto-surface" *ngIf="activeMessage() as message; else noAnswer">
+    <div class="proto-surface__head">
+      <div>
+        <h3>Leitura atual</h3>
+        <p>Resposta ativa com destaques e próximos movimentos sugeridos.</p>
+      </div>
+    </div>
+
+    <div class="proto-surface__body">
+      <div class="proto-actions-row assistant-reading__meta">
+        <span class="proto-chip">{{ focusAreaLabel(message.reply) }}</span>
+        <span class="proto-chip" [attr.data-tone]="confidenceTone(message.reply)">
+          {{ confidenceLabel(message.reply) }}
+        </span>
+        <span class="proto-tag" [attr.data-tone]="sourceTone(message.reply)">
+          {{ sourceLabel(message.reply) }}
+        </span>
+        <span class="proto-tag" *ngIf="message.reply.model">{{ message.reply.model }}</span>
+        <span class="proto-tag" *ngIf="message.reply.generatedAt">
+          {{ message.reply.generatedAt | date: 'dd/MM HH:mm' }}
+        </span>
+      </div>
+
+      <section class="assistant-reading__section" *ngIf="message.reply.highlights.length">
+        <div class="assistant-reading__section-head">
+          <strong class="proto-inline-title">Pontos-chave</strong>
+          <span class="proto-tag">{{ message.reply.highlights.length }} destaques</span>
+        </div>
+
+        <div class="proto-list">
+          <article
+            class="proto-list-item assistant-reading__item"
+            *ngFor="let item of message.reply.highlights; let index = index"
+          >
+            <span class="assistant-reading__index">{{ index + 1 }}</span>
+            <p>{{ item }}</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="assistant-reading__section" *ngIf="message.reply.suggestedActions.length">
+        <div class="assistant-reading__section-head">
+          <strong class="proto-inline-title">Próximos passos</strong>
+          <span class="proto-tag" data-tone="accent">{{ message.reply.suggestedActions.length }} ações</span>
+        </div>
+
+        <div class="proto-list">
+          <article
+            class="proto-list-item assistant-reading__item"
+            *ngFor="let action of message.reply.suggestedActions; let index = index"
+          >
+            <span class="assistant-reading__index assistant-reading__index--action">{{ index + 1 }}</span>
+            <p>{{ action }}</p>
+          </article>
+        </div>
+      </section>
+
+      <p class="proto-muted" *ngIf="message.reply.disclaimer">{{ message.reply.disclaimer }}</p>
+    </div>
+  </article>
+
+  <ng-template #noAnswer>
+    <article class="proto-surface">
+      <div class="proto-empty">
+        <strong>Nenhuma resposta ainda</strong>
+        <p>Faça uma pergunta para a Selah IA montar a primeira leitura.</p>
+      </div>
+    </article>
+  </ng-template>
+
+  <div class="assistant-modal-backdrop" *ngIf="consentDialogOpen()">
+    <div class="assistant-modal">
+      <h3>Primeiro uso da IA</h3>
+      <p>
+        Para usar a IA externa pela primeira vez, precisamos registrar seu
+        consentimento de privacidade e ativação.
+      </p>
+      <label class="consent-row">
+        <input type="checkbox" [checked]="consentChecked()" (change)="consentChecked.set($any($event.target).checked)" />
+        <span>Autorizo o primeiro uso do assistente inteligente nesta conta.</span>
+      </label>
+      <p class="assistant-error" *ngIf="consentErrorMessage()">{{ consentErrorMessage() }}</p>
+      <div class="proto-actions-row">
+        <button type="button" class="proto-button proto-button--secondary" (click)="closeConsentDialog()">
+          Cancelar
+        </button>
+        <button type="button" class="proto-button" [disabled]="consentSaving()" (click)="confirmAssistantConsent()">
+          {{ consentSaving() ? 'Salvando...' : 'Confirmar e continuar' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

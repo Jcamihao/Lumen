@@ -1,31 +1,32 @@
+<nav
+  class="proto-bottom-nav"
+  [class.proto-bottom-nav--menu-open]="menuOpen"
+  [style.--nav-count]="navSlotCount"
+  [style.--active-index]="activeIndex()"
+>
+  <div class="proto-bottom-nav__track">
+    <span class="proto-bottom-nav__indicator" aria-hidden="true"></span>
 
-<nav class="bottom-nav">
-  <ng-container *ngFor="let item of navItems">
     <a
-      *ngIf="item.route; else actionItem"
-      class="nav-item"
-      [class.route-transitioning]="animatingItemKey() === navKey(item)"
+      *ngFor="let item of navItems; let index = index"
+      class="proto-bottom-nav__item"
+      [class.active]="activeIndex() === index"
       [routerLink]="item.route"
-      routerLinkActive="active"
-      [routerLinkActiveOptions]="{ exact: item.route === '/dashboard' }"
-      (click)="handleNavTap(item)"
+      (click)="requestNavigation()"
     >
       <span class="material-symbols-rounded">{{ item.icon }}</span>
       <span>{{ item.label }}</span>
     </a>
 
-    <ng-template #actionItem>
-      <button
-        type="button"
-        class="nav-item"
-        [class.active]="false"
-        [class.route-transitioning]="animatingItemKey() === navKey(item)"
-        (click)="handleNavTap(item); handleMenuClick()"
-      >
-        <span class="material-symbols-rounded">{{ item.icon }}</span>
-        <span>{{ item.label }}</span>
-      </button>
-    </ng-template>
-  </ng-container>
+    <button
+      type="button"
+      class="proto-bottom-nav__item proto-bottom-nav__item--menu"
+      [class.active]="isMenuActive()"
+      (click)="requestMenu()"
+      aria-label="Abrir menu"
+    >
+      <span class="material-symbols-rounded">menu</span>
+      <span>Menu</span>
+    </button>
+  </div>
 </nav>
-  

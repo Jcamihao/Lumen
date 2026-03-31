@@ -1,72 +1,82 @@
-<div class="auth-page auth-page--login">
-  <div class="auth-layout">
-    <section class="hero-panel">
-      <div class="hero-panel__aurora hero-panel__aurora--a"></div>
-      <div class="hero-panel__aurora hero-panel__aurora--b"></div>
+<div class="proto-auth">
+  <div class="proto-auth__layout auth-layout">
+    <section class="proto-auth__visual auth-visual">
+      <div class="auth-visual__orb auth-visual__orb--left"></div>
+      <div class="auth-visual__orb auth-visual__orb--right"></div>
 
-      <div class="hero-visual">
-        <div class="device-stage">
-          <div class="device-stage__screen">
-            <div class="brand-badge">
-              <img class="brand-logo" src="assets/logo/logo_lumen.png" alt="LUMEN" />
-            </div>
-            <span class="device-stage__dot device-stage__dot--a"></span>
-            <span class="device-stage__dot device-stage__dot--b"></span>
-            <span class="device-stage__line device-stage__line--a"></span>
-            <span class="device-stage__line device-stage__line--b"></span>
-          </div>
-          <div class="wallet-card">
-            <div class="wallet-card__chip"></div>
-            <div class="wallet-card__meta">
-              <strong>LUMEN</strong>
-              <span>Workspace card</span>
-            </div>
-            <div class="wallet-card__brand"></div>
-          </div>
+      <div class="auth-brand">
+        <div class="auth-brand__panel">
+          <img
+            class="auth-brand__logo auth-brand__logo--contrast"
+            src="assets/logo/logo_lumen_s_fundo.png"
+            alt="Logo do Lumen"
+          />
         </div>
       </div>
 
-      <div class="hero-copy">
-        <p class="section-kicker">LUMEN workspace</p>
-        <h1>Tudo mais claro, Tudo mais simples.</h1>
-        <p class="hero-copy__description">
-          Retome prioridades, finanças e rotina em um painel mais leve, visual e
-          direto ao ponto.
+      <div class="auth-copy">
+        <h3>
+          Tudo mais claro. <br />
+          Tudo mais simples.
+        </h3>
+        <p>
+          Entre para retomar prioridades, dinheiro e rotina em um painel direto,
+          organizado e visual.
         </p>
       </div>
 
-      <article class="balance-card">
-        <span>Meu saldo</span>
-        <strong>R$ 25.520</strong>
-        <p>Cards, resumo financeiro e próximas ações no mesmo fluxo.</p>
-      </article>
+      <div class="auth-benefits">
+        <div
+          class="auth-benefit"
+          *ngFor="
+            let item of [
+              'Plataforma completa e integrada',
+              'Assistente com IA para insights',
+              'Sincronização em tempo real',
+              'Privacidade e segurança garantidas',
+            ]
+          "
+        >
+          <span class="material-symbols-rounded">check_circle</span>
+          <span>{{ item }}</span>
+        </div>
+      </div>
+
+      <p class="auth-footer-note">
+        © 2026 Lumen. Todos os direitos reservados.
+      </p>
     </section>
 
-    <section class="form-panel">
-      <header class="form-panel__header">
-        <p class="section-kicker">Entrar</p>
-        <h2>Bem-vindo de volta</h2>
-        <p>Faça login para continuar de onde você parou.</p>
-      </header>
+    <section class="proto-auth-card auth-card">
+      <div class="auth-mobile-brand">
+        <img
+          class="auth-brand__logo"
+          src="assets/logo/logo_lumen_s_fundo.png"
+          alt="Logo do Lumen"
+        />
+      </div>
 
-      <form class="auth-form" [formGroup]="form" (ngSubmit)="submit()">
-        <div class="demo-strip">
-          <span class="demo-strip__label">Ambiente demo</span>
-          <div class="demo-strip__values">
-            <span>demo@lumen.local</span>
-            <span>Demo123!</span>
-          </div>
+      <div class="proto-auth-card__head">
+        <h1>Bem-vindo de volta</h1>
+        <p>Faça login para continuar exatamente de onde você parou.</p>
+      </div>
+
+      <form class="proto-auth-form" [formGroup]="form" (ngSubmit)="submit()">
+        <div class="proto-field">
+          <label for="login-email">Email</label>
+          <input
+            id="login-email"
+            type="email"
+            formControlName="email"
+            placeholder="voce@exemplo.com"
+          />
         </div>
 
-        <label class="auth-field">
-          <span class="auth-field__label">Email</span>
-          <input type="email" formControlName="email" placeholder="voce@exemplo.com" />
-        </label>
-
-        <label class="auth-field">
-          <span class="auth-field__label">Senha</span>
-          <span class="auth-field__control auth-field__control--password">
+        <div class="proto-field">
+          <label for="login-password">Senha</label>
+          <div class="auth-password">
             <input
+              id="login-password"
               [type]="showPassword() ? 'text' : 'password'"
               formControlName="password"
               [attr.minlength]="passwordMinLength"
@@ -74,42 +84,48 @@
             />
             <button
               type="button"
-              class="password-toggle"
+              class="auth-password__toggle"
               (click)="togglePasswordVisibility()"
-              [attr.aria-label]="showPassword() ? 'Ocultar senha' : 'Mostrar senha'"
+              [attr.aria-label]="
+                showPassword() ? 'Ocultar senha' : 'Mostrar senha'
+              "
             >
               <span class="material-symbols-rounded">
                 {{ showPassword() ? 'visibility_off' : 'visibility' }}
               </span>
             </button>
-          </span>
-        </label>
+          </div>
+        </div>
 
-        <p class="error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
+        <div class="auth-form-meta">
+          <label class="auth-check">
+            <input type="checkbox" checked />
+            <span>Lembrar de mim</span>
+          </label>
 
-        <app-ui-button type="submit" [disabled]="form.invalid || loading()" [fullWidth]="true" icon="login">
-          {{ loading() ? 'Entrando...' : 'Entrar no workspace' }}
-        </app-ui-button>
+          <a class="auth-link" routerLink="/signup">Precisa de uma conta?</a>
+        </div>
+
+        <p class="auth-error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
+
+        <div class="proto-actions-row auth-actions">
+          <button
+            type="submit"
+            class="proto-button auth-actions__primary"
+            [disabled]="form.invalid || loading()"
+          >
+            <span class="material-symbols-rounded">login</span>
+            {{ loading() ? 'Entrando...' : 'Entrar' }}
+          </button>
+        </div>
       </form>
 
-      <div class="feature-pills">
-        <span>Tasks + Finance</span>
-        <span>Forecast diário</span>
-        <span>Metas em contexto</span>
-      </div>
-
-      <article class="reading-card">
-        <strong>Leitura contínua</strong>
+      <div class="proto-auth-card__footer">
         <p>
-          Visão diária, saldo, lembretes e próximos passos aparecem no mesmo
-          ritmo visual do restante do projeto.
+          Novo por aqui?
+          <a class="auth-link" routerLink="/signup">Criar conta</a>
         </p>
-      </article>
-
-      <footer class="form-panel__footer">
-        <span>Novo por aqui?</span>
-        <a routerLink="/auth/register">Criar conta</a>
-      </footer>
+      </div>
     </section>
   </div>
 </div>

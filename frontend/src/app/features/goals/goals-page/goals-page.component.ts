@@ -1,32 +1,15 @@
-import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Goal } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
-import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
-import { FieldShellComponent } from '../../../shared/components/field-shell/field-shell.component';
-import { MetricCardComponent } from '../../../shared/components/metric-card/metric-card.component';
-import { PanelComponent } from '../../../shared/components/panel/panel.component';
-import { UiBadgeComponent } from '../../../shared/components/ui-badge/ui-badge.component';
-import { UiButtonComponent } from '../../../shared/components/ui-button/ui-button.component';
 
 @Component({
   selector: 'app-goals-page',
   standalone: true,
-  imports: [
-    CommonModule,
-    ReactiveFormsModule,
-    CurrencyPipe,
-    DatePipe,
-    PanelComponent,
-    EmptyStateComponent,
-    FieldShellComponent,
-    UiButtonComponent,
-    UiBadgeComponent,
-    MetricCardComponent,
-  ],
+  imports: [CommonModule, ReactiveFormsModule],
   templateUrl: './goals-page.component.html',
   styleUrls: ['./goals-page.component.scss'],
 })
@@ -41,6 +24,9 @@ export class GoalsPageComponent {
   );
   protected readonly savedTotal = computed(
     () => this.goals().reduce((total, goal) => total + goal.currentAmount, 0),
+  );
+  protected readonly completedGoals = computed(
+    () => this.goals().filter((goal) => this.progress(goal) >= 100).length,
   );
   protected readonly averageProgress = computed(() => {
     if (!this.goals().length) {
@@ -107,6 +93,44 @@ export class GoalsPageComponent {
 
   protected remainingAmount(goal: Goal) {
     return Math.max(goal.targetAmount - goal.currentAmount, 0);
+  }
+
+  protected goalStatus(goal: Goal) {
+    if (goal.status === 'ACHIEVED' || this.progress(goal) >= 100) {
+      return 'Concluída';
+    }
+
+    if (goal.status === 'PAUSED') {
+      return 'Pausada';
+    }
+
+    return 'Ativa';
+  }
+
+  protected goalStatusTone(goal: Goal) {
+    if (goal.status === 'ACHIEVED' || this.progress(goal) >= 100) {
+      return 'success' as const;
+    }
+
+    if (goal.status === 'PAUSED') {
+      return 'warning' as const;
+    }
+
+    return 'accent' as const;
+  }
+
+  protected goalProgressTone(goal: Goal) {
+    const currentProgress = this.progress(goal);
+
+    if (currentProgress >= 100) {
+      return 'success' as const;
+    }
+
+    if (currentProgress >= 50) {
+      return 'accent' as const;
+    }
+
+    return 'warning' as const;
   }
 
   protected goalDeadlineLabel(goal: Goal) {

@@ -1,137 +1,159 @@
+<div class="proto-page">
+  <header class="proto-header">
+    <div class="proto-header__copy">
+      <h2>Metas</h2>
+      <p>Defina objetivos financeiros e acompanhe o progresso de forma clara.</p>
+    </div>
+  </header>
 
-    <div class="page-stack">
-      <section class="metrics">
-        <app-metric-card
-          label="Metas ativas"
-          [value]="goals().length"
-          caption="Objetivos em andamento"
-        />
-        <app-metric-card
-          label="Valor acumulado"
-          [value]="savedTotal()"
-          [currency]="true"
-          [currencyCode]="currencyCode()"
-          caption="Total já guardado"
-          tone="success"
-        />
-        <app-metric-card
-          label="Progresso médio"
-          [value]="averageProgress() + '%'"
-          caption="Ritmo geral das metas"
-          tone="warning"
-        />
-      </section>
+  <section class="proto-grid proto-grid--metrics">
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">flag</span></span>
+      </div>
+      <strong>{{ goals().length }}</strong>
+      <p>Metas ativas</p>
+    </article>
 
-      <section class="split-layout goals-layout">
-        <app-panel class="composer-panel" title="Nova meta" caption="Conecte ambição, prazo e valor de forma elegante">
-          <form class="form-grid" [formGroup]="form" (ngSubmit)="createGoal()">
-            <app-field-shell label="Título" hint="Obrigatório">
-              <input type="text" formControlName="title" placeholder="Ex.: Viagem para Lisboa">
-            </app-field-shell>
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">monitoring</span></span>
+      </div>
+      <strong>{{ completedGoals() }}</strong>
+      <p>Metas concluídas</p>
+    </article>
 
-            <app-field-shell label="Descrição" hint="Opcional">
-              <textarea rows="4" formControlName="description" placeholder="Por que essa meta importa?"></textarea>
-            </app-field-shell>
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">savings</span></span>
+      </div>
+      <strong>{{ savedTotal() | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
+      <p>Total economizado</p>
+    </article>
 
-            <div class="grid-2">
-              <app-field-shell label="Valor alvo">
-                <input type="number" formControlName="targetAmount" placeholder="12000">
-              </app-field-shell>
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">target</span></span>
+      </div>
+      <strong>{{ averageProgress() }}%</strong>
+      <p>Progresso geral</p>
+    </article>
+  </section>
 
-              <app-field-shell label="Valor atual">
-                <input type="number" formControlName="currentAmount" placeholder="0">
-              </app-field-shell>
-            </div>
+  <section class="goals-grid">
+    <article class="proto-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Nova meta</h3>
+          <p>Cadastre valor-alvo, prazo e quanto já foi reservado até aqui.</p>
+        </div>
+      </div>
 
-            <app-field-shell label="Data alvo">
-              <input type="date" formControlName="targetDate">
-            </app-field-shell>
-
-            <app-ui-button type="submit" [disabled]="form.invalid" [fullWidth]="true" icon="flag">
-              Criar meta
-            </app-ui-button>
-          </form>
-        </app-panel>
-
-        <app-panel title="Metas em andamento" caption="Acompanhe evolução e faça aportes rápidos">
-          <div class="goal-grid" *ngIf="goals().length; else noGoals">
-            <article class="goal-card" *ngFor="let goal of goals()">
-              <div class="goal-card-top">
-                <div class="goal-heading">
-                  <span class="goal-kicker">Meta ativa</span>
-                  <strong>{{ goal.title }}</strong>
-                  <p>{{ goal.description || goalDeadlineLabel(goal) }}</p>
-                </div>
-                <div class="goal-meta-chips">
-                  <app-ui-badge
-                    [label]="goal.status === 'ACHIEVED' ? 'Concluída' : 'Ativa'"
-                    [tone]="goal.status === 'ACHIEVED' ? 'success' : 'accent'"
-                    [showDot]="false"
-                  />
-                  <span class="goal-deadline-chip">{{ goalDeadlineLabel(goal) }}</span>
-                </div>
-              </div>
-
-              <div class="goal-progress-shell">
-                <div class="goal-summary">
-                  <div class="goal-progress-copy">
-                    <span>Progresso atual</span>
-                    <strong>{{ progress(goal) }}%</strong>
-                  </div>
-                  <div class="goal-amount-copy">
-                    <strong>
-                      {{ goal.currentAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
-                    </strong>
-                    <span>
-                      de {{ goal.targetAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
-                    </span>
-                  </div>
-                </div>
-
-                <div class="progress-track" aria-hidden="true">
-                  <span class="progress-fill" [style.width.%]="progress(goal)"></span>
-                </div>
-
-                <div class="goal-stats">
-                  <div class="goal-stat">
-                    <span>Falta</span>
-                    <strong>
-                      {{ remainingAmount(goal) | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
-                    </strong>
-                  </div>
-                  <div class="goal-stat">
-                    <span>Planejado</span>
-                    <strong>
-                      {{ goal.targetAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-
-              <div class="goal-actions">
-                <div class="goal-quick-actions">
-                  <app-ui-button variant="secondary" size="sm" (click)="contribute(goal, 100)">
-                    +100
-                  </app-ui-button>
-                  <app-ui-button variant="secondary" size="sm" (click)="contribute(goal, 500)">
-                    +500
-                  </app-ui-button>
-                </div>
-                <app-ui-button class="goal-delete-action" variant="ghost" size="sm" (click)="removeGoal(goal.id)">
-                  Excluir
-                </app-ui-button>
-              </div>
-            </article>
+      <form class="proto-surface__body" [formGroup]="form" (ngSubmit)="createGoal()">
+        <div class="proto-form-grid">
+          <div class="proto-field proto-field--full">
+            <label for="goal-title">Título</label>
+            <input id="goal-title" type="text" formControlName="title" placeholder="Ex: Viagem, reserva, equipamento" />
           </div>
 
-          <ng-template #noGoals>
-            <app-empty-state
-              title="Nenhuma meta ativa"
-              description="Crie um destino para o LUMEN orientar melhor suas decisões."
-              icon="flag"
-            />
-          </ng-template>
-        </app-panel>
-      </section>
-    </div>
-  
+          <div class="proto-field proto-field--full">
+            <label for="goal-description">Descrição</label>
+            <textarea
+              id="goal-description"
+              rows="4"
+              formControlName="description"
+              placeholder="Por que essa meta importa e como você quer alcançá-la"
+            ></textarea>
+          </div>
+
+          <div class="proto-field">
+            <label for="goal-target">Valor alvo</label>
+            <input id="goal-target" type="number" min="1" formControlName="targetAmount" />
+          </div>
+
+          <div class="proto-field">
+            <label for="goal-current">Valor inicial</label>
+            <input id="goal-current" type="number" min="0" formControlName="currentAmount" />
+          </div>
+
+          <div class="proto-field proto-field--full">
+            <label for="goal-date">Prazo</label>
+            <input id="goal-date" type="date" formControlName="targetDate" />
+          </div>
+        </div>
+
+        <div class="proto-actions-row">
+          <button type="submit" class="proto-button" [disabled]="form.invalid">
+            <span class="material-symbols-rounded">flag</span>
+            Criar meta
+          </button>
+        </div>
+      </form>
+    </article>
+
+    <article class="proto-surface goals-list-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Carteira de metas</h3>
+          <p>Aporte rápido, leitura de progresso e contexto do objetivo.</p>
+        </div>
+      </div>
+
+      <div class="proto-surface__body" *ngIf="goals().length; else noGoals">
+        <div class="proto-list">
+          <article class="proto-list-item goal-card" *ngFor="let goal of goals()">
+            <div class="proto-list-item__top goal-card__top">
+              <div class="goal-card__title-block">
+                <strong>{{ goal.title }}</strong>
+                <p>{{ goal.description || 'Objetivo sem descrição detalhada.' }}</p>
+              </div>
+
+              <span class="proto-tag" [attr.data-tone]="goalStatusTone(goal)">
+                {{ goalStatus(goal) }}
+              </span>
+            </div>
+
+            <div class="proto-progress">
+              <span [style.width.%]="progress(goal)"></span>
+            </div>
+
+            <div class="goal-card__badges">
+              <span class="proto-chip" [attr.data-tone]="goalProgressTone(goal)">
+                {{ progress(goal) }}%
+              </span>
+              <span class="proto-chip">
+                {{ goal.currentAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+                de
+                {{ goal.targetAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+              </span>
+              <span class="proto-chip" [attr.data-tone]="remainingAmount(goal) === 0 ? 'success' : 'accent'">
+                Faltam
+                {{ remainingAmount(goal) | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+              </span>
+              <span class="proto-tag">{{ goalDeadlineLabel(goal) }}</span>
+            </div>
+
+            <div class="proto-actions-row goal-card__actions">
+              <button type="button" class="proto-button proto-button--secondary" (click)="contribute(goal, 500)">
+                + R$ 500
+              </button>
+              <button type="button" class="proto-button proto-button--secondary" (click)="contribute(goal, 1000)">
+                + R$ 1.000
+              </button>
+              <button type="button" class="proto-button proto-button--ghost" (click)="removeGoal(goal.id)">
+                Remover
+              </button>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <ng-template #noGoals>
+        <div class="proto-empty">
+          <strong>Nenhuma meta ativa</strong>
+          <p>Crie a primeira meta para o Lumen acompanhar sua evolução.</p>
+        </div>
+      </ng-template>
+    </article>
+  </section>
+</div>

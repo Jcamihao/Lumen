@@ -1,52 +1,72 @@
-import { CommonModule, CurrencyPipe, DatePipe, NgClass } from '@angular/common';
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
+import { auditTime, fromEvent, map, startWith } from 'rxjs';
 import { DashboardSummary, Goal, Insight, Task, Transaction } from '../../../core/models/domain.models';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { formatLocalDateLabel } from '../../../core/utils/date.utils';
-import { ChartCardComponent, ChartSignal } from '../../../shared/components/chart-card/chart-card.component';
-import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
-import { ListItemComponent } from '../../../shared/components/list-item/list-item.component';
-import { MetricCardComponent } from '../../../shared/components/metric-card/metric-card.component';
-import { PanelComponent } from '../../../shared/components/panel/panel.component';
-import { UiBadgeComponent } from '../../../shared/components/ui-badge/ui-badge.component';
-import { UiButtonComponent } from '../../../shared/components/ui-button/ui-button.component';
 
 @Component({
   selector: 'app-dashboard-page',
   standalone: true,
-  imports: [
-    CommonModule,
-    RouterLink,
-    CurrencyPipe,
-    DatePipe,
-    NgClass,
-    MetricCardComponent,
-    PanelComponent,
-    EmptyStateComponent,
-    UiBadgeComponent,
-    UiButtonComponent,
-    ListItemComponent,
-    ChartCardComponent,
-  ],
+  imports: [CommonModule, RouterLink],
   templateUrl: './dashboard-page.component.html',
   styleUrls: ['./dashboard-page.component.scss'],
+  host: {
+    '[style.--dashboard-parallax]': 'parallaxOffset()',
+    '[style.--dashboard-parallax-soft]': 'parallaxSoftOffset()',
+  },
 })
 export class DashboardPageComponent {
   private readonly api = inject(LifeApiService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly scrollDepth = signal(0);
   protected readonly summary = signal<DashboardSummary | null>(null);
+  protected readonly parallaxOffset = computed(
+    () => `${Math.min(this.scrollDepth(), 360) * 0.14}px`,
+  );
+  protected readonly parallaxSoftOffset = computed(
+    () => `${Math.min(this.scrollDepth(), 360) * 0.08}px`,
+  );
 
   constructor() {
     this.api
       .getDashboardSummary()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((summary) => this.summary.set(summary));
+
+    if (typeof window !== 'undefined') {
+      fromEvent(window, 'scroll', { passive: true }).pipe(
+        startWith(0),
+        auditTime(16),
+        map(() => window.scrollY || window.pageYOffset || 0),
+        takeUntilDestroyed(this.destroyRef),
+      ).subscribe((scrollY) => this.scrollDepth.set(scrollY));
+    }
   }
 
   protected greeting(name: string) {
     return `${name}, seu dia já ganhou mais clareza.`;
+  }
+
+  protected todayLabel() {
+    return new Intl.DateTimeFormat('pt-BR', {
+      day: 'numeric',
+      month: 'long',
+    }).format(new Date());
+  }
+
+  protected riskLabel(level: DashboardSummary['forecast']['riskLevel']) {
+    if (level === 'HIGH') {
+      return 'alto';
+    }
+
+    if (level === 'MEDIUM') {
+      return 'moderado';
+    }
+
+    return 'baixo';
   }
 
   protected progress(goal: Goal) {
@@ -186,61 +206,4 @@ export class DashboardPageComponent {
     return ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
   }
 
-  protected projectionSignals(data: DashboardSummary): ChartSignal[] {
-    const series = this.projectionSeries(data);
-    const labels = this.projectionLabels();
-    const peak = Math.max(...series);
-    const floor = Math.min(...series);
-    const peakIndex = series.indexOf(peak);
-    const floorIndex = series.indexOf(floor);
-    const pendingCost = data.tasks.items.reduce(
-      (total, task) => total + (task.estimatedAmount ?? 0),
-      0,
-    );
-    const costTasks = data.tasks.items.filter((task) => task.hasFinancialImpact).length;
-
-    return [
-      {
-        label: 'Pico projetado',
-        value: this.formatCompactCurrency(peak, data.user.preferredCurrency),
-        detail: `Maior fôlego previsto para ${labels[peakIndex].toLowerCase()}.`,
-        tone: 'accent',
-      },
-      {
-        label: 'Piso provável',
-        value: this.formatCompactCurrency(floor, data.user.preferredCurrency),
-        detail: `Faixa mais pressionada em ${labels[floorIndex].toLowerCase()}.`,
-        tone: this.forecastTone(data.forecast.riskLevel),
-      },
-      {
-        label: 'Custos em aberto',
-        value: this.formatCompactCurrency(pendingCost, data.user.preferredCurrency),
-        detail: costTasks
-          ? `${costTasks} tarefa(s) ainda podem mexer no caixa.`
-          : 'Nenhuma tarefa com impacto financeiro aberta.',
-        tone: pendingCost > 0 ? 'warning' : 'success',
-      },
-    ];
-  }
-
-  private formatCompactCurrency(value: number, currencyCode: string) {
-    const sign = value < 0 ? '-' : '';
-    const abs = Math.abs(value);
-    const compact = new Intl.NumberFormat('pt-BR', {
-      notation: 'compact',
-      maximumFractionDigits: abs >= 1000 ? 1 : 0,
-    }).format(abs);
-    const currency = new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: currencyCode,
-      currencyDisplay: 'symbol',
-      maximumFractionDigits: 0,
-      minimumFractionDigits: 0,
-    })
-      .formatToParts(0)
-      .find((part) => part.type === 'currency')
-      ?.value || currencyCode;
-
-    return `${sign}${currency} ${compact}`;
-  }
 }

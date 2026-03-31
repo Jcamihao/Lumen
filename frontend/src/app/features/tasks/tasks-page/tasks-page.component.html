@@ -1,132 +1,186 @@
-
-    <div class="page-stack">
-      <section class="metrics">
-        <app-metric-card
-          label="Tarefas totais"
-          [value]="tasks().length"
-          caption="Tudo que já entrou no seu fluxo"
-        />
-        <app-metric-card
-          label="Concluídas"
-          [value]="doneCount()"
-          caption="Itens já resolvidos"
-          tone="success"
-        />
-        <app-metric-card
-          label="Com impacto"
-          [value]="impactCount()"
-          caption="Tarefas com efeito financeiro"
-          tone="warning"
-        />
-      </section>
-
-      <section class="split-layout tasks-layout">
-        <app-panel
-          class="composer-panel"
-          title="Nova tarefa"
-          caption="Transforme intenção em ação com contexto"
-          maxHeight="456px"
-        >
-          <form class="form-grid" [formGroup]="form" (ngSubmit)="createTask()">
-            <app-field-shell label="Título" hint="Obrigatório">
-              <input type="text" formControlName="title" placeholder="Ex.: Pagar conta de energia">
-            </app-field-shell>
-
-            <app-field-shell label="Descrição" hint="Opcional">
-              <textarea
-                rows="4"
-                formControlName="description"
-                placeholder="Contexto, detalhe importante ou próximo passo"
-              ></textarea>
-            </app-field-shell>
-
-            <div class="grid-2">
-              <app-field-shell label="Prazo">
-                <input type="date" formControlName="dueDate">
-              </app-field-shell>
-
-              <app-field-shell label="Prioridade">
-                <select formControlName="priority">
-                  <option value="MEDIUM">Média</option>
-                  <option value="LOW">Baixa</option>
-                  <option value="HIGH">Alta</option>
-                  <option value="CRITICAL">Crítica</option>
-                </select>
-              </app-field-shell>
-            </div>
-
-            <div class="grid-2">
-              <app-field-shell label="Categoria">
-                <select formControlName="categoryId">
-                  <option value="">Sem categoria</option>
-                  <option *ngFor="let category of taskCategories()" [value]="category.id">
-                    {{ category.name }}
-                  </option>
-                </select>
-              </app-field-shell>
-
-              <app-field-shell label="Impacto estimado" hint="BRL">
-                <input type="number" formControlName="estimatedAmount" placeholder="0">
-              </app-field-shell>
-            </div>
-
-            <div class="surface-note">
-              <app-ui-badge
-                [label]="form.value.estimatedAmount ? 'Com impacto financeiro' : 'Tarefa operacional'"
-                [tone]="form.value.estimatedAmount ? 'warning' : 'accent'"
-              />
-            </div>
-
-            <app-ui-button type="submit" [disabled]="form.invalid" [fullWidth]="true" icon="add_task">
-              Criar tarefa
-            </app-ui-button>
-          </form>
-        </app-panel>
-
-        <app-panel class="queue-panel" title="Fila atual" caption="Prioridades, ritmo e pontos de atenção">
-          <div class="toolbar">
-            <app-ui-badge [label]="doneCount() + ' concluídas'" tone="success" />
-            <app-ui-badge [label]="pendingCount() + ' abertas'" tone="accent" />
-            <app-ui-badge [label]="impactCount() + ' com custo'" tone="warning" />
-          </div>
-
-          <div class="stack-list" *ngIf="tasks().length; else noTasks">
-            <app-list-item
-              *ngFor="let task of tasks()"
-              [title]="task.title"
-              [subtitle]="taskSubtitle(task)"
-              [meta]="taskMeta(task)"
-              [metaTone]="task.hasFinancialImpact ? 'warning' : 'neutral'"
-              [badge]="priorityLabel(task.priority)"
-              [badgeTone]="priorityTone(task.priority)"
-              badgePlacement="trailing"
-              [checkable]="true"
-              [checked]="task.status === 'DONE'"
-            >
-              <div list-actions class="row-actions">
-                <app-ui-button
-                  variant="secondary"
-                  size="sm"
-                  [disabled]="task.status === 'DONE'"
-                  (click)="markDone(task)"
-                >
-                  {{ task.status === 'DONE' ? 'Concluída' : 'Concluir' }}
-                </app-ui-button>
-                <app-ui-button variant="ghost" size="sm" (click)="removeTask(task.id)">
-                  Excluir
-                </app-ui-button>
-              </div>
-            </app-list-item>
-          </div>
-
-          <ng-template #noTasks>
-            <app-empty-state
-              title="Nenhuma tarefa por aqui"
-              description="Crie sua primeira prioridade conectada ao seu contexto real."
-              icon="checklist"
-            />
-          </ng-template>
-        </app-panel>
-      </section>
+<div class="proto-page">
+  <header class="proto-header">
+    <div class="proto-header__copy">
+      <h2>Tarefas</h2>
+      <p>Gerencie suas prioridades e acompanhe o impacto financeiro de cada ação.</p>
     </div>
-  
+  </header>
+
+  <section class="proto-grid proto-grid--metrics">
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">checklist</span></span>
+      </div>
+      <strong>{{ activeTasks().length }}</strong>
+      <p>Tarefas ativas</p>
+    </article>
+
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">task_alt</span></span>
+      </div>
+      <strong>{{ completedTasks().length }}</strong>
+      <p>Concluídas</p>
+    </article>
+
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">priority_high</span></span>
+      </div>
+      <strong>{{ highPriorityCount() }}</strong>
+      <p>Alta prioridade</p>
+    </article>
+
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">payments</span></span>
+      </div>
+      <strong>{{ totalImpact() | currency: 'BRL' : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
+      <p>Impacto total estimado</p>
+    </article>
+  </section>
+
+  <section class="tasks-grid">
+    <article class="proto-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Nova tarefa</h3>
+          <p>Adicione uma ação com prazo, prioridade e efeito previsto no caixa.</p>
+        </div>
+      </div>
+
+      <form class="proto-surface__body" [formGroup]="form" (ngSubmit)="createTask()">
+        <div class="proto-form-grid">
+          <div class="proto-field proto-field--full">
+            <label for="task-title">Título</label>
+            <input id="task-title" type="text" formControlName="title" placeholder="Nome da tarefa" />
+          </div>
+
+          <div class="proto-field proto-field--full">
+            <label for="task-description">Descrição</label>
+            <textarea
+              id="task-description"
+              rows="4"
+              formControlName="description"
+              placeholder="Contexto, passos ou observações"
+            ></textarea>
+          </div>
+
+          <div class="proto-field">
+            <label for="task-priority">Prioridade</label>
+            <select id="task-priority" formControlName="priority">
+              <option value="LOW">Baixa</option>
+              <option value="MEDIUM">Média</option>
+              <option value="HIGH">Alta</option>
+              <option value="CRITICAL">Crítica</option>
+            </select>
+          </div>
+
+          <div class="proto-field">
+            <label for="task-due-date">Prazo</label>
+            <input id="task-due-date" type="date" formControlName="dueDate" />
+          </div>
+
+          <div class="proto-field">
+            <label for="task-category">Categoria</label>
+            <select id="task-category" formControlName="categoryId">
+              <option value="">Sem categoria</option>
+              <option *ngFor="let category of taskCategories()" [value]="category.id">
+                {{ category.name }}
+              </option>
+            </select>
+          </div>
+
+          <div class="proto-field">
+            <label for="task-amount">Impacto estimado</label>
+            <input
+              id="task-amount"
+              type="number"
+              min="0"
+              formControlName="estimatedAmount"
+              placeholder="0"
+            />
+          </div>
+        </div>
+
+        <div class="proto-actions-row">
+          <button type="submit" class="proto-button" [disabled]="form.invalid">
+            <span class="material-symbols-rounded">add_task</span>
+            Criar tarefa
+          </button>
+        </div>
+      </form>
+    </article>
+
+    <article class="proto-surface tasks-list-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Fila de tarefas</h3>
+          <p>Conclua, remova e acompanhe o que ainda precisa andar.</p>
+        </div>
+      </div>
+
+      <div class="proto-surface__body" *ngIf="tasks().length; else noTasks">
+        <div class="proto-list">
+          <article class="proto-list-item task-card" *ngFor="let task of tasks()">
+            <div class="proto-list-item__top task-card__top">
+              <div class="task-card__title-block">
+                <strong>{{ task.title }}</strong>
+                <p>{{ taskSubtitle(task) }}</p>
+              </div>
+
+              <span class="proto-tag" [attr.data-tone]="taskStatusTone(task)">
+                {{ task.status === 'DONE' ? 'Concluída' : priorityLabel(task.priority) }}
+              </span>
+            </div>
+
+            <div class="task-card__badges">
+              <span class="proto-chip">{{ taskCategoryLabel(task) }}</span>
+              <span class="proto-chip">{{ taskDeadlineLabel(task) }}</span>
+              <span
+                *ngIf="task.estimatedAmount"
+                class="proto-chip"
+                data-tone="accent"
+              >
+                {{ task.estimatedAmount | currency: 'BRL' : 'symbol' : '1.0-0' : 'pt-BR' }}
+              </span>
+              <span
+                *ngIf="task.hasFinancialImpact && !task.estimatedAmount"
+                class="proto-chip"
+                data-tone="warning"
+              >
+                Impacto financeiro
+              </span>
+            </div>
+
+            <div class="proto-actions-row task-card__actions">
+              <button
+                type="button"
+                class="proto-button proto-button--secondary"
+                *ngIf="task.status !== 'DONE'"
+                (click)="markDone(task)"
+              >
+                Concluir
+              </button>
+
+              <button
+                type="button"
+                class="proto-button proto-button--ghost"
+                (click)="removeTask(task.id)"
+              >
+                Remover
+              </button>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <ng-template #noTasks>
+        <div class="proto-empty">
+          <strong>Nenhuma tarefa cadastrada</strong>
+          <p>Crie a primeira tarefa para organizar seu ritmo do dia.</p>
+        </div>
+      </ng-template>
+    </article>
+  </section>
+</div>

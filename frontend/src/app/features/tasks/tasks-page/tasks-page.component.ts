@@ -1,33 +1,15 @@
-import { CommonModule, DatePipe } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Task } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
-import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
-import { FieldShellComponent } from '../../../shared/components/field-shell/field-shell.component';
-import { ListItemComponent } from '../../../shared/components/list-item/list-item.component';
-import { MetricCardComponent } from '../../../shared/components/metric-card/metric-card.component';
-import { PanelComponent } from '../../../shared/components/panel/panel.component';
-import { UiBadgeComponent } from '../../../shared/components/ui-badge/ui-badge.component';
-import { UiButtonComponent } from '../../../shared/components/ui-button/ui-button.component';
 
 @Component({
   selector: 'app-tasks-page',
   standalone: true,
-  imports: [
-    CommonModule,
-    ReactiveFormsModule,
-    DatePipe,
-    PanelComponent,
-    EmptyStateComponent,
-    FieldShellComponent,
-    UiButtonComponent,
-    UiBadgeComponent,
-    ListItemComponent,
-    MetricCardComponent,
-  ],
+  imports: [CommonModule, ReactiveFormsModule],
   templateUrl: './tasks-page.component.html',
   styleUrls: ['./tasks-page.component.scss'],
 })
@@ -40,14 +22,33 @@ export class TasksPageComponent {
   protected readonly taskCategories = computed(
     () => this.authService.currentUser()?.taskCategories ?? [],
   );
+  protected readonly activeTasks = computed(
+    () => this.tasks().filter((task) => task.status !== 'DONE'),
+  );
+  protected readonly completedTasks = computed(
+    () => this.tasks().filter((task) => task.status === 'DONE'),
+  );
   protected readonly doneCount = computed(
     () => this.tasks().filter((task) => task.status === 'DONE').length,
+  );
+  protected readonly highPriorityCount = computed(
+    () =>
+      this.activeTasks().filter(
+        (task) => task.priority === 'HIGH' || task.priority === 'CRITICAL',
+      ).length,
   );
   protected readonly impactCount = computed(
     () => this.tasks().filter((task) => task.hasFinancialImpact).length,
   );
   protected readonly pendingCount = computed(
     () => this.tasks().filter((task) => task.status !== 'DONE').length,
+  );
+  protected readonly totalImpact = computed(
+    () =>
+      this.activeTasks().reduce(
+        (total, task) => total + Number(task.estimatedAmount || 0),
+        0,
+      ),
   );
 
   protected readonly form = this.fb.nonNullable.group({
@@ -109,23 +110,6 @@ export class TasksPageComponent {
     return task.description || task.category?.name || 'Sem categoria definida';
   }
 
-  protected taskMeta(task: Task) {
-    const due = task.dueDate
-      ? new Date(task.dueDate).toLocaleDateString('pt-BR', {
-          day: '2-digit',
-          month: 'short',
-        })
-      : 'Sem prazo';
-
-    return task.estimatedAmount
-      ? `${due} · ${new Intl.NumberFormat('pt-BR', {
-          style: 'currency',
-          currency: 'BRL',
-          maximumFractionDigits: 0,
-        }).format(task.estimatedAmount)}`
-      : due;
-  }
-
   protected priorityLabel(priority: Task['priority']) {
     return {
       LOW: 'Baixa',
@@ -142,6 +126,25 @@ export class TasksPageComponent {
       HIGH: 'warning',
       CRITICAL: 'danger',
     }[priority] as 'neutral' | 'accent' | 'warning' | 'danger';
+  }
+
+  protected taskStatusTone(task: Task) {
+    return task.status === 'DONE' ? 'success' : this.priorityTone(task.priority);
+  }
+
+  protected taskCategoryLabel(task: Task) {
+    return task.category?.name || 'Sem categoria';
+  }
+
+  protected taskDeadlineLabel(task: Task) {
+    if (!task.dueDate) {
+      return 'Sem prazo';
+    }
+
+    return new Date(task.dueDate).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'short',
+    });
   }
 
   private reload() {

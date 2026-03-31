@@ -1,158 +1,176 @@
-<div class="page-stack support-stack">
-  <section class="metrics-row">
-    <app-ui-badge
-      [label]="metrics().total + ' envio(s)'"
-      [tone]="metrics().total ? 'accent' : 'neutral'"
-      [showDot]="metrics().total > 0"
-    />
-    <app-ui-badge
-      [label]="metrics().feedbacks + ' feedback(s)'"
-      tone="success"
-      [showDot]="metrics().feedbacks > 0"
-    />
-    <app-ui-badge
-      [label]="metrics().bugs + ' bug report(s)'"
-      tone="danger"
-      [showDot]="metrics().bugs > 0"
-    />
-    <app-ui-badge
-      [label]="metrics().open + ' aberto(s)'"
-      [tone]="metrics().open ? 'warning' : 'neutral'"
-      [showDot]="metrics().open > 0"
-    />
+<div class="proto-page">
+  <header class="proto-header">
+    <div class="proto-header__copy">
+      <h2>Suporte</h2>
+      <p>Entre em contato, envie feedback ou reporte problemas no mesmo painel.</p>
+    </div>
+  </header>
+
+  <section class="proto-grid proto-grid--three">
+    <article class="proto-surface support-shortcut">
+      <div class="support-shortcut__icon support-shortcut__icon--blue">
+        <span class="material-symbols-rounded">menu_book</span>
+      </div>
+      <div>
+        <strong class="proto-inline-title">Central de ajuda</strong>
+        <p>Tutoriais e documentação para as áreas mais comuns.</p>
+      </div>
+    </article>
+
+    <article class="proto-surface support-shortcut">
+      <div class="support-shortcut__icon support-shortcut__icon--purple">
+        <span class="material-symbols-rounded">forum</span>
+      </div>
+      <div>
+        <strong class="proto-inline-title">Chat ao vivo</strong>
+        <p>Converse com a equipe quando precisar de uma resposta rápida.</p>
+      </div>
+    </article>
+
+    <article class="proto-surface support-shortcut">
+      <div class="support-shortcut__icon support-shortcut__icon--green">
+        <span class="material-symbols-rounded">mail</span>
+      </div>
+      <div>
+        <strong class="proto-inline-title">Email</strong>
+        <p>{{ authService.currentUser()?.email || 'suporte@lumen.app' }}</p>
+      </div>
+    </article>
   </section>
 
-  <div class="support-grid">
-    <app-panel
-      title="Nova solicitação"
-      caption="Colete a percepção do usuário e registre falhas com contexto mínimo para análise."
-    >
-      <form class="support-form" [formGroup]="form" (ngSubmit)="submit()">
-        <div class="type-switch">
-          <button
-            type="button"
-            class="type-chip"
-            [class.active]="selectedType() === 'FEEDBACK'"
-            (click)="selectType('FEEDBACK')"
-          >
-            Feedback
-          </button>
-          <button
-            type="button"
-            class="type-chip"
-            [class.active]="selectedType() === 'BUG_REPORT'"
-            (click)="selectType('BUG_REPORT')"
-          >
-            Bug report
-          </button>
+  <section class="support-grid">
+    <article class="proto-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Enviar solicitação</h3>
+          <p>Descreva o problema ou o feedback com o máximo de contexto útil.</p>
         </div>
-
-        <app-field-shell label="Assunto">
-          <input
-            type="text"
-            formControlName="subject"
-            [placeholder]="
-              bugMode()
-                ? 'Ex.: Importação fecha sozinha após anexar recibo'
-                : 'Ex.: Gostei do fluxo de metas, mas faltou contexto'
-            "
-          />
-        </app-field-shell>
-
-        <app-field-shell
-          *ngIf="bugMode()"
-          label="Severidade"
-        >
-          <select formControlName="severity">
-            <option value="LOW">Baixa</option>
-            <option value="MEDIUM">Média</option>
-            <option value="HIGH">Alta</option>
-            <option value="CRITICAL">Crítica</option>
-          </select>
-        </app-field-shell>
-
-        <app-field-shell label="Mensagem">
-          <textarea
-            rows="8"
-            formControlName="message"
-            [placeholder]="draftHint()"
-          ></textarea>
-        </app-field-shell>
-
-        <div class="context-card">
-          <strong>{{ authService.currentUser()?.email }}</strong>
-          <p>
-            O envio inclui automaticamente a rota atual do app e informações
-            básicas do dispositivo para facilitar a análise.
-          </p>
-        </div>
-
-        <div class="form-actions">
-          <app-ui-button
-            type="submit"
-            icon="send"
-            [disabled]="submitting()"
-          >
-            {{ submitting() ? "Enviando..." : "Enviar para suporte" }}
-          </app-ui-button>
-
-          <app-ui-button
-            variant="secondary"
-            [disabled]="loading()"
-            (click)="reload()"
-          >
-            Atualizar histórico
-          </app-ui-button>
-        </div>
-
-        <p class="feedback success" *ngIf="feedbackMessage()">{{ feedbackMessage() }}</p>
-        <p class="feedback error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
-      </form>
-    </app-panel>
-
-    <app-panel
-      title="Histórico recente"
-      caption="Últimos envios registrados para esta conta."
-    >
-      <div class="submission-list" *ngIf="submissions().length; else noSubmissions">
-        <article class="submission-card" *ngFor="let item of submissions()">
-          <div class="submission-head">
-            <div class="submission-copy">
-              <strong>{{ item.subject }}</strong>
-              <p>{{ item.message }}</p>
-            </div>
-
-            <div class="submission-badges">
-              <app-ui-badge
-                [label]="typeLabel(item.type)"
-                [tone]="typeTone(item.type)"
-              />
-              <app-ui-badge
-                [label]="statusLabel(item.status)"
-                [tone]="statusTone(item.status)"
-              />
-              <app-ui-badge
-                *ngIf="item.severity"
-                [label]="severityLabel(item.severity)"
-                tone="warning"
-              />
-            </div>
-          </div>
-
-          <div class="submission-meta">
-            <span>{{ item.createdAt | date: "dd/MM/yyyy HH:mm" }}</span>
-            <span *ngIf="item.screenPath">{{ item.screenPath }}</span>
-          </div>
-        </article>
       </div>
 
-      <ng-template #noSubmissions>
-        <app-empty-state
-          title="Nenhum envio até agora"
-          description="Os feedbacks e bug reports enviados pelo usuário passam a aparecer aqui."
-          icon="support_agent"
-        />
+      <form class="proto-surface__body" [formGroup]="form" (ngSubmit)="submit()">
+        <div class="proto-actions-row">
+          <button type="button" class="proto-button proto-button--secondary" (click)="selectType('FEEDBACK')">
+            Feedback
+          </button>
+          <button type="button" class="proto-button proto-button--secondary" (click)="selectType('BUG_REPORT')">
+            Reportar bug
+          </button>
+        </div>
+
+        <div class="proto-form-grid">
+          <div class="proto-field proto-field--full">
+            <label for="support-subject">Assunto</label>
+            <input
+              id="support-subject"
+              type="text"
+              formControlName="subject"
+              [placeholder]="bugMode() ? 'Ex: erro ao salvar transação' : 'Ex: sugestão para melhorar o dashboard'"
+            />
+          </div>
+
+          <div class="proto-field" *ngIf="bugMode()">
+            <label for="support-severity">Severidade</label>
+            <select id="support-severity" formControlName="severity">
+              <option value="LOW">Baixa</option>
+              <option value="MEDIUM">Média</option>
+              <option value="HIGH">Alta</option>
+              <option value="CRITICAL">Crítica</option>
+            </select>
+          </div>
+
+          <div class="proto-field proto-field--full">
+            <label for="support-message">Descrição</label>
+            <textarea
+              id="support-message"
+              rows="6"
+              formControlName="message"
+              [placeholder]="draftHint()"
+            ></textarea>
+          </div>
+        </div>
+
+        <div class="proto-note">
+          <strong class="proto-inline-title">Tempo de resposta estimado</strong>
+          <p>{{ responseTimeEstimate() }}</p>
+        </div>
+
+        <p class="support-feedback support-feedback--error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
+        <p class="support-feedback support-feedback--ok" *ngIf="feedbackMessage()">{{ feedbackMessage() }}</p>
+
+        <div class="proto-actions-row">
+          <button type="submit" class="proto-button" [disabled]="submitting()">
+            <span class="material-symbols-rounded">send</span>
+            {{ submitting() ? 'Enviando...' : 'Enviar solicitação' }}
+          </button>
+        </div>
+      </form>
+    </article>
+
+    <article class="proto-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Histórico de solicitações</h3>
+          <p>Suas últimas interações com o suporte.</p>
+        </div>
+      </div>
+
+      <div class="proto-surface__body" *ngIf="submissions().length; else noSupportHistory">
+        <div class="proto-list">
+          <article class="proto-list-item" *ngFor="let entry of submissions()">
+            <div class="proto-list-item__top">
+              <strong>{{ entry.subject }}</strong>
+              <span class="proto-tag">{{ statusLabel(entry.status) }}</span>
+            </div>
+            <p>{{ entry.message }}</p>
+            <div class="proto-list-item__meta-row">
+              <span class="proto-list-item__meta">{{ typeLabel(entry.type) }} · {{ entry.createdAt | date: 'dd/MM/yyyy' }}</span>
+              <span class="proto-chip" *ngIf="entry.severity">{{ severityLabel(entry.severity) }}</span>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <ng-template #noSupportHistory>
+        <div class="proto-empty">
+          <strong>Nenhuma solicitação ainda</strong>
+          <p>Seu histórico de suporte vai aparecer aqui depois do primeiro envio.</p>
+        </div>
       </ng-template>
-    </app-panel>
-  </div>
+    </article>
+  </section>
+
+  <article class="proto-surface">
+    <div class="proto-surface__head">
+      <div>
+        <h3>Perguntas frequentes</h3>
+        <p>Respostas rápidas para dúvidas comuns do Lumen.</p>
+      </div>
+    </div>
+
+    <div class="proto-surface__body">
+      <div class="proto-grid proto-grid--two">
+        <article class="proto-note" *ngFor="let faq of [
+          {
+            question: 'Como importar transações do meu banco?',
+            answer: 'Vá para Importações, envie o CSV e confirme a prévia antes de gravar.'
+          },
+          {
+            question: 'O assistente de IA é seguro?',
+            answer: 'Sim. O uso depende do aceite de privacidade e pode ser desativado a qualquer momento.'
+          },
+          {
+            question: 'Como funcionam as notificações?',
+            answer: 'O Lumen mistura lembretes locais e notificações do sistema na mesma central.'
+          },
+          {
+            question: 'Posso exportar meus dados?',
+            answer: 'Sim. Em Configurações > Conta você pode gerar a exportação em JSON.'
+          }
+        ]">
+          <strong class="proto-inline-title">{{ faq.question }}</strong>
+          <p>{{ faq.answer }}</p>
+        </article>
+      </div>
+    </div>
+  </article>
 </div>

@@ -6,10 +6,6 @@ import { AssistantReply } from "../../../core/models/domain.models";
 import { AuthService } from "../../../core/services/auth.service";
 import { LifeApiService } from "../../../core/services/life-api.service";
 import { NativeStorageService } from "../../../core/services/native-storage.service";
-import { EmptyStateComponent } from "../../../shared/components/empty-state/empty-state.component";
-import { PanelComponent } from "../../../shared/components/panel/panel.component";
-import { UiBadgeComponent } from "../../../shared/components/ui-badge/ui-badge.component";
-import { UiButtonComponent } from "../../../shared/components/ui-button/ui-button.component";
 
 type AssistantMessage = {
   id: string;
@@ -21,14 +17,7 @@ type AssistantMessage = {
 @Component({
   selector: "app-assistant-page",
   standalone: true,
-  imports: [
-    CommonModule,
-    ReactiveFormsModule,
-    PanelComponent,
-    UiButtonComponent,
-    UiBadgeComponent,
-    EmptyStateComponent,
-  ],
+  imports: [CommonModule, ReactiveFormsModule],
   templateUrl: './assistant-page.component.html',
   styleUrls: ['./assistant-page.component.scss'],
   
@@ -63,6 +52,12 @@ export class AssistantPageComponent {
     this.history().slice(0, 8),
   );
   protected readonly offlineMode = this.api.offlineMode;
+  protected readonly quickPrompts = [
+    "Analise meus gastos do mês",
+    "Como posso acelerar minhas metas financeiras?",
+    "Ajude-me a otimizar meu orçamento mensal",
+    "Crie um planejamento financeiro para os próximos 3 meses",
+  ];
   protected readonly form = this.fb.nonNullable.group({
     question: [
       "Como estou hoje?",
@@ -94,12 +89,31 @@ export class AssistantPageComponent {
       : trimmed;
   }
 
+  protected answerParagraphs(content: string) {
+    const normalized = String(content || "")
+      .replace(/\r\n/g, "\n")
+      .trim();
+
+    if (!normalized) {
+      return [];
+    }
+
+    return normalized
+      .split(/\n{2,}/)
+      .map((paragraph) => paragraph.trim())
+      .filter(Boolean);
+  }
+
+  protected focusAreaLabel(reply: AssistantReply) {
+    return reply.focusArea?.trim() || "Panorama";
+  }
+
   protected sourceLabel(reply: AssistantReply) {
-    return reply.source === "selah_ia" ? "SelahIA" : "LUMEN local";
+    return reply.source === "selah_ia" ? "Selah IA" : "Selah IA local";
   }
 
   protected sourceTone(reply: AssistantReply) {
-    return reply.source === "selah_ia" ? "accent" : "neutral";
+    return reply.source === "selah_ia" ? "accent" : "warning";
   }
 
   protected assistantExternalMode() {
@@ -132,7 +146,7 @@ export class AssistantPageComponent {
       return "warning";
     }
 
-    return "dark";
+    return "accent";
   }
 
   protected ask() {
@@ -256,6 +270,13 @@ export class AssistantPageComponent {
         ? snapshot.activeMessageId
         : snapshot.history[0]?.id ?? null,
     );
+  }
+
+  protected openConsentDialog() {
+    this.pendingQuestion.set(this.form.getRawValue().question.trim() || null);
+    this.consentChecked.set(false);
+    this.consentErrorMessage.set(null);
+    this.consentDialogOpen.set(true);
   }
 
   private persistHistorySnapshot(

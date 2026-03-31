@@ -1,24 +1,20 @@
-<aside class="sidebar">
-  <div class="sidebar-top">
-    <a class="brand" routerLink="/dashboard" (click)="requestClose()">
-      <span class="brand-eyebrow">codeStage Soluções</span>
-
-      <span class="brand-row">
-        <span class="brand-mark">
-          <img src="assets/logo/logo_lumen_s_fundo.png" alt="Lumen" />
-        </span>
-
-        <span class="brand-copy">
-          <strong>Lumen</strong>
-          <span>Clareza para sua vida</span>
-        </span>
+<aside class="proto-sidebar" [class.proto-sidebar--mobile]="mobile">
+  <div class="proto-sidebar__top">
+    <a class="proto-sidebar__brand" routerLink="/dashboard" (click)="requestClose()">
+      <img
+        class="proto-sidebar__brand-logo"
+        src="assets/logo/logo_lumen_s_fundo.png"
+        alt="Logo do Lumen"
+      />
+      <span class="proto-sidebar__brand-copy">
+        <span>Clareza para sua vida</span>
       </span>
     </a>
 
     <button
       *ngIf="mobile"
       type="button"
-      class="close-button"
+      class="proto-sidebar__close"
       aria-label="Fechar menu"
       (click)="requestClose()"
     >
@@ -26,54 +22,34 @@
     </button>
   </div>
 
-  <nav class="nav-grid">
-    <a
-      *ngFor="let item of primaryItems"
-      class="nav-card"
-      appSpotlightHover
-      [routerLink]="item.route"
-      routerLinkActive="active"
-      [routerLinkActiveOptions]="{ exact: item.route === '/dashboard' }"
-      (click)="requestClose()"
-    >
-      <span class="material-symbols-rounded">{{ item.icon }}</span>
-      <span>{{ item.label }}</span>
-    </a>
-  </nav>
+  <div class="proto-sidebar__nav-block">
+    <p class="section-kicker proto-sidebar__kicker">Seu compasso</p>
 
-  <section class="group" [class.collapsed]="!toolsExpanded()">
-    <button
-      type="button"
-      class="group-toggle"
-      (click)="toggleTools()"
-      [attr.aria-expanded]="toolsExpanded()"
-      aria-controls="tools-menu"
-    >
-      <span class="group-title">Ferramentas</span>
-      <span class="group-chevron material-symbols-rounded">expand_more</span>
-    </button>
-
-    <div id="tools-menu" class="group-menu" [class.open]="toolsExpanded()">
+    <nav class="proto-sidebar__nav">
       <a
-        *ngFor="let item of toolItems"
-        class="tool-link"
-        appSpotlightHover
+        *ngFor="let item of navItems"
+        class="proto-sidebar__link"
         [routerLink]="item.route"
         routerLinkActive="active"
-        [routerLinkActiveOptions]="{ exact: false }"
+        [routerLinkActiveOptions]="{ exact: item.exact ?? false }"
         (click)="requestClose()"
       >
-        <span class="tool-icon material-symbols-rounded">{{ item.icon }}</span>
+        <span class="material-symbols-rounded">{{ item.icon }}</span>
         <span>{{ item.label }}</span>
       </a>
-    </div>
-  </section>
+    </nav>
+  </div>
 
-  <section class="sidebar-note" appSpotlightHover>
-    <p class="section-kicker">Lumen Flow</p>
-    <strong>Tempo, tarefas e dinheiro na mesma cadência.</strong>
-    <span
-      >Uma navegação mais clara para decidir o próximo passo sem ruído.</span
-    >
-  </section>
+  <div class="proto-sidebar__atelier">
+    <span class="proto-sidebar__atelier-tag">Ritual do dia</span>
+    <strong>Uma decisão importante, uma tarefa pequena e espaço para respirar.</strong>
+    <p>O Lumen entra como mesa de apoio, não como mais uma central de cobrança.</p>
+  </div>
+
+  <div class="proto-sidebar__profile">
+    <button type="button" class="proto-sidebar__logout" (click)="logout()">
+      <span class="material-symbols-rounded">logout</span>
+      <span>Sair</span>
+    </button>
+  </div>
 </aside>

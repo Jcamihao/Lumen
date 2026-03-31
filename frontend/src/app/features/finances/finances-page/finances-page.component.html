@@ -1,136 +1,181 @@
+<div class="proto-page">
+  <header class="proto-header">
+    <div class="proto-header__copy">
+      <h2>Finanças</h2>
+      <p>Registre movimentações, acompanhe saldo e importe dados sem atrito.</p>
+    </div>
 
-    <div class="page-stack">
-      <section class="metrics">
-        <app-metric-card
-          label="Receitas"
-          [value]="incomeTotal()"
-          [currency]="true"
-          [currencyCode]="currencyCode()"
-          caption="Entradas registradas"
-          tone="success"
-        />
-        <app-metric-card
-          label="Despesas"
-          [value]="expenseTotal()"
-          [currency]="true"
-          [currencyCode]="currencyCode()"
-          caption="Saídas monitoradas"
-          tone="warning"
-        />
-        <app-metric-card
-          label="Saldo líquido"
-          [value]="netFlow()"
-          [currency]="true"
-          [currencyCode]="currencyCode()"
-          caption="Diferença entre entradas e saídas"
-          [tone]="netFlow() >= 0 ? 'success' : 'danger'"
-        />
-      </section>
+    <div class="proto-header__action">
+      <button type="button" class="proto-button proto-button--secondary">
+        <span class="material-symbols-rounded">filter_list</span>
+        Filtros
+      </button>
 
-      <section class="split-layout finance-layout">
-        <div class="page-stack">
-          <app-panel class="composer-panel" title="Nova transação" caption="Registre dinheiro com contexto de vida">
-            <form class="form-grid" [formGroup]="form" (ngSubmit)="createTransaction()">
-              <app-field-shell label="Descrição" hint="Obrigatório">
-                <input type="text" formControlName="description" placeholder="Ex.: Conta de luz">
-              </app-field-shell>
+      <a class="proto-button proto-button--secondary" routerLink="/imports">
+        <span class="material-symbols-rounded">download</span>
+        Exportar
+      </a>
+    </div>
+  </header>
 
-              <div class="grid-2">
-                <app-field-shell label="Tipo">
-                  <select formControlName="type">
-                    <option value="EXPENSE">Despesa</option>
-                    <option value="INCOME">Receita</option>
-                    <option value="TRANSFER">Transferência</option>
-                  </select>
-                </app-field-shell>
+  <section class="proto-grid proto-grid--metrics">
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">trending_up</span></span>
+      </div>
+      <strong>{{ incomeTotal() | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
+      <p>Receitas do período</p>
+    </article>
 
-                <app-field-shell label="Valor">
-                  <input type="number" formControlName="amount" placeholder="0">
-                </app-field-shell>
-              </div>
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">trending_down</span></span>
+      </div>
+      <strong>{{ expenseTotal() | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
+      <p>Despesas registradas</p>
+    </article>
 
-              <div class="grid-2">
-                <app-field-shell label="Data">
-                  <input type="date" formControlName="date">
-                </app-field-shell>
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">account_balance_wallet</span></span>
+      </div>
+      <strong>{{ netFlow() | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
+      <p>{{ netFlow() >= 0 ? 'Saldo positivo' : 'Saldo negativo' }}</p>
+    </article>
+  </section>
 
-                <app-field-shell label="Categoria">
-                  <select formControlName="categoryId">
-                    <option value="">Sem categoria</option>
-                    <option *ngFor="let category of financeCategories()" [value]="category.id">
-                      {{ category.name }} · {{ category.type }}
-                    </option>
-                  </select>
-                </app-field-shell>
-              </div>
+  <article class="proto-surface finance-highlight">
+    <div class="proto-surface__body finance-highlight__body">
+      <div class="finance-highlight__icon">
+        <span class="material-symbols-rounded">upload_file</span>
+      </div>
 
-              <div class="surface-note finance-note">
-                <div>
-                  <strong>Importação inteligente</strong>
-                  <p>Traga movimentações em lote com preview e deduplicação.</p>
-                </div>
-                <app-ui-button variant="secondary" routerLink="/imports" size="sm">
-                  Importar CSV
-                </app-ui-button>
-              </div>
+      <div class="finance-highlight__copy">
+        <strong class="proto-inline-title">Importação de transações por CSV</strong>
+        <p>Traga o extrato do seu banco para o Lumen e confirme somente o que fizer sentido.</p>
+      </div>
 
-              <app-ui-button type="submit" [disabled]="form.invalid" [fullWidth]="true" icon="payments">
-                Salvar transação
-              </app-ui-button>
-            </form>
-          </app-panel>
+      <a class="proto-button" routerLink="/imports">
+        <span class="material-symbols-rounded">upload</span>
+        Importar CSV
+      </a>
+    </div>
+  </article>
+
+  <section class="finance-grid">
+    <article class="proto-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Nova transação</h3>
+          <p>Adicione uma nova movimentação financeira ao seu mês.</p>
+        </div>
+      </div>
+
+      <form class="proto-surface__body" [formGroup]="form" (ngSubmit)="createTransaction()">
+        <div class="proto-form-grid">
+          <div class="proto-field">
+            <label for="transaction-type">Tipo</label>
+            <select id="transaction-type" formControlName="type">
+              <option value="INCOME">Receita</option>
+              <option value="EXPENSE">Despesa</option>
+              <option value="TRANSFER">Transferência</option>
+            </select>
+          </div>
+
+          <div class="proto-field proto-field--full">
+            <label for="transaction-description">Descrição</label>
+            <input
+              id="transaction-description"
+              type="text"
+              formControlName="description"
+              placeholder="Ex: salário, aluguel, freelance"
+            />
+          </div>
+
+          <div class="proto-field">
+            <label for="transaction-category">Categoria</label>
+            <select id="transaction-category" formControlName="categoryId">
+              <option value="">Sem categoria</option>
+              <option *ngFor="let category of financeCategories()" [value]="category.id">
+                {{ category.name }}
+              </option>
+            </select>
+          </div>
+
+          <div class="proto-field">
+            <label for="transaction-amount">Valor</label>
+            <input id="transaction-amount" type="number" min="0" step="0.01" formControlName="amount" />
+          </div>
+
+          <div class="proto-field proto-field--full">
+            <label for="transaction-date">Data</label>
+            <input id="transaction-date" type="date" formControlName="date" />
+          </div>
         </div>
 
-        <app-panel class="feed-panel" title="Movimentos" caption="Receitas, despesas e transferências recentes">
-          <div class="toolbar">
-            <app-ui-badge [label]="transactions().length + ' registros'" tone="accent" />
-            <app-ui-badge [label]="incomeCount() + ' receitas'" tone="success" />
-            <app-ui-badge [label]="expenseCount() + ' saídas'" tone="warning" />
-          </div>
+        <div class="proto-actions-row">
+          <button type="submit" class="proto-button" [disabled]="form.invalid">
+            <span class="material-symbols-rounded">payments</span>
+            Adicionar transação
+          </button>
+        </div>
+      </form>
+    </article>
 
-          <div class="stack-list" *ngIf="transactions().length; else emptyState">
-            <article
-              class="transaction-card"
-              *ngFor="let transaction of transactions()"
-            >
-              <div class="transaction-leading">
-                <app-avatar [name]="transaction.description" size="sm"></app-avatar>
+    <article class="proto-surface finance-list-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Movimentações</h3>
+          <p>{{ transactions().length }} transações registradas</p>
+        </div>
+      </div>
+
+      <div class="proto-surface__body" *ngIf="transactions().length; else noTransactions">
+        <div class="proto-list">
+          <article class="proto-list-item finance-transaction" *ngFor="let transaction of transactions()">
+            <div class="proto-list-item__top finance-transaction__top">
+              <div class="finance-transaction__title-block">
+                <strong>{{ transaction.description }}</strong>
+
+                <div class="finance-transaction__badges">
+                  <span class="proto-tag" [attr.data-tone]="transactionTypeTone(transaction)">
+                    {{ typeLabel(transaction.type) }}
+                  </span>
+                  <span class="proto-chip">{{ transaction.category?.name || 'Sem categoria' }}</span>
+                  <span class="proto-chip">{{ transactionDateLabel(transaction) }}</span>
+                </div>
               </div>
 
-              <div class="transaction-content">
-                <strong class="transaction-title">{{ transaction.description }}</strong>
-                <app-ui-badge
-                  class="transaction-badge"
-                  [label]="typeLabel(transaction.type)"
-                  [tone]="transaction.type === 'INCOME' ? 'success' : transaction.type === 'EXPENSE' ? 'warning' : 'neutral'"
-                />
-                <p class="transaction-subtitle">{{ transactionSubtitle(transaction) }}</p>
-              </div>
+              <strong
+                class="finance-transaction__amount"
+                [attr.data-tone]="transactionTypeTone(transaction)"
+              >
+                {{ transactionAmount(transaction) }}
+              </strong>
+            </div>
 
-              <div class="transaction-footer">
-                <span class="transaction-meta" [ngClass]="transactionAmountTone(transaction)">
-                  {{ transactionAmount(transaction) }}
-                </span>
-                <app-ui-button
-                  class="transaction-action"
-                  variant="ghost"
-                  size="sm"
-                  (click)="removeTransaction(transaction.id)"
-                >
-                  Excluir
-                </app-ui-button>
-              </div>
-            </article>
-          </div>
+            <div class="proto-list-item__meta-row">
+              <span class="proto-list-item__meta">
+                {{ transaction.type === 'TRANSFER' ? 'Movimentação entre contas' : 'Lançamento financeiro registrado' }}
+              </span>
+              <button
+                type="button"
+                class="proto-button proto-button--ghost"
+                (click)="removeTransaction(transaction.id)"
+              >
+                Remover
+              </button>
+            </div>
+          </article>
+        </div>
+      </div>
 
-          <ng-template #emptyState>
-            <app-empty-state
-              title="Nenhuma transação registrada"
-              description="Adicione receitas ou despesas para destravar previsões e insights."
-              icon="account_balance_wallet"
-            />
-          </ng-template>
-        </app-panel>
-      </section>
-    </div>
-  
+      <ng-template #noTransactions>
+        <div class="proto-empty">
+          <strong>Sem transações ainda</strong>
+          <p>Registre a primeira movimentação para destravar a leitura financeira.</p>
+        </div>
+      </ng-template>
+    </article>
+  </section>
+</div>

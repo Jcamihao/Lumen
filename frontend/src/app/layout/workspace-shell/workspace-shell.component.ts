@@ -1,44 +1,21 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, effect, inject, signal } from '@angular/core';
+import { Component, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter, map, startWith } from 'rxjs';
-import { AuthService } from '../../core/services/auth.service';
-import { LifeApiService } from '../../core/services/life-api.service';
-import { NotificationCenterService } from '../../core/services/notification-center.service';
-import { ThemeService } from '../../core/services/theme.service';
-import { AppHeaderComponent } from '../app-header/app-header.component';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
-
-type RouteMeta = {
-  eyebrow: string;
-  title: string;
-  subtitle: string;
-  actionLabel: string;
-  actionRoute: string;
-};
 
 @Component({
   selector: 'app-workspace-shell',
   standalone: true,
-  imports: [
-    CommonModule,
-    RouterOutlet,
-    SidebarComponent,
-    BottomNavComponent,
-    AppHeaderComponent,
-  ],
+  imports: [CommonModule, RouterOutlet, SidebarComponent, BottomNavComponent],
   templateUrl: './workspace-shell.component.html',
   styleUrls: ['./workspace-shell.component.scss'],
-  
 })
 export class WorkspaceShellComponent {
-  protected readonly authService = inject(AuthService);
-  protected readonly themeService = inject(ThemeService);
-  protected readonly lifeApiService = inject(LifeApiService);
-  protected readonly notificationCenter = inject(NotificationCenterService);
   protected readonly mobileSidebarOpen = signal(false);
+  protected readonly routeAnimationFlip = signal(false);
   private readonly router = inject(Router);
   private readonly currentUrl = toSignal(
     this.router.events.pipe(
@@ -48,115 +25,21 @@ export class WorkspaceShellComponent {
     ),
     { initialValue: this.router.url },
   );
-  protected readonly currentMeta = computed(() =>
-    this.resolveMeta(this.currentUrl()),
-  );
 
   constructor() {
+    let isFirstRoute = true;
+
     effect(() => {
       this.currentUrl();
       this.mobileSidebarOpen.set(false);
+
+      if (isFirstRoute) {
+        isFirstRoute = false;
+        return;
+      }
+
+      this.routeAnimationFlip.update((value) => !value);
     });
-  }
-
-  private resolveMeta(url: string): RouteMeta {
-    if (url.startsWith('/notifications')) {
-      return {
-        eyebrow: 'Notificações',
-        title: 'Central de notificações',
-        subtitle:
-          'Lembretes, alertas do sistema e sinais do LUMEN em uma visão só.',
-        actionLabel: 'Ver dashboard',
-        actionRoute: '/dashboard',
-      };
-    }
-
-    if (url.startsWith('/tasks')) {
-      return {
-        eyebrow: 'Tasks',
-        title: 'Tarefas conectadas',
-        subtitle: 'Prioridades, prazos e impacto financeiro na mesma visão.',
-        actionLabel: 'Nova tarefa',
-        actionRoute: '/tasks',
-      };
-    }
-
-    if (url.startsWith('/finances')) {
-      return {
-        eyebrow: 'Finance',
-        title: 'Fluxo financeiro',
-        subtitle: 'Entradas, saídas e contexto do seu mês sem ruído visual.',
-        actionLabel: 'Nova entrada',
-        actionRoute: '/finances',
-      };
-    }
-
-    if (url.startsWith('/goals')) {
-      return {
-        eyebrow: 'Goals',
-        title: 'Metas em movimento',
-        subtitle:
-          'Objetivos com prazo, valor e progresso real no seu cotidiano.',
-        actionLabel: 'Nova meta',
-        actionRoute: '/goals',
-      };
-    }
-
-    if (url.startsWith('/assistant')) {
-      return {
-        eyebrow: 'Assistant',
-        title: 'Assistente de vida',
-        subtitle:
-          'Peça prioridade, leitura financeira e próximos passos em linguagem clara.',
-        actionLabel: 'Nova pergunta',
-        actionRoute: '/assistant',
-      };
-    }
-
-    if (url.startsWith('/imports')) {
-      return {
-        eyebrow: 'Imports',
-        title: 'Importação inteligente',
-        subtitle:
-          'Envie um CSV, visualize duplicidades e confirme com segurança.',
-        actionLabel: 'Importar CSV',
-        actionRoute: '/imports',
-      };
-    }
-
-    if (url.startsWith('/settings')) {
-      return {
-        eyebrow: 'Settings',
-        title: 'Preferências',
-        subtitle: 'Ajuste seu workspace, renda base, moeda e clima visual.',
-        actionLabel: 'Ajustar perfil',
-        actionRoute: '/settings',
-      };
-    }
-
-    if (url.startsWith('/support')) {
-      return {
-        eyebrow: 'Support',
-        title: 'Suporte do usuário',
-        subtitle:
-          'Colete feedbacks, reporte bugs e acompanhe o histórico enviado pelo usuário.',
-        actionLabel: 'Abrir ajustes',
-        actionRoute: '/settings',
-      };
-    }
-
-    return {
-      eyebrow: 'Lumen',
-      title: 'Dashboard da Vida',
-      subtitle:
-        'Uma visão elegante do que pede atenção hoje em tarefas, dinheiro e objetivos.',
-      actionLabel: 'Nova tarefa',
-      actionRoute: '/tasks',
-    };
-  }
-
-  protected navigateTo(route: string) {
-    this.router.navigate([route]);
   }
 
   protected openMobileSidebar() {
@@ -167,11 +50,7 @@ export class WorkspaceShellComponent {
     this.mobileSidebarOpen.set(false);
   }
 
-  protected logout() {
-    this.authService.logout();
-  }
-
-  protected markNotificationAsRead(id: string) {
-    this.notificationCenter.markAsRead(id);
+  protected handleBottomNavNavigation() {
+    this.closeMobileSidebar();
   }
 }

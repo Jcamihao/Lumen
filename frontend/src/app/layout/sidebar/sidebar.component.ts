@@ -1,18 +1,19 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output, signal } from '@angular/core';
+import { Component, EventEmitter, Input, Output, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { SpotlightHoverDirective } from '../../shared/directives/spotlight-hover/spotlight-hover.directive';
+import { AuthService } from '../../core/services/auth.service';
 
 type NavItem = {
   icon: string;
   label: string;
   route: string;
+  exact?: boolean;
 };
 
 @Component({
   selector: 'app-sidebar',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, SpotlightHoverDirective],
+  imports: [CommonModule, RouterLink, RouterLinkActive],
   templateUrl: './sidebar.component.html',
   styleUrls: ['./sidebar.component.scss'],
   host: {
@@ -23,29 +24,25 @@ export class SidebarComponent {
   @Input() mobile = false;
   @Output() readonly closeRequested = new EventEmitter<void>();
 
-  protected readonly toolsExpanded = signal(true);
-  protected readonly primaryItems: NavItem[] = [
-    { label: 'Painel', icon: 'space_dashboard', route: '/dashboard' },
+  protected readonly authService = inject(AuthService);
+  protected readonly navItems: NavItem[] = [
+    { label: 'Dashboard', icon: 'space_dashboard', route: '/dashboard', exact: true },
     { label: 'Tarefas', icon: 'checklist', route: '/tasks' },
-    { label: 'Finanças', icon: 'account_balance_wallet', route: '/finances' },
+    { label: 'Finanças', icon: 'account_balance_wallet', route: '/finance' },
     { label: 'Metas', icon: 'flag', route: '/goals' },
-    { label: 'Assistente', icon: 'auto_awesome', route: '/assistant' },
-    { label: 'Ajustes', icon: 'settings', route: '/settings' },
-  ];
-
-  protected readonly toolItems: NavItem[] = [
+    { label: 'Selah IA', icon: 'auto_awesome', route: '/assistant' },
     { label: 'Notificações', icon: 'notifications', route: '/notifications' },
     { label: 'Importações', icon: 'upload_file', route: '/imports' },
-    { label: 'Suporte', icon: 'support_agent', route: '/support' },
-    { label: 'Assistente', icon: 'psychology', route: '/assistant' },
-    { label: 'Configurações', icon: 'tune', route: '/settings' },
+    { label: 'Configurações', icon: 'settings', route: '/settings' },
+    { label: 'Suporte', icon: 'help', route: '/support' },
   ];
-
-  protected toggleTools() {
-    this.toolsExpanded.update((value) => !value);
-  }
 
   protected requestClose() {
     this.closeRequested.emit();
+  }
+
+  protected logout() {
+    this.authService.logout();
+    this.requestClose();
   }
 }

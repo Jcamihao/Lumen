@@ -15,6 +15,16 @@ import { WorkspaceShellComponent } from './layout/workspace-shell/workspace-shel
 
 export const routes: Routes = [
   {
+    path: 'login',
+    pathMatch: 'full',
+    redirectTo: 'auth/login',
+  },
+  {
+    path: 'signup',
+    pathMatch: 'full',
+    redirectTo: 'auth/register',
+  },
+  {
     path: 'auth/login',
     canActivate: [guestGuard],
     component: LoginPageComponent,
@@ -31,6 +41,7 @@ export const routes: Routes = [
     children: [
       { path: 'dashboard', component: DashboardPageComponent },
       { path: 'tasks', component: TasksPageComponent },
+      { path: 'finance', component: FinancesPageComponent },
       { path: 'finances', component: FinancesPageComponent },
       { path: 'goals', component: GoalsPageComponent },
       { path: 'assistant', component: AssistantPageComponent },

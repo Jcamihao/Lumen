@@ -1,4 +1,4 @@
-import { CommonModule, DatePipe } from "@angular/common";
+import { CommonModule } from "@angular/common";
 import { Component, DestroyRef, computed, inject, signal } from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
@@ -6,25 +6,11 @@ import { Router } from "@angular/router";
 import { SupportRequest } from "../../../core/models/domain.models";
 import { AuthService } from "../../../core/services/auth.service";
 import { LifeApiService } from "../../../core/services/life-api.service";
-import { EmptyStateComponent } from "../../../shared/components/empty-state/empty-state.component";
-import { FieldShellComponent } from "../../../shared/components/field-shell/field-shell.component";
-import { PanelComponent } from "../../../shared/components/panel/panel.component";
-import { UiBadgeComponent } from "../../../shared/components/ui-badge/ui-badge.component";
-import { UiButtonComponent } from "../../../shared/components/ui-button/ui-button.component";
 
 @Component({
   selector: "app-support-page",
   standalone: true,
-  imports: [
-    CommonModule,
-    DatePipe,
-    ReactiveFormsModule,
-    PanelComponent,
-    FieldShellComponent,
-    UiButtonComponent,
-    UiBadgeComponent,
-    EmptyStateComponent,
-  ],
+  imports: [CommonModule, ReactiveFormsModule],
   templateUrl: "./support-page.component.html",
   styleUrls: ["./support-page.component.scss"],
 })
@@ -180,6 +166,12 @@ export class SupportPageComponent {
     }
 
     return "Sem prioridade";
+  }
+
+  protected responseTimeEstimate() {
+    return this.bugMode()
+      ? "Bugs críticos: até 24h. Outros bugs: 2 a 3 dias úteis."
+      : "Geralmente respondemos em até 48 horas úteis.";
   }
 
   private load() {

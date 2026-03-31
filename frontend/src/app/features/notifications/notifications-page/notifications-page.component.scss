@@ -1,129 +1,56 @@
-.notifications-stack {
-  display: grid;
-  gap: 1rem;
+:host {
+  display: block;
 }
 
-.metrics-row {
+.notifications-title-row {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.75rem;
 }
 
 .notifications-grid {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
 
-.feed-list {
-  display: grid;
-  gap: 0.85rem;
+.notification-card {
+  background: var(--surface-panel);
 }
 
-.feed-item {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 1rem 1.05rem;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  background: var(--card-muted);
-}
-
-.feed-item.unread {
-  border-color: rgba(99, 102, 241, 0.24);
-  background: color-mix(in srgb, var(--accent) 6%, var(--card));
-}
-
-.feed-item.reminder {
-  border-color: color-mix(in srgb, var(--success) 20%, var(--border));
-}
-
-.feed-copy {
-  display: grid;
-  gap: 0.45rem;
-  min-width: 0;
-}
-
-.feed-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.8rem;
-}
-
-.feed-head strong {
-  color: var(--text-primary);
-  font-size: 1rem;
-}
-
-.feed-head span {
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.feed-copy p {
-  margin: 0;
-  color: var(--text-medium);
-  line-height: 1.55;
-}
-
-.feed-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  flex-shrink: 0;
+.notification-card--unread {
+  border-color: var(--highlight-unread-border);
+  background: var(--highlight-unread-bg);
 }
 
 .device-status {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.notifications-device-callout {
+  display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
-.device-status strong {
-  color: var(--text-primary);
+.proto-list-item__top input[type='checkbox'] {
+  margin-top: 0.15rem;
 }
 
-.device-status p {
-  margin: 0.35rem 0 0;
-  color: var(--text-medium);
-  line-height: 1.6;
-  max-width: 42rem;
-}
-
-@media (min-width: 1180px) {
+@media (max-width: 1200px) {
   .notifications-grid {
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-    align-items: start;
-  }
-}
-
-@media (max-width: 720px) {
-  .metrics-row {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 0.2rem;
-    scrollbar-width: none;
+    grid-template-columns: 1fr;
   }
 
-  .metrics-row::-webkit-scrollbar {
-    display: none;
-  }
-
-  .feed-item,
-  .device-status {
+  .device-status,
+  .notifications-device-callout {
     flex-direction: column;
-  }
-
-  .feed-actions {
-    width: 100%;
-    justify-content: flex-start;
+    align-items: flex-start;
   }
 }

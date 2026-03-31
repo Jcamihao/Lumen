@@ -9,24 +9,11 @@ import {
 } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
-import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
-import { ListItemComponent } from '../../../shared/components/list-item/list-item.component';
-import { PanelComponent } from '../../../shared/components/panel/panel.component';
-import { UiBadgeComponent } from '../../../shared/components/ui-badge/ui-badge.component';
-import { UiButtonComponent } from '../../../shared/components/ui-button/ui-button.component';
 
 @Component({
   selector: 'app-imports-page',
   standalone: true,
-  imports: [
-    CommonModule,
-    FormsModule,
-    PanelComponent,
-    EmptyStateComponent,
-    UiButtonComponent,
-    UiBadgeComponent,
-    ListItemComponent,
-  ],
+  imports: [CommonModule, FormsModule],
   templateUrl: './imports-page.component.html',
   styleUrls: ['./imports-page.component.scss'],
 })
@@ -36,6 +23,7 @@ export class ImportsPageComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   protected readonly preview = signal<ImportPreview | null>(null);
+  protected readonly activeTab = signal<"receipt" | "csv">("receipt");
   protected readonly receiptPreview = signal<ReceiptImportPreview | null>(null);
   protected readonly receiptLoading = signal(false);
   protected readonly receiptSaving = signal(false);
@@ -288,5 +276,9 @@ export class ImportsPageComponent {
 
   protected stopEditingReceiptItem() {
     this.editingReceiptItemIndex.set(null);
+  }
+
+  protected selectTab(tab: "receipt" | "csv") {
+    this.activeTab.set(tab);
   }
 }

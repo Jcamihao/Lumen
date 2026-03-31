@@ -1,15 +1,17 @@
-
 <div class="workspace-shell">
-  <div class="sidebar-column">
+  <aside class="workspace-shell__desktop-sidebar">
     <app-sidebar></app-sidebar>
-  </div>
+  </aside>
 
   <div
-    class="mobile-sidebar-backdrop"
+    class="workspace-shell__mobile-menu"
     *ngIf="mobileSidebarOpen()"
     (click)="closeMobileSidebar()"
   >
-    <div class="mobile-sidebar-panel" (click)="$event.stopPropagation()">
+    <div
+      class="workspace-shell__mobile-menu-panel"
+      (click)="$event.stopPropagation()"
+    >
       <app-sidebar
         [mobile]="true"
         (closeRequested)="closeMobileSidebar()"
@@ -17,36 +19,21 @@
     </div>
   </div>
 
-  <main class="content-column">
-    <div class="content-frame">
-      <app-app-header
-        [eyebrow]="currentMeta().eyebrow"
-        [title]="currentMeta().title"
-        [subtitle]="currentMeta().subtitle"
-        [actionLabel]="currentMeta().actionLabel"
-        [userName]="authService.currentUser()?.name || 'Você'"
-        [userMeta]="authService.currentUser()?.email || 'workspace pessoal'"
-        [userAvatarUrl]="authService.currentUser()?.avatarUrl || null"
-        [themeMode]="themeService.mode()"
-        [isOffline]="lifeApiService.offlineMode()"
-        [pendingSyncCount]="lifeApiService.pendingSyncCount()"
-        [syncing]="lifeApiService.syncing()"
-        [notificationEntries]="notificationCenter.recentEntries()"
-        [unreadNotificationsCount]="notificationCenter.unreadCount()"
-        [notificationsLoading]="notificationCenter.loading()"
-        (toggleTheme)="themeService.toggle()"
-        (quickAction)="navigateTo(currentMeta().actionRoute)"
-        (openNotifications)="navigateTo('/notifications')"
-        (markNotificationRead)="markNotificationAsRead($event)"
-        (openSettings)="navigateTo('/settings')"
-        (logout)="logout()"
-      />
-
-      <section class="page-content">
+  <main class="workspace-shell__content">
+    <div class="workspace-shell__content-inner ambient-shell">
+      <div
+        class="workspace-shell__page-stage"
+        [class.workspace-shell__page-stage--a]="routeAnimationFlip()"
+        [class.workspace-shell__page-stage--b]="!routeAnimationFlip()"
+      >
         <router-outlet></router-outlet>
-      </section>
+      </div>
     </div>
   </main>
 
-  <app-bottom-nav (menuRequested)="openMobileSidebar()"></app-bottom-nav>
+  <app-bottom-nav
+    [menuOpen]="mobileSidebarOpen()"
+    (menuRequested)="openMobileSidebar()"
+    (navigationRequested)="handleBottomNavNavigation()"
+  ></app-bottom-nav>
 </div>

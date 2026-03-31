@@ -9,19 +9,11 @@ import {
 } from '../../../core/constants/privacy.constants';
 import { AUTH_PASSWORD_MIN_LENGTH } from '../../../core/constants/auth.constants';
 import { AuthService } from '../../../core/services/auth.service';
-import { AvatarComponent } from '../../../shared/components/avatar/avatar.component';
-import { UiButtonComponent } from '../../../shared/components/ui-button/ui-button.component';
 
 @Component({
   selector: 'app-register-page',
   standalone: true,
-  imports: [
-    CommonModule,
-    ReactiveFormsModule,
-    RouterLink,
-    AvatarComponent,
-    UiButtonComponent,
-  ],
+  imports: [CommonModule, ReactiveFormsModule, RouterLink],
   templateUrl: './register-page.component.html',
   styleUrls: ['./register-page.component.scss'],
 })

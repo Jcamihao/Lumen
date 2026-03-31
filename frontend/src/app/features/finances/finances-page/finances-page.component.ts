@@ -1,4 +1,4 @@
-import { CommonModule, CurrencyPipe, DatePipe } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -7,31 +7,11 @@ import { Transaction } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
-import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
-import { FieldShellComponent } from '../../../shared/components/field-shell/field-shell.component';
-import { MetricCardComponent } from '../../../shared/components/metric-card/metric-card.component';
-import { PanelComponent } from '../../../shared/components/panel/panel.component';
-import { AvatarComponent } from '../../../shared/components/avatar/avatar.component';
-import { UiBadgeComponent } from '../../../shared/components/ui-badge/ui-badge.component';
-import { UiButtonComponent } from '../../../shared/components/ui-button/ui-button.component';
 
 @Component({
   selector: 'app-finances-page',
   standalone: true,
-  imports: [
-    CommonModule,
-    ReactiveFormsModule,
-    CurrencyPipe,
-    DatePipe,
-    RouterLink,
-    PanelComponent,
-    EmptyStateComponent,
-    FieldShellComponent,
-    UiButtonComponent,
-    UiBadgeComponent,
-    AvatarComponent,
-    MetricCardComponent,
-  ],
+  imports: [CommonModule, ReactiveFormsModule, RouterLink],
   templateUrl: './finances-page.component.html',
   styleUrls: ['./finances-page.component.scss'],
 })
@@ -103,10 +83,6 @@ export class FinancesPageComponent {
       .subscribe(() => this.reload());
   }
 
-  protected transactionSubtitle(transaction: Transaction) {
-    return `${transaction.category?.name || 'Sem categoria'} · ${formatLocalDateLabel(transaction.date)}`;
-  }
-
   protected transactionAmount(transaction: Transaction) {
     const formatted = new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -129,16 +105,20 @@ export class FinancesPageComponent {
     }[type];
   }
 
-  protected transactionAmountTone(transaction: Transaction) {
+  protected transactionDateLabel(transaction: Transaction) {
+    return formatLocalDateLabel(transaction.date);
+  }
+
+  protected transactionTypeTone(transaction: Transaction) {
     if (transaction.type === 'INCOME') {
-      return 'positive' as const;
+      return 'success' as const;
     }
 
     if (transaction.type === 'EXPENSE') {
-      return 'negative' as const;
+      return 'danger' as const;
     }
 
-    return 'neutral' as const;
+    return 'accent' as const;
   }
 
   private reload() {
