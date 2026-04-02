@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter, map, startWith } from 'rxjs';
@@ -18,6 +18,7 @@ type NavItem = {
   imports: [CommonModule, RouterLink],
   templateUrl: './bottom-nav.component.html',
   styleUrls: ['./bottom-nav.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BottomNavComponent {
   private readonly menuOpenState = signal(false);

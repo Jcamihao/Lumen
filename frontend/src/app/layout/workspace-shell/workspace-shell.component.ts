@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter, map, startWith } from 'rxjs';
@@ -12,6 +12,7 @@ import { SidebarComponent } from '../sidebar/sidebar.component';
   imports: [CommonModule, RouterOutlet, SidebarComponent, BottomNavComponent],
   templateUrl: './workspace-shell.component.html',
   styleUrls: ['./workspace-shell.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class WorkspaceShellComponent {
   protected readonly mobileSidebarOpen = signal(false);

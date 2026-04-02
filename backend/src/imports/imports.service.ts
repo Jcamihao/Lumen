@@ -48,6 +48,10 @@ type ReceiptParseResponse = {
   qrCodeText?: unknown;
   notes?: unknown;
   rawTextExcerpt?: unknown;
+  purchaseSummary?: unknown;
+  purchaseMission?: unknown;
+  spendingSignals?: unknown;
+  followUpActions?: unknown;
   provider?: unknown;
   model?: unknown;
   generatedAt?: unknown;
@@ -76,9 +80,19 @@ type ReceiptPreviewData = {
   qrCodeDetected: boolean;
   qrCodeText: string | null;
   itemCategoryHints: Array<string | null>;
+  purchaseSummary: string | null;
+  purchaseMission: string | null;
+  spendingSignals: string[];
+  followUpActions: string[];
   provider: string | null;
   model: string | null;
   generatedAt: string | null;
+};
+
+type ReceiptCategoryBreakdownItem = {
+  label: string;
+  totalAmount: number;
+  itemCount: number;
 };
 
 @Injectable()
@@ -291,6 +305,10 @@ export class ImportsService {
       qrCodeDetected,
       qrCodeText,
       itemCategoryHints: items.map((item) => item.categoryHint),
+      purchaseSummary: this.optionalString(parsedReceipt.purchaseSummary),
+      purchaseMission: this.optionalString(parsedReceipt.purchaseMission),
+      spendingSignals: this.readStringList(parsedReceipt.spendingSignals, 5),
+      followUpActions: this.readStringList(parsedReceipt.followUpActions, 5),
       provider: this.optionalString(parsedReceipt.provider),
       model: this.optionalString(parsedReceipt.model),
       generatedAt: this.optionalString(parsedReceipt.generatedAt),
@@ -1078,6 +1096,12 @@ export class ImportsService {
     previewData: Prisma.JsonValue | null;
   }) {
     const previewData = this.previewData(receiptScan);
+    const categoryBreakdown = this.buildReceiptCategoryBreakdown(
+      receiptScan.items.map((item, index) => ({
+        categoryHint: previewData.itemCategoryHints?.[index] || null,
+        totalPrice: Number(item.totalPrice),
+      })),
+    );
 
     return {
       receiptScanId: receiptScan.id,
@@ -1102,6 +1126,11 @@ export class ImportsService {
       accessKey: previewData.accessKey || null,
       qrCodeDetected: !!previewData.qrCodeDetected,
       qrCodeText: previewData.qrCodeText || null,
+      purchaseSummary: previewData.purchaseSummary || null,
+      purchaseMission: previewData.purchaseMission || null,
+      spendingSignals: previewData.spendingSignals || [],
+      followUpActions: previewData.followUpActions || [],
+      categoryBreakdown,
       descriptionSuggestion: this.buildReceiptTransactionDescription(
         receiptScan.merchantName || 'Compra registrada',
       ),
@@ -1114,6 +1143,33 @@ export class ImportsService {
         categoryHint: previewData.itemCategoryHints?.[index] || null,
       })),
     };
+  }
+
+  private buildReceiptCategoryBreakdown(
+    items: Array<{ categoryHint: string | null; totalPrice: number }>,
+  ): ReceiptCategoryBreakdownItem[] {
+    const breakdownMap = new Map<string, ReceiptCategoryBreakdownItem>();
+
+    for (const item of items) {
+      const label = item.categoryHint || 'Sem sugestao';
+      const current = breakdownMap.get(label) || {
+        label,
+        totalAmount: 0,
+        itemCount: 0,
+      };
+
+      current.totalAmount += Number(item.totalPrice || 0);
+      current.itemCount += 1;
+      breakdownMap.set(label, current);
+    }
+
+    return Array.from(breakdownMap.values())
+      .sort((left, right) => right.totalAmount - left.totalAmount)
+      .slice(0, 6)
+      .map((item) => ({
+        ...item,
+        totalAmount: Number(item.totalAmount.toFixed(2)),
+      }));
   }
 
   private buildReceiptTransactionDescription(merchantName: string) {

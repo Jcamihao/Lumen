@@ -62,6 +62,24 @@
     </div>
   </article>
 
+  <article class="proto-surface">
+    <div class="proto-surface__body">
+      <div class="proto-list-item__top">
+        <div>
+          <strong>Selah no caixa</strong>
+          <p>Abra o assistente já com contexto financeiro para revisar risco, dívida, corte e prioridade do mês.</p>
+        </div>
+        <a
+          class="proto-button proto-button--secondary"
+          routerLink="/assistant"
+          [queryParams]="{ prompt: 'O que eu preciso proteger primeiro no meu caixa este mes?', originModule: 'finances' }"
+        >
+          Perguntar ao Selah
+        </a>
+      </div>
+    </div>
+  </article>
+
   <section class="finance-grid">
     <article class="proto-surface">
       <div class="proto-surface__head">

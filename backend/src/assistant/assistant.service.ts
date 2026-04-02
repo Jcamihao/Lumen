@@ -1,15 +1,24 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { randomUUID } from "crypto";
 import { request as httpRequest } from "http";
 import { request as httpsRequest } from "https";
 import { DashboardService } from "../dashboard/dashboard.service";
+import { CreateGoalDto } from "../goals/dto/create-goal.dto";
+import { GoalsService } from "../goals/goals.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { CreateReminderDto } from "../reminders/dto/create-reminder.dto";
+import { RemindersService } from "../reminders/reminders.service";
+import { CreateTaskDto } from "../tasks/dto/create-task.dto";
+import { TasksService } from "../tasks/tasks.service";
+import { ApplyAssistantActionDto } from "./dto/apply-assistant-action.dto";
+import { AskAssistantHistoryItemDto } from "./dto/ask-assistant.dto";
 
 type AssistantConfidence = "low" | "medium" | "high";
 
 type DashboardSummary = {
   user: {
+    id?: string;
     name: string;
     preferredCurrency: string;
     monthlyIncome: number;
@@ -68,10 +77,86 @@ type DashboardSummary = {
   }>;
 };
 
+type AssistantActionKind =
+  | "create_task"
+  | "create_goal"
+  | "create_reminder"
+  | "open_module";
+
+type AssistantModule =
+  | "dashboard"
+  | "tasks"
+  | "finances"
+  | "goals"
+  | "imports"
+  | "general";
+
+type AssistantActionImportance = "low" | "medium" | "high";
+
+type AssistantAction = {
+  id: string;
+  kind: AssistantActionKind;
+  title: string;
+  description: string;
+  targetModule: AssistantModule;
+  importance: AssistantActionImportance;
+  route: string | null;
+  payload: Record<string, unknown> | null;
+};
+
+type AssistantProactiveSignalSeverity = "info" | "warning" | "critical";
+
+type AssistantProactiveSignal = {
+  id: string;
+  title: string;
+  message: string;
+  severity: AssistantProactiveSignalSeverity;
+  targetModule: AssistantModule;
+  suggestedPrompt: string | null;
+  suggestedActionLabel: string | null;
+};
+
+type AssistantSimulation = {
+  id: string;
+  title: string;
+  summary: string;
+  monthlyDelta: number;
+  projectedBalance: number;
+  confidence: AssistantConfidence;
+  assumptions: string[];
+};
+
+type AssistantContinuity = {
+  historyCount: number;
+  memorySummary: string | null;
+  nextQuestion: string | null;
+  followUpPrompt: string | null;
+  originModule: AssistantModule | null;
+};
+
+type AssistantExplainability = {
+  reasoning: string[];
+  evidence: string[];
+  confidenceReason: string;
+};
+
+type AssistantPulse = {
+  summary: string;
+  suggestedQuestion: string;
+  generatedAt: string;
+  signals: AssistantProactiveSignal[];
+  actions: AssistantAction[];
+};
+
 type AssistantReply = {
   answer: string;
   highlights: string[];
   suggestedActions: string[];
+  actions: AssistantAction[];
+  proactiveSignals: AssistantProactiveSignal[];
+  simulations: AssistantSimulation[];
+  continuity: AssistantContinuity;
+  explainability: AssistantExplainability;
   source: "selah_ia" | "lumen_fallback";
   provider: string;
   focusArea: string;
@@ -91,6 +176,10 @@ type SelahResponse = {
   provider?: unknown;
   model?: unknown;
   generatedAt?: unknown;
+  reasoning?: unknown;
+  evidence?: unknown;
+  confidenceReason?: unknown;
+  followUpPrompt?: unknown;
 };
 
 type AssistantPrivacySettings = {
@@ -117,30 +206,132 @@ export class AssistantService {
     private readonly dashboardService: DashboardService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly tasksService: TasksService,
+    private readonly goalsService: GoalsService,
+    private readonly remindersService: RemindersService,
   ) {}
 
-  async ask(userId: string, question: string): Promise<AssistantReply> {
+  async ask(
+    userId: string,
+    question: string,
+    options?: {
+      history?: AskAssistantHistoryItemDto[];
+      originModule?: AssistantModule;
+    },
+  ): Promise<AssistantReply> {
     const [summary, privacySettings] = await Promise.all([
       this.dashboardService.getSummary(userId) as Promise<DashboardSummary>,
       this.loadPrivacySettings(userId),
     ]);
-    const selahResult = await this.askSelah(summary, privacySettings, question);
+    const selahResult = await this.askSelah(
+      summary,
+      privacySettings,
+      question,
+      options?.history || [],
+      options?.originModule || "general",
+    );
+    const generatedAt = new Date().toISOString();
 
     if (selahResult.reply) {
-      return selahResult.reply;
+      return this.enrichReply(
+        summary,
+        question,
+        selahResult.reply,
+        options?.history || [],
+        options?.originModule || "general",
+        generatedAt,
+      );
     }
 
-    return this.buildLocalReply(
+    return this.enrichReply(
       summary,
       question,
-      this.resolveLocalDisclaimer(selahResult.reason),
+      this.buildLocalReply(
+        summary,
+        question,
+        this.resolveLocalDisclaimer(selahResult.reason),
+      ),
+      options?.history || [],
+      options?.originModule || "general",
+      generatedAt,
     );
+  }
+
+  async getPulse(userId: string): Promise<AssistantPulse> {
+    const summary = (await this.dashboardService.getSummary(
+      userId,
+    )) as DashboardSummary;
+    const generatedAt = new Date().toISOString();
+    const signals = this.buildProactiveSignals(summary, "", "dashboard");
+    const actions = this.buildActionSuggestions(
+      summary,
+      "",
+      "dashboard",
+      "Panorama",
+    ).slice(0, 3);
+
+    return {
+      summary: this.buildPulseSummary(summary, signals),
+      suggestedQuestion: this.buildPulseQuestion(summary),
+      generatedAt,
+      signals,
+      actions,
+    };
+  }
+
+  async applyAction(userId: string, dto: ApplyAssistantActionDto) {
+    if (dto.kind === "open_module") {
+      return {
+        success: true,
+        kind: dto.kind,
+        route: dto.route || null,
+      };
+    }
+
+    const payload = dto.payload || {};
+
+    if (dto.kind === "create_task") {
+      return {
+        success: true,
+        kind: dto.kind,
+        entity: await this.tasksService.create(
+          userId,
+          this.toCreateTaskDto(dto.title, payload),
+        ),
+      };
+    }
+
+    if (dto.kind === "create_goal") {
+      return {
+        success: true,
+        kind: dto.kind,
+        entity: await this.goalsService.create(
+          userId,
+          this.toCreateGoalDto(dto.title, payload),
+        ),
+      };
+    }
+
+    if (dto.kind === "create_reminder") {
+      return {
+        success: true,
+        kind: dto.kind,
+        entity: await this.remindersService.create(
+          userId,
+          this.toCreateReminderDto(dto.title, payload),
+        ),
+      };
+    }
+
+    throw new BadRequestException("Acao do assistente nao suportada.");
   }
 
   private async askSelah(
     summary: DashboardSummary,
     privacySettings: AssistantPrivacySettings,
     question: string,
+    history: AskAssistantHistoryItemDto[],
+    originModule: AssistantModule,
   ): Promise<{
     reply: AssistantReply | null;
     attempted: boolean;
@@ -176,7 +367,9 @@ export class AssistantService {
     const timeoutMs = this.readTimeout();
     const url = `${baseUrl.replace(/\/+$/, "")}${route.startsWith("/") ? route : `/${route}`}`;
     const requestId = randomUUID();
-    const body = JSON.stringify(this.buildSelahPayload(summary, question));
+    const body = JSON.stringify(
+      this.buildSelahPayload(summary, question, history, originModule),
+    );
 
     try {
       const response = await this.postJson(
@@ -225,7 +418,12 @@ export class AssistantService {
     }
   }
 
-  private buildSelahPayload(summary: DashboardSummary, question: string) {
+  private buildSelahPayload(
+    summary: DashboardSummary,
+    question: string,
+    history: AskAssistantHistoryItemDto[],
+    originModule: AssistantModule,
+  ) {
     const currency = this.currency(summary);
     const intent = this.detectIntent(question);
     const firstName = this.extractFirstName(summary.user.name);
@@ -250,6 +448,8 @@ export class AssistantService {
         summary,
         intent,
       ),
+      conversationMemory: this.buildConversationMemory(history),
+      originModule,
       focusAreaHint: this.resolveFocusArea(intent),
       tasksTodayCount: summary.tasks.todayCount,
       tasksOverdueCount: summary.tasks.overdueCount,
@@ -328,6 +528,29 @@ export class AssistantService {
         payload.suggestedActions,
         ASSISTANT_REPLY_LIST_LIMIT,
       ),
+      actions: [],
+      proactiveSignals: [],
+      simulations: [],
+      continuity: {
+        historyCount: 0,
+        memorySummary: null,
+        nextQuestion: null,
+        followUpPrompt:
+          typeof payload.followUpPrompt === "string" &&
+          payload.followUpPrompt.trim()
+            ? payload.followUpPrompt.trim()
+            : null,
+        originModule: null,
+      },
+      explainability: {
+        reasoning: this.readStringList(payload.reasoning, 4),
+        evidence: this.readStringList(payload.evidence, 5),
+        confidenceReason:
+          typeof payload.confidenceReason === "string" &&
+          payload.confidenceReason.trim()
+            ? payload.confidenceReason.trim()
+            : "",
+      },
       source: "selah_ia",
       provider:
         typeof payload.provider === "string" && payload.provider.trim()
@@ -411,12 +634,417 @@ export class AssistantService {
           ? "Revisar despesas futuras e congelar gastos nao essenciais."
           : "Manter o ritmo atual e reforcar uma meta ativa.",
       ]),
+      actions: [],
+      proactiveSignals: [],
+      simulations: [],
+      continuity: {
+        historyCount: 0,
+        memorySummary: null,
+        nextQuestion: null,
+        followUpPrompt: null,
+        originModule: null,
+      },
+      explainability: {
+        reasoning: [],
+        evidence: [],
+        confidenceReason: "",
+      },
       source: "lumen_fallback",
       provider: "LUMEN Local",
       focusArea,
       confidence: "medium",
       disclaimer,
       generatedAt: new Date().toISOString(),
+    };
+  }
+
+  private enrichReply(
+    summary: DashboardSummary,
+    question: string,
+    reply: AssistantReply,
+    history: AskAssistantHistoryItemDto[],
+    originModule: AssistantModule,
+    generatedAt: string,
+  ): AssistantReply {
+    const focusArea = reply.focusArea || this.resolveFocusArea(this.detectIntent(question));
+    const continuity = this.buildContinuity(
+      summary,
+      question,
+      reply,
+      history,
+      originModule,
+    );
+
+    return {
+      ...reply,
+      generatedAt: reply.generatedAt || generatedAt,
+      actions: this.buildActionSuggestions(summary, question, originModule, focusArea),
+      proactiveSignals: this.buildProactiveSignals(summary, question, originModule),
+      simulations: this.buildSimulations(summary, question),
+      continuity,
+      explainability: this.buildExplainability(summary, question, reply, continuity),
+    };
+  }
+
+  private buildConversationMemory(history: AskAssistantHistoryItemDto[]) {
+    const recentHistory = history
+      .slice(0, 3)
+      .map((item, index) => {
+        const question = this.sanitizeExternalText(item.question);
+        const answer = this.sanitizeExternalText(item.answer).slice(0, 160);
+        const focusArea = item.focusArea ? ` foco ${item.focusArea}` : "";
+        return `${index + 1}. Pergunta:${focusArea} ${question}. Resposta anterior: ${answer}.`;
+      })
+      .filter(Boolean);
+
+    if (!recentHistory.length) {
+      return null;
+    }
+
+    return recentHistory.join(" ");
+  }
+
+  private buildActionSuggestions(
+    summary: DashboardSummary,
+    question: string,
+    originModule: AssistantModule,
+    focusArea: string,
+  ) {
+    const actions: AssistantAction[] = [];
+    const tomorrowMorning = this.nextReminderDate(1, 9);
+    const topTask = summary.tasks.items[0];
+    const topGoal = summary.goals[0];
+    const normalizedQuestion = this.normalizeForMatch(question);
+    const financeHeavy =
+      focusArea.toLowerCase().includes("financ") ||
+      normalizedQuestion.includes("divid") ||
+      normalizedQuestion.includes("saldo") ||
+      normalizedQuestion.includes("gasto") ||
+      summary.forecast.riskLevel === "HIGH";
+
+    if (financeHeavy) {
+      actions.push(
+        this.createAction("create_task", {
+          title: "Mapear dívidas, juros e parcelas",
+          description:
+            "Transforma a orientação do Selah em uma tarefa concreta dentro da sua rotina.",
+          targetModule: "tasks",
+          importance: "high",
+          payload: {
+            title: "Mapear dividas, juros e parcelas",
+            description:
+              "Levantar credores, valor em aberto, juros, atraso e ordem de negociacao.",
+            priority: "HIGH",
+            dueDate: this.nextDateInputValue(1),
+            hasFinancialImpact: false,
+          },
+        }),
+      );
+      actions.push(
+        this.createAction("create_reminder", {
+          title: "Criar lembrete de revisão de caixa",
+          description:
+            "Agenda um checkpoint rápido para você confirmar se o plano saiu do papel.",
+          targetModule: "finances",
+          importance: "medium",
+          payload: {
+            title: "Revisar caixa e contas da semana",
+            remindAt: tomorrowMorning,
+          },
+        }),
+      );
+    }
+
+    if (summary.tasks.overdueCount > 0) {
+      actions.push(
+        this.createAction("open_module", {
+          title: "Abrir fila de tarefas",
+          description:
+            "Leva você direto para as pendências que estão pressionando o dia.",
+          targetModule: "tasks",
+          importance: summary.tasks.overdueCount >= 3 ? "high" : "medium",
+          route: "/tasks",
+          payload: null,
+        }),
+      );
+    } else if (topTask) {
+      actions.push(
+        this.createAction("create_reminder", {
+          title: `Lembrar "${topTask.title}"`,
+          description:
+            "Cria um lembrete para sustentar a prioridade mais concreta da sua fila.",
+          targetModule: "tasks",
+          importance: "medium",
+          payload: {
+            title: `Revisar ${topTask.title}`,
+            remindAt: this.nextReminderDate(0, 18),
+          },
+        }),
+      );
+    }
+
+    if (!summary.goals.length && financeHeavy) {
+      const targetAmount = Math.max(
+        Math.round(summary.finances.monthlyExpenses || summary.user.monthlyIncome || 1000),
+        1000,
+      );
+      actions.push(
+        this.createAction("create_goal", {
+          title: "Criar meta de reserva",
+          description:
+            "Abre uma meta base para proteger o caixa enquanto você reorganiza o mês.",
+          targetModule: "goals",
+          importance: "medium",
+          payload: {
+            title: "Reserva de seguranca",
+            description:
+              "Meta inicial criada a partir do contexto financeiro atual do LUMEN.",
+            targetAmount,
+            currentAmount: 0,
+            targetDate: this.nextDateInputValue(90),
+          },
+        }),
+      );
+    } else if (topGoal) {
+      actions.push(
+        this.createAction("open_module", {
+          title: `Ver meta ${topGoal.title}`,
+          description:
+            "Abre sua carteira de metas para decidir se vale reforçar prazo ou aporte.",
+          targetModule: "goals",
+          importance: "low",
+          route: "/goals",
+          payload: null,
+        }),
+      );
+    }
+
+    if (originModule === "imports") {
+      actions.unshift(
+        this.createAction("open_module", {
+          title: "Voltar para importações",
+          description:
+            "Retorna para a compra ou nota que motivou esta conversa com o Selah.",
+          targetModule: "imports",
+          importance: "medium",
+          route: "/imports",
+          payload: null,
+        }),
+      );
+    }
+
+    return actions.slice(0, 4);
+  }
+
+  private buildProactiveSignals(
+    summary: DashboardSummary,
+    question: string,
+    originModule: AssistantModule,
+  ) {
+    const signals: AssistantProactiveSignal[] = [];
+    const hasQuestion = Boolean(String(question || "").trim());
+
+    if (summary.forecast.riskLevel === "HIGH") {
+      signals.push({
+        id: "cash-risk",
+        title: "Caixa sob pressão",
+        message: `A projeção atual fecha em ${this.formatCurrency(
+          Number(summary.forecast.predictedBalance ?? 0),
+          this.currency(summary),
+        )}, então vale revisar saídas variáveis antes que o mês aperte de vez.`,
+        severity: "critical",
+        targetModule: "finances",
+        suggestedPrompt: "O que eu preciso proteger primeiro no meu caixa este mês?",
+        suggestedActionLabel: "Olhar finanças",
+      });
+    }
+
+    if (summary.tasks.overdueCount > 0) {
+      signals.push({
+        id: "overdue-stack",
+        title: "Fila atrasada pedindo espaço",
+        message: `Existem ${summary.tasks.overdueCount} pendência(s) atrasada(s), o que tende a contaminar foco e previsibilidade do restante da semana.`,
+        severity: summary.tasks.overdueCount >= 3 ? "critical" : "warning",
+        targetModule: "tasks",
+        suggestedPrompt: "Quais pendências atrasadas eu devo limpar primeiro?",
+        suggestedActionLabel: "Abrir tarefas",
+      });
+    }
+
+    const stalledGoal = summary.goals.find((goal) => {
+      const progress = this.goalProgress(goal);
+      return progress < 35;
+    });
+
+    if (stalledGoal) {
+      signals.push({
+        id: "goal-stalled",
+        title: "Meta pedindo recalibração",
+        message: `${stalledGoal.title} ainda está em ${this.goalProgress(
+          stalledGoal,
+        )}% e pode precisar de aporte menor, prazo melhor ou passo intermediário.`,
+        severity: "info",
+        targetModule: "goals",
+        suggestedPrompt: `Como destravar a meta ${stalledGoal.title}?`,
+        suggestedActionLabel: "Rever metas",
+      });
+    }
+
+    if (!signals.length && !hasQuestion) {
+      signals.push({
+        id: "calm-window",
+        title: "Janela boa para avançar",
+        message:
+          "Seu cenário está relativamente estável agora. É um bom momento para atacar uma frente de crescimento, não só manutenção.",
+        severity: "info",
+        targetModule: originModule,
+        suggestedPrompt: "Onde vale colocar energia para ganhar mais tração esta semana?",
+        suggestedActionLabel: "Conversar com Selah",
+      });
+    }
+
+    return signals.slice(0, 3);
+  }
+
+  private buildSimulations(summary: DashboardSummary, question: string) {
+    const simulations: AssistantSimulation[] = [];
+    const currency = this.currency(summary);
+    const forecastBalance = Number(summary.forecast.predictedBalance ?? 0);
+    const monthlyExpenses = Number(summary.finances.monthlyExpenses ?? 0);
+    const topGoal = summary.goals[0];
+    const debtAmount = this.extractQuestionAmount(question);
+
+    if (monthlyExpenses > 0) {
+      const delta = Math.round(monthlyExpenses * 0.1);
+      simulations.push({
+        id: "expense-trim-10",
+        title: "Ajuste leve de gastos",
+        summary: `Se você enxugar perto de 10% das saídas variáveis do mês, a projeção vai para ${this.formatCurrency(
+          forecastBalance + delta,
+          currency,
+        )}.`,
+        monthlyDelta: delta,
+        projectedBalance: forecastBalance + delta,
+        confidence: "medium",
+        assumptions: [
+          "Estimativa baseada nas despesas registradas neste mês.",
+          "Não considera novas contas ainda não lançadas no LUMEN.",
+        ],
+      });
+    }
+
+    if (debtAmount) {
+      const monthlyParcel = Math.round(debtAmount / 8);
+      simulations.push({
+        id: "debt-8x",
+        title: "Parcelamento linear em 8 meses",
+        summary: `Para uma dívida aproximada de ${this.formatCurrency(
+          debtAmount,
+          currency,
+        )}, uma divisão linear em 8 meses sugere parcela perto de ${this.formatCurrency(
+          monthlyParcel,
+          currency,
+        )}.`,
+        monthlyDelta: -monthlyParcel,
+        projectedBalance: forecastBalance - monthlyParcel,
+        confidence: "low",
+        assumptions: [
+          "Cálculo simplificado, sem juros, multas ou descontos de negociação.",
+          "Serve só para testar conforto mensal antes de assumir um acordo.",
+        ],
+      });
+    }
+
+    if (topGoal) {
+      const remaining = Math.max(topGoal.targetAmount - topGoal.currentAmount, 0);
+      const contribution = Math.min(Math.max(Math.round(forecastBalance * 0.15), 0), remaining);
+
+      if (contribution > 0) {
+        simulations.push({
+          id: "goal-contribution",
+          title: `Aporte tático em ${topGoal.title}`,
+          summary: `Separando ${this.formatCurrency(
+            contribution,
+            currency,
+          )} para ${topGoal.title}, a projeção de caixa cairia para ${this.formatCurrency(
+            forecastBalance - contribution,
+            currency,
+          )}, mas a meta ganharia tração imediata.`,
+          monthlyDelta: -contribution,
+          projectedBalance: forecastBalance - contribution,
+          confidence: forecastBalance > contribution ? "medium" : "low",
+          assumptions: [
+            "Considera uso de uma parte do saldo previsto, não do saldo histórico inteiro.",
+            "Não substitui revisão das prioridades básicas do mês.",
+          ],
+        });
+      }
+    }
+
+    return simulations.slice(0, 3);
+  }
+
+  private buildContinuity(
+    summary: DashboardSummary,
+    question: string,
+    reply: AssistantReply,
+    history: AskAssistantHistoryItemDto[],
+    originModule: AssistantModule,
+  ): AssistantContinuity {
+    const recentHistory = history.slice(0, 2);
+    const memorySummary = recentHistory.length
+      ? `Nas últimas ${recentHistory.length} conversa(s), você passou por ${recentHistory
+          .map((item) => this.sanitizeExternalText(item.question).slice(0, 70))
+          .join(" e ")}.`
+      : null;
+    const followUpPrompt =
+      reply.continuity.followUpPrompt ||
+      this.defaultFollowUpPrompt(summary, reply.focusArea || "Panorama");
+
+    return {
+      historyCount: recentHistory.length,
+      memorySummary,
+      nextQuestion: this.defaultNextQuestion(summary, question, reply.focusArea || "Panorama"),
+      followUpPrompt,
+      originModule,
+    };
+  }
+
+  private buildExplainability(
+    summary: DashboardSummary,
+    question: string,
+    reply: AssistantReply,
+    continuity: AssistantContinuity,
+  ): AssistantExplainability {
+    const currency = this.currency(summary);
+    const evidence = [
+      `Saldo atual observado: ${this.formatCurrency(summary.finances.balance, currency)}.`,
+      `Saldo previsto no horizonte atual: ${this.formatCurrency(
+        Number(summary.forecast.predictedBalance ?? 0),
+        currency,
+      )}.`,
+      summary.tasks.items[0]
+        ? `Tarefa concreta em foco: ${summary.tasks.items[0].title}.`
+        : null,
+      summary.finances.recentTransactions[0]
+        ? `Movimentação recente relevante: ${summary.finances.recentTransactions[0].description}.`
+        : null,
+      summary.goals[0]
+        ? `Meta ativa usada como contexto: ${summary.goals[0].title}.`
+        : null,
+      continuity.memorySummary,
+    ];
+    const reasoning =
+      reply.explainability.reasoning.length > 0
+        ? reply.explainability.reasoning
+        : this.fallbackReasoning(summary, question, reply.focusArea || "Panorama");
+
+    return {
+      reasoning: reasoning.slice(0, 4),
+      evidence: this.readNonEmptyList(evidence, 5),
+      confidenceReason:
+        reply.explainability.confidenceReason ||
+        this.fallbackConfidenceReason(summary, reply.confidence, question),
     };
   }
 
@@ -473,6 +1101,235 @@ export class AssistantService {
     ]
       .filter(Boolean)
       .join("\n");
+  }
+
+  private buildPulseSummary(
+    summary: DashboardSummary,
+    signals: AssistantProactiveSignal[],
+  ) {
+    if (signals[0]) {
+      return signals[0].message;
+    }
+
+    return `Seu momento está estável: ${summary.tasks.todayCount} tarefa(s) para hoje, ${summary.goals.length} meta(s) ativa(s) e previsão em ${this.formatCurrency(
+      Number(summary.forecast.predictedBalance ?? 0),
+      this.currency(summary),
+    )}.`;
+  }
+
+  private buildPulseQuestion(summary: DashboardSummary) {
+    if (summary.forecast.riskLevel === "HIGH") {
+      return "O que eu preciso proteger primeiro no meu caixa esta semana?";
+    }
+
+    if (summary.tasks.overdueCount > 0) {
+      return "Qual pendência atrasada eu devo limpar antes do resto?";
+    }
+
+    if (summary.goals.length > 0) {
+      return `Como acelerar a meta ${summary.goals[0].title} sem bagunçar o mês?`;
+    }
+
+    return "Onde vale colocar energia agora para ganhar mais tração?";
+  }
+
+  private createAction(
+    kind: AssistantActionKind,
+    input: Omit<AssistantAction, "id" | "kind" | "route" | "payload"> & {
+      route?: string | null;
+      payload?: Record<string, unknown> | null;
+    },
+  ): AssistantAction {
+    return {
+      id: `${kind}-${this.normalizeForMatch(input.title).replace(/\s+/g, "-").slice(0, 40) || randomUUID()}`,
+      kind,
+      route: input.route ?? null,
+      payload: input.payload ?? null,
+      ...input,
+    };
+  }
+
+  private toCreateTaskDto(
+    title: string | undefined,
+    payload: Record<string, unknown>,
+  ): CreateTaskDto {
+    return {
+      title: String(payload.title || title || "Nova tarefa do Selah").trim(),
+      description: this.optionalString(payload.description),
+      dueDate: this.optionalString(payload.dueDate),
+      priority: this.optionalTaskPriority(payload.priority),
+      categoryId: this.optionalString(payload.categoryId),
+      hasFinancialImpact: Boolean(payload.hasFinancialImpact),
+      estimatedAmount: this.optionalNumber(payload.estimatedAmount) ?? undefined,
+      status: undefined,
+      isRecurring: false,
+      recurrenceRule: undefined,
+      linkedGoalId: this.optionalString(payload.linkedGoalId),
+      subtasks: [],
+    };
+  }
+
+  private toCreateGoalDto(
+    title: string | undefined,
+    payload: Record<string, unknown>,
+  ): CreateGoalDto {
+    const targetAmount = Number(payload.targetAmount);
+
+    if (!Number.isFinite(targetAmount) || targetAmount <= 0) {
+      throw new BadRequestException("A meta sugerida pelo assistente nao tem valor-alvo valido.");
+    }
+
+    return {
+      title: String(payload.title || title || "Nova meta do Selah").trim(),
+      description: this.optionalString(payload.description),
+      targetAmount,
+      currentAmount: this.optionalNumber(payload.currentAmount) ?? 0,
+      targetDate: this.optionalString(payload.targetDate),
+      status: undefined,
+    };
+  }
+
+  private toCreateReminderDto(
+    title: string | undefined,
+    payload: Record<string, unknown>,
+  ): CreateReminderDto {
+    const remindAt = this.optionalString(payload.remindAt);
+
+    if (!remindAt) {
+      throw new BadRequestException("A acao do assistente precisa de uma data para o lembrete.");
+    }
+
+    return {
+      title: String(payload.title || title || "Novo lembrete do Selah").trim(),
+      remindAt,
+      taskId: this.optionalString(payload.taskId),
+      transactionId: this.optionalString(payload.transactionId),
+      goalId: this.optionalString(payload.goalId),
+    };
+  }
+
+  private nextReminderDate(offsetDays: number, hour: number) {
+    const next = new Date();
+    next.setHours(hour, 0, 0, 0);
+    next.setDate(next.getDate() + offsetDays);
+    return next.toISOString();
+  }
+
+  private nextDateInputValue(offsetDays: number) {
+    const next = new Date();
+    next.setHours(12, 0, 0, 0);
+    next.setDate(next.getDate() + offsetDays);
+    return next.toISOString().slice(0, 10);
+  }
+
+  private extractQuestionAmount(question: string) {
+    const matches = String(question || "")
+      .match(/(?:r\$\s*)?\d{1,3}(?:\.\d{3})*(?:,\d{2})?\s*(?:mil|k)?/gi);
+
+    const first = matches?.[0];
+    if (!first) {
+      return null;
+    }
+
+    const normalized = first.toLowerCase().replace(/\s+/g, "");
+    const multiplier = normalized.includes("mil") || normalized.includes("k") ? 1000 : 1;
+    const numeric = normalized
+      .replace(/r\$/g, "")
+      .replace(/mil|k/g, "")
+      .replace(/\./g, "")
+      .replace(",", ".");
+    const amount = Number(numeric);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return null;
+    }
+
+    return amount * multiplier;
+  }
+
+  private defaultFollowUpPrompt(summary: DashboardSummary, focusArea: string) {
+    if (focusArea.toLowerCase().includes("financ")) {
+      return "Me ajuda a transformar isso num plano de 7 dias.";
+    }
+
+    if (summary.tasks.overdueCount > 0) {
+      return "Monta uma ordem prática para eu limpar essas pendências.";
+    }
+
+    if (summary.goals[0]) {
+      return `Monta um próximo passo simples para a meta ${summary.goals[0].title}.`;
+    }
+
+    return "Traduz isso em um plano curto e executável.";
+  }
+
+  private defaultNextQuestion(
+    summary: DashboardSummary,
+    question: string,
+    focusArea: string,
+  ) {
+    const normalizedQuestion = this.normalizeForMatch(question);
+
+    if (normalizedQuestion.includes("divid") || focusArea.toLowerCase().includes("financ")) {
+      return "Qual corte ou negociação me dá mais fôlego nos próximos 30 dias?";
+    }
+
+    if (summary.tasks.items[0]) {
+      return `Como encaixar ${summary.tasks.items[0].title} sem travar o resto do dia?`;
+    }
+
+    if (summary.goals[0]) {
+      return `Qual o menor aporte útil para a meta ${summary.goals[0].title}?`;
+    }
+
+    return "Qual é o próximo passo com melhor impacto agora?";
+  }
+
+  private fallbackReasoning(
+    summary: DashboardSummary,
+    question: string,
+    focusArea: string,
+  ) {
+    const reasoning = [];
+
+    reasoning.push(
+      `A resposta parte da sua pergunta atual e do foco ${focusArea.toLowerCase()} detectado no LUMEN.`,
+    );
+    reasoning.push(
+      `O Selah cruzou tarefas do dia, fluxo financeiro e metas para evitar conselho genérico.`,
+    );
+
+    if (summary.forecast.riskLevel === "HIGH") {
+      reasoning.push(
+        "Como a previsão está em risco alto, o plano puxa contenção e priorização antes de expansão.",
+      );
+    }
+
+    if (this.matchQuestionTargets(summary, question).length > 0) {
+      reasoning.push(
+        "Itens citados explicitamente na sua pergunta ganharam prioridade sobre o panorama amplo.",
+      );
+    }
+
+    return reasoning.slice(0, 4);
+  }
+
+  private fallbackConfidenceReason(
+    summary: DashboardSummary,
+    confidence: AssistantConfidence,
+    question: string,
+  ) {
+    const anchors = this.matchQuestionTargets(summary, question).length;
+
+    if (confidence === "high") {
+      return `A confiança está alta porque havia dados concretos suficientes no app${anchors ? ` e ${anchors} alvo(s) citado(s) por você` : ""}.`;
+    }
+
+    if (confidence === "low") {
+      return "A confiança ficou mais baixa porque faltam detalhes críticos para simular ou recomendar algo mais preciso.";
+    }
+
+    return "A confiança ficou média porque o cenário já tem sinais úteis, mas ainda sem todos os detalhes operacionais ou contratuais.";
   }
 
   private currency(summary: DashboardSummary) {
@@ -540,6 +1397,38 @@ export class AssistantService {
       .map((item) => String(item || "").trim())
       .filter(Boolean)
       .slice(0, maxItems);
+  }
+
+  private readNonEmptyList(
+    items: Array<string | null | undefined>,
+    maxItems: number,
+  ) {
+    return items.filter((item): item is string => Boolean(item)).slice(0, maxItems);
+  }
+
+  private optionalString(value: unknown) {
+    const normalized = String(value || "").trim();
+    return normalized || undefined;
+  }
+
+  private optionalNumber(value: unknown) {
+    const normalized = Number(value);
+    return Number.isFinite(normalized) ? normalized : null;
+  }
+
+  private optionalTaskPriority(value: unknown) {
+    const normalized = String(value || "").trim().toUpperCase();
+
+    if (
+      normalized === "LOW" ||
+      normalized === "MEDIUM" ||
+      normalized === "HIGH" ||
+      normalized === "CRITICAL"
+    ) {
+      return normalized as CreateTaskDto["priority"];
+    }
+
+    return undefined;
   }
 
   private normalizeConfidence(value: unknown): AssistantConfidence {

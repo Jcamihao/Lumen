@@ -9,6 +9,13 @@ export class NotificationsService {
   list(userId: string) {
     return this.prisma.notification.findMany({
       where: { userId },
+      select: {
+        id: true,
+        title: true,
+        message: true,
+        isRead: true,
+        createdAt: true,
+      },
       orderBy: { createdAt: 'desc' },
       take: 20,
     });
@@ -31,17 +38,24 @@ export class NotificationsService {
   }
 
   async markAsRead(userId: string, id: string) {
-    const notification = await this.prisma.notification.findFirst({
+    const result = await this.prisma.notification.updateMany({
       where: { id, userId },
+      data: { isRead: true },
     });
 
-    if (!notification) {
+    if (!result.count) {
       throw new NotFoundException('Notificacao nao encontrada.');
     }
 
-    return this.prisma.notification.update({
+    return this.prisma.notification.findUniqueOrThrow({
       where: { id },
-      data: { isRead: true },
+      select: {
+        id: true,
+        title: true,
+        message: true,
+        isRead: true,
+        createdAt: true,
+      },
     });
   }
 }

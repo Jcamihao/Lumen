@@ -2,7 +2,13 @@
   <header class="proto-header">
     <div class="proto-header__copy">
       <h2>Selah IA</h2>
-      <p>Obtenha insights personalizados sobre finanças, rotina e metas.</p>
+      <p>Obtenha insights personalizados sobre finanças, rotina e metas, com ação direta dentro do Lumen.</p>
+    </div>
+
+    <div class="proto-header__action" *ngIf="originModule()">
+      <span class="proto-chip">
+        Contexto ativo: {{ originModuleLabel() }}
+      </span>
     </div>
   </header>
 
@@ -37,7 +43,7 @@
     <button
       type="button"
       class="assistant-prompt"
-      *ngFor="let prompt of quickPrompts"
+      *ngFor="let prompt of quickPrompts()"
       (click)="usePrompt(prompt)"
     >
       <span class="material-symbols-rounded">auto_awesome</span>
@@ -73,12 +79,13 @@
             </button>
 
             <span class="proto-tag">
-              {{ offlineMode() ? 'Sem internet' : sourceLabel(activeMessage()?.reply || { answer: '', highlights: [], suggestedActions: [] }) }}
+              {{ offlineMode() ? 'Sem internet' : activeMessage() ? sourceLabel(activeMessage()!.reply) : 'Selah IA' }}
             </span>
           </div>
         </form>
 
         <p class="assistant-error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
+        <p class="assistant-success" *ngIf="actionFeedback()">{{ actionFeedback() }}</p>
 
         <div class="proto-note assistant-answer" *ngIf="activeMessage() as message">
           <div class="assistant-answer__head">
@@ -192,6 +199,130 @@
             <p>{{ action }}</p>
           </article>
         </div>
+      </section>
+
+      <section class="assistant-reading__section" *ngIf="message.reply.actions.length">
+        <div class="assistant-reading__section-head">
+          <strong class="proto-inline-title">Ações no app</strong>
+          <span class="proto-tag">{{ message.reply.actions.length }} sugestões</span>
+        </div>
+
+        <div class="assistant-action-grid">
+          <article class="proto-list-item assistant-action-card" *ngFor="let action of message.reply.actions">
+            <div class="proto-list-item__top">
+              <strong>{{ action.title }}</strong>
+              <span class="proto-tag" [attr.data-tone]="action.importance === 'high' ? 'warning' : action.importance === 'medium' ? 'accent' : 'neutral'">
+                {{ action.targetModule }}
+              </span>
+            </div>
+            <p>{{ action.description }}</p>
+            <div class="proto-actions-row">
+              <button
+                type="button"
+                class="proto-button proto-button--secondary"
+                [disabled]="isRunningAction(action.id)"
+                (click)="executeAction(action)"
+              >
+                {{ isRunningAction(action.id) ? 'Aplicando...' : action.kind === 'open_module' ? 'Abrir' : 'Aplicar no Lumen' }}
+              </button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="assistant-reading__section" *ngIf="message.reply.proactiveSignals.length">
+        <div class="assistant-reading__section-head">
+          <strong class="proto-inline-title">Sinais proativos</strong>
+          <span class="proto-tag">{{ message.reply.proactiveSignals.length }} radar</span>
+        </div>
+
+        <div class="proto-list">
+          <article class="proto-list-item" *ngFor="let signal of message.reply.proactiveSignals">
+            <div class="proto-list-item__top">
+              <strong>{{ signal.title }}</strong>
+              <span class="proto-tag" [attr.data-tone]="signalTone(signal)">{{ signal.severity }}</span>
+            </div>
+            <p>{{ signal.message }}</p>
+            <div class="proto-actions-row" *ngIf="signal.suggestedPrompt">
+              <button type="button" class="proto-button proto-button--ghost" (click)="useFollowUpPrompt(signal.suggestedPrompt)">
+                Perguntar isso
+              </button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="assistant-reading__section" *ngIf="message.reply.simulations.length">
+        <div class="assistant-reading__section-head">
+          <strong class="proto-inline-title">Simulações úteis</strong>
+          <span class="proto-tag">{{ message.reply.simulations.length }} cenários</span>
+        </div>
+
+        <div class="assistant-simulation-grid">
+          <article class="proto-list-item assistant-simulation-card" *ngFor="let simulation of message.reply.simulations">
+            <div class="proto-list-item__top">
+              <strong>{{ simulation.title }}</strong>
+              <span class="proto-tag" [attr.data-tone]="simulationTone(simulation)">
+                {{ simulation.monthlyDelta | currency: 'BRL' : 'symbol' : '1.0-0' : 'pt-BR' }}
+              </span>
+            </div>
+            <p>{{ simulation.summary }}</p>
+            <div class="assistant-simulation-card__facts">
+              <span class="proto-chip">
+                Projeção:
+                {{ simulation.projectedBalance | currency: 'BRL' : 'symbol' : '1.0-0' : 'pt-BR' }}
+              </span>
+              <span class="proto-chip">{{ confidenceValueLabel(simulation.confidence) }}</span>
+            </div>
+            <div class="proto-actions-row" *ngIf="simulation.assumptions.length">
+              <span class="proto-chip" *ngFor="let assumption of simulation.assumptions">{{ assumption }}</span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="assistant-reading__section" *ngIf="message.reply.explainability.reasoning.length || message.reply.explainability.evidence.length">
+        <div class="assistant-reading__section-head">
+          <strong class="proto-inline-title">Como o Selah chegou nisso</strong>
+        </div>
+
+        <div class="assistant-explainability-grid">
+          <article class="proto-list-item" *ngIf="message.reply.explainability.reasoning.length">
+            <div class="proto-list-item__top">
+              <strong>Lógica</strong>
+            </div>
+            <p *ngFor="let item of message.reply.explainability.reasoning">{{ item }}</p>
+          </article>
+
+          <article class="proto-list-item" *ngIf="message.reply.explainability.evidence.length">
+            <div class="proto-list-item__top">
+              <strong>Dados usados</strong>
+            </div>
+            <p *ngFor="let item of message.reply.explainability.evidence">{{ item }}</p>
+          </article>
+        </div>
+
+        <p class="proto-muted" *ngIf="message.reply.explainability.confidenceReason">
+          {{ message.reply.explainability.confidenceReason }}
+        </p>
+      </section>
+
+      <section class="assistant-reading__section" *ngIf="message.reply.continuity.memorySummary || message.reply.continuity.followUpPrompt || message.reply.continuity.nextQuestion">
+        <div class="assistant-reading__section-head">
+          <strong class="proto-inline-title">Continuidade</strong>
+        </div>
+
+        <article class="proto-list-item assistant-continuity-card">
+          <p *ngIf="message.reply.continuity.memorySummary">{{ message.reply.continuity.memorySummary }}</p>
+          <p *ngIf="message.reply.continuity.nextQuestion">
+            Próxima pergunta sugerida: {{ message.reply.continuity.nextQuestion }}
+          </p>
+          <div class="proto-actions-row" *ngIf="message.reply.continuity.followUpPrompt">
+            <button type="button" class="proto-button proto-button--ghost" (click)="useFollowUpPrompt(message.reply.continuity.followUpPrompt)">
+              Usar follow-up
+            </button>
+          </div>
+        </article>
       </section>
 
       <p class="proto-muted" *ngIf="message.reply.disclaimer">{{ message.reply.disclaimer }}</p>

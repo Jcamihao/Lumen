@@ -110,6 +110,60 @@
           <span class="proto-chip" *ngFor="let note of receipt.notes">{{ note }}</span>
         </div>
 
+        <article class="proto-surface" *ngIf="receipt.purchaseSummary || receipt.spendingSignals.length || receipt.followUpActions.length">
+          <div class="proto-surface__head">
+            <div>
+              <h3>Leitura Selah da compra</h3>
+              <p>Além de extrair a nota, o Selah interpreta o perfil desse gasto.</p>
+            </div>
+          </div>
+
+          <div class="proto-surface__body">
+            <div class="proto-note" *ngIf="receipt.purchaseSummary">
+              <strong class="proto-inline-title">{{ receipt.purchaseMission || 'Resumo da compra' }}</strong>
+              <p>{{ receipt.purchaseSummary }}</p>
+            </div>
+
+            <section class="assistant-reading__section" *ngIf="receipt.categoryBreakdown.length">
+              <div class="assistant-reading__section-head">
+                <strong class="proto-inline-title">Cesta por frente</strong>
+              </div>
+              <div class="proto-list">
+                <article class="proto-list-item" *ngFor="let bucket of receipt.categoryBreakdown">
+                  <div class="proto-list-item__top">
+                    <strong>{{ bucket.label }}</strong>
+                    <span class="proto-tag">{{ bucket.itemCount }} item(ns)</span>
+                  </div>
+                  <p>{{ previewAmount(bucket.totalAmount) }}</p>
+                </article>
+              </div>
+            </section>
+
+            <section class="assistant-reading__section" *ngIf="receipt.spendingSignals.length">
+              <div class="assistant-reading__section-head">
+                <strong class="proto-inline-title">Sinais financeiros</strong>
+              </div>
+              <div class="proto-actions-row">
+                <span class="proto-chip" *ngFor="let signal of receipt.spendingSignals">{{ signal }}</span>
+              </div>
+            </section>
+
+            <section class="assistant-reading__section" *ngIf="receipt.followUpActions.length">
+              <div class="assistant-reading__section-head">
+                <strong class="proto-inline-title">Próximos passos sugeridos</strong>
+              </div>
+              <div class="proto-list">
+                <article class="proto-list-item" *ngFor="let action of receipt.followUpActions; let index = index">
+                  <div class="proto-list-item__top">
+                    <strong>{{ index + 1 }}.</strong>
+                  </div>
+                  <p>{{ action }}</p>
+                </article>
+              </div>
+            </section>
+          </div>
+        </article>
+
         <div class="proto-list">
           <article class="proto-list-item" *ngFor="let item of receipt.items; let index = index">
             <div class="proto-list-item__top">

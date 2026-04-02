@@ -3,6 +3,8 @@ import { computed, effect, inject, Injectable, signal } from "@angular/core";
 import { firstValueFrom, map, Observable, of, tap } from "rxjs";
 import { environment } from "../../../environments/environment";
 import {
+  AssistantAction,
+  AssistantPulse,
   AssistantReply,
   DashboardSummary,
   Goal,
@@ -33,7 +35,10 @@ export class LifeApiService {
 
   constructor() {
     effect(() => {
-      if (this.networkService.isOnline()) {
+      if (
+        this.networkService.isOnline() &&
+        this.offlineLifeService.pendingSyncCount() > 0
+      ) {
         queueMicrotask(() => {
           void this.flushPendingSync();
         });
@@ -53,6 +58,16 @@ export class LifeApiService {
         tap((summary) => this.offlineLifeService.cacheDashboardSummary(summary)),
         this.withOfflineFallback(() => this.offlineLifeService.readDashboardSummary()),
       );
+  }
+
+  getAssistantPulse() {
+    if (!this.networkService.isOnline()) {
+      return of(this.offlineLifeService.buildOfflineAssistantPulse());
+    }
+
+    return this.http.get<AssistantPulse>(`${environment.apiBaseUrl}/assistant/pulse`).pipe(
+      this.withOfflineFallback(() => this.offlineLifeService.buildOfflineAssistantPulse()),
+    );
   }
 
   listTasks() {
@@ -221,20 +236,79 @@ export class LifeApiService {
     );
   }
 
-  askAssistant(question: string) {
+  askAssistant(
+    question: string,
+    options?: {
+      originModule?: string | null;
+      history?: Array<{
+        question: string;
+        answer: string;
+        focusArea?: string | null;
+        createdAt?: string;
+      }>;
+    },
+  ) {
     if (!this.networkService.isOnline()) {
-      return of(this.offlineLifeService.buildOfflineAssistantReply(question));
+      return of(
+        this.offlineLifeService.buildOfflineAssistantReply(
+          question,
+          options?.history || [],
+          options?.originModule || undefined,
+        ),
+      );
     }
 
     return this.http
       .post<AssistantReply>(`${environment.apiBaseUrl}/assistant/ask`, {
         question,
+        originModule: options?.originModule || undefined,
+        history: options?.history?.slice(0, 6).map((item) => ({
+          question: item.question,
+          answer: item.answer,
+          focusArea: item.focusArea || undefined,
+          createdAt: item.createdAt || undefined,
+        })),
       })
       .pipe(
         this.withOfflineFallback(() =>
-          this.offlineLifeService.buildOfflineAssistantReply(question),
+          this.offlineLifeService.buildOfflineAssistantReply(
+            question,
+            options?.history || [],
+            options?.originModule || undefined,
+          ),
         ),
       );
+  }
+
+  applyAssistantAction(
+    action: AssistantAction,
+  ): Observable<{
+    success: boolean;
+    kind: string;
+    entity?: unknown;
+    route?: string | null;
+  }> {
+    if (action.kind === "open_module") {
+      return of({
+        success: true,
+        kind: action.kind,
+        route: action.route,
+      });
+    }
+
+    if (!this.networkService.isOnline()) {
+      return of(this.offlineLifeService.applyOfflineAssistantAction(action));
+    }
+
+    return this.http.post<{ success: boolean; kind: string; entity?: unknown; route?: string | null }>(
+      `${environment.apiBaseUrl}/assistant/actions`,
+      {
+        kind: action.kind,
+        title: action.title,
+        payload: action.payload || undefined,
+        route: action.route || undefined,
+      },
+    );
   }
 
   listReminders() {
@@ -401,8 +475,16 @@ export class LifeApiService {
   }
 
   listSupportRequests() {
+    if (!this.networkService.isOnline() || this.offlineLifeService.hasPendingSync()) {
+      void this.flushPendingSync();
+      return of(this.offlineLifeService.readSupportRequests());
+    }
+
     return this.http.get<SupportRequest[]>(
       `${environment.apiBaseUrl}/support-requests`,
+    ).pipe(
+      tap((requests) => this.offlineLifeService.cacheSupportRequests(requests)),
+      this.withOfflineFallback(() => this.offlineLifeService.readSupportRequests()),
     );
   }
 
@@ -415,9 +497,18 @@ export class LifeApiService {
     appVersion?: string;
     deviceInfo?: string;
   }) {
+    if (!this.networkService.isOnline()) {
+      return of(this.offlineLifeService.queueSupportRequestCreate(payload));
+    }
+
     return this.http.post<SupportRequest>(
       `${environment.apiBaseUrl}/support-requests`,
       payload,
+    ).pipe(
+      tap((request) => this.offlineLifeService.reconcileSupportRequest(request)),
+      this.withMutationOfflineFallback(() =>
+        this.offlineLifeService.queueSupportRequestCreate(payload),
+      ),
     );
   }
 
@@ -489,7 +580,14 @@ export class LifeApiService {
   }
 
   private async flushQueueItem(item: {
-    entity: "task" | "transaction" | "goal" | "user" | "reminder" | "notification";
+    entity:
+      | "task"
+      | "transaction"
+      | "goal"
+      | "user"
+      | "reminder"
+      | "notification"
+      | "supportRequest";
     action: "create" | "update" | "delete" | "contribute" | "read";
     recordId?: string;
     payload?: Record<string, unknown>;
@@ -516,6 +614,11 @@ export class LifeApiService {
 
     if (item.entity === "notification") {
       await this.flushNotificationItem(item);
+      return;
+    }
+
+    if (item.entity === "supportRequest") {
+      await this.flushSupportRequestItem(item);
       return;
     }
 
@@ -674,6 +777,22 @@ export class LifeApiService {
       await firstValueFrom(
         this.http.patch(`${environment.apiBaseUrl}/notifications/${item.recordId}/read`, {}),
       );
+    }
+  }
+
+  private async flushSupportRequestItem(item: {
+    action: "create" | "update" | "delete" | "contribute" | "read";
+    recordId?: string;
+    payload?: Record<string, unknown>;
+  }) {
+    if (item.action === "create") {
+      const request = await firstValueFrom(
+        this.http.post<SupportRequest>(
+          `${environment.apiBaseUrl}/support-requests`,
+          item.payload ?? {},
+        ),
+      );
+      this.offlineLifeService.reconcileSupportRequest(request, item.recordId);
     }
   }
 }

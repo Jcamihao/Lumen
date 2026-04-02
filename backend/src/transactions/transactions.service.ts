@@ -38,8 +38,6 @@ export class TransactionsService {
       },
       include: {
         category: true,
-        task: true,
-        goal: true,
       },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     });
@@ -69,8 +67,6 @@ export class TransactionsService {
       },
       include: {
         category: true,
-        task: true,
-        goal: true,
       },
     });
 
@@ -102,8 +98,6 @@ export class TransactionsService {
       },
       include: {
         category: true,
-        task: true,
-        goal: true,
       },
     });
 

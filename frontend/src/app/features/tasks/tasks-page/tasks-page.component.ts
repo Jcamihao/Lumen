@@ -1,7 +1,8 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { Task } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
@@ -9,9 +10,10 @@ import { LifeApiService } from '../../../core/services/life-api.service';
 @Component({
   selector: 'app-tasks-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, RouterLink],
   templateUrl: './tasks-page.component.html',
   styleUrls: ['./tasks-page.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TasksPageComponent {
   private readonly api = inject(LifeApiService);
@@ -77,7 +79,7 @@ export class TasksPageComponent {
         estimatedAmount: raw.estimatedAmount || undefined,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
+      .subscribe((task) => {
         this.form.reset({
           title: '',
           description: '',
@@ -86,7 +88,7 @@ export class TasksPageComponent {
           categoryId: '',
           estimatedAmount: 0,
         });
-        this.reload();
+        this.upsertTask(task);
       });
   }
 
@@ -96,14 +98,16 @@ export class TasksPageComponent {
         status: 'DONE',
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.reload());
+      .subscribe((updatedTask) => this.upsertTask(updatedTask));
   }
 
   protected removeTask(id: string) {
     this.api
       .deleteTask(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.reload());
+      .subscribe(() => {
+        this.tasks.update((current) => current.filter((task) => task.id !== id));
+      });
   }
 
   protected taskSubtitle(task: Task) {
@@ -152,5 +156,36 @@ export class TasksPageComponent {
       .listTasks()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((tasks) => this.tasks.set(tasks));
+  }
+
+  private upsertTask(task: Task | null) {
+    if (!task) {
+      return;
+    }
+
+    this.tasks.update((current) => {
+      const existingIndex = current.findIndex((item) => item.id === task.id);
+
+      if (existingIndex === -1) {
+        return this.sortTasks([task, ...current]);
+      }
+
+      const next = [...current];
+      next[existingIndex] = task;
+      return this.sortTasks(next);
+    });
+  }
+
+  private sortTasks(tasks: Task[]) {
+    return [...tasks].sort((left, right) => {
+      const leftDue = left.dueDate
+        ? new Date(left.dueDate).getTime()
+        : Number.MAX_SAFE_INTEGER;
+      const rightDue = right.dueDate
+        ? new Date(right.dueDate).getTime()
+        : Number.MAX_SAFE_INTEGER;
+
+      return leftDue - rightDue;
+    });
   }
 }

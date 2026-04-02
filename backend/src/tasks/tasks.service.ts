@@ -36,7 +36,6 @@ export class TasksService {
       },
       include: {
         category: true,
-        goal: true,
         subtasks: {
           orderBy: { sortOrder: 'asc' },
         },
@@ -86,7 +85,6 @@ export class TasksService {
       },
       include: {
         category: true,
-        goal: true,
         subtasks: {
           orderBy: { sortOrder: 'asc' },
         },
@@ -146,7 +144,6 @@ export class TasksService {
       },
       include: {
         category: true,
-        goal: true,
         subtasks: {
           orderBy: { sortOrder: 'asc' },
         },
@@ -172,7 +169,6 @@ export class TasksService {
       where: { id, userId },
       include: {
         category: true,
-        goal: true,
         subtasks: {
           orderBy: { sortOrder: 'asc' },
         },

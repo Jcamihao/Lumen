@@ -1,9 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { auditTime, fromEvent, map, startWith } from 'rxjs';
-import { DashboardSummary, Goal, Insight, Task, Transaction } from '../../../core/models/domain.models';
+import { AssistantPulse, DashboardSummary, Goal, Insight, Task, Transaction } from '../../../core/models/domain.models';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { formatLocalDateLabel } from '../../../core/utils/date.utils';
 
@@ -13,6 +13,7 @@ import { formatLocalDateLabel } from '../../../core/utils/date.utils';
   imports: [CommonModule, RouterLink],
   templateUrl: './dashboard-page.component.html',
   styleUrls: ['./dashboard-page.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[style.--dashboard-parallax]': 'parallaxOffset()',
     '[style.--dashboard-parallax-soft]': 'parallaxSoftOffset()',
@@ -23,6 +24,7 @@ export class DashboardPageComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly scrollDepth = signal(0);
   protected readonly summary = signal<DashboardSummary | null>(null);
+  protected readonly assistantPulse = signal<AssistantPulse | null>(null);
   protected readonly parallaxOffset = computed(
     () => `${Math.min(this.scrollDepth(), 360) * 0.14}px`,
   );
@@ -35,6 +37,11 @@ export class DashboardPageComponent {
       .getDashboardSummary()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((summary) => this.summary.set(summary));
+
+    this.api
+      .getAssistantPulse()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((pulse) => this.assistantPulse.set(pulse));
 
     if (typeof window !== 'undefined') {
       fromEvent(window, 'scroll', { passive: true }).pipe(
@@ -204,6 +211,18 @@ export class DashboardPageComponent {
 
   protected projectionLabels() {
     return ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+  }
+
+  protected pulseSignalTone(signal: AssistantPulse['signals'][number]) {
+    if (signal.severity === 'critical') {
+      return 'danger';
+    }
+
+    if (signal.severity === 'warning') {
+      return 'warning';
+    }
+
+    return 'accent';
   }
 
 }

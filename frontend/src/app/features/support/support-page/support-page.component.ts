@@ -1,5 +1,5 @@
 import { CommonModule } from "@angular/common";
-import { Component, DestroyRef, computed, inject, signal } from "@angular/core";
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
 import { Router } from "@angular/router";
@@ -13,6 +13,7 @@ import { LifeApiService } from "../../../core/services/life-api.service";
   imports: [CommonModule, ReactiveFormsModule],
   templateUrl: "./support-page.component.html",
   styleUrls: ["./support-page.component.scss"],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SupportPageComponent {
   private readonly api = inject(LifeApiService);
@@ -82,13 +83,19 @@ export class SupportPageComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (created) => {
+          const isBugReport = payload.type === "BUG_REPORT";
+          const savedOffline = created.id.startsWith("offline-support-");
+          const successMessage = savedOffline
+            ? isBugReport
+              ? "Bug report salvo offline. Vamos enviar assim que a conexão voltar."
+              : "Feedback salvo offline. Vamos enviar assim que a conexão voltar."
+            : isBugReport
+              ? "Bug report enviado com sucesso."
+              : "Feedback enviado com sucesso.";
+
           this.submissions.update((current) => [created, ...current].slice(0, 10));
           this.submitting.set(false);
-          this.feedbackMessage.set(
-            this.bugMode()
-              ? "Bug report enviado com sucesso."
-              : "Feedback enviado com sucesso.",
-          );
+          this.feedbackMessage.set(successMessage);
           this.form.patchValue({
             subject: "",
             message: "",

@@ -16,10 +16,6 @@ export class GoalsService {
   async list(userId: string) {
     const goals = await this.prisma.goal.findMany({
       where: { userId },
-      include: {
-        tasks: true,
-        transactions: true,
-      },
       orderBy: [{ status: 'asc' }, { targetDate: 'asc' }],
     });
 
@@ -36,10 +32,6 @@ export class GoalsService {
         currentAmount: new Prisma.Decimal(dto.currentAmount ?? 0),
         targetDate: dto.targetDate ? new Date(dto.targetDate) : undefined,
         status: dto.status ?? GoalStatus.ACTIVE,
-      },
-      include: {
-        tasks: true,
-        transactions: true,
       },
     });
 
@@ -67,10 +59,6 @@ export class GoalsService {
               : undefined,
         status: dto.status,
       },
-      include: {
-        tasks: true,
-        transactions: true,
-      },
     });
 
     await this.lifeEngineService.touchUserData(userId);
@@ -88,10 +76,6 @@ export class GoalsService {
       data: {
         currentAmount: new Prisma.Decimal(nextCurrentAmount),
         status: nextStatus,
-      },
-      include: {
-        tasks: true,
-        transactions: true,
       },
     });
 
@@ -133,10 +117,6 @@ export class GoalsService {
   private async findGoal(userId: string, id: string) {
     const goal = await this.prisma.goal.findFirst({
       where: { id, userId },
-      include: {
-        tasks: true,
-        transactions: true,
-      },
     });
 
     if (!goal) {

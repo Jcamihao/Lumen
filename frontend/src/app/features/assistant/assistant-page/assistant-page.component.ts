@@ -1,8 +1,9 @@
 import { CommonModule } from "@angular/common";
-import { Component, DestroyRef, computed, inject, signal } from "@angular/core";
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
-import { AssistantReply } from "../../../core/models/domain.models";
+import { ActivatedRoute, Router } from "@angular/router";
+import { AssistantAction, AssistantModule, AssistantReply } from "../../../core/models/domain.models";
 import { AuthService } from "../../../core/services/auth.service";
 import { LifeApiService } from "../../../core/services/life-api.service";
 import { NativeStorageService } from "../../../core/services/native-storage.service";
@@ -20,7 +21,7 @@ type AssistantMessage = {
   imports: [CommonModule, ReactiveFormsModule],
   templateUrl: './assistant-page.component.html',
   styleUrls: ['./assistant-page.component.scss'],
-  
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AssistantPageComponent {
   private readonly api = inject(LifeApiService);
@@ -28,6 +29,8 @@ export class AssistantPageComponent {
   private readonly fb = inject(FormBuilder);
   private readonly destroyRef = inject(DestroyRef);
   private readonly storageService = inject(NativeStorageService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   protected readonly history = signal<AssistantMessage[]>([]);
   protected readonly activeMessageId = signal<string | null>(null);
@@ -38,6 +41,9 @@ export class AssistantPageComponent {
   protected readonly consentErrorMessage = signal<string | null>(null);
   protected readonly pendingQuestion = signal<string | null>(null);
   protected readonly errorMessage = signal<string | null>(null);
+  protected readonly actionFeedback = signal<string | null>(null);
+  protected readonly runningActionIds = signal<string[]>([]);
+  protected readonly originModule = signal<AssistantModule | null>(null);
   protected readonly activeMessage = computed<AssistantMessage | null>(() => {
     const messages = this.history();
     const activeId = this.activeMessageId();
@@ -52,12 +58,52 @@ export class AssistantPageComponent {
     this.history().slice(0, 8),
   );
   protected readonly offlineMode = this.api.offlineMode;
-  protected readonly quickPrompts = [
-    "Analise meus gastos do mês",
-    "Como posso acelerar minhas metas financeiras?",
-    "Ajude-me a otimizar meu orçamento mensal",
-    "Crie um planejamento financeiro para os próximos 3 meses",
-  ];
+  protected readonly quickPrompts = computed(() => {
+    const module = this.originModule();
+
+    if (module === "tasks") {
+      return [
+        "Qual tarefa eu deveria priorizar primeiro hoje?",
+        "Como limpar minhas pendencias atrasadas sem travar o resto do dia?",
+        "Transforme minha fila em um plano de foco de 2 blocos.",
+        "Quais tarefas merecem energia agora e quais podem esperar?",
+      ];
+    }
+
+    if (module === "finances") {
+      return [
+        "Analise meus gastos do mês",
+        "O que eu preciso proteger primeiro no meu caixa?",
+        "Como posso acelerar minhas metas financeiras?",
+        "Monte um plano financeiro para os próximos 30 dias",
+      ];
+    }
+
+    if (module === "goals") {
+      return [
+        "Como eu destravo minhas metas sem apertar o caixa?",
+        "Qual meta merece aporte agora?",
+        "Monte um plano de progresso realista para minhas metas.",
+        "O que eu devo pausar e o que devo acelerar nas minhas metas?",
+      ];
+    }
+
+    if (module === "imports") {
+      return [
+        "O que esta compra diz sobre meu padrão de gasto?",
+        "Quais sinais essa nota fiscal merece atenção?",
+        "Como encaixar essa compra no meu planejamento do mês?",
+        "Que próximos passos eu devo tomar depois dessa importação?",
+      ];
+    }
+
+    return [
+      "Analise meus gastos do mês",
+      "Como posso acelerar minhas metas financeiras?",
+      "Ajude-me a otimizar meu orçamento mensal",
+      "Crie um planejamento financeiro para os próximos 3 meses",
+    ];
+  });
   protected readonly form = this.fb.nonNullable.group({
     question: [
       "Como estou hoje?",
@@ -67,10 +113,34 @@ export class AssistantPageComponent {
 
   constructor() {
     this.restorePersistedHistory();
+
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((params) => {
+        const prompt = params.get("prompt")?.trim() || "";
+        const originModule = this.normalizeOriginModule(params.get("originModule"));
+
+        this.originModule.set(originModule);
+
+        if (prompt) {
+          this.form.controls.question.setValue(prompt);
+        }
+      });
   }
 
   protected usePrompt(prompt: string) {
     this.form.controls.question.setValue(prompt);
+  }
+
+  protected originModuleLabel() {
+    return {
+      dashboard: "Dashboard",
+      tasks: "Tarefas",
+      finances: "Finanças",
+      goals: "Metas",
+      imports: "Importações",
+      general: "Visão geral",
+    }[this.originModule() || "general"];
   }
 
   protected selectMessage(messageId: string) {
@@ -116,6 +186,73 @@ export class AssistantPageComponent {
     return reply.source === "selah_ia" ? "accent" : "warning";
   }
 
+  protected signalTone(signal: AssistantReply["proactiveSignals"][number]) {
+    if (signal.severity === "critical") {
+      return "danger";
+    }
+
+    if (signal.severity === "warning") {
+      return "warning";
+    }
+
+    return "accent";
+  }
+
+  protected simulationTone(simulation: AssistantReply["simulations"][number]) {
+    if (simulation.monthlyDelta > 0) {
+      return "success";
+    }
+
+    if (simulation.monthlyDelta < 0) {
+      return "warning";
+    }
+
+    return "accent";
+  }
+
+  protected isRunningAction(actionId: string) {
+    return this.runningActionIds().includes(actionId);
+  }
+
+  protected executeAction(action: AssistantAction) {
+    this.actionFeedback.set(null);
+
+    if (action.kind === "open_module" && action.route) {
+      void this.router.navigateByUrl(action.route);
+      return;
+    }
+
+    this.runningActionIds.update((current) => [...current, action.id]);
+
+    this.api
+      .applyAssistantAction(action)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.runningActionIds.update((current) =>
+            current.filter((id) => id !== action.id),
+          );
+          this.actionFeedback.set(`${action.title} foi aplicada no Lumen.`);
+        },
+        error: () => {
+          this.runningActionIds.update((current) =>
+            current.filter((id) => id !== action.id),
+          );
+          this.actionFeedback.set(
+            "Nao foi possivel executar essa acao agora.",
+          );
+        },
+      });
+  }
+
+  protected useFollowUpPrompt(prompt: string | null | undefined) {
+    if (!prompt) {
+      return;
+    }
+
+    this.form.controls.question.setValue(prompt);
+  }
+
   protected assistantExternalMode() {
     const user = this.authService.currentUser();
     return Boolean(
@@ -147,6 +284,30 @@ export class AssistantPageComponent {
     }
 
     return "accent";
+  }
+
+  protected confidenceValueLabel(value: "low" | "medium" | "high") {
+    return this.confidenceLabel({
+      answer: "",
+      highlights: [],
+      suggestedActions: [],
+      actions: [],
+      proactiveSignals: [],
+      simulations: [],
+      continuity: {
+        historyCount: 0,
+        memorySummary: null,
+        nextQuestion: null,
+        followUpPrompt: null,
+        originModule: null,
+      },
+      explainability: {
+        reasoning: [],
+        evidence: [],
+        confidenceReason: "",
+      },
+      confidence: value,
+    });
   }
 
   protected ask() {
@@ -224,9 +385,13 @@ export class AssistantPageComponent {
   private submitAssistantQuestion(question: string) {
     this.loading.set(true);
     this.errorMessage.set(null);
+    this.actionFeedback.set(null);
 
     this.api
-      .askAssistant(question)
+      .askAssistant(question, {
+        originModule: this.originModule(),
+        history: this.historyForRequest(),
+      })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (reply) => {
@@ -339,5 +504,31 @@ export class AssistantPageComponent {
 
   private storageKey() {
     return `lumen:assistant-history:${this.authService.currentUser()?.id ?? "anonymous"}`;
+  }
+
+  private historyForRequest() {
+    return this.history()
+      .slice(0, 6)
+      .map((message) => ({
+        question: message.question,
+        answer: message.reply.answer,
+        focusArea: message.reply.focusArea || null,
+        createdAt: message.createdAt,
+      }));
+  }
+
+  private normalizeOriginModule(value: string | null): AssistantModule | null {
+    if (
+      value === "dashboard" ||
+      value === "tasks" ||
+      value === "finances" ||
+      value === "goals" ||
+      value === "imports" ||
+      value === "general"
+    ) {
+      return value;
+    }
+
+    return null;
   }
 }

@@ -1,5 +1,5 @@
 import { CommonModule } from "@angular/common";
-import { Component, computed, inject } from "@angular/core";
+import { ChangeDetectionStrategy, Component, computed, inject } from "@angular/core";
 import { NotificationCenterService } from "../../../core/services/notification-center.service";
 
 @Component({
@@ -8,6 +8,7 @@ import { NotificationCenterService } from "../../../core/services/notification-c
   imports: [CommonModule],
   templateUrl: "./notifications-page.component.html",
   styleUrls: ["./notifications-page.component.scss"],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NotificationsPageComponent {
   protected readonly notificationCenter = inject(NotificationCenterService);

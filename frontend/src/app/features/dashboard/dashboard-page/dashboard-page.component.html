@@ -134,6 +134,61 @@
   </section>
 
   <section class="dashboard-grid">
+    <article class="proto-surface dashboard-grid__wide" *ngIf="assistantPulse() as pulse">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Selah agora</h3>
+          <p>Leitura proativa do momento com próximos movimentos possíveis.</p>
+        </div>
+        <a
+          class="proto-button proto-button--secondary"
+          routerLink="/assistant"
+          [queryParams]="{ prompt: pulse.suggestedQuestion, originModule: 'dashboard' }"
+        >
+          Perguntar isso
+        </a>
+      </div>
+
+      <div class="proto-surface__body">
+        <div class="proto-note">
+          <strong class="proto-inline-title">Pulso do dia</strong>
+          <p>{{ pulse.summary }}</p>
+        </div>
+
+        <div class="goal-grid" *ngIf="pulse.signals.length || pulse.actions.length">
+          <article class="proto-list-item" *ngFor="let signal of pulse.signals">
+            <div class="proto-list-item__top">
+              <strong>{{ signal.title }}</strong>
+              <span class="proto-tag" [attr.data-tone]="pulseSignalTone(signal)">{{ signal.severity }}</span>
+            </div>
+            <p>{{ signal.message }}</p>
+            <a
+              class="proto-button proto-button--ghost"
+              routerLink="/assistant"
+              [queryParams]="{ prompt: signal.suggestedPrompt || pulse.suggestedQuestion, originModule: signal.targetModule }"
+            >
+              {{ signal.suggestedActionLabel || 'Abrir conversa' }}
+            </a>
+          </article>
+
+          <article class="proto-list-item" *ngFor="let action of pulse.actions">
+            <div class="proto-list-item__top">
+              <strong>{{ action.title }}</strong>
+              <span class="proto-tag">{{ action.targetModule }}</span>
+            </div>
+            <p>{{ action.description }}</p>
+            <a
+              class="proto-button proto-button--ghost"
+              [routerLink]="action.route || '/assistant'"
+              [queryParams]="action.route ? null : { prompt: pulse.suggestedQuestion, originModule: 'dashboard' }"
+            >
+              {{ action.kind === 'open_module' ? 'Abrir' : 'Revisar no Selah' }}
+            </a>
+          </article>
+        </div>
+      </div>
+    </article>
+
     <article class="proto-surface dashboard-grid__wide">
       <div class="proto-surface__head">
         <div>

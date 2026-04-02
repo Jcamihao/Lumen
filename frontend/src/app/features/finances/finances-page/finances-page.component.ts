@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -14,6 +14,7 @@ import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/
   imports: [CommonModule, ReactiveFormsModule, RouterLink],
   templateUrl: './finances-page.component.html',
   styleUrls: ['./finances-page.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FinancesPageComponent {
   private readonly api = inject(LifeApiService);
@@ -66,13 +67,13 @@ export class FinancesPageComponent {
         categoryId: raw.categoryId || undefined,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
+      .subscribe((transaction) => {
         this.form.patchValue({
           description: '',
           amount: 0,
           categoryId: '',
         });
-        this.reload();
+        this.upsertTransaction(transaction);
       });
   }
 
@@ -80,7 +81,11 @@ export class FinancesPageComponent {
     this.api
       .deleteTransaction(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.reload());
+      .subscribe(() => {
+        this.transactions.update((current) =>
+          current.filter((transaction) => transaction.id !== id),
+        );
+      });
   }
 
   protected transactionAmount(transaction: Transaction) {
@@ -126,5 +131,29 @@ export class FinancesPageComponent {
       .listTransactions()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((transactions) => this.transactions.set(transactions));
+  }
+
+  private upsertTransaction(transaction: Transaction | null) {
+    if (!transaction) {
+      return;
+    }
+
+    this.transactions.update((current) => {
+      const existingIndex = current.findIndex((item) => item.id === transaction.id);
+
+      if (existingIndex === -1) {
+        return this.sortTransactions([transaction, ...current]);
+      }
+
+      const next = [...current];
+      next[existingIndex] = transaction;
+      return this.sortTransactions(next);
+    });
+  }
+
+  private sortTransactions(transactions: Transaction[]) {
+    return [...transactions].sort(
+      (left, right) => new Date(right.date).getTime() - new Date(left.date).getTime(),
+    );
   }
 }

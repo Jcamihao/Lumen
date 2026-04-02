@@ -92,6 +92,9 @@ describe("AssistantService", () => {
         aiAssistantEnabled: false,
         aiAssistantConsentAt: null,
       }),
+      { create: jest.fn() } as any,
+      { create: jest.fn() } as any,
+      { create: jest.fn() } as any,
     );
     const response = await service.ask(
       "user-1",
@@ -100,6 +103,8 @@ describe("AssistantService", () => {
 
     expect(response.answer).toContain("saldo");
     expect(response.suggestedActions.length).toBeGreaterThan(0);
+    expect(response.actions.length).toBeGreaterThan(0);
+    expect(response.simulations.length).toBeGreaterThan(0);
     expect(response.source).toBe("lumen_fallback");
     expect(response.disclaimer).toContain("privacidade");
   });
@@ -115,6 +120,9 @@ describe("AssistantService", () => {
         SELAH_TIMEOUT_MS: "2500",
       }),
       buildPrismaService(),
+      { create: jest.fn() } as any,
+      { create: jest.fn() } as any,
+      { create: jest.fn() } as any,
     );
 
     const postJsonSpy = jest.spyOn(service as any, "postJson").mockResolvedValue({
@@ -143,8 +151,11 @@ describe("AssistantService", () => {
     expect(response.source).toBe("selah_ia");
     expect(response.provider).toBe("SelahIA");
     expect(response.focusArea).toBe("Prioridades");
+    expect(response.explainability.evidence.length).toBeGreaterThan(0);
+    expect(response.continuity.followUpPrompt).toBeTruthy();
     expect(payload.intent).toBe("priorities");
     expect(payload.focusAreaHint).toBe("Prioridades");
+    expect(payload.originModule).toBe("general");
     expect(payload.applicationPromptContext).toContain(
       "Usuario em analise: Marina.",
     );

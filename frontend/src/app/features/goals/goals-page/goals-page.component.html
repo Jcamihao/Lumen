@@ -40,6 +40,24 @@
     </article>
   </section>
 
+  <article class="proto-surface">
+    <div class="proto-surface__body">
+      <div class="proto-list-item__top">
+        <div>
+          <strong>Selah nas metas</strong>
+          <p>Traga o contexto da carteira atual para decidir prazo, aporte e foco sem adivinhar.</p>
+        </div>
+        <a
+          class="proto-button proto-button--secondary"
+          routerLink="/assistant"
+          [queryParams]="{ prompt: 'Como eu destravo minhas metas sem apertar o caixa?', originModule: 'goals' }"
+        >
+          Perguntar ao Selah
+        </a>
+      </div>
+    </div>
+  </article>
+
   <section class="goals-grid">
     <article class="proto-surface">
       <div class="proto-surface__head">

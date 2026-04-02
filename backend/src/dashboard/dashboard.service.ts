@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { TransactionType } from '@prisma/client';
 import { CacheQueueService } from '../cache-queue/cache-queue.service';
 import { ForecastsService } from '../forecasts/forecasts.service';
 import { InsightsService } from '../insights/insights.service';
@@ -45,6 +46,12 @@ export class DashboardService {
     ] = await Promise.all([
       this.prisma.user.findUniqueOrThrow({
         where: { id: userId },
+        select: {
+          id: true,
+          name: true,
+          preferredCurrency: true,
+          monthlyIncome: true,
+        },
       }),
       this.prisma.task.count({
         where: {
@@ -86,16 +93,21 @@ export class DashboardService {
           },
         },
       }),
-      this.prisma.transaction.findMany({
+      this.prisma.transaction.groupBy({
         where: { userId },
-        select: {
-          type: true,
+        by: ['type'],
+        _sum: {
           amount: true,
         },
       }),
       this.prisma.transaction.findMany({
         where: { userId },
-        include: {
+        select: {
+          id: true,
+          description: true,
+          type: true,
+          amount: true,
+          date: true,
           category: true,
         },
         orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
@@ -134,6 +146,15 @@ export class DashboardService {
             in: ['ACTIVE', 'PLANNED', 'ACHIEVED'],
           },
         },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          targetAmount: true,
+          currentAmount: true,
+          targetDate: true,
+          status: true,
+        },
         orderBy: [{ status: 'asc' }, { targetDate: 'asc' }],
         take: 4,
       }),
@@ -145,6 +166,11 @@ export class DashboardService {
             gte: now,
           },
         },
+        select: {
+          id: true,
+          title: true,
+          remindAt: true,
+        },
         orderBy: { remindAt: 'asc' },
         take: 4,
       }),
@@ -153,6 +179,13 @@ export class DashboardService {
           userId,
           isRead: false,
         },
+        select: {
+          id: true,
+          title: true,
+          message: true,
+          isRead: true,
+          createdAt: true,
+        },
         orderBy: { createdAt: 'desc' },
         take: 4,
       }),
@@ -160,12 +193,14 @@ export class DashboardService {
       this.forecastsService.getCurrent(userId),
     ]);
 
-    const balance = balanceAggregate.reduce(
-      (total, transaction) =>
-        total +
-        (transaction.type === 'INCOME' ? Number(transaction.amount) : -Number(transaction.amount)),
-      0,
-    );
+    const balance = balanceAggregate.reduce((total, item) => {
+      const signedAmount =
+        item.type === TransactionType.INCOME
+          ? Number(item._sum.amount ?? 0)
+          : -Number(item._sum.amount ?? 0);
+
+      return total + signedAmount;
+    }, 0);
 
     const summary = {
       user: {

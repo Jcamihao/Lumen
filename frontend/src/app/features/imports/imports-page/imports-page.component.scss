@@ -150,6 +150,18 @@
   font-weight: 700;
 }
 
+.assistant-reading__section {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.assistant-reading__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
 @media (max-width: 960px) {
   .imports-tabs {
     flex-direction: column;

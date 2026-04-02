@@ -1,11 +1,16 @@
 import { computed, effect, inject, Injectable, signal } from "@angular/core";
 import {
+  AssistantAction,
+  AssistantContinuity,
+  AssistantExplainability,
+  AssistantPulse,
   AssistantReply,
   DashboardSummary,
   Goal,
   Insight,
   Notification,
   Reminder,
+  SupportRequest,
   Task,
   Transaction,
   User,
@@ -15,7 +20,14 @@ import { AuthService } from "./auth.service";
 
 import { NativeStorageService } from "./native-storage.service";
 
-type SyncEntity = "task" | "transaction" | "goal" | "user" | "reminder" | "notification";
+type SyncEntity =
+  | "task"
+  | "transaction"
+  | "goal"
+  | "user"
+  | "reminder"
+  | "notification"
+  | "supportRequest";
 type SyncAction = "create" | "update" | "delete" | "contribute" | "read";
 
 type SyncQueueItem = {
@@ -534,7 +546,147 @@ export class OfflineLifeService {
     this.authService.updateStoredUser(remoteUser);
   }
 
-  buildOfflineAssistantReply(question: string): AssistantReply {
+  readSupportRequests(fallback: SupportRequest[] = []) {
+    return this.sortSupportRequests(
+      this.readScopedValue("support-requests", fallback),
+    );
+  }
+
+  cacheSupportRequests(requests: SupportRequest[]) {
+    this.writeScopedValue(
+      "support-requests",
+      this.sortSupportRequests(requests),
+    );
+  }
+
+  queueSupportRequestCreate(payload: Record<string, unknown>) {
+    const request = this.buildOfflineSupportRequest(payload);
+    this.cacheSupportRequests([request, ...this.readSupportRequests()]);
+    this.enqueue({
+      entity: "supportRequest",
+      action: "create",
+      recordId: request.id,
+      payload,
+    });
+    return request;
+  }
+
+  reconcileSupportRequest(remoteRequest: SupportRequest, previousId?: string) {
+    const requests = this.readSupportRequests();
+    const nextRequests = previousId
+      ? requests.map((request) =>
+          request.id === previousId ? remoteRequest : request,
+        )
+      : this.upsertById(requests, remoteRequest);
+
+    this.cacheSupportRequests(nextRequests);
+
+    if (previousId && previousId !== remoteRequest.id) {
+      this.replaceQueueRecordId("supportRequest", previousId, remoteRequest.id);
+    }
+  }
+
+  buildOfflineAssistantPulse(): AssistantPulse {
+    const summary = this.readDashboardSummary();
+    const signals: AssistantPulse["signals"] = [];
+
+    if (summary.forecast.riskLevel === "HIGH") {
+      signals.push({
+        id: "offline-cash-risk",
+        title: "Caixa pedindo revisão",
+        message: `Offline, a projeção local fecha em ${this.formatCurrency(
+          summary.forecast.predictedBalance,
+          summary.user.preferredCurrency,
+        )}.`,
+        severity: "critical",
+        targetModule: "finances",
+        suggestedPrompt:
+          "O que eu preciso proteger primeiro no meu caixa este mês?",
+        suggestedActionLabel: "Abrir finanças",
+      });
+    }
+
+    if (summary.tasks.overdueCount > 0) {
+      signals.push({
+        id: "offline-overdue",
+        title: "Pendências em aberto",
+        message: `Offline, existem ${summary.tasks.overdueCount} pendência(s) atrasada(s) no seu dispositivo.`,
+        severity: "warning",
+        targetModule: "tasks",
+        suggestedPrompt:
+          "Qual pendência atrasada eu devo resolver primeiro?",
+        suggestedActionLabel: "Abrir tarefas",
+      });
+    }
+
+    return {
+      summary:
+        signals[0]?.message ||
+        `Offline, o cenário local está estável com ${summary.tasks.todayCount} tarefa(s) para hoje.`,
+      suggestedQuestion:
+        signals[0]?.suggestedPrompt ||
+        "Onde vale colocar energia agora para ganhar mais tração?",
+      generatedAt: new Date().toISOString(),
+      signals,
+      actions: [
+        {
+          id: "offline-open-assistant",
+          kind: "open_module",
+          title: "Abrir o assistente",
+          description: "Leva você para a conversa principal do Selah.",
+          targetModule: "general",
+          importance: "medium",
+          route: "/assistant",
+          payload: null,
+        },
+      ],
+    };
+  }
+
+  applyOfflineAssistantAction(action: AssistantAction) {
+    const payload = action.payload || {};
+
+    if (action.kind === "create_task") {
+      return {
+        success: true,
+        kind: action.kind,
+        entity: this.queueTaskCreate(payload),
+      };
+    }
+
+    if (action.kind === "create_goal") {
+      return {
+        success: true,
+        kind: action.kind,
+        entity: this.queueGoalCreate(payload),
+      };
+    }
+
+    if (action.kind === "create_reminder") {
+      return {
+        success: true,
+        kind: action.kind,
+        entity: this.queueReminderCreate(payload),
+      };
+    }
+
+    return {
+      success: true,
+      kind: action.kind,
+      route: action.route,
+    };
+  }
+
+  buildOfflineAssistantReply(
+    question: string,
+    history: Array<{
+      question: string;
+      answer: string;
+      focusArea?: string | null;
+      createdAt?: string;
+    }> = [],
+    originModule?: string,
+  ): AssistantReply {
     const summary = this.readDashboardSummary();
     const intent = this.detectIntent(question);
     const currency = summary.user.preferredCurrency;
@@ -570,10 +722,87 @@ export class OfflineLifeService {
       "Volte a ficar online para sincronizar as mudanças com o servidor.",
     ].filter((item): item is string => Boolean(item)).slice(0, 4);
 
+    const continuity: AssistantContinuity = {
+      historyCount: Math.min(history.length, 2),
+      memorySummary: history[0]
+        ? `Offline, você vinha falando sobre ${history
+            .slice(0, 2)
+            .map((item) => item.question)
+            .join(" e ")}.`
+        : null,
+      nextQuestion:
+        intent === "finance_overview"
+          ? "Qual corte cabe no meu mês sem travar o essencial?"
+          : topTask
+            ? `Como encaixar ${topTask.title} no meu dia?`
+            : "Qual é o próximo passo com melhor impacto agora?",
+      followUpPrompt:
+        intent === "finance_overview"
+          ? "Transforma isso num plano curto de 7 dias."
+          : "Traduz isso em um próximo passo simples.",
+      originModule:
+        originModule === "dashboard" ||
+        originModule === "tasks" ||
+        originModule === "finances" ||
+        originModule === "goals" ||
+        originModule === "imports"
+          ? originModule
+          : "general",
+    };
+
+    const explainability: AssistantExplainability = {
+      reasoning: [
+        "O modo offline usou apenas os dados salvos localmente no dispositivo.",
+        "A leitura cruza fila de tarefas, transações recentes e previsão local.",
+      ],
+      evidence: [
+        `Saldo local: ${this.formatCurrency(summary.finances.balance, currency)}.`,
+        topTask ? `Tarefa em foco: ${topTask.title}.` : null,
+        topExpense
+          ? `Despesa recente: ${topExpense.description}.`
+          : null,
+      ].filter((item): item is string => Boolean(item)),
+      confidenceReason:
+        "A confiança é média porque o dispositivo tem dados locais úteis, mas sem sincronização com o servidor.",
+    };
+
     return {
       answer,
       highlights,
       suggestedActions,
+      actions: [
+        {
+          id: "offline-open-finances",
+          kind: "open_module",
+          title: "Abrir finanças",
+          description: "Leva você para revisar o fluxo local salvo no aparelho.",
+          targetModule: intent === "finance_overview" ? "finances" : "general",
+          importance: "medium",
+          route: intent === "finance_overview" ? "/finances" : "/assistant",
+          payload: null,
+        },
+      ],
+      proactiveSignals: this.buildOfflineAssistantPulse().signals,
+      simulations: [
+        {
+          id: "offline-trim",
+          title: "Ajuste leve offline",
+          summary: `Se você cortar perto de 10% das despesas locais do mês, a projeção vai para ${this.formatCurrency(
+            summary.forecast.predictedBalance + summary.finances.monthlyExpenses * 0.1,
+            currency,
+          )}.`,
+          monthlyDelta: Math.round(summary.finances.monthlyExpenses * 0.1),
+          projectedBalance: Math.round(
+            summary.forecast.predictedBalance + summary.finances.monthlyExpenses * 0.1,
+          ),
+          confidence: "medium",
+          assumptions: [
+            "Simulação baseada somente no histórico local do dispositivo.",
+          ],
+        },
+      ],
+      continuity,
+      explainability,
       source: "lumen_fallback",
       provider: "LUMEN Offline",
       focusArea:
@@ -633,6 +862,32 @@ export class OfflineLifeService {
       id: this.tempId("reminder"),
       title: String(payload["title"] || "Novo lembrete"),
       remindAt: String(payload["remindAt"] || new Date().toISOString()),
+    };
+  }
+
+  private buildOfflineSupportRequest(
+    payload: Record<string, unknown>,
+  ): SupportRequest {
+    const now = new Date().toISOString();
+    const user = this.authService.currentUser() ?? this.fallbackUser();
+
+    return {
+      id: this.tempId("support"),
+      type: (payload["type"] as SupportRequest["type"]) ?? "FEEDBACK",
+      status: "OPEN",
+      severity:
+        (payload["severity"] as SupportRequest["severity"]) ??
+        ((payload["type"] as SupportRequest["type"]) === "BUG_REPORT"
+          ? "MEDIUM"
+          : null),
+      subject: String(payload["subject"] || "Solicitacao de suporte"),
+      message: String(payload["message"] || ""),
+      emailSnapshot: user.email,
+      screenPath: this.optionalString(payload["screenPath"]),
+      appVersion: this.optionalString(payload["appVersion"]),
+      deviceInfo: this.optionalString(payload["deviceInfo"]),
+      createdAt: now,
+      updatedAt: now,
     };
   }
 
@@ -1016,6 +1271,14 @@ export class OfflineLifeService {
     return [...reminders].sort(
       (left, right) =>
         new Date(left.remindAt).getTime() - new Date(right.remindAt).getTime(),
+    );
+  }
+
+  private sortSupportRequests(requests: SupportRequest[]) {
+    return [...requests].sort(
+      (left, right) =>
+        new Date(right.updatedAt || right.createdAt).getTime() -
+        new Date(left.updatedAt || left.createdAt).getTime(),
     );
   }
 

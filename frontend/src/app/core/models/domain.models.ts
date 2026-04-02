@@ -144,9 +144,97 @@ export type DashboardSummary = {
   notifications: Notification[];
 };
 
+export type AssistantModule =
+  | "dashboard"
+  | "tasks"
+  | "finances"
+  | "goals"
+  | "imports"
+  | "general";
+
+export type AssistantAction = {
+  id: string;
+  kind: "create_task" | "create_goal" | "create_reminder" | "open_module";
+  title: string;
+  description: string;
+  targetModule: AssistantModule;
+  importance: "low" | "medium" | "high";
+  route: string | null;
+  payload: Record<string, unknown> | null;
+};
+
+export type AssistantProactiveSignal = {
+  id: string;
+  title: string;
+  message: string;
+  severity: "info" | "warning" | "critical";
+  targetModule: AssistantModule;
+  suggestedPrompt: string | null;
+  suggestedActionLabel: string | null;
+};
+
+export type AssistantSimulation = {
+  id: string;
+  title: string;
+  summary: string;
+  monthlyDelta: number;
+  projectedBalance: number;
+  confidence: "low" | "medium" | "high";
+  assumptions: string[];
+};
+
+export type AssistantContinuity = {
+  historyCount: number;
+  memorySummary: string | null;
+  nextQuestion: string | null;
+  followUpPrompt: string | null;
+  originModule: AssistantModule | null;
+};
+
+export type AssistantExplainability = {
+  reasoning: string[];
+  evidence: string[];
+  confidenceReason: string;
+};
+
+export type AssistantPulse = {
+  summary: string;
+  suggestedQuestion: string;
+  generatedAt: string;
+  signals: AssistantProactiveSignal[];
+  actions: AssistantAction[];
+};
+
 export type AuthResponse = {
   accessToken: string;
-  refreshToken: string;
+  refreshToken?: string;
+  user: User;
+};
+
+export type LoginMfaChallengeResponse = {
+  requiresMfa: true;
+  challengeId: string;
+  challengeExpiresAt: string;
+  availableMethods: Array<"totp" | "recovery_code">;
+};
+
+export type LoginResult = AuthResponse | LoginMfaChallengeResponse;
+
+export type MfaSetupResponse = {
+  secret: string;
+  otpauthUrl: string;
+  issuer: string;
+  accountName: string;
+};
+
+export type MfaConfirmResponse = {
+  success: boolean;
+  recoveryCodes: string[];
+  user: User;
+};
+
+export type MfaDisableResponse = {
+  success: boolean;
   user: User;
 };
 
@@ -206,6 +294,15 @@ export type ReceiptImportPreview = {
   confidence: "low" | "medium" | "high";
   qrCodeDetected: boolean;
   qrCodeText: string | null;
+  purchaseSummary: string | null;
+  purchaseMission: string | null;
+  spendingSignals: string[];
+  followUpActions: string[];
+  categoryBreakdown: Array<{
+    label: string;
+    totalAmount: number;
+    itemCount: number;
+  }>;
   notes: string[];
   rawTextExcerpt: string | null;
   possibleDuplicate: boolean;

@@ -1,7 +1,8 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { Goal } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
@@ -9,9 +10,10 @@ import { LifeApiService } from '../../../core/services/life-api.service';
 @Component({
   selector: 'app-goals-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, RouterLink],
   templateUrl: './goals-page.component.html',
   styleUrls: ['./goals-page.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GoalsPageComponent {
   private readonly api = inject(LifeApiService);
@@ -61,7 +63,7 @@ export class GoalsPageComponent {
         targetDate: raw.targetDate || undefined,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
+      .subscribe((goal) => {
         this.form.reset({
           title: '',
           description: '',
@@ -69,7 +71,7 @@ export class GoalsPageComponent {
           currentAmount: 0,
           targetDate: '',
         });
-        this.reload();
+        this.upsertGoal(goal);
       });
   }
 
@@ -77,14 +79,16 @@ export class GoalsPageComponent {
     this.api
       .contributeGoal(goal.id, { amount })
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.reload());
+      .subscribe((updatedGoal) => this.upsertGoal(updatedGoal));
   }
 
   protected removeGoal(id: string) {
     this.api
       .deleteGoal(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.reload());
+      .subscribe(() => {
+        this.goals.update((current) => current.filter((goal) => goal.id !== id));
+      });
   }
 
   protected progress(goal: Goal) {
@@ -146,5 +150,43 @@ export class GoalsPageComponent {
       .listGoals()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((goals) => this.goals.set(goals));
+  }
+
+  private upsertGoal(goal: Goal | null) {
+    if (!goal) {
+      return;
+    }
+
+    this.goals.update((current) => {
+      const existingIndex = current.findIndex((item) => item.id === goal.id);
+
+      if (existingIndex === -1) {
+        return this.sortGoals([goal, ...current]);
+      }
+
+      const next = [...current];
+      next[existingIndex] = goal;
+      return this.sortGoals(next);
+    });
+  }
+
+  private sortGoals(goals: Goal[]) {
+    return [...goals].sort((left, right) => {
+      const leftAchieved = left.status === 'ACHIEVED' ? 1 : 0;
+      const rightAchieved = right.status === 'ACHIEVED' ? 1 : 0;
+
+      if (leftAchieved !== rightAchieved) {
+        return leftAchieved - rightAchieved;
+      }
+
+      const leftDate = left.targetDate
+        ? new Date(left.targetDate).getTime()
+        : Number.MAX_SAFE_INTEGER;
+      const rightDate = right.targetDate
+        ? new Date(right.targetDate).getTime()
+        : Number.MAX_SAFE_INTEGER;
+
+      return leftDate - rightDate;
+    });
   }
 }

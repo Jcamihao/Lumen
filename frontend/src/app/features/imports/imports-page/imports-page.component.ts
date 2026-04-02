@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
@@ -16,6 +16,7 @@ import { LifeApiService } from '../../../core/services/life-api.service';
   imports: [CommonModule, FormsModule],
   templateUrl: './imports-page.component.html',
   styleUrls: ['./imports-page.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ImportsPageComponent {
   private readonly api = inject(LifeApiService);
