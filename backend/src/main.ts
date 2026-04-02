@@ -17,11 +17,16 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: ['error', 'warn', 'log', 'debug', 'verbose'],
   });
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
   const configService = app.get(ConfigService);
   const prismaService = app.get(PrismaService);
   const port = configService.get<number>('app.port', 3000);
   const appUrl =
     configService.get<string>('app.appUrl') ?? `http://localhost:${port}`;
+  const corsAllowedOrigins =
+    configService.get<string[]>('app.corsAllowedOrigins') ?? [];
+  const swaggerEnabled =
+    configService.get<boolean>('app.swaggerEnabled') ?? false;
 
   await prismaService.enableShutdownHooks(app);
 
@@ -61,7 +66,14 @@ async function bootstrap() {
   });
 
   app.enableCors({
-    origin: true,
+    origin: (origin, callback) => {
+      if (!origin || corsAllowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error('CORS origin not allowed'));
+    },
     credentials: true,
   });
   app.use(json({ limit: '5mb' }));
@@ -80,21 +92,23 @@ async function bootstrap() {
   );
   app.useGlobalFilters(new HttpExceptionLoggingFilter());
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('LUMEN API')
-    .setDescription(
-      'API do SaaS LUMEN para gestao de vida, conectando tarefas, financas, metas e rotina.',
-    )
-    .setVersion('1.0.0')
-    .addBearerAuth()
-    .build();
+  if (swaggerEnabled) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('LUMEN API')
+      .setDescription(
+        'API do SaaS LUMEN para gestao de vida, conectando tarefas, financas, metas e rotina.',
+      )
+      .setVersion('1.0.0')
+      .addBearerAuth()
+      .build();
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document, {
-    swaggerOptions: {
-      persistAuthorization: true,
-    },
-  });
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document, {
+      swaggerOptions: {
+        persistAuthorization: true,
+      },
+    });
+  }
 
   await app.listen(port);
   logger.log(`LUMEN API running at ${appUrl}/api/v1`);

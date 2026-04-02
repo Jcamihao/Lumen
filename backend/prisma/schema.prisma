@@ -12,6 +12,10 @@ enum UserRole {
   USER
 }
 
+enum AuthChallengeType {
+  MFA_LOGIN
+}
+
 enum TaskStatus {
   PENDING
   IN_PROGRESS
@@ -118,7 +122,11 @@ model User {
   aiAssistantEnabled      Boolean      @default(false)
   aiAssistantConsentAt    DateTime?
   aiAssistantConsentVersion String?
-  refreshTokenHash  String?
+  mfaEnabledAt      DateTime?
+  mfaLastVerifiedAt DateTime?
+  mfaTotpSecretEncrypted String?
+  mfaPendingTotpSecretEncrypted String?
+  mfaRecoveryCodes  Json?
   lastLoginAt       DateTime?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
@@ -134,8 +142,44 @@ model User {
   receiptScans      ReceiptScan[]
   notifications     Notification[]
   supportRequests   SupportRequest[]
+  authSessions      AuthSession[]
+  authChallenges    AuthChallenge[]
 
   @@index([email])
+}
+
+model AuthSession {
+  id               String   @id @default(uuid())
+  userId           String
+  refreshTokenHash String
+  userAgent        String?
+  ipAddress        String?
+  lastUsedAt       DateTime?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  revokeReason     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([expiresAt])
+}
+
+model AuthChallenge {
+  id         String            @id @default(uuid())
+  userId     String
+  type       AuthChallengeType
+  expiresAt  DateTime
+  completedAt DateTime?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, expiresAt, completedAt])
+  @@index([expiresAt])
 }
 
 model TaskCategory {

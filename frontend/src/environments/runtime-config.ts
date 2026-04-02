@@ -2,6 +2,7 @@ type RuntimeWindowConfig = {
   apiBaseUrl?: string;
   wsBaseUrl?: string;
   clientLoggingEnabled?: boolean;
+  mfaEnabled?: boolean;
 };
 
 declare global {
@@ -14,6 +15,7 @@ const fallbackConfig = {
   apiBaseUrl: 'http://localhost:3000/api/v1',
   wsBaseUrl: 'http://localhost:3000',
   clientLoggingEnabled: true,
+  mfaEnabled: false,
 };
 
 function isLoopbackHost(hostname: string) {
@@ -67,6 +69,7 @@ export const runtimeConfig = {
   wsBaseUrl: normalizedWsBaseUrl ?? fallbackConfig.wsBaseUrl,
   clientLoggingEnabled:
     browserConfig?.clientLoggingEnabled ?? fallbackConfig.clientLoggingEnabled,
+  mfaEnabled: browserConfig?.mfaEnabled ?? fallbackConfig.mfaEnabled,
 };
 
 export {};

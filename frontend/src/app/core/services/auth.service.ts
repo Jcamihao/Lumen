@@ -8,11 +8,20 @@ import {
   Observable,
   of,
   shareReplay,
+  switchMap,
+  take,
   tap,
   throwError,
 } from "rxjs";
 import { environment } from "../../../environments/environment";
-import { AuthResponse, User } from "../models/domain.models";
+import {
+  AuthResponse,
+  LoginResult,
+  MfaConfirmResponse,
+  MfaDisableResponse,
+  MfaSetupResponse,
+  User,
+} from "../models/domain.models";
 import { NetworkService } from "./network.service";
 import { NativeStorageService } from "./native-storage.service";
 
@@ -25,12 +34,13 @@ export class AuthService {
   private readonly accessTokenKey = "lumen.accessToken";
   private readonly refreshTokenKey = "lumen.refreshToken";
   private readonly userKey = "lumen.user";
+  private readonly usesRefreshCookie = !this.storage.isNativePlatform();
 
   private readonly accessTokenSignal = signal<string | null>(
-    this.storage.getItem(this.accessTokenKey),
+    this.storage.getSessionItem(this.accessTokenKey),
   );
   private readonly refreshTokenSignal = signal<string | null>(
-    this.storage.getItem(this.refreshTokenKey),
+    this.storage.getSessionItem(this.refreshTokenKey),
   );
   private readonly userSignal = signal<User | null>(this.readStoredUser());
   private restoreRequest$?: Observable<boolean>;
@@ -38,16 +48,21 @@ export class AuthService {
   readonly currentUser = computed(() => this.userSignal());
   readonly isAuthenticated = computed(() => !!this.accessTokenSignal());
   readonly hasSession = computed(
-    () => !!this.accessTokenSignal() || !!this.refreshTokenSignal(),
+    () =>
+      !!this.accessTokenSignal() ||
+      !!this.refreshTokenSignal() ||
+      this.usesRefreshCookie,
   );
   readonly canUseOfflineSession = computed(
-    () => !!this.userSignal() && this.hasSession(),
+    () =>
+      !!this.userSignal() &&
+      (!!this.accessTokenSignal() || !!this.refreshTokenSignal()),
   );
 
   login(payload: { email: string; password: string }) {
     return this.http
-      .post<AuthResponse>(`${environment.apiBaseUrl}/auth/login`, payload)
-      .pipe(tap((response) => this.setSession(response)));
+      .post<LoginResult>(`${environment.apiBaseUrl}/auth/login`, payload)
+      .pipe(tap((response) => this.setSessionFromLoginResult(response)));
   }
 
   register(payload: {
@@ -65,6 +80,49 @@ export class AuthService {
     return this.http
       .post<AuthResponse>(`${environment.apiBaseUrl}/auth/register`, payload)
       .pipe(tap((response) => this.setSession(response)));
+  }
+
+  verifyLoginMfa(payload: { challengeId: string; code: string }) {
+    return this.http
+      .post<AuthResponse>(`${environment.apiBaseUrl}/auth/mfa/verify-login`, payload)
+      .pipe(tap((response) => this.setSession(response)));
+  }
+
+  startMfaSetup() {
+    return this.http.post<MfaSetupResponse>(`${environment.apiBaseUrl}/auth/mfa/setup`, {});
+  }
+
+  confirmMfaSetup(payload: { code: string }) {
+    return this.http
+      .post<MfaConfirmResponse>(`${environment.apiBaseUrl}/auth/mfa/confirm-setup`, payload)
+      .pipe(
+        tap((response) => {
+          this.updateStoredUser(response.user);
+        }),
+      );
+  }
+
+  regenerateMfaRecoveryCodes(payload: { code: string }) {
+    return this.http
+      .post<MfaConfirmResponse>(
+        `${environment.apiBaseUrl}/auth/mfa/recovery-codes/regenerate`,
+        payload,
+      )
+      .pipe(
+        tap((response) => {
+          this.updateStoredUser(response.user);
+        }),
+      );
+  }
+
+  disableMfa(payload: { code: string }) {
+    return this.http
+      .post<MfaDisableResponse>(`${environment.apiBaseUrl}/auth/mfa/disable`, payload)
+      .pipe(
+        tap((response) => {
+          this.updateStoredUser(response.user);
+        }),
+      );
   }
 
   loadMe() {
@@ -94,7 +152,11 @@ export class AuthService {
       return of(true);
     }
 
-    if (!this.refreshTokenSignal()) {
+    if (!this.networkService.isOnline()) {
+      return of(false);
+    }
+
+    if (!this.refreshTokenSignal() && !this.usesRefreshCookie) {
       return of(false);
     }
 
@@ -107,9 +169,7 @@ export class AuthService {
     }
 
     this.restoreRequest$ = this.http
-      .post<AuthResponse>(`${environment.apiBaseUrl}/auth/refresh`, {
-        refreshToken: this.refreshTokenSignal(),
-      })
+      .post<AuthResponse>(`${environment.apiBaseUrl}/auth/refresh`, this.buildRefreshPayload())
       .pipe(
         tap((response) => this.setSession(response)),
         map(() => true),
@@ -140,26 +200,91 @@ export class AuthService {
   }
 
   logout() {
-    this.clearSession();
-    this.router.navigate(["/auth/login"]);
+    this.runLogoutRequest("logout");
+  }
+
+  logoutAllDevices() {
+    this.runLogoutRequest("logout-all");
   }
 
   clearSession() {
-    this.storage.removeItem(this.accessTokenKey);
-    this.storage.removeItem(this.refreshTokenKey);
+    this.storage.removeSessionItem(this.accessTokenKey);
+    this.storage.removeSessionItem(this.refreshTokenKey);
     this.storage.removeItem(this.userKey);
     this.accessTokenSignal.set(null);
     this.refreshTokenSignal.set(null);
     this.userSignal.set(null);
   }
 
+  private runLogoutRequest(path: "logout" | "logout-all") {
+    const accessToken = this.accessTokenSignal();
+    const shouldRefreshBeforeLogout =
+      this.usesRefreshCookie || (!accessToken && !!this.refreshTokenSignal());
+
+    if (!this.networkService.isOnline()) {
+      this.clearSession();
+      void this.router.navigate(["/auth/login"]);
+      return;
+    }
+
+    const logoutRequest$ = shouldRefreshBeforeLogout
+      ? this.restoreSession(true).pipe(
+          take(1),
+          switchMap((authenticated) =>
+            authenticated
+              ? this.http.post(`${environment.apiBaseUrl}/auth/${path}`, {})
+              : of(null),
+          ),
+        )
+      : accessToken
+        ? this.http.post(`${environment.apiBaseUrl}/auth/${path}`, {})
+        : of(null);
+
+    logoutRequest$
+      .pipe(
+        catchError(() => of(null)),
+        finalize(() => {
+          this.clearSession();
+          void this.router.navigate(["/auth/login"]);
+        }),
+      )
+      .subscribe();
+  }
+
   private setSession(response: AuthResponse) {
     this.accessTokenSignal.set(response.accessToken);
-    this.refreshTokenSignal.set(response.refreshToken);
+    const refreshToken = this.usesRefreshCookie
+      ? null
+      : (response.refreshToken ?? null);
+    this.refreshTokenSignal.set(refreshToken);
     this.userSignal.set(response.user);
-    this.storage.setItem(this.accessTokenKey, response.accessToken);
-    this.storage.setItem(this.refreshTokenKey, response.refreshToken);
+    this.storage.setSessionItem(this.accessTokenKey, response.accessToken);
+    if (refreshToken) {
+      this.storage.setSessionItem(this.refreshTokenKey, refreshToken);
+    } else {
+      this.storage.removeSessionItem(this.refreshTokenKey);
+    }
     this.storage.setItem(this.userKey, JSON.stringify(response.user));
+  }
+
+  private setSessionFromLoginResult(response: LoginResult) {
+    if (this.isAuthResponse(response)) {
+      this.setSession(response);
+    }
+  }
+
+  private isAuthResponse(response: LoginResult): response is AuthResponse {
+    return "accessToken" in response;
+  }
+
+  private buildRefreshPayload() {
+    if (this.usesRefreshCookie) {
+      return {};
+    }
+
+    return {
+      refreshToken: this.refreshTokenSignal(),
+    };
   }
 
   private readStoredUser() {

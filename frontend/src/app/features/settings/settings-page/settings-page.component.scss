@@ -122,6 +122,67 @@
   background: var(--surface-panel);
 }
 
+.settings-action-card--stack {
+  display: grid;
+}
+
+.settings-security-stack,
+.mfa-setup-card,
+.mfa-management-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.mfa-setup-card,
+.mfa-management-card {
+  padding: 1rem;
+  border-radius: 1.2rem;
+  border: 1px solid var(--surface-panel-border);
+  background: color-mix(in srgb, var(--surface-panel) 88%, var(--surface-soft) 12%);
+}
+
+.mfa-setup-card__header {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.mfa-setup-card__header p {
+  margin: 0;
+  color: var(--text-medium);
+}
+
+.mfa-qr-code {
+  width: 13.5rem;
+  max-width: 100%;
+  border-radius: 1rem;
+  border: 1px solid var(--surface-panel-border);
+  background: white;
+  padding: 0.75rem;
+}
+
+.mfa-code-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.recovery-codes-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.recovery-codes-list code {
+  display: block;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  border: 1px dashed var(--surface-panel-border);
+  background: color-mix(in srgb, var(--surface-soft) 76%, transparent);
+  color: var(--text-strong);
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-align: center;
+}
+
 .settings-switch-card strong,
 .settings-action-card strong,
 .settings-danger-zone strong {
@@ -275,6 +336,10 @@
   .settings-profile-hero {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .recovery-codes-list {
+    grid-template-columns: 1fr;
   }
 }
 

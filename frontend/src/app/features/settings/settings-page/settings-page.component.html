@@ -225,11 +225,162 @@
     <div class="proto-surface__head">
       <div>
         <h3>Gerenciamento da conta</h3>
-        <p>Acesse exportação, suporte e ações permanentes da conta.</p>
+        <p>Acesse exportação, segurança, suporte e ações permanentes da conta.</p>
       </div>
     </div>
 
     <div class="proto-surface__body account-stack">
+      <p class="settings-feedback settings-feedback--ok" *ngIf="feedbackMessage()">{{ feedbackMessage() }}</p>
+      <p class="settings-feedback settings-feedback--error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
+
+      <div class="settings-action-card settings-action-card--stack" *ngIf="mfaFeatureEnabled">
+        <div>
+          <strong>Autenticação em dois fatores</strong>
+          <p>{{ mfaStatusLabel() }}. {{ mfaLastVerifiedLabel() }}</p>
+        </div>
+
+        <div class="settings-security-stack">
+          <div class="proto-note">
+            <strong class="proto-inline-title">Proteção da conta</strong>
+            <p>
+              Ative o MFA para exigir um código do autenticador no login.
+              Códigos de recuperação restantes:
+              {{ authService.currentUser()?.mfaRecoveryCodesRemaining ?? 0 }}.
+            </p>
+          </div>
+
+          <button
+            *ngIf="!authService.currentUser()?.mfaEnabled && !mfaSetupSecret()"
+            type="button"
+            class="proto-button proto-button--secondary"
+            [disabled]="mfaSetupLoading()"
+            (click)="startMfaSetup()"
+          >
+            {{ mfaSetupLoading() ? 'Preparando...' : 'Configurar MFA' }}
+          </button>
+
+          <div class="mfa-setup-card" *ngIf="mfaSetupSecret()">
+            <div class="mfa-setup-card__header">
+              <strong>1. Adicione a conta no autenticador</strong>
+              <p>Use Google Authenticator, 1Password, Authy ou outro app compatível com TOTP.</p>
+            </div>
+
+            <img
+              *ngIf="mfaQrCodeDataUrl()"
+              class="mfa-qr-code"
+              [src]="mfaQrCodeDataUrl()!"
+              alt="QR code para configuração do MFA"
+            />
+
+            <div class="proto-note">
+              <strong class="proto-inline-title">Ou use a chave manual</strong>
+              <p>{{ mfaSetupSecret() }}</p>
+            </div>
+
+            <div class="proto-actions-row">
+              <button
+                type="button"
+                class="proto-button proto-button--secondary"
+                (click)="copyPendingMfaSecret()"
+              >
+                Copiar chave
+              </button>
+            </div>
+
+            <form [formGroup]="mfaSetupForm" class="mfa-code-form" (ngSubmit)="confirmMfaSetup()">
+              <div class="proto-field">
+                <label for="mfa-setup-code">2. Confirme com o primeiro código</label>
+                <input
+                  id="mfa-setup-code"
+                  type="text"
+                  formControlName="code"
+                  placeholder="123456"
+                />
+              </div>
+
+              <div class="proto-actions-row">
+                <button
+                  type="submit"
+                  class="proto-button"
+                  [disabled]="mfaSetupForm.invalid || mfaActionLoading()"
+                >
+                  {{ mfaActionLoading() ? 'Ativando...' : 'Ativar MFA' }}
+                </button>
+                <button
+                  type="button"
+                  class="proto-button proto-button--ghost"
+                  [disabled]="mfaActionLoading()"
+                  (click)="cancelMfaSetup()"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div class="mfa-management-card" *ngIf="authService.currentUser()?.mfaEnabled">
+            <div class="proto-note">
+              <strong class="proto-inline-title">Gerenciar MFA</strong>
+              <p>Informe um código do autenticador ou um código de recuperação para renovar ou desativar a proteção.</p>
+            </div>
+
+            <form [formGroup]="mfaManageForm" class="mfa-code-form">
+              <div class="proto-field">
+                <label for="mfa-manage-code">Código atual</label>
+                <input
+                  id="mfa-manage-code"
+                  type="text"
+                  formControlName="code"
+                  placeholder="123456 ou ABCDE-FGHIJ"
+                />
+              </div>
+
+              <div class="proto-actions-row">
+                <button
+                  type="button"
+                  class="proto-button proto-button--secondary"
+                  [disabled]="mfaManageForm.invalid || mfaActionLoading()"
+                  (click)="regenerateRecoveryCodes()"
+                >
+                  {{ mfaActionLoading() ? 'Processando...' : 'Gerar novos códigos' }}
+                </button>
+                <button
+                  type="button"
+                  class="proto-button proto-button--ghost"
+                  [disabled]="mfaManageForm.invalid || mfaActionLoading()"
+                  (click)="disableMfa()"
+                >
+                  Desativar MFA
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div
+        class="settings-action-card settings-action-card--stack"
+        *ngIf="mfaFeatureEnabled && recoveryCodes().length"
+      >
+        <div>
+          <strong>Códigos de recuperação</strong>
+          <p>Esses códigos valem uma vez cada. Guarde-os fora do celular.</p>
+        </div>
+
+        <div class="recovery-codes-list">
+          <code *ngFor="let code of recoveryCodes()">{{ code }}</code>
+        </div>
+
+        <div class="proto-actions-row">
+          <button type="button" class="proto-button proto-button--secondary" (click)="copyRecoveryCodes()">
+            Copiar códigos
+          </button>
+          <button type="button" class="proto-button proto-button--ghost" (click)="dismissRecoveryCodes()">
+            Fechar
+          </button>
+        </div>
+      </div>
+
       <div class="settings-action-card">
         <div>
           <strong>Exportar meus dados</strong>
@@ -247,6 +398,21 @@
         </div>
         <button type="button" class="proto-button proto-button--secondary" (click)="openSupport()">
           Abrir suporte
+        </button>
+      </div>
+
+      <div class="settings-action-card">
+        <div>
+          <strong>Encerrar sessões em todos os dispositivos</strong>
+          <p>Revogue o acesso atual e qualquer outra sessão autenticada desta conta.</p>
+        </div>
+        <button
+          type="button"
+          class="proto-button proto-button--secondary"
+          [disabled]="loggingOutAllDevices()"
+          (click)="logoutAllDevices()"
+        >
+          {{ loggingOutAllDevices() ? 'Encerrando...' : 'Encerrar sessões' }}
         </button>
       </div>
 

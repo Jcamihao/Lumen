@@ -5,4 +5,5 @@ export const environment = {
   apiBaseUrl: runtimeConfig.apiBaseUrl,
   wsBaseUrl: runtimeConfig.wsBaseUrl,
   clientLoggingEnabled: runtimeConfig.clientLoggingEnabled,
+  mfaEnabled: runtimeConfig.mfaEnabled,
 };

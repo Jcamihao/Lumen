@@ -12,6 +12,11 @@ export type User = {
   aiAssistantEnabled?: boolean;
   aiAssistantConsentAt?: string | null;
   aiAssistantConsentVersion?: string | null;
+  mfaEnabled?: boolean;
+  mfaSetupPending?: boolean;
+  mfaEnabledAt?: string | null;
+  mfaLastVerifiedAt?: string | null;
+  mfaRecoveryCodesRemaining?: number;
   taskCategories: Category[];
   financeCategories: FinanceCategory[];
 };
@@ -149,6 +154,11 @@ export type AssistantReply = {
   answer: string;
   highlights: string[];
   suggestedActions: string[];
+  actions: AssistantAction[];
+  proactiveSignals: AssistantProactiveSignal[];
+  simulations: AssistantSimulation[];
+  continuity: AssistantContinuity;
+  explainability: AssistantExplainability;
   source?: "selah_ia" | "lumen_fallback";
   provider?: string;
   focusArea?: string;

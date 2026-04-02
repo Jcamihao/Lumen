@@ -1,28 +1,34 @@
 import { CommonModule } from "@angular/common";
-import { Component, DestroyRef, inject, signal } from "@angular/core";
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  inject,
+  signal,
+} from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
 import { Router } from "@angular/router";
+import { environment } from "../../../../environments/environment";
 import {
   CURRENT_AI_CONSENT_VERSION,
   CURRENT_PRIVACY_NOTICE_VERSION,
 } from "../../../core/constants/privacy.constants";
 import { AuthService } from "../../../core/services/auth.service";
 import { LifeApiService } from "../../../core/services/life-api.service";
-import {
-  ThemeId,
-  ThemeService,
-} from "../../../core/services/theme.service";
+import { ThemeId, ThemeService } from "../../../core/services/theme.service";
 
 @Component({
   selector: "app-settings-page",
   standalone: true,
   imports: [CommonModule, ReactiveFormsModule],
-  templateUrl: './settings-page.component.html',
-  styleUrls: ['./settings-page.component.scss'],
-  
+  templateUrl: "./settings-page.component.html",
+  styleUrls: ["./settings-page.component.scss"],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SettingsPageComponent {
+  private qrCodeModulePromise: Promise<typeof import("qrcode")> | null = null;
+  protected readonly mfaFeatureEnabled = environment.mfaEnabled;
   protected readonly themeService = inject(ThemeService);
   protected readonly authService = inject(AuthService);
   private readonly api = inject(LifeApiService);
@@ -33,9 +39,16 @@ export class SettingsPageComponent {
   protected readonly saving = signal(false);
   protected readonly exporting = signal(false);
   protected readonly deleting = signal(false);
+  protected readonly loggingOutAllDevices = signal(false);
+  protected readonly mfaSetupLoading = signal(false);
+  protected readonly mfaActionLoading = signal(false);
   protected readonly themes = this.themeService.themes;
   protected readonly feedbackMessage = signal("");
   protected readonly errorMessage = signal("");
+  protected readonly mfaSetupSecret = signal<string | null>(null);
+  protected readonly mfaSetupOtpAuthUrl = signal<string | null>(null);
+  protected readonly mfaQrCodeDataUrl = signal<string | null>(null);
+  protected readonly recoveryCodes = signal<string[]>([]);
   protected readonly avatarPreview = signal<string | null>(
     this.authService.currentUser()?.avatarUrl ?? null,
   );
@@ -71,6 +84,12 @@ export class SettingsPageComponent {
     aiAssistantEnabled: [
       Boolean(this.authService.currentUser()?.aiAssistantEnabled),
     ],
+  });
+  protected readonly mfaSetupForm = this.fb.nonNullable.group({
+    code: ["", [Validators.required, Validators.minLength(6)]],
+  });
+  protected readonly mfaManageForm = this.fb.nonNullable.group({
+    code: ["", [Validators.required, Validators.minLength(6)]],
   });
 
   protected save() {
@@ -201,8 +220,212 @@ export class SettingsPageComponent {
       });
   }
 
+  protected logoutAllDevices() {
+    if (
+      !globalThis.confirm(
+        "Deseja encerrar a sessão em todos os dispositivos? Você precisará entrar novamente em cada um deles.",
+      )
+    ) {
+      return;
+    }
+
+    this.loggingOutAllDevices.set(true);
+    this.feedbackMessage.set("");
+    this.errorMessage.set("");
+    this.authService.logoutAllDevices();
+  }
+
+  protected startMfaSetup() {
+    this.mfaSetupLoading.set(true);
+    this.feedbackMessage.set("");
+    this.errorMessage.set("");
+
+    this.authService
+      .startMfaSetup()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: async (response) => {
+          try {
+            this.mfaSetupSecret.set(response.secret);
+            this.mfaSetupOtpAuthUrl.set(response.otpauthUrl);
+            const qrCode = await this.getQrCodeModule();
+            this.mfaQrCodeDataUrl.set(
+              await qrCode.toDataURL(response.otpauthUrl, {
+                width: 220,
+                margin: 1,
+              }),
+            );
+            this.mfaSetupForm.reset({ code: "" });
+            this.recoveryCodes.set([]);
+            this.feedbackMessage.set(
+              "Escaneie o QR code no seu app autenticador e confirme com o primeiro código.",
+            );
+          } catch {
+            this.mfaSetupSecret.set(null);
+            this.mfaSetupOtpAuthUrl.set(null);
+            this.mfaQrCodeDataUrl.set(null);
+            this.errorMessage.set(
+              "Não foi possível preparar o QR code do MFA agora.",
+            );
+          } finally {
+            this.mfaSetupLoading.set(false);
+          }
+        },
+        error: (error) => {
+          this.mfaSetupLoading.set(false);
+          this.errorMessage.set(
+            error?.error?.message ??
+              "Não foi possível iniciar a configuração do MFA agora.",
+          );
+        },
+      });
+  }
+
+  protected confirmMfaSetup() {
+    if (this.mfaSetupForm.invalid) {
+      this.mfaSetupForm.markAllAsTouched();
+      return;
+    }
+
+    this.mfaActionLoading.set(true);
+    this.feedbackMessage.set("");
+    this.errorMessage.set("");
+
+    this.authService
+      .confirmMfaSetup(this.mfaSetupForm.getRawValue())
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (response) => {
+          this.mfaActionLoading.set(false);
+          this.recoveryCodes.set(response.recoveryCodes);
+          this.mfaSetupSecret.set(null);
+          this.mfaSetupOtpAuthUrl.set(null);
+          this.mfaQrCodeDataUrl.set(null);
+          this.mfaSetupForm.reset({ code: "" });
+          this.mfaManageForm.reset({ code: "" });
+          this.feedbackMessage.set(
+            "MFA ativado com sucesso. Guarde seus códigos de recuperação em um local seguro.",
+          );
+        },
+        error: (error) => {
+          this.mfaActionLoading.set(false);
+          this.errorMessage.set(
+            error?.error?.message ??
+              "Não foi possível confirmar a ativação do MFA.",
+          );
+        },
+      });
+  }
+
+  protected regenerateRecoveryCodes() {
+    if (this.mfaManageForm.invalid) {
+      this.mfaManageForm.markAllAsTouched();
+      return;
+    }
+
+    this.mfaActionLoading.set(true);
+    this.feedbackMessage.set("");
+    this.errorMessage.set("");
+
+    this.authService
+      .regenerateMfaRecoveryCodes(this.mfaManageForm.getRawValue())
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (response) => {
+          this.mfaActionLoading.set(false);
+          this.recoveryCodes.set(response.recoveryCodes);
+          this.mfaManageForm.reset({ code: "" });
+          this.feedbackMessage.set(
+            "Novos códigos de recuperação gerados. Os anteriores deixaram de valer.",
+          );
+        },
+        error: (error) => {
+          this.mfaActionLoading.set(false);
+          this.errorMessage.set(
+            error?.error?.message ??
+              "Não foi possível gerar novos códigos de recuperação.",
+          );
+        },
+      });
+  }
+
+  protected disableMfa() {
+    if (this.mfaManageForm.invalid) {
+      this.mfaManageForm.markAllAsTouched();
+      return;
+    }
+
+    if (
+      !globalThis.confirm(
+        "Deseja desativar o MFA desta conta? O login voltará a exigir apenas email e senha.",
+      )
+    ) {
+      return;
+    }
+
+    this.mfaActionLoading.set(true);
+    this.feedbackMessage.set("");
+    this.errorMessage.set("");
+
+    this.authService
+      .disableMfa(this.mfaManageForm.getRawValue())
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.mfaActionLoading.set(false);
+          this.recoveryCodes.set([]);
+          this.mfaSetupSecret.set(null);
+          this.mfaSetupOtpAuthUrl.set(null);
+          this.mfaQrCodeDataUrl.set(null);
+          this.mfaManageForm.reset({ code: "" });
+          this.feedbackMessage.set("MFA desativado com sucesso.");
+        },
+        error: (error) => {
+          this.mfaActionLoading.set(false);
+          this.errorMessage.set(
+            error?.error?.message ?? "Não foi possível desativar o MFA.",
+          );
+        },
+      });
+  }
+
+  protected async copyRecoveryCodes() {
+    const codes = this.recoveryCodes();
+
+    if (!codes.length || !navigator?.clipboard) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(codes.join("\n"));
+    this.feedbackMessage.set(
+      "Códigos de recuperação copiados. Guarde-os em um gerenciador seguro.",
+    );
+  }
+
+  protected async copyPendingMfaSecret() {
+    const secret = this.mfaSetupSecret();
+
+    if (!secret || !navigator?.clipboard) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(secret);
+    this.feedbackMessage.set("Chave secreta copiada para a área de transferência.");
+  }
+
+  protected dismissRecoveryCodes() {
+    this.recoveryCodes.set([]);
+  }
+
+  protected cancelMfaSetup() {
+    this.mfaSetupSecret.set(null);
+    this.mfaSetupOtpAuthUrl.set(null);
+    this.mfaQrCodeDataUrl.set(null);
+    this.mfaSetupForm.reset({ code: "" });
+  }
+
   protected openSupport() {
-    void this.router.navigate(['/support']);
+    void this.router.navigate(["/support"]);
   }
 
   protected selectTab(
@@ -229,6 +452,30 @@ export class SettingsPageComponent {
     return `Aceite registrado em ${this.formatDateTime(acceptedAt)}.`;
   }
 
+  protected mfaStatusLabel() {
+    const user = this.authService.currentUser();
+
+    if (user?.mfaEnabled) {
+      return "MFA ativo";
+    }
+
+    if (user?.mfaSetupPending || this.mfaSetupSecret()) {
+      return "Configuração em andamento";
+    }
+
+    return "MFA inativo";
+  }
+
+  protected mfaLastVerifiedLabel() {
+    const lastVerifiedAt = this.authService.currentUser()?.mfaLastVerifiedAt;
+
+    if (!lastVerifiedAt) {
+      return "Ainda não há uma confirmação MFA registrada.";
+    }
+
+    return `Última verificação em ${this.formatDateTime(lastVerifiedAt)}.`;
+  }
+
   private formatDateTime(value: string) {
     return new Intl.DateTimeFormat("pt-BR", {
       day: "2-digit",
@@ -237,5 +484,13 @@ export class SettingsPageComponent {
       hour: "2-digit",
       minute: "2-digit",
     }).format(new Date(value));
+  }
+
+  private getQrCodeModule() {
+    if (!this.qrCodeModulePromise) {
+      this.qrCodeModulePromise = import("qrcode");
+    }
+
+    return this.qrCodeModulePromise;
   }
 }

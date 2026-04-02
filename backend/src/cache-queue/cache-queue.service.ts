@@ -99,6 +99,28 @@ export class CacheQueueService implements OnModuleInit, OnModuleDestroy {
     await this.cacheClient.del(key);
   }
 
+  async hitRateLimitWindow(
+    key: string,
+    windowMs: number,
+  ): Promise<{ hits: number; resetAfterMs: number } | null> {
+    if (!this.isAvailable || !this.cacheClient) {
+      return null;
+    }
+
+    const hits = await this.cacheClient.incr(key);
+
+    if (hits === 1) {
+      await this.cacheClient.pexpire(key, windowMs);
+    }
+
+    const ttl = await this.cacheClient.pttl(key);
+
+    return {
+      hits,
+      resetAfterMs: ttl > 0 ? ttl : windowMs,
+    };
+  }
+
   async invalidateByPrefix(prefix: string) {
     if (!this.isAvailable || !this.cacheClient) {
       return;

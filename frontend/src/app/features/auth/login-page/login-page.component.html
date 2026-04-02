@@ -57,12 +57,16 @@
       </div>
 
       <div class="proto-auth-card__head">
-        <h1>Bem-vindo de volta</h1>
-        <p>Faça login para continuar exatamente de onde você parou.</p>
+        <h1>{{ mfaChallenge() ? 'Confirme sua identidade' : 'Bem-vindo de volta' }}</h1>
+        <p *ngIf="!mfaChallenge()">Faça login para continuar exatamente de onde você parou.</p>
+        <p *ngIf="mfaChallenge()">
+          Digite o código do seu app autenticador ou um código de recuperação.
+          Este desafio expira às {{ mfaExpiresAtLabel() }}.
+        </p>
       </div>
 
       <form class="proto-auth-form" [formGroup]="form" (ngSubmit)="submit()">
-        <div class="proto-field">
+        <div class="proto-field" *ngIf="!mfaChallenge()">
           <label for="login-email">Email</label>
           <input
             id="login-email"
@@ -72,7 +76,7 @@
           />
         </div>
 
-        <div class="proto-field">
+        <div class="proto-field" *ngIf="!mfaChallenge()">
           <label for="login-password">Senha</label>
           <div class="auth-password">
             <input
@@ -97,7 +101,7 @@
           </div>
         </div>
 
-        <div class="auth-form-meta">
+        <div class="auth-form-meta" *ngIf="!mfaChallenge()">
           <label class="auth-check">
             <input type="checkbox" checked />
             <span>Lembrar de mim</span>
@@ -106,16 +110,43 @@
           <a class="auth-link" routerLink="/signup">Precisa de uma conta?</a>
         </div>
 
+        <div class="auth-mfa-card" *ngIf="mfaChallenge()" [formGroup]="mfaForm">
+          <div class="proto-field">
+            <label for="login-mfa-code">Código MFA</label>
+            <input
+              id="login-mfa-code"
+              type="text"
+              formControlName="code"
+              placeholder="123456 ou ABCDE-FGHIJ"
+            />
+          </div>
+
+          <div class="proto-note">
+            <strong class="proto-inline-title">Aceita dois formatos</strong>
+            <p>Use o código de 6 dígitos do app autenticador ou um código de recuperação ainda não utilizado.</p>
+          </div>
+        </div>
+
         <p class="auth-error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
 
         <div class="proto-actions-row auth-actions">
           <button
             type="submit"
             class="proto-button auth-actions__primary"
-            [disabled]="form.invalid || loading()"
+            [disabled]="(!mfaChallenge() && form.invalid) || (mfaChallenge() && mfaForm.invalid) || loading()"
           >
-            <span class="material-symbols-rounded">login</span>
-            {{ loading() ? 'Entrando...' : 'Entrar' }}
+            <span class="material-symbols-rounded">{{ mfaChallenge() ? 'shield' : 'login' }}</span>
+            {{ loading() ? (mfaChallenge() ? 'Validando...' : 'Entrando...') : (mfaChallenge() ? 'Validar código' : 'Entrar') }}
+          </button>
+
+          <button
+            *ngIf="mfaChallenge()"
+            type="button"
+            class="proto-button proto-button--secondary auth-actions__primary"
+            [disabled]="loading()"
+            (click)="resetMfaChallenge()"
+          >
+            Voltar
           </button>
         </div>
       </form>

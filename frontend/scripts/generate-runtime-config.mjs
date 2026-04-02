@@ -122,12 +122,27 @@ const clientLoggingEnabled =
     dotenvFromWorkspace.CLIENT_LOGGING_ENABLED,
     'true',
   ) ?? 'true') === 'true';
+const mfaEnabled =
+  (getFirstDefined(
+    process.env.FRONTEND_APP_MFA_ENABLED,
+    process.env.FRONTEND_MFA_ENABLED,
+    process.env.AUTH_MFA_ENABLED,
+    dotenvFromFrontend.FRONTEND_APP_MFA_ENABLED,
+    dotenvFromFrontend.FRONTEND_MFA_ENABLED,
+    dotenvFromFrontend.AUTH_MFA_ENABLED,
+    dotenvFromBackend.AUTH_MFA_ENABLED,
+    dotenvFromWorkspace.FRONTEND_APP_MFA_ENABLED,
+    dotenvFromWorkspace.FRONTEND_MFA_ENABLED,
+    dotenvFromWorkspace.AUTH_MFA_ENABLED,
+    'false',
+  ) ?? 'false') === 'true';
 
 const contents = `window.__APP_CONFIG__ = ${JSON.stringify(
   {
     apiBaseUrl,
     wsBaseUrl,
     clientLoggingEnabled,
+    mfaEnabled,
   },
   null,
   2,

@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, DestroyRef, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AuthService } from '../core/services/auth.service';
@@ -11,6 +11,7 @@ import { ThemeService } from '../core/services/theme.service';
   imports: [CommonModule, RouterOutlet],
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AppComponent {
   private readonly authService = inject(AuthService);
@@ -28,7 +29,7 @@ export class AppComponent {
       .restoreSession()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((authenticated) => {
-        if (authenticated) {
+        if (authenticated && !this.authService.currentUser()) {
           this.authService.loadMe().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
         }
       });

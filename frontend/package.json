@@ -32,6 +32,7 @@
     "@capacitor/ios": "^5.7.8",
     "@capacitor/local-notifications": "^5.0.8",
     "@capacitor/preferences": "^5.0.8",
+    "qrcode": "^1.5.4",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "zone.js": "~0.13.0"

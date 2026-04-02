@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Prisma, TransactionType, UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { UpdateUserDto } from "./dto/update-user.dto";
@@ -27,7 +28,10 @@ type CreateUserInput = {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
+  ) {}
 
   async createUser(input: CreateUserInput) {
     const now = new Date();
@@ -202,13 +206,6 @@ export class UsersService {
     return this.getMe(userId);
   }
 
-  async updateRefreshToken(userId: string, refreshTokenHash: string | null) {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { refreshTokenHash },
-    });
-  }
-
   async updateLastLogin(userId: string) {
     await this.prisma.user.update({
       where: { id: userId },
@@ -287,12 +284,19 @@ export class UsersService {
       throw new NotFoundException("Usuario nao encontrado.");
     }
 
-    const { passwordHash, refreshTokenHash, ...safeUser } = user;
+    const {
+      passwordHash,
+      mfaTotpSecretEncrypted,
+      mfaPendingTotpSecretEncrypted,
+      mfaRecoveryCodes,
+      ...safeUser
+    } = user;
     const aiProcessingActive = Boolean(
       safeUser.aiAssistantEnabled &&
       safeUser.aiAssistantConsentAt &&
       safeUser.privacyNoticeAcceptedAt,
     );
+    const mfaFeatureEnabled = this.isMfaFeatureEnabled();
 
     return {
       exportedAt: new Date().toISOString(),
@@ -335,6 +339,16 @@ export class UsersService {
       profile: {
         ...safeUser,
         monthlyIncome: Number(safeUser.monthlyIncome ?? 0),
+        mfaEnabledAt: mfaFeatureEnabled ? safeUser.mfaEnabledAt : null,
+        mfaLastVerifiedAt: mfaFeatureEnabled
+          ? safeUser.mfaLastVerifiedAt
+          : null,
+        mfaEnabled: mfaFeatureEnabled && Boolean(safeUser.mfaEnabledAt),
+        mfaSetupPending:
+          mfaFeatureEnabled && Boolean(mfaPendingTotpSecretEncrypted),
+        mfaRecoveryCodesRemaining: mfaFeatureEnabled
+          ? this.countRemainingRecoveryCodes(mfaRecoveryCodes)
+          : 0,
       },
       datasets: {
         taskCategories: safeUser.taskCategories,
@@ -395,10 +409,43 @@ export class UsersService {
   }
 
   async sanitizeUser(user: Awaited<ReturnType<UsersService["findById"]>>) {
-    const { passwordHash, refreshTokenHash, ...safeUser } = user;
+    const {
+      passwordHash,
+      mfaTotpSecretEncrypted,
+      mfaPendingTotpSecretEncrypted,
+      mfaRecoveryCodes,
+      ...safeUser
+    } = user;
+    const mfaFeatureEnabled = this.isMfaFeatureEnabled();
+
     return {
       ...safeUser,
       monthlyIncome: Number(safeUser.monthlyIncome ?? 0),
+      mfaEnabledAt: mfaFeatureEnabled ? safeUser.mfaEnabledAt : null,
+      mfaLastVerifiedAt: mfaFeatureEnabled ? safeUser.mfaLastVerifiedAt : null,
+      mfaEnabled: mfaFeatureEnabled && Boolean(safeUser.mfaEnabledAt),
+      mfaSetupPending:
+        mfaFeatureEnabled && Boolean(mfaPendingTotpSecretEncrypted),
+      mfaRecoveryCodesRemaining: mfaFeatureEnabled
+        ? this.countRemainingRecoveryCodes(mfaRecoveryCodes)
+        : 0,
     };
+  }
+
+  private isMfaFeatureEnabled() {
+    return this.configService.get<boolean>("auth.mfaEnabled") ?? false;
+  }
+
+  private countRemainingRecoveryCodes(value: unknown) {
+    if (!Array.isArray(value)) {
+      return 0;
+    }
+
+    return value.filter(
+      (item) =>
+        item &&
+        typeof item === "object" &&
+        (!("usedAt" in item) || (item as { usedAt?: string | null }).usedAt === null),
+    ).length;
   }
 }
