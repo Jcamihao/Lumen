@@ -72,6 +72,18 @@ const explicitWsBaseUrl = getFirstDefined(
   dotenvFromFrontend.WS_BASE_URL,
 );
 
+const backendExplicitApiBaseUrl = getFirstDefined(
+  dotenvFromBackend.FRONTEND_APP_API_BASE_URL,
+  dotenvFromBackend.FRONTEND_API_BASE_URL,
+  dotenvFromBackend.API_BASE_URL,
+);
+
+const backendExplicitWsBaseUrl = getFirstDefined(
+  dotenvFromBackend.FRONTEND_APP_WS_BASE_URL,
+  dotenvFromBackend.FRONTEND_WS_BASE_URL,
+  dotenvFromBackend.WS_BASE_URL,
+);
+
 const backendBaseUrl = trimTrailingSlash(
   getFirstDefined(
     process.env.APP_URL,
@@ -95,8 +107,9 @@ const workspaceWsBaseUrl = getFirstDefined(
 const apiBaseUrl = trimTrailingSlash(
   getFirstDefined(
     explicitApiBaseUrl,
-    backendBaseUrl ? `${backendBaseUrl}/api/v1` : undefined,
     workspaceApiBaseUrl,
+    backendExplicitApiBaseUrl,
+    backendBaseUrl ? `${backendBaseUrl}/api/v1` : undefined,
     'http://localhost:3000/api/v1',
   ),
 );
@@ -104,8 +117,9 @@ const apiBaseUrl = trimTrailingSlash(
 const wsBaseUrl = trimTrailingSlash(
   getFirstDefined(
     explicitWsBaseUrl,
-    backendBaseUrl,
     workspaceWsBaseUrl,
+    backendExplicitWsBaseUrl,
+    backendBaseUrl,
     'http://localhost:3000',
   ),
 );

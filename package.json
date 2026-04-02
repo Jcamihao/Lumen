@@ -11,6 +11,7 @@
     "dev:infra": "docker compose up -d --force-recreate postgres redis",
     "mobile:build": "npm --prefix frontend run build:mobile",
     "mobile:sync": "npm --prefix frontend run cap:sync",
+    "mobile:rebuild": "npm run mobile:build && npm run mobile:sync",
     "mobile:add:ios": "npm --prefix frontend run cap:add:ios",
     "mobile:open:ios": "npm --prefix frontend run cap:open:ios",
     "compose:up": "docker compose up --build",

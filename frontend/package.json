@@ -9,6 +9,7 @@
     "build": "ng build",
     "prebuild:mobile": "node ./scripts/generate-runtime-config.mjs",
     "build:mobile": "ng build --configuration production",
+    "mobile:rebuild": "npm run build:mobile && npm run cap:sync",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "cap:sync": "npx cap sync",
