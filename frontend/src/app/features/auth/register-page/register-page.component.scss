@@ -160,6 +160,35 @@
   border-top: 1px solid var(--surface-panel-border);
 }
 
+.register-optional {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem 0;
+  border-top: 1px solid var(--surface-panel-border);
+}
+
+.register-optional__toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid var(--surface-panel-border);
+  background: var(--surface-panel);
+  color: var(--text-strong);
+  font-weight: 700;
+  text-align: left;
+}
+
+.register-optional__hint,
+.register-inline-note {
+  margin: 0;
+  color: var(--text-medium);
+  font-size: 0.9rem;
+}
+
 .register-section h3 {
   margin: 0;
   font-family: var(--font-display);
@@ -178,6 +207,10 @@
   width: 1.1rem;
   height: 1.1rem;
   margin-top: 0.15rem;
+}
+
+.consent-row--soft {
+  padding-top: 0.25rem;
 }
 
 .auth-error {

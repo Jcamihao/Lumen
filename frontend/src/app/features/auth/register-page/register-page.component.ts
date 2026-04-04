@@ -27,21 +27,19 @@ export class RegisterPageComponent {
   protected readonly loading = signal(false);
   protected readonly errorMessage = signal('');
   protected readonly showPassword = signal(false);
+  protected readonly showSetupDetails = signal(false);
   protected readonly avatarPreview = signal<string | null>(null);
   protected readonly privacyNoticeVersion = CURRENT_PRIVACY_NOTICE_VERSION;
   protected readonly aiConsentVersion = CURRENT_AI_CONSENT_VERSION;
   protected readonly passwordMinLength = AUTH_PASSWORD_MIN_LENGTH;
 
-  protected readonly form = this.fb.nonNullable.group({
-    name: ['Marina Costa', [Validators.required, Validators.minLength(2)]],
-    email: ['marina@exemplo.com', [Validators.required, Validators.email]],
-    password: [
-      'Demo123!',
-      [Validators.required, Validators.minLength(AUTH_PASSWORD_MIN_LENGTH)],
-    ],
+  protected readonly form = this.fb.group({
+    name: ['', [Validators.required, Validators.minLength(2)]],
+    email: ['', [Validators.required, Validators.email]],
+    password: ['', [Validators.required, Validators.minLength(AUTH_PASSWORD_MIN_LENGTH)]],
     avatarUrl: [''],
-    monthlyIncome: [8500],
-    monthClosingDay: [28],
+    monthlyIncome: [null as number | null],
+    monthClosingDay: [null as number | null],
     timezone: ['America/Sao_Paulo'],
     preferredCurrency: ['BRL'],
     privacyNoticeAccepted: [false, [Validators.requiredTrue]],
@@ -51,15 +49,32 @@ export class RegisterPageComponent {
   protected submit() {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
-      this.errorMessage.set('Aceite o aviso de privacidade para continuar.');
+      this.errorMessage.set(
+        this.form.controls.privacyNoticeAccepted.invalid
+          ? 'Aceite o aviso de privacidade para continuar.'
+          : 'Revise os campos obrigatórios para continuar.',
+      );
       return;
     }
+
+    const raw = this.form.getRawValue();
 
     this.loading.set(true);
     this.errorMessage.set('');
 
     this.authService
-      .register(this.form.getRawValue())
+      .register({
+        name: String(raw.name ?? '').trim(),
+        email: String(raw.email ?? '').trim(),
+        password: String(raw.password ?? ''),
+        avatarUrl: raw.avatarUrl || undefined,
+        privacyNoticeAccepted: !!raw.privacyNoticeAccepted,
+        aiAssistantEnabled: !!raw.aiAssistantEnabled,
+        monthlyIncome: raw.monthlyIncome ?? undefined,
+        monthClosingDay: raw.monthClosingDay ?? undefined,
+        timezone: raw.timezone || undefined,
+        preferredCurrency: raw.preferredCurrency || undefined,
+      })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
@@ -113,5 +128,9 @@ export class RegisterPageComponent {
 
   protected togglePasswordVisibility() {
     this.showPassword.update((value) => !value);
+  }
+
+  protected toggleSetupDetails() {
+    this.showSetupDetails.update((value) => !value);
   }
 }

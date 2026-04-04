@@ -14,15 +14,15 @@
       </div>
 
       <div class="register-copy">
-        <h3>Comece sua jornada rumo à organização total</h3>
+        <h3>Comece com o essencial</h3>
         <p>
-          Configure renda, metas e privacidade desde o primeiro acesso para o
-          app já nascer com contexto real.
+          Crie sua conta agora e ajuste finanças, metas e Selah no seu ritmo,
+          já dentro do app.
         </p>
       </div>
 
       <div class="register-benefits">
-        <div class="register-benefit" *ngFor="let item of ['Plataforma completa e integrada', 'Assistente com IA para insights', 'Sincronização em tempo real', 'Privacidade e segurança garantidas']">
+        <div class="register-benefit" *ngFor="let item of ['Workspace simples para o dia a dia', 'Selah com IA para insights', 'Sincronização em tempo real', 'Privacidade e segurança garantidas']">
           <span class="material-symbols-rounded">check_circle</span>
           <span>{{ item }}</span>
         </div>
@@ -43,7 +43,7 @@
 
       <div class="proto-auth-card__head">
         <h1>Criar nova conta</h1>
-        <p>Preencha seus dados para começar com o workspace já personalizado.</p>
+        <p>Entre com nome, email e senha. O resto pode vir depois.</p>
       </div>
 
       <form class="proto-auth-form" [formGroup]="form" (ngSubmit)="submit()">
@@ -79,72 +79,94 @@
               </button>
             </div>
           </div>
-
-          <div class="proto-field proto-field--full">
-            <label for="register-avatar">Foto de perfil (opcional)</label>
-            <input
-              #avatarInput
-              id="register-avatar"
-              type="file"
-              accept="image/*"
-              (change)="handleAvatarSelected($event)"
-            />
-            <div class="avatar-preview" *ngIf="avatarPreview()">
-              <img [src]="avatarPreview()!" alt="Prévia do avatar" />
-              <button
-                type="button"
-                class="proto-button proto-button--ghost"
-                (click)="clearAvatar(avatarInput)"
-              >
-                Remover foto
-              </button>
-            </div>
-          </div>
         </div>
 
-        <div class="register-section">
-          <h3>Configurações financeiras</h3>
+        <article class="register-optional">
+          <button
+            type="button"
+            class="register-optional__toggle"
+            [attr.aria-expanded]="showSetupDetails()"
+            (click)="toggleSetupDetails()"
+          >
+            <span>
+              {{ showSetupDetails() ? 'Ocultar personalização inicial' : 'Adicionar foto, finanças e Selah agora' }}
+            </span>
+            <span class="material-symbols-rounded">
+              {{ showSetupDetails() ? 'expand_less' : 'expand_more' }}
+            </span>
+          </button>
 
-          <div class="proto-form-grid">
-            <div class="proto-field">
-              <label for="register-income">Renda mensal estimada</label>
-              <input id="register-income" type="number" min="0" formControlName="monthlyIncome" />
+          <p class="register-optional__hint">
+            Essa etapa é opcional. Você pode completar tudo depois em Configurações.
+          </p>
+
+          <div class="register-section" *ngIf="showSetupDetails()">
+            <div class="proto-form-grid">
+              <div class="proto-field proto-field--full">
+                <label for="register-avatar">Foto de perfil (opcional)</label>
+                <input
+                  #avatarInput
+                  id="register-avatar"
+                  type="file"
+                  accept="image/*"
+                  (change)="handleAvatarSelected($event)"
+                />
+                <div class="avatar-preview" *ngIf="avatarPreview()">
+                  <img [src]="avatarPreview()!" alt="Prévia do avatar" />
+                  <button
+                    type="button"
+                    class="proto-button proto-button--ghost"
+                    (click)="clearAvatar(avatarInput)"
+                  >
+                    Remover foto
+                  </button>
+                </div>
+              </div>
+
+              <div class="proto-field">
+                <label for="register-income">Renda mensal estimada</label>
+                <input id="register-income" type="number" min="0" formControlName="monthlyIncome" />
+              </div>
+
+              <div class="proto-field">
+                <label for="register-closing-day">Dia de fechamento</label>
+                <input id="register-closing-day" type="number" min="1" max="31" formControlName="monthClosingDay" />
+              </div>
+
+              <div class="proto-field">
+                <label for="register-currency">Moeda</label>
+                <select id="register-currency" formControlName="preferredCurrency">
+                  <option value="BRL">BRL</option>
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                </select>
+              </div>
+
+              <div class="proto-field">
+                <label for="register-timezone">Fuso horário</label>
+                <select id="register-timezone" formControlName="timezone">
+                  <option value="America/Sao_Paulo">America/Sao_Paulo</option>
+                  <option value="America/New_York">America/New_York</option>
+                  <option value="Europe/Lisbon">Europe/Lisbon</option>
+                </select>
+              </div>
             </div>
 
-            <div class="proto-field">
-              <label for="register-closing-day">Dia de fechamento</label>
-              <input id="register-closing-day" type="number" min="1" max="31" formControlName="monthClosingDay" />
-            </div>
-
-            <div class="proto-field">
-              <label for="register-currency">Moeda</label>
-              <select id="register-currency" formControlName="preferredCurrency">
-                <option value="BRL">BRL</option>
-                <option value="USD">USD</option>
-                <option value="EUR">EUR</option>
-              </select>
-            </div>
-
-            <div class="proto-field">
-              <label for="register-timezone">Fuso horário</label>
-              <select id="register-timezone" formControlName="timezone">
-                <option value="America/Sao_Paulo">America/Sao_Paulo</option>
-                <option value="America/New_York">America/New_York</option>
-                <option value="Europe/Lisbon">Europe/Lisbon</option>
-              </select>
-            </div>
+            <label class="consent-row consent-row--soft">
+              <input type="checkbox" formControlName="aiAssistantEnabled" />
+              <span>Quero deixar o Selah disponível no meu workspace.</span>
+            </label>
           </div>
-        </div>
+        </article>
 
         <label class="consent-row">
           <input type="checkbox" formControlName="privacyNoticeAccepted" />
           <span>Aceito o aviso de privacidade versão {{ privacyNoticeVersion }}.</span>
         </label>
 
-        <label class="consent-row">
-          <input type="checkbox" formControlName="aiAssistantEnabled" />
-          <span>Quero deixar o assistente de IA disponível no meu workspace.</span>
-        </label>
+        <p class="register-inline-note">
+          Você entra agora e pode completar seu contexto depois.
+        </p>
 
         <p class="auth-error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
 
