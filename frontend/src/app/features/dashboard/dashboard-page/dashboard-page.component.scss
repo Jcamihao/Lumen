@@ -40,134 +40,64 @@
   margin-top: 0.2rem;
 }
 
-.dashboard-hero {
-  transform: translate3d(0, calc(var(--dashboard-parallax-soft) * -0.18), 0);
-}
-
-.dashboard-hero::after {
-  content: '';
-  position: absolute;
-  right: -3rem;
-  bottom: -4rem;
-  width: 14rem;
-  height: 14rem;
-  border-radius: 999px;
-  background: radial-gradient(circle, color-mix(in srgb, var(--text-inverse) 12%, transparent), transparent 68%);
-  filter: blur(18px);
-  pointer-events: none;
-  transform: translate3d(calc(var(--dashboard-parallax-soft) * -0.4), calc(var(--dashboard-parallax) * 0.22), 0);
-}
-
-.dashboard-hero__layout {
-  gap: 1.25rem;
-  align-items: stretch;
-}
-
-.dashboard-hero__copy {
+.dashboard-focus {
   display: grid;
+  grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 1fr));
   gap: 1rem;
+  margin-bottom: 1rem;
 }
 
-.dashboard-hero__eyebrow {
-  display: inline-flex;
-  justify-self: start;
-  align-items: center;
-  min-height: 1.9rem;
-  padding: 0.3rem 0.72rem;
-  border-radius: 999px;
-  background: var(--hero-glass);
-  border: 1px solid var(--hero-glass-border);
-  color: color-mix(in srgb, var(--text-inverse) 82%, transparent);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.dashboard-focus__card {
+  min-height: 100%;
 }
 
-.dashboard-hero__facts {
+.dashboard-focus__card--primary {
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--shell-aura-top-left) 14%, transparent), transparent 42%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-elevated) 92%, white 8%), var(--surface-elevated));
+}
+
+.dashboard-focus__body {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.85rem;
 }
 
-.dashboard-hero__fact {
+.dashboard-focus__headline,
+.dashboard-stat strong {
+  font-size: clamp(1.15rem, 1.6vw, 1.55rem);
+  line-height: 1.2;
+}
+
+.dashboard-stat {
   display: grid;
-  gap: 0.4rem;
-  padding: 0.95rem 1rem;
-  border-radius: 1.2rem;
-  background: color-mix(in srgb, var(--text-inverse) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--text-inverse) 10%, transparent);
-}
-
-.dashboard-hero__fact span,
-.dashboard-hero__mini-grid span {
-  color: color-mix(in srgb, var(--text-inverse) 72%, transparent);
-  font-size: 0.78rem;
-}
-
-.dashboard-hero__fact strong,
-.dashboard-hero__mini-grid strong {
-  color: var(--text-inverse);
-  line-height: 1.25;
-}
-
-.dashboard-hero__actions {
-  margin-top: 0.2rem;
-}
-
-.dashboard-hero__aside {
-  align-content: start;
-}
-
-.dashboard-hero__mini-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
 }
 
-.dashboard-hero__mini-grid article {
-  display: grid;
-  gap: 0.35rem;
-  padding: 0.85rem 0.9rem;
-  border-radius: 1rem;
-  background: color-mix(in srgb, var(--text-inverse) 8%, transparent);
+.dashboard-stat p {
+  margin: 0;
 }
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
 
-.dashboard-grid__wide {
-  grid-column: span 2;
+.dashboard-more {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 1rem;
 }
 
-.projection-list,
-.goal-grid {
-  display: grid;
-  gap: 0.85rem;
-}
-
-.projection-row {
-  display: grid;
-  grid-template-columns: 3rem minmax(0, 1fr) auto;
-  gap: 0.75rem;
-  align-items: center;
-}
-
-@media (max-width: 1200px) {
-  .dashboard-hero__facts,
-  .dashboard-hero__mini-grid {
+@media (max-width: 1100px) {
+  .dashboard-focus {
     grid-template-columns: 1fr;
   }
+}
 
+@media (max-width: 900px) {
   .dashboard-grid {
     grid-template-columns: 1fr;
-  }
-
-  .dashboard-grid__wide {
-    grid-column: auto;
   }
 }
 
@@ -183,22 +113,11 @@
     height: 9rem;
     left: -2rem;
   }
-
-  .projection-row {
-    grid-template-columns: 1fr;
-  }
-
-  .dashboard-hero__fact,
-  .dashboard-hero__mini-grid article {
-    padding: 0.85rem 0.9rem;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .dashboard-page__parallax-orb--warm,
-  .dashboard-page__parallax-orb--cool,
-  .dashboard-hero,
-  .dashboard-hero::after {
+  .dashboard-page__parallax-orb--cool {
     transform: none;
   }
 }

@@ -6,14 +6,17 @@
     </div>
 
     <div class="proto-header__action">
-      <button type="button" class="proto-button proto-button--secondary">
-        <span class="material-symbols-rounded">filter_list</span>
-        Filtros
-      </button>
-
       <a class="proto-button proto-button--secondary" routerLink="/imports">
-        <span class="material-symbols-rounded">download</span>
-        Exportar
+        <span class="material-symbols-rounded">upload_file</span>
+        Importações
+      </a>
+
+      <a
+        class="proto-button proto-button--secondary"
+        routerLink="/assistant"
+        [queryParams]="{ prompt: 'O que eu preciso proteger primeiro no meu caixa este mes?', originModule: 'finances' }"
+      >
+        Perguntar ao Selah
       </a>
     </div>
   </header>
@@ -59,24 +62,6 @@
         <span class="material-symbols-rounded">upload</span>
         Importar CSV
       </a>
-    </div>
-  </article>
-
-  <article class="proto-surface">
-    <div class="proto-surface__body">
-      <div class="proto-list-item__top">
-        <div>
-          <strong>Selah no caixa</strong>
-          <p>Abra o assistente já com contexto financeiro para revisar risco, dívida, corte e prioridade do mês.</p>
-        </div>
-        <a
-          class="proto-button proto-button--secondary"
-          routerLink="/assistant"
-          [queryParams]="{ prompt: 'O que eu preciso proteger primeiro no meu caixa este mes?', originModule: 'finances' }"
-        >
-          Perguntar ao Selah
-        </a>
-      </div>
     </div>
   </article>
 

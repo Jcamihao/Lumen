@@ -46,10 +46,10 @@ export class BottomNavComponent {
   );
 
   protected readonly navItems: NavItem[] = [
-    { label: 'Dashboard', icon: 'space_dashboard', route: '/dashboard', exact: true },
+    { label: 'Início', icon: 'space_dashboard', route: '/dashboard', exact: true },
     { label: 'Tarefas', icon: 'checklist', route: '/tasks' },
-    { label: 'Finança', icon: 'account_balance_wallet', route: '/finance', aliases: ['/finances'] },
-    { label: 'Selah IA', icon: 'auto_awesome', route: '/assistant' },
+    { label: 'Finanças', icon: 'account_balance_wallet', route: '/finance', aliases: ['/finances'] },
+    { label: 'Selah', icon: 'auto_awesome', route: '/assistant', aliases: ['/selah'] },
   ];
   protected readonly menuIndex = this.navItems.length;
   protected readonly navSlotCount = this.navItems.length + 1;

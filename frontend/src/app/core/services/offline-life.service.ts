@@ -9,6 +9,7 @@ import {
   Goal,
   Insight,
   Notification,
+  OfflineSyncQueueItem,
   Reminder,
   SupportRequest,
   Task,
@@ -30,14 +31,7 @@ type SyncEntity =
   | "supportRequest";
 type SyncAction = "create" | "update" | "delete" | "contribute" | "read";
 
-type SyncQueueItem = {
-  id: string;
-  entity: SyncEntity;
-  action: SyncAction;
-  recordId?: string;
-  payload?: Record<string, unknown>;
-  createdAt: string;
-};
+type SyncQueueItem = OfflineSyncQueueItem;
 
 type DashboardCache = Pick<
   DashboardSummary,
@@ -51,11 +45,22 @@ export class OfflineLifeService {
   private readonly queueSignal = signal<SyncQueueItem[]>([]);
 
   readonly pendingSyncCount = computed(() => this.queueSignal().length);
+  readonly failedSyncCount = computed(
+    () => this.queueSignal().filter((item) => item.status === "failed").length,
+  );
+  readonly activeSyncItemCount = computed(
+    () => this.queueSignal().filter((item) => item.status === "syncing").length,
+  );
+  readonly syncQueueItems = this.queueSignal.asReadonly();
 
   constructor() {
     effect(() => {
       this.authService.currentUser()?.id;
-      this.queueSignal.set(this.readScopedValue("sync-queue", [] as SyncQueueItem[]));
+      this.queueSignal.set(
+        this.normalizeQueue(
+          this.readScopedValue("sync-queue", [] as SyncQueueItem[]),
+        ),
+      );
     });
   }
 
@@ -69,6 +74,68 @@ export class OfflineLifeService {
 
   removeQueueItem(id: string) {
     this.updateQueue((queue) => queue.filter((item) => item.id !== id));
+  }
+
+  markQueueItemSyncing(id: string) {
+    this.updateQueue((queue) =>
+      queue.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              status: "syncing",
+              lastAttemptAt: new Date().toISOString(),
+              lastError: null,
+            }
+          : item,
+      ),
+    );
+  }
+
+  markQueueItemPending(id: string) {
+    this.updateQueue((queue) =>
+      queue.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              status: "pending",
+            }
+          : item,
+      ),
+    );
+  }
+
+  markQueueItemFailed(id: string, errorMessage: string) {
+    this.updateQueue((queue) =>
+      queue.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              status: "failed",
+              retryCount: item.retryCount + 1,
+              lastAttemptAt: new Date().toISOString(),
+              lastError: errorMessage,
+            }
+          : item,
+      ),
+    );
+  }
+
+  resetFailedQueueItems() {
+    this.updateQueue((queue) =>
+      queue.map((item) =>
+        item.status === "failed"
+          ? {
+              ...item,
+              status: "pending",
+              lastError: null,
+            }
+          : item,
+      ),
+    );
+  }
+
+  getReadyQueueSnapshot(now = Date.now()) {
+    return this.queueSignal().filter((item) => this.shouldAttemptSync(item, now));
   }
 
   replaceQueueRecordId(entity: SyncQueueItem["entity"], previousId: string, nextId: string) {
@@ -632,7 +699,7 @@ export class OfflineLifeService {
         {
           id: "offline-open-assistant",
           kind: "open_module",
-          title: "Abrir o assistente",
+          title: "Abrir o Selah",
           description: "Leva você para a conversa principal do Selah.",
           targetModule: "general",
           importance: "medium",
@@ -1142,12 +1209,21 @@ export class OfflineLifeService {
     );
   }
 
-  private enqueue(item: Omit<SyncQueueItem, "id" | "createdAt">) {
+  private enqueue(
+    item: Omit<
+      SyncQueueItem,
+      "id" | "createdAt" | "status" | "retryCount" | "lastAttemptAt" | "lastError"
+    >,
+  ) {
     this.updateQueue((queue) => [
       ...queue,
       {
         id: this.tempId("sync"),
         createdAt: new Date().toISOString(),
+        status: "pending",
+        retryCount: 0,
+        lastAttemptAt: null,
+        lastError: null,
         ...item,
       },
     ]);
@@ -1221,9 +1297,41 @@ export class OfflineLifeService {
   }
 
   private updateQueue(mutator: (queue: SyncQueueItem[]) => SyncQueueItem[]) {
-    const nextQueue = mutator([...this.queueSignal()]);
+    const nextQueue = this.normalizeQueue(mutator([...this.queueSignal()]));
     this.queueSignal.set(nextQueue);
     this.writeScopedValue("sync-queue", nextQueue);
+  }
+
+  private shouldAttemptSync(item: SyncQueueItem, now: number) {
+    if (item.status === "syncing") {
+      return false;
+    }
+
+    if (item.status === "pending") {
+      return true;
+    }
+
+    const baseDelayMs = 5_000;
+    const maxDelayMs = 60_000;
+    const retryDelayMs = Math.min(
+      maxDelayMs,
+      baseDelayMs * 2 ** Math.max(0, item.retryCount - 1),
+    );
+    const lastAttemptAt = item.lastAttemptAt
+      ? new Date(item.lastAttemptAt).getTime()
+      : 0;
+
+    return now - lastAttemptAt >= retryDelayMs;
+  }
+
+  private normalizeQueue(queue: SyncQueueItem[]) {
+    return queue.map((item) => ({
+      ...item,
+      status: item.status ?? "pending",
+      retryCount: item.retryCount ?? 0,
+      lastAttemptAt: item.lastAttemptAt ?? null,
+      lastError: item.lastError ?? null,
+    }));
   }
 
   private upsertById<T extends { id: string }>(items: T[], candidate: T) {

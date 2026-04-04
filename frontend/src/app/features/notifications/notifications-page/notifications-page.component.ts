@@ -1,6 +1,8 @@
 import { CommonModule } from "@angular/common";
-import { ChangeDetectionStrategy, Component, computed, inject } from "@angular/core";
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from "@angular/core";
 import { NotificationCenterService } from "../../../core/services/notification-center.service";
+
+type NotificationsSection = "inbox" | "reminders" | "preferences";
 
 @Component({
   selector: "app-notifications-page",
@@ -12,6 +14,7 @@ import { NotificationCenterService } from "../../../core/services/notification-c
 })
 export class NotificationsPageComponent {
   protected readonly notificationCenter = inject(NotificationCenterService);
+  protected readonly activeSection = signal<NotificationsSection>("inbox");
   protected readonly preferenceItems = [
     {
       id: "tasks",
@@ -30,8 +33,8 @@ export class NotificationsPageComponent {
     },
     {
       id: "assistant",
-      label: "Insights da IA",
-      description: "Receba análises e sugestões do assistente.",
+      label: "Leituras do Selah",
+      description: "Receba análises e sugestões do Selah.",
     },
   ];
   protected readonly nativeAlertsLabel = computed(() => {
@@ -63,5 +66,9 @@ export class NotificationsPageComponent {
       .notifications()
       .filter((item) => !item.isRead)
       .forEach((item) => this.notificationCenter.markAsRead(item.id));
+  }
+
+  protected setActiveSection(section: NotificationsSection) {
+    this.activeSection.set(section);
   }
 }

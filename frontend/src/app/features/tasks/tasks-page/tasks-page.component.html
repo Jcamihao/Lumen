@@ -4,6 +4,16 @@
       <h2>Tarefas</h2>
       <p>Gerencie suas prioridades e acompanhe o impacto financeiro de cada ação.</p>
     </div>
+
+    <div class="proto-header__action">
+      <a
+        class="proto-button proto-button--secondary"
+        routerLink="/assistant"
+        [queryParams]="{ prompt: 'Quais tarefas eu devo atacar primeiro hoje?', originModule: 'tasks' }"
+      >
+        Perguntar ao Selah
+      </a>
+    </div>
   </header>
 
   <section class="proto-grid proto-grid--metrics">
@@ -39,24 +49,6 @@
       <p>Impacto total estimado</p>
     </article>
   </section>
-
-  <article class="proto-surface">
-    <div class="proto-surface__body">
-      <div class="proto-list-item__top">
-        <div>
-          <strong>Selah dentro da fila</strong>
-          <p>Puxe o assistente já com contexto de tarefas para montar uma ordem de execução mais útil.</p>
-        </div>
-        <a
-          class="proto-button proto-button--secondary"
-          routerLink="/assistant"
-          [queryParams]="{ prompt: 'Quais tarefas eu devo atacar primeiro hoje?', originModule: 'tasks' }"
-        >
-          Perguntar ao Selah
-        </a>
-      </div>
-    </div>
-  </article>
 
   <section class="tasks-grid">
     <article class="proto-surface">

@@ -15,6 +15,28 @@
   gap: 1rem;
 }
 
+.notifications-sections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.notifications-sections__tab {
+  min-height: 2.35rem;
+  padding: 0.42rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--surface-panel-border);
+  background: var(--surface-panel);
+  color: var(--text-medium);
+  font-weight: 700;
+}
+
+.notifications-sections__tab--active {
+  background: var(--highlight-iris-bg);
+  border-color: color-mix(in srgb, var(--highlight-iris-fg) 22%, transparent);
+  color: var(--highlight-iris-fg);
+}
+
 .notification-card {
   background: var(--surface-panel);
 }

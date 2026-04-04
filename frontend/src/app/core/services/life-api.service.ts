@@ -31,6 +31,9 @@ export class LifeApiService {
 
   readonly offlineMode = computed(() => !this.networkService.isOnline());
   readonly pendingSyncCount = this.offlineLifeService.pendingSyncCount;
+  readonly failedSyncCount = this.offlineLifeService.failedSyncCount;
+  readonly activeSyncItemCount = this.offlineLifeService.activeSyncItemCount;
+  readonly syncQueueItems = this.offlineLifeService.syncQueueItems;
   readonly syncing = this.syncInFlight.asReadonly();
 
   constructor() {
@@ -44,6 +47,16 @@ export class LifeApiService {
         });
       }
     });
+  }
+
+  retryFailedSync() {
+    this.offlineLifeService.resetFailedQueueItems();
+
+    if (this.networkService.isOnline()) {
+      queueMicrotask(() => {
+        void this.flushPendingSync();
+      });
+    }
   }
 
   getDashboardSummary() {
@@ -559,19 +572,32 @@ export class LifeApiService {
       return;
     }
 
+    const readyItems = this.offlineLifeService.getReadyQueueSnapshot();
+
+    if (!readyItems.length) {
+      return;
+    }
+
     this.syncInFlight.set(true);
 
     try {
-      for (const item of this.offlineLifeService.getQueueSnapshot()) {
+      for (const item of readyItems) {
+        this.offlineLifeService.markQueueItemSyncing(item.id);
+
         try {
           await this.flushQueueItem(item);
           this.offlineLifeService.removeQueueItem(item.id);
         } catch (error) {
           if (this.shouldUseOfflineFallback(error)) {
+            this.offlineLifeService.markQueueItemPending(item.id);
             break;
           }
 
-          throw error;
+          this.offlineLifeService.markQueueItemFailed(
+            item.id,
+            this.getSyncErrorMessage(error),
+          );
+          break;
         }
       }
     } finally {
@@ -794,5 +820,29 @@ export class LifeApiService {
       );
       this.offlineLifeService.reconcileSupportRequest(request, item.recordId);
     }
+  }
+
+  private getSyncErrorMessage(error: unknown) {
+    if (typeof error === "object" && error !== null) {
+      const candidate = error as {
+        error?: { message?: string };
+        message?: string;
+        status?: number;
+      };
+
+      if (candidate.error?.message) {
+        return candidate.error.message;
+      }
+
+      if (candidate.message) {
+        return candidate.message;
+      }
+
+      if (candidate.status) {
+        return `Falha ao sincronizar (HTTP ${candidate.status}).`;
+      }
+    }
+
+    return "Falha ao sincronizar este item com o servidor.";
   }
 }

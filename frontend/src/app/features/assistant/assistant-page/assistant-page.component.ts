@@ -15,6 +15,8 @@ type AssistantMessage = {
   createdAt: string;
 };
 
+type AssistantReadingTab = "summary" | "actions" | "details";
+
 @Component({
   selector: "app-assistant-page",
   standalone: true,
@@ -44,6 +46,7 @@ export class AssistantPageComponent {
   protected readonly actionFeedback = signal<string | null>(null);
   protected readonly runningActionIds = signal<string[]>([]);
   protected readonly originModule = signal<AssistantModule | null>(null);
+  protected readonly readingTab = signal<AssistantReadingTab>("summary");
   protected readonly activeMessage = computed<AssistantMessage | null>(() => {
     const messages = this.history();
     const activeId = this.activeMessageId();
@@ -57,6 +60,25 @@ export class AssistantPageComponent {
   protected readonly recentMessages = computed(() =>
     this.history().slice(0, 8),
   );
+  protected readonly readingTabs = computed<AssistantReadingTab[]>(() => {
+    const message = this.activeMessage();
+
+    if (!message) {
+      return [];
+    }
+
+    const tabs: AssistantReadingTab[] = ["summary"];
+
+    if (this.hasActionContent(message.reply)) {
+      tabs.push("actions");
+    }
+
+    if (this.hasDetailContent(message.reply)) {
+      tabs.push("details");
+    }
+
+    return tabs;
+  });
   protected readonly offlineMode = this.api.offlineMode;
   protected readonly quickPrompts = computed(() => {
     const module = this.originModule();
@@ -134,7 +156,7 @@ export class AssistantPageComponent {
 
   protected originModuleLabel() {
     return {
-      dashboard: "Dashboard",
+      dashboard: "Início",
       tasks: "Tarefas",
       finances: "Finanças",
       goals: "Metas",
@@ -145,6 +167,7 @@ export class AssistantPageComponent {
 
   protected selectMessage(messageId: string) {
     this.activeMessageId.set(messageId);
+    this.readingTab.set("summary");
     this.persistHistorySnapshot(this.history(), messageId);
   }
 
@@ -179,7 +202,7 @@ export class AssistantPageComponent {
   }
 
   protected sourceLabel(reply: AssistantReply) {
-    return reply.source === "selah_ia" ? "Selah IA" : "Selah IA local";
+    return reply.source === "selah_ia" ? "IA externa" : "Modo local";
   }
 
   protected sourceTone(reply: AssistantReply) {
@@ -212,6 +235,40 @@ export class AssistantPageComponent {
 
   protected isRunningAction(actionId: string) {
     return this.runningActionIds().includes(actionId);
+  }
+
+  protected setReadingTab(tab: AssistantReadingTab) {
+    this.readingTab.set(tab);
+  }
+
+  protected readingTabLabel(tab: AssistantReadingTab) {
+    return {
+      summary: "Resumo",
+      actions: "Ações",
+      details: "Detalhes",
+    }[tab];
+  }
+
+  protected hasActionContent(reply: AssistantReply) {
+    return (
+      reply.suggestedActions.length > 0 ||
+      reply.actions.length > 0 ||
+      !!reply.continuity.nextQuestion ||
+      !!reply.continuity.followUpPrompt
+    );
+  }
+
+  protected hasDetailContent(reply: AssistantReply) {
+    return (
+      reply.proactiveSignals.length > 0 ||
+      reply.simulations.length > 0 ||
+      reply.explainability.reasoning.length > 0 ||
+      reply.explainability.evidence.length > 0 ||
+      !!reply.continuity.memorySummary ||
+      !!reply.continuity.followUpPrompt ||
+      !!reply.continuity.nextQuestion ||
+      !!reply.disclaimer
+    );
   }
 
   protected executeAction(action: AssistantAction) {
@@ -406,12 +463,13 @@ export class AssistantPageComponent {
           this.loading.set(false);
           this.history.set(nextHistory);
           this.activeMessageId.set(message.id);
+          this.readingTab.set("summary");
           this.persistHistorySnapshot(nextHistory, message.id);
         },
         error: () => {
           this.loading.set(false);
           this.errorMessage.set(
-            "Nao foi possivel consultar o assistente agora.",
+            "Nao foi possivel consultar o Selah agora.",
           );
         },
       });

@@ -44,6 +44,11 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'inicio',
+        pathMatch: 'full',
+        redirectTo: 'dashboard',
+      },
+      {
         path: 'tasks',
         loadComponent: () =>
           import('./features/tasks/tasks-page/tasks-page.component').then(
@@ -79,6 +84,16 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'selah',
+        pathMatch: 'full',
+        redirectTo: 'assistant',
+      },
+      {
+        path: 'assistente',
+        pathMatch: 'full',
+        redirectTo: 'assistant',
+      },
+      {
         path: 'notifications',
         loadComponent: () =>
           import('./features/notifications/notifications-page/notifications-page.component').then(
@@ -86,11 +101,21 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'alertas',
+        pathMatch: 'full',
+        redirectTo: 'notifications',
+      },
+      {
         path: 'imports',
         loadComponent: () =>
           import('./features/imports/imports-page/imports-page.component').then(
             (module) => module.ImportsPageComponent,
           ),
+      },
+      {
+        path: 'importar',
+        pathMatch: 'full',
+        redirectTo: 'imports',
       },
       {
         path: 'settings',
@@ -105,6 +130,11 @@ export const routes: Routes = [
           import('./features/support/support-page/support-page.component').then(
             (module) => module.SupportPageComponent,
           ),
+      },
+      {
+        path: 'ajuda',
+        pathMatch: 'full',
+        redirectTo: 'support',
       },
       { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
     ],

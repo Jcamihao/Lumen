@@ -3,9 +3,9 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signa
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { auditTime, fromEvent, map, startWith } from 'rxjs';
-import { AssistantPulse, DashboardSummary, Goal, Insight, Task, Transaction } from '../../../core/models/domain.models';
+import { DashboardSummary, Goal, Insight, Task, Transaction } from '../../../core/models/domain.models';
 import { LifeApiService } from '../../../core/services/life-api.service';
-import { formatLocalDateLabel } from '../../../core/utils/date.utils';
+import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
 
 @Component({
   selector: 'app-dashboard-page',
@@ -23,8 +23,8 @@ export class DashboardPageComponent {
   private readonly api = inject(LifeApiService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly scrollDepth = signal(0);
+  protected readonly showExtendedPanels = signal(false);
   protected readonly summary = signal<DashboardSummary | null>(null);
-  protected readonly assistantPulse = signal<AssistantPulse | null>(null);
   protected readonly parallaxOffset = computed(
     () => `${Math.min(this.scrollDepth(), 360) * 0.14}px`,
   );
@@ -38,11 +38,6 @@ export class DashboardPageComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((summary) => this.summary.set(summary));
 
-    this.api
-      .getAssistantPulse()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((pulse) => this.assistantPulse.set(pulse));
-
     if (typeof window !== 'undefined') {
       fromEvent(window, 'scroll', { passive: true }).pipe(
         startWith(0),
@@ -54,7 +49,19 @@ export class DashboardPageComponent {
   }
 
   protected greeting(name: string) {
-    return `${name}, seu dia já ganhou mais clareza.`;
+    return `${name}, aqui vai o essencial do seu dia.`;
+  }
+
+  protected dashboardSubtitle(data: DashboardSummary) {
+    if (data.tasks.overdueCount > 0) {
+      return `Você tem ${data.tasks.overdueCount} pendência(s) atrasada(s). O melhor agora é destravar uma coisa de cada vez.`;
+    }
+
+    if (data.tasks.todayCount > 0) {
+      return `Existem ${data.tasks.todayCount} tarefa(s) para hoje. O dashboard mostra só o que ajuda a começar.`;
+    }
+
+    return 'Seu painel ficou mais enxuto para destacar apenas o que pede atenção agora.';
   }
 
   protected todayLabel() {
@@ -80,12 +87,147 @@ export class DashboardPageComponent {
     return Math.min(Math.round((goal.currentAmount / goal.targetAmount) * 100), 100);
   }
 
+  protected todayTasks(data: DashboardSummary) {
+    const tasksForToday = data.tasks.items.filter((task) => {
+      if (!task.dueDate) {
+        return false;
+      }
+
+      return String(task.dueDate).slice(0, 10) === todayLocalInputValue();
+    });
+
+    return tasksForToday.length ? tasksForToday : data.tasks.items;
+  }
+
+  protected radarItemsCount(data: DashboardSummary) {
+    return data.reminders.length + data.notifications.length;
+  }
+
+  protected primaryFocusTitle(data: DashboardSummary) {
+    if (data.tasks.overdueCount > 0) {
+      return `${data.tasks.overdueCount} pendência(s) atrasada(s)`;
+    }
+
+    const task = this.todayTasks(data)[0];
+    if (task) {
+      return task.title;
+    }
+
+    if (data.forecast.riskLevel === 'HIGH') {
+      return 'Seu caixa merece revisao hoje';
+    }
+
+    return 'Seu dia esta sob controle';
+  }
+
+  protected primaryFocusText(data: DashboardSummary) {
+    if (data.tasks.overdueCount > 0) {
+      return 'Resolva a mais urgente antes de abrir novas frentes. Isso reduz a sensação de bagunça mais rápido.';
+    }
+
+    const task = this.todayTasks(data)[0];
+    if (task) {
+      return task.description || 'Essa é a tarefa mais concreta para começar sem pensar demais.';
+    }
+
+    if (data.forecast.riskLevel === 'HIGH') {
+      return 'As saídas e compromissos do período estão pressionando a previsão do mês.';
+    }
+
+    return 'Sem alertas fortes no momento. Você pode usar o app só para acompanhar o básico.';
+  }
+
+  protected primaryFocusAction(data: DashboardSummary) {
+    if (data.tasks.overdueCount > 0 || this.todayTasks(data)[0]) {
+      return 'Abrir tarefas';
+    }
+
+    if (data.forecast.riskLevel === 'HIGH') {
+      return 'Revisar caixa';
+    }
+
+    return 'Ver dashboard';
+  }
+
+  protected primaryFocusRoute(data: DashboardSummary) {
+    if (data.tasks.overdueCount > 0 || this.todayTasks(data)[0]) {
+      return '/tasks';
+    }
+
+    if (data.forecast.riskLevel === 'HIGH') {
+      return '/finance';
+    }
+
+    return '/dashboard';
+  }
+
+  protected primaryFocusTag(data: DashboardSummary) {
+    if (data.tasks.overdueCount > 0) {
+      return 'Urgente';
+    }
+
+    if (this.todayTasks(data)[0]) {
+      return 'Hoje';
+    }
+
+    if (data.forecast.riskLevel === 'HIGH') {
+      return 'Caixa';
+    }
+
+    return 'Calmo';
+  }
+
+  protected primaryFocusLabel(data: DashboardSummary) {
+    if (data.tasks.overdueCount > 0) {
+      return 'Primeiro, feche o que já atrasou.';
+    }
+
+    if (this.todayTasks(data)[0]) {
+      return 'Seu próximo passo mais claro.';
+    }
+
+    if (data.forecast.riskLevel === 'HIGH') {
+      return 'Vale revisar o financeiro antes de seguir.';
+    }
+
+    return 'Nada crítico pedindo ação imediata.';
+  }
+
+  protected primaryFocusTone(data: DashboardSummary) {
+    if (data.tasks.overdueCount > 0) {
+      return 'danger';
+    }
+
+    if (this.todayTasks(data)[0]) {
+      return 'accent';
+    }
+
+    if (data.forecast.riskLevel === 'HIGH') {
+      return 'warning';
+    }
+
+    return 'success';
+  }
+
+  protected financeSummaryText(data: DashboardSummary) {
+    const delta = this.projectionDelta(data);
+    return `Saldo atual em ${new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: data.user.preferredCurrency,
+      maximumFractionDigits: 0,
+    }).format(data.finances.balance)}. A projeção do mês aponta ${delta}.`;
+  }
+
   protected totalGoalCurrent(goals: Goal[]) {
     return goals.reduce((total, goal) => total + goal.currentAmount, 0);
   }
 
   protected totalGoalTarget(goals: Goal[]) {
     return goals.reduce((total, goal) => total + goal.targetAmount, 0);
+  }
+
+  protected toggleExtendedPanels() {
+    this.showExtendedPanels.update((value) => !value);
   }
 
   protected goalStatus(goal: Goal) {
@@ -211,18 +353,6 @@ export class DashboardPageComponent {
 
   protected projectionLabels() {
     return ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-  }
-
-  protected pulseSignalTone(signal: AssistantPulse['signals'][number]) {
-    if (signal.severity === 'critical') {
-      return 'danger';
-    }
-
-    if (signal.severity === 'warning') {
-      return 'warning';
-    }
-
-    return 'accent';
   }
 
 }

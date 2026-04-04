@@ -119,6 +119,26 @@ export type NotificationCenterEntry = {
   isRead: boolean;
 };
 
+export type OfflineSyncQueueItem = {
+  id: string;
+  entity:
+    | "task"
+    | "transaction"
+    | "goal"
+    | "user"
+    | "reminder"
+    | "notification"
+    | "supportRequest";
+  action: "create" | "update" | "delete" | "contribute" | "read";
+  recordId?: string;
+  payload?: Record<string, unknown>;
+  createdAt: string;
+  status: "pending" | "syncing" | "failed";
+  retryCount: number;
+  lastAttemptAt?: string | null;
+  lastError?: string | null;
+};
+
 export type DashboardSummary = {
   user: {
     id: string;

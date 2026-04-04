@@ -2,12 +2,12 @@
   <header class="proto-header">
     <div class="proto-header__copy">
       <div class="notifications-title-row">
-        <h2>Notificações</h2>
+        <h2>Alertas e lembretes</h2>
         <span class="proto-chip" *ngIf="notificationCenter.unreadCount()">
           {{ notificationCenter.unreadCount() }} novas
         </span>
       </div>
-      <p>Central de notificações, lembretes e alertas do dispositivo.</p>
+      <p>Veja avisos importantes e lembretes em um só lugar.</p>
     </div>
 
     <div class="proto-header__action">
@@ -43,12 +43,39 @@
     </article>
   </section>
 
-  <section class="notifications-grid">
+  <div class="notifications-sections">
+    <button
+      type="button"
+      class="notifications-sections__tab"
+      [class.notifications-sections__tab--active]="activeSection() === 'inbox'"
+      (click)="setActiveSection('inbox')"
+    >
+      Caixa de entrada
+    </button>
+    <button
+      type="button"
+      class="notifications-sections__tab"
+      [class.notifications-sections__tab--active]="activeSection() === 'reminders'"
+      (click)="setActiveSection('reminders')"
+    >
+      Lembretes
+    </button>
+    <button
+      type="button"
+      class="notifications-sections__tab"
+      [class.notifications-sections__tab--active]="activeSection() === 'preferences'"
+      (click)="setActiveSection('preferences')"
+    >
+      Preferências
+    </button>
+  </div>
+
+  <section class="notifications-grid" *ngIf="activeSection() === 'inbox'">
     <article class="proto-surface">
       <div class="proto-surface__head">
         <div>
-          <h3>Notificações do sistema</h3>
-          <p>Atualizações e alertas importantes do workspace.</p>
+          <h3>Caixa de entrada</h3>
+          <p>Atualizações e alertas importantes do Lumen.</p>
         </div>
       </div>
 
@@ -86,12 +113,14 @@
         </div>
       </ng-template>
     </article>
+  </section>
 
+  <section class="notifications-grid" *ngIf="activeSection() === 'reminders'">
     <article class="proto-surface">
       <div class="proto-surface__head">
         <div>
           <h3>Lembretes programados</h3>
-          <p>Tarefas e compromissos sincronizados com o dispositivo.</p>
+          <p>Tarefas e compromissos salvos no dispositivo.</p>
         </div>
       </div>
 
@@ -116,11 +145,11 @@
     </article>
   </section>
 
-  <article class="proto-surface">
+  <article class="proto-surface" *ngIf="activeSection() === 'preferences'">
     <div class="proto-surface__head">
       <div>
-        <h3>Alertas locais no dispositivo</h3>
-        <p>Configure notificações push e o comportamento dos avisos locais.</p>
+        <h3>Preferências de alertas</h3>
+        <p>Escolha como o Lumen avisa você no app e no dispositivo.</p>
       </div>
     </div>
 

@@ -21,6 +21,27 @@
 
   <main class="workspace-shell__content">
     <div class="workspace-shell__content-inner ambient-shell">
+      <section
+        *ngIf="showSyncBanner()"
+        class="workspace-shell__sync-banner"
+        [class.workspace-shell__sync-banner--warning]="syncBannerTone() === 'warning'"
+        [class.workspace-shell__sync-banner--offline]="syncBannerTone() === 'offline'"
+      >
+        <div class="workspace-shell__sync-copy">
+          <strong>{{ syncBannerTitle() }}</strong>
+          <p>{{ syncBannerMessage() }}</p>
+        </div>
+
+        <button
+          *ngIf="failedSyncCount() > 0"
+          type="button"
+          class="workspace-shell__sync-action"
+          (click)="retryFailedSync()"
+        >
+          Tentar de novo
+        </button>
+      </section>
+
       <div
         class="workspace-shell__page-stage"
         [class.workspace-shell__page-stage--a]="routeAnimationFlip()"

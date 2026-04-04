@@ -27,15 +27,15 @@ export class SidebarComponent {
 
   protected readonly authService = inject(AuthService);
   protected readonly navItems: NavItem[] = [
-    { label: 'Dashboard', icon: 'space_dashboard', route: '/dashboard', exact: true },
+    { label: 'Início', icon: 'space_dashboard', route: '/dashboard', exact: true },
     { label: 'Tarefas', icon: 'checklist', route: '/tasks' },
     { label: 'Finanças', icon: 'account_balance_wallet', route: '/finance' },
     { label: 'Metas', icon: 'flag', route: '/goals' },
-    { label: 'Selah IA', icon: 'auto_awesome', route: '/assistant' },
-    { label: 'Notificações', icon: 'notifications', route: '/notifications' },
-    { label: 'Importações', icon: 'upload_file', route: '/imports' },
+    { label: 'Selah', icon: 'auto_awesome', route: '/assistant' },
+    { label: 'Alertas', icon: 'notifications', route: '/notifications' },
+    { label: 'Importar', icon: 'upload_file', route: '/imports' },
     { label: 'Configurações', icon: 'settings', route: '/settings' },
-    { label: 'Suporte', icon: 'help', route: '/support' },
+    { label: 'Ajuda', icon: 'help', route: '/support' },
   ];
 
   protected requestClose() {
