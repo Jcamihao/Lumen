@@ -1,7 +1,9 @@
 import { ApplicationConfig, isDevMode, LOCALE_ID } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter, withInMemoryScrolling } from '@angular/router';
+import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideServiceWorker } from '@angular/service-worker';
+import { Capacitor } from '@capacitor/core';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { provideNativeStorageInitializer } from './core/services/native-storage.service';
 import { routes } from './app.routes';
@@ -12,6 +14,7 @@ export const appConfig: ApplicationConfig = {
       provide: LOCALE_ID,
       useValue: 'pt-BR',
     },
+    provideAnimations(),
     provideHttpClient(withInterceptors([authInterceptor])),
     provideRouter(
       routes,
@@ -21,7 +24,7 @@ export const appConfig: ApplicationConfig = {
     ),
     provideNativeStorageInitializer(),
     provideServiceWorker('ngsw-worker.js', {
-      enabled: !isDevMode(),
+      enabled: !isDevMode() && !Capacitor.isNativePlatform(),
       registrationStrategy: 'registerWhenStable:30000',
     }),
   ],

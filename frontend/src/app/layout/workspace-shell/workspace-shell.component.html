@@ -46,8 +46,9 @@
         class="workspace-shell__page-stage"
         [class.workspace-shell__page-stage--a]="routeAnimationFlip()"
         [class.workspace-shell__page-stage--b]="!routeAnimationFlip()"
+        [@pageTransition]="prepareRoute(outletRef)"
       >
-        <router-outlet></router-outlet>
+        <router-outlet #outletRef="outlet"></router-outlet>
       </div>
     </div>
   </main>

@@ -3,6 +3,11 @@ import { guestGuard, authGuard } from './core/guards/auth.guard';
 
 export const routes: Routes = [
   {
+    path: '',
+    pathMatch: 'full',
+    redirectTo: 'auth/login',
+  },
+  {
     path: 'login',
     pathMatch: 'full',
     redirectTo: 'auth/login',
@@ -136,7 +141,6 @@ export const routes: Routes = [
         pathMatch: 'full',
         redirectTo: 'support',
       },
-      { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
     ],
   },
   {

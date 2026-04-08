@@ -7,5 +7,5 @@ import { appConfig } from './app/app.config';
 registerLocaleData(localePt);
 
 bootstrapApplication(AppComponent, appConfig).catch((error) =>
-  console.error(error),
+  console.error('[Lumen bootstrap failed]', error),
 );

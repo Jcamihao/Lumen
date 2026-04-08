@@ -11,6 +11,7 @@ import {
   switchMap,
   take,
   tap,
+  timeout,
   throwError,
 } from "rxjs";
 import { environment } from "../../../environments/environment";
@@ -171,6 +172,7 @@ export class AuthService {
     this.restoreRequest$ = this.http
       .post<AuthResponse>(`${environment.apiBaseUrl}/auth/refresh`, this.buildRefreshPayload())
       .pipe(
+        timeout(6000),
         tap((response) => this.setSession(response)),
         map(() => true),
         catchError((error) => {

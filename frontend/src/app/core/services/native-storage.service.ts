@@ -189,8 +189,30 @@ export function provideNativeStorageInitializer() {
   return {
     provide: APP_INITIALIZER,
     multi: true,
-    useFactory: (nativeStorage: NativeStorageService) => () =>
-      nativeStorage.hydrateLocalCache(),
+    useFactory: (nativeStorage: NativeStorageService) => async () => {
+      const debug =
+        typeof window !== "undefined"
+          ? (
+              window as Window & {
+                __pushLumenBootDebug__?: (message: string) => void;
+              }
+            ).__pushLumenBootDebug__
+          : undefined;
+
+      debug?.("native-storage:init:start");
+
+      await Promise.race([
+        nativeStorage.hydrateLocalCache(),
+        new Promise<void>((resolve) => {
+          setTimeout(() => {
+            debug?.("native-storage:init:timeout");
+            resolve();
+          }, 1500);
+        }),
+      ]);
+
+      debug?.("native-storage:init:done");
+    },
     deps: [NativeStorageService],
   };
 }

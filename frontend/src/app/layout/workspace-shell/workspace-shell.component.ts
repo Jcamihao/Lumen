@@ -1,4 +1,12 @@
 import { CommonModule } from '@angular/common';
+import {
+  animate,
+  group,
+  query,
+  style,
+  transition,
+  trigger,
+} from '@angular/animations';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
@@ -14,6 +22,59 @@ import { SidebarComponent } from '../sidebar/sidebar.component';
   templateUrl: './workspace-shell.component.html',
   styleUrls: ['./workspace-shell.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  animations: [
+    trigger('pageTransition', [
+      transition('* <=> *', [
+        style({ position: 'relative' }),
+        query(
+          ':enter, :leave',
+          [
+            style({
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+            }),
+          ],
+          { optional: true },
+        ),
+        group([
+          query(
+            ':leave',
+            [
+              animate(
+                '220ms cubic-bezier(0.32, 0.72, 0, 1)',
+                style({
+                  opacity: 0,
+                  transform: 'translate3d(-1.4rem, 0, 0) scale(0.985)',
+                  filter: 'blur(6px)',
+                }),
+              ),
+            ],
+            { optional: true },
+          ),
+          query(
+            ':enter',
+            [
+              style({
+                opacity: 0,
+                transform: 'translate3d(1.4rem, 0, 0) scale(0.992)',
+                filter: 'blur(8px)',
+              }),
+              animate(
+                '360ms cubic-bezier(0.22, 1, 0.36, 1)',
+                style({
+                  opacity: 1,
+                  transform: 'translate3d(0, 0, 0) scale(1)',
+                  filter: 'blur(0)',
+                }),
+              ),
+            ],
+            { optional: true },
+          ),
+        ]),
+      ]),
+    ]),
+  ],
 })
 export class WorkspaceShellComponent {
   protected readonly mobileSidebarOpen = signal(false);
@@ -115,5 +176,9 @@ export class WorkspaceShellComponent {
 
   protected retryFailedSync() {
     this.api.retryFailedSync();
+  }
+
+  protected prepareRoute(outlet: RouterOutlet) {
+    return outlet.activatedRoute?.routeConfig?.path ?? this.router.url;
   }
 }

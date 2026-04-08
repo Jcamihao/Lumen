@@ -122,6 +122,8 @@
 .workspace-shell__page-stage {
   position: relative;
   min-height: calc(100dvh - 8rem);
+  isolation: isolate;
+  overflow: clip;
 }
 
 .workspace-shell__page-stage::before {

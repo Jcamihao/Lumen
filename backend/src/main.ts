@@ -21,6 +21,7 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const prismaService = app.get(PrismaService);
   const port = configService.get<number>('app.port', 3000);
+  const host = configService.get<string>('app.host', '0.0.0.0');
   const appUrl =
     configService.get<string>('app.appUrl') ?? `http://localhost:${port}`;
   const corsAllowedOrigins =
@@ -110,7 +111,7 @@ async function bootstrap() {
     });
   }
 
-  await app.listen(port);
+  await app.listen(port, host);
   logger.log(`LUMEN API running at ${appUrl}/api/v1`);
 }
 
