@@ -7,10 +7,10 @@ import {
   transition,
   trigger,
 } from '@angular/animations';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
-import { filter, map, startWith } from 'rxjs';
+import { filter, startWith } from 'rxjs';
 import { LifeApiService } from '../../core/services/life-api.service';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
@@ -81,14 +81,6 @@ export class WorkspaceShellComponent {
   protected readonly routeAnimationFlip = signal(false);
   private readonly router = inject(Router);
   private readonly api = inject(LifeApiService);
-  private readonly currentUrl = toSignal(
-    this.router.events.pipe(
-      filter((event): event is NavigationEnd => event instanceof NavigationEnd),
-      map(() => this.router.url),
-      startWith(this.router.url),
-    ),
-    { initialValue: this.router.url },
-  );
   protected readonly offlineMode = this.api.offlineMode;
   protected readonly syncing = this.api.syncing;
   protected readonly pendingSyncCount = this.api.pendingSyncCount;
@@ -149,17 +141,22 @@ export class WorkspaceShellComponent {
   constructor() {
     let isFirstRoute = true;
 
-    effect(() => {
-      this.currentUrl();
-      this.mobileSidebarOpen.set(false);
+    this.router.events
+      .pipe(
+        filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+        startWith(null),
+        takeUntilDestroyed(),
+      )
+      .subscribe(() => {
+        this.mobileSidebarOpen.set(false);
 
-      if (isFirstRoute) {
-        isFirstRoute = false;
-        return;
-      }
+        if (isFirstRoute) {
+          isFirstRoute = false;
+          return;
+        }
 
-      this.routeAnimationFlip.update((value) => !value);
-    });
+        this.routeAnimationFlip.update((value) => !value);
+      });
   }
 
   protected openMobileSidebar() {
@@ -179,6 +176,10 @@ export class WorkspaceShellComponent {
   }
 
   protected prepareRoute(outlet: RouterOutlet) {
+    if (!outlet.isActivated) {
+      return this.router.url;
+    }
+
     return outlet.activatedRoute?.routeConfig?.path ?? this.router.url;
   }
 }

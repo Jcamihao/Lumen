@@ -48,6 +48,12 @@ export class AuthService {
 
   readonly currentUser = computed(() => this.userSignal());
   readonly isAuthenticated = computed(() => !!this.accessTokenSignal());
+  readonly hasStoredSessionHint = computed(
+    () =>
+      !!this.accessTokenSignal() ||
+      !!this.refreshTokenSignal() ||
+      !!this.userSignal(),
+  );
   readonly hasSession = computed(
     () =>
       !!this.accessTokenSignal() ||

@@ -21,7 +21,7 @@ export class AppComponent {
   constructor() {
     this.themeService.mode();
 
-    if (!this.authService.hasSession()) {
+    if (!this.authService.hasStoredSessionHint()) {
       return;
     }
 
