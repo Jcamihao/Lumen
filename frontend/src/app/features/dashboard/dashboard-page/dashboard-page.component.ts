@@ -1,9 +1,8 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
-import { auditTime, fromEvent, map, startWith } from 'rxjs';
-import { DashboardSummary, Goal, Insight, Task, Transaction } from '../../../core/models/domain.models';
+import { DashboardSummary, Goal, Task, Transaction } from '../../../core/models/domain.models';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
 
@@ -14,42 +13,21 @@ import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/
   templateUrl: './dashboard-page.component.html',
   styleUrls: ['./dashboard-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: {
-    '[style.--dashboard-parallax]': 'parallaxOffset()',
-    '[style.--dashboard-parallax-soft]': 'parallaxSoftOffset()',
-  },
 })
 export class DashboardPageComponent {
   private readonly api = inject(LifeApiService);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly scrollDepth = signal(0);
-  protected readonly showExtendedPanels = signal(false);
   protected readonly summary = signal<DashboardSummary | null>(null);
-  protected readonly parallaxOffset = computed(
-    () => `${Math.min(this.scrollDepth(), 360) * 0.14}px`,
-  );
-  protected readonly parallaxSoftOffset = computed(
-    () => `${Math.min(this.scrollDepth(), 360) * 0.08}px`,
-  );
 
   constructor() {
     this.api
       .getDashboardSummary()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((summary) => this.summary.set(summary));
-
-    if (typeof window !== 'undefined') {
-      fromEvent(window, 'scroll', { passive: true }).pipe(
-        startWith(0),
-        auditTime(16),
-        map(() => window.scrollY || window.pageYOffset || 0),
-        takeUntilDestroyed(this.destroyRef),
-      ).subscribe((scrollY) => this.scrollDepth.set(scrollY));
-    }
   }
 
   protected greeting(name: string) {
-    return `${name}, aqui vai o essencial do seu dia.`;
+    return `Bom te ver, ${this.firstName(name)}.`;
   }
 
   protected dashboardSubtitle(data: DashboardSummary) {
@@ -61,14 +39,19 @@ export class DashboardPageComponent {
       return `Existem ${data.tasks.todayCount} tarefa(s) para hoje. O dashboard mostra só o que ajuda a começar.`;
     }
 
-    return 'Seu painel ficou mais enxuto para destacar apenas o que pede atenção agora.';
+    return 'A home organiza tarefas, caixa e metas em uma leitura única para começar com clareza.';
   }
 
   protected todayLabel() {
     return new Intl.DateTimeFormat('pt-BR', {
+      weekday: 'short',
       day: 'numeric',
       month: 'long',
     }).format(new Date());
+  }
+
+  protected firstName(name: string) {
+    return name.trim().split(/\s+/)[0] || 'por aqui';
   }
 
   protected riskLabel(level: DashboardSummary['forecast']['riskLevel']) {
@@ -101,6 +84,10 @@ export class DashboardPageComponent {
 
   protected radarItemsCount(data: DashboardSummary) {
     return data.reminders.length + data.notifications.length;
+  }
+
+  protected unreadNotifications(data: DashboardSummary) {
+    return data.notifications.filter((notification) => !notification.isRead).length;
   }
 
   protected primaryFocusTitle(data: DashboardSummary) {
@@ -147,6 +134,18 @@ export class DashboardPageComponent {
     }
 
     return 'Ver dashboard';
+  }
+
+  protected primaryFocusIcon(data: DashboardSummary) {
+    if (data.tasks.overdueCount > 0 || this.todayTasks(data)[0]) {
+      return 'task_alt';
+    }
+
+    if (data.forecast.riskLevel === 'HIGH') {
+      return 'account_balance_wallet';
+    }
+
+    return 'space_dashboard';
   }
 
   protected primaryFocusRoute(data: DashboardSummary) {
@@ -209,6 +208,22 @@ export class DashboardPageComponent {
     return 'success';
   }
 
+  protected assistantPrompt(data: DashboardSummary) {
+    if (data.tasks.overdueCount > 0) {
+      return 'Como eu destravo minhas tarefas atrasadas hoje?';
+    }
+
+    if (this.todayTasks(data)[0]) {
+      return 'Qual é a melhor ordem para executar minhas tarefas de hoje?';
+    }
+
+    if (data.forecast.riskLevel === 'HIGH') {
+      return 'O que eu preciso ajustar no meu caixa este mês?';
+    }
+
+    return 'O que merece minha atenção no Lumen hoje?';
+  }
+
   protected financeSummaryText(data: DashboardSummary) {
     const delta = this.projectionDelta(data);
     return `Saldo atual em ${new Intl.NumberFormat('pt-BR', {
@@ -226,8 +241,22 @@ export class DashboardPageComponent {
     return goals.reduce((total, goal) => total + goal.targetAmount, 0);
   }
 
-  protected toggleExtendedPanels() {
-    this.showExtendedPanels.update((value) => !value);
+  protected averageGoalProgress(goals: Goal[]) {
+    if (!goals.length) {
+      return 0;
+    }
+
+    const total = goals.reduce((sum, goal) => sum + this.progress(goal), 0);
+    return Math.round(total / goals.length);
+  }
+
+  protected dailyScore(data: DashboardSummary) {
+    const overduePenalty = Math.min(data.tasks.overdueCount * 16, 48);
+    const radarPenalty = Math.min(this.radarItemsCount(data) * 4, 20);
+    const financePenalty = data.forecast.riskLevel === 'HIGH' ? 22 : data.forecast.riskLevel === 'MEDIUM' ? 10 : 0;
+    const goalBoost = Math.min(Math.round(this.averageGoalProgress(data.goals) / 8), 10);
+
+    return Math.max(18, Math.min(98, 84 - overduePenalty - radarPenalty - financePenalty + goalBoost));
   }
 
   protected goalStatus(goal: Goal) {
@@ -297,18 +326,6 @@ export class DashboardPageComponent {
     return `${transaction.type === 'INCOME' ? '+' : '-'} ${formatted}`;
   }
 
-  protected severityTone(insight: Insight) {
-    if (insight.severity === 'CRITICAL') {
-      return 'danger';
-    }
-
-    if (insight.severity === 'WARNING') {
-      return 'warning';
-    }
-
-    return 'accent';
-  }
-
   protected forecastTone(level: DashboardSummary['forecast']['riskLevel']) {
     return {
       LOW: 'success',
@@ -355,4 +372,23 @@ export class DashboardPageComponent {
     return ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
   }
 
+  protected projectionBarHeight(data: DashboardSummary, value: number) {
+    const series = this.projectionSeries(data);
+    const min = Math.min(...series);
+    const max = Math.max(...series);
+
+    if (max === min) {
+      return 52;
+    }
+
+    return Math.round(28 + ((value - min) / (max - min)) * 68);
+  }
+
+  protected formatCurrency(value: number, currencyCode: string) {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: currencyCode,
+      maximumFractionDigits: 0,
+    }).format(value);
+  }
 }

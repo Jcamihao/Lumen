@@ -1,92 +1,128 @@
 <div class="proto-page dashboard-page stagger-reveal" *ngIf="summary() as data; else loadingState">
-  <span class="dashboard-page__parallax-orb dashboard-page__parallax-orb--warm" aria-hidden="true"></span>
-  <span class="dashboard-page__parallax-orb dashboard-page__parallax-orb--cool" aria-hidden="true"></span>
-
-  <header class="proto-header dashboard-page__header">
-    <div class="proto-header__copy">
-      <p class="section-kicker">Seu dia no Lumen</p>
+  <header class="home-header">
+    <div class="home-header__copy">
+      <p class="section-kicker">Início</p>
       <h2>{{ greeting(data.user.name) }}</h2>
       <p>{{ dashboardSubtitle(data) }}</p>
     </div>
 
-    <div class="proto-header__action">
+    <div class="home-header__actions">
       <span class="proto-chip">
-        <span class="material-symbols-rounded">schedule</span>
-        Hoje, {{ todayLabel() }}
+        <span class="material-symbols-rounded">calendar_today</span>
+        {{ todayLabel() }}
       </span>
+
+      <a class="proto-button proto-button--secondary" routerLink="/assistant">
+        <span class="material-symbols-rounded">auto_awesome</span>
+        Selah
+      </a>
     </div>
   </header>
 
-  <section class="dashboard-focus">
-    <article class="proto-surface dashboard-focus__card dashboard-focus__card--primary">
-      <div class="proto-surface__head">
-        <div>
-          <h3>Comece por aqui</h3>
-          <p>{{ primaryFocusLabel(data) }}</p>
-        </div>
+  <section class="proto-hero home-command" [attr.data-tone]="primaryFocusTone(data)">
+    <div class="home-command__main">
+      <span class="home-command__eyebrow">Prioridade agora</span>
+      <h3>{{ primaryFocusTitle(data) }}</h3>
+      <p>{{ primaryFocusText(data) }}</p>
+
+      <div class="proto-actions-row home-command__actions">
+        <a class="proto-button" [routerLink]="primaryFocusRoute(data)">
+          <span class="material-symbols-rounded">{{ primaryFocusIcon(data) }}</span>
+          {{ primaryFocusAction(data) }}
+        </a>
+
+        <a
+          class="proto-button proto-button--secondary"
+          routerLink="/assistant"
+          [queryParams]="{ prompt: assistantPrompt(data), originModule: 'dashboard' }"
+        >
+          Perguntar ao Selah
+        </a>
+      </div>
+    </div>
+
+    <aside class="home-command__panel" aria-label="Resumo rápido">
+      <div class="home-command__panel-top">
         <span class="proto-tag" [attr.data-tone]="primaryFocusTone(data)">
           {{ primaryFocusTag(data) }}
         </span>
+        <span>{{ primaryFocusLabel(data) }}</span>
       </div>
 
-      <div class="proto-surface__body dashboard-focus__body">
-        <strong class="dashboard-focus__headline">{{ primaryFocusTitle(data) }}</strong>
-        <p>{{ primaryFocusText(data) }}</p>
-
-        <div class="proto-actions-row">
-          <a class="proto-button" [routerLink]="primaryFocusRoute(data)">
-            {{ primaryFocusAction(data) }}
-          </a>
-
-          <a class="proto-button proto-button--secondary" routerLink="/assistant">
-            Abrir o Selah
-          </a>
-        </div>
+      <div class="home-score">
+        <strong>{{ dailyScore(data) }}</strong>
+        <span>pontos de clareza</span>
       </div>
-    </article>
 
-    <article class="proto-surface dashboard-focus__card">
-      <div class="proto-surface__head">
-        <div>
-          <h3>Caixa do mês</h3>
-          <p>Leitura direta do seu financeiro.</p>
-        </div>
-        <span class="proto-tag" [attr.data-tone]="forecastTone(data.forecast.riskLevel)">
-          {{ riskLabel(data.forecast.riskLevel) }}
+      <div class="home-command__mini-grid">
+        <span>
+          <strong>{{ data.tasks.todayCount }}</strong>
+          hoje
+        </span>
+        <span>
+          <strong>{{ radarItemsCount(data) }}</strong>
+          radar
+        </span>
+        <span>
+          <strong>{{ riskLabel(data.forecast.riskLevel) }}</strong>
+          caixa
         </span>
       </div>
+    </aside>
+  </section>
 
-      <div class="proto-surface__body dashboard-stat">
-        <strong>
-          {{ data.forecast.predictedBalance | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}
-        </strong>
-        <p>{{ financeSummaryText(data) }}</p>
-        <a class="proto-button proto-button--ghost" routerLink="/finance">Abrir finanças</a>
-      </div>
-    </article>
+  <section class="proto-grid proto-grid--metrics home-metrics" aria-label="Indicadores da home">
+    <a class="proto-metric home-metric" routerLink="/tasks" [attr.data-tone]="data.tasks.overdueCount > 0 ? 'danger' : 'accent'">
+      <span class="home-metric__icon material-symbols-rounded">checklist</span>
+      <strong>{{ data.tasks.todayCount }}</strong>
+      <span>Tarefas para hoje</span>
+      <small>{{ data.tasks.overdueCount }} atrasada(s)</small>
+    </a>
 
-    <article class="proto-surface dashboard-focus__card">
-      <div class="proto-surface__head">
+    <a class="proto-metric home-metric" routerLink="/finance" [attr.data-tone]="forecastTone(data.forecast.riskLevel)">
+      <span class="home-metric__icon material-symbols-rounded">account_balance_wallet</span>
+      <strong>{{ data.forecast.predictedBalance | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
+      <span>Previsão do mês</span>
+      <small>{{ projectionDelta(data) }} vs. saldo atual</small>
+    </a>
+
+    <a class="proto-metric home-metric" routerLink="/goals" data-tone="success">
+      <span class="home-metric__icon material-symbols-rounded">flag</span>
+      <strong>{{ averageGoalProgress(data.goals) }}%</strong>
+      <span>Progresso das metas</span>
+      <small>{{ data.goals.length }} meta(s) ativa(s)</small>
+    </a>
+
+    <a class="proto-metric home-metric" routerLink="/notifications" [attr.data-tone]="radarItemsCount(data) > 0 ? 'warning' : 'success'">
+      <span class="home-metric__icon material-symbols-rounded">notifications_active</span>
+      <strong>{{ radarItemsCount(data) }}</strong>
+      <span>Itens no radar</span>
+      <small>{{ unreadNotifications(data) }} alerta(s) novo(s)</small>
+    </a>
+  </section>
+
+  <section class="home-workspace">
+    <article class="proto-surface home-lane home-lane--tasks">
+      <div class="home-section-head">
         <div>
-          <h3>Hoje</h3>
-          <p>{{ data.tasks.todayCount }} tarefa(s) para hoje.</p>
+          <span>01</span>
+          <h3>Próximas ações</h3>
+          <p>{{ data.tasks.todayCount }} tarefa(s) pedindo espaço hoje.</p>
         </div>
         <a class="proto-button proto-button--ghost" routerLink="/tasks">Abrir tarefas</a>
       </div>
 
-      <div class="proto-surface__body" *ngIf="todayTasks(data).length; else noTodayTasks">
-        <div class="proto-list">
-          <article class="proto-list-item" *ngFor="let task of todayTasks(data) | slice:0:3">
-            <div class="proto-list-item__top">
-              <strong>{{ task.title }}</strong>
-              <span class="proto-tag" [attr.data-tone]="priorityTone(task.priority)">{{ priorityLabel(task.priority) }}</span>
-            </div>
-            <p>{{ taskSubtitle(task) }}</p>
-            <div class="proto-list-item__meta-row">
-              <span class="proto-list-item__meta">{{ taskMeta(task) }}</span>
-            </div>
-          </article>
-        </div>
+      <div class="home-list" *ngIf="todayTasks(data).length; else noTodayTasks">
+        <a class="proto-list-item home-task" routerLink="/tasks" *ngFor="let task of todayTasks(data) | slice:0:4">
+          <span class="home-task__status" [attr.data-tone]="priorityTone(task.priority)"></span>
+          <span class="home-task__copy">
+            <strong>{{ task.title }}</strong>
+            <small>{{ taskMeta(task) }}</small>
+          </span>
+          <span class="proto-tag" [attr.data-tone]="priorityTone(task.priority)">
+            {{ priorityLabel(task.priority) }}
+          </span>
+        </a>
       </div>
 
       <ng-template #noTodayTasks>
@@ -96,74 +132,73 @@
         </div>
       </ng-template>
     </article>
-  </section>
 
-  <section class="dashboard-more">
-    <button type="button" class="proto-button proto-button--secondary" (click)="toggleExtendedPanels()">
-      {{ showExtendedPanels() ? 'Mostrar menos do workspace' : 'Ver alertas, metas e movimentações' }}
-    </button>
-  </section>
-
-  <section class="dashboard-grid" *ngIf="showExtendedPanels()">
-    <article class="proto-surface">
-      <div class="proto-surface__head">
+    <article class="proto-surface home-lane home-lane--finance">
+      <div class="home-section-head">
         <div>
-          <h3>Alertas</h3>
-          <p>O que ainda precisa da sua atencao.</p>
+          <span>02</span>
+          <h3>Pulso financeiro</h3>
+          <p>{{ financeSummaryText(data) }}</p>
         </div>
-        <a class="proto-button proto-button--ghost" routerLink="/notifications">Abrir alertas</a>
+        <a class="proto-button proto-button--ghost" routerLink="/finance">Abrir finanças</a>
       </div>
 
-      <div class="proto-surface__body" *ngIf="radarItemsCount(data) > 0; else noRadar">
-        <div class="proto-list">
-          <article class="proto-list-item" *ngFor="let reminder of data.reminders | slice:0:2">
-            <div class="proto-list-item__top">
-              <strong>{{ reminder.title }}</strong>
-              <span class="proto-tag">Lembrete</span>
-            </div>
-            <p>{{ reminder.remindAt | date: 'dd/MM HH:mm' }}</p>
-          </article>
-
-          <article class="proto-list-item" *ngFor="let notification of data.notifications | slice:0:2">
-            <div class="proto-list-item__top">
-              <strong>{{ notification.title }}</strong>
-              <span class="proto-tag">Alerta</span>
-            </div>
-            <p>{{ notification.message }}</p>
-          </article>
+      <div class="home-chart" aria-label="Projeção financeira da semana">
+        <div class="home-chart__bars">
+          <span
+            *ngFor="let value of projectionSeries(data); let index = index"
+            [style.height.%]="projectionBarHeight(data, value)"
+            [attr.aria-label]="projectionLabels()[index] + ': ' + formatCurrency(value, data.user.preferredCurrency)"
+          ></span>
+        </div>
+        <div class="home-chart__labels">
+          <span *ngFor="let label of projectionLabels()">{{ label }}</span>
         </div>
       </div>
 
-      <ng-template #noRadar>
+      <div class="home-transactions" *ngIf="data.finances.recentTransactions.length; else noTransactions">
+        <article class="proto-list-item home-transaction" *ngFor="let transaction of data.finances.recentTransactions | slice:0:3">
+          <span>
+            <strong>{{ transaction.description }}</strong>
+            <small>{{ transactionSubtitle(transaction) }}</small>
+          </span>
+          <strong [attr.data-tone]="transaction.type === 'INCOME' ? 'success' : transaction.type === 'EXPENSE' ? 'danger' : 'accent'">
+            {{ transactionAmount(transaction, data.user.preferredCurrency) }}
+          </strong>
+        </article>
+      </div>
+
+      <ng-template #noTransactions>
         <div class="proto-empty">
-          <strong>Tudo calmo por aqui</strong>
-          <p>Sem lembretes ou alertas pendentes agora.</p>
+          <strong>Sem movimentações</strong>
+          <p>As últimas entradas e saídas vão aparecer aqui.</p>
         </div>
       </ng-template>
     </article>
+  </section>
 
-    <article class="proto-surface">
-      <div class="proto-surface__head">
+  <section class="home-secondary">
+    <article class="proto-surface home-lane">
+      <div class="home-section-head">
         <div>
-          <h3>Metas</h3>
+          <span>03</span>
+          <h3>Metas em movimento</h3>
           <p>{{ data.goals.length }} objetivo(s) em acompanhamento.</p>
         </div>
         <a class="proto-button proto-button--ghost" routerLink="/goals">Ver metas</a>
       </div>
 
-      <div class="proto-surface__body" *ngIf="data.goals.length; else noGoals">
-        <div class="proto-list">
-          <article class="proto-list-item" *ngFor="let goal of data.goals | slice:0:3">
-            <div class="proto-list-item__top">
-              <strong>{{ goal.title }}</strong>
-              <span class="proto-tag">{{ goalStatus(goal) }}</span>
-            </div>
-            <p>{{ goal.targetDate ? (goal.targetDate | date: 'dd/MM/yyyy') : 'Sem prazo alvo' }}</p>
-            <div class="proto-progress">
-              <span [style.width.%]="progress(goal)"></span>
-            </div>
-          </article>
-        </div>
+      <div class="home-list" *ngIf="data.goals.length; else noGoals">
+        <article class="proto-list-item home-goal" *ngFor="let goal of data.goals | slice:0:3">
+          <div class="home-goal__top">
+            <strong>{{ goal.title }}</strong>
+            <span>{{ progress(goal) }}%</span>
+          </div>
+          <div class="proto-progress">
+            <span [style.width.%]="progress(goal)"></span>
+          </div>
+          <small>{{ goal.targetDate ? (goal.targetDate | date: 'dd/MM/yyyy') : 'Sem prazo alvo' }}</small>
+        </article>
       </div>
 
       <ng-template #noGoals>
@@ -174,31 +209,38 @@
       </ng-template>
     </article>
 
-    <article class="proto-surface">
-      <div class="proto-surface__head">
+    <article class="proto-surface home-lane">
+      <div class="home-section-head">
         <div>
-          <h3>Movimentacoes recentes</h3>
-          <p>Ultimas entradas e saidas.</p>
+          <span>04</span>
+          <h3>Radar</h3>
+          <p>Alertas, lembretes e sinais do Lumen.</p>
         </div>
-        <a class="proto-button proto-button--ghost" routerLink="/finance">Abrir finanças</a>
+        <a class="proto-button proto-button--ghost" routerLink="/notifications">Abrir alertas</a>
       </div>
 
-      <div class="proto-surface__body" *ngIf="data.finances.recentTransactions.length; else noTransactions">
-        <div class="proto-list">
-          <article class="proto-list-item" *ngFor="let transaction of data.finances.recentTransactions | slice:0:4">
-            <div class="proto-list-item__top">
-              <strong>{{ transaction.description }}</strong>
-              <strong>{{ transactionAmount(transaction, data.user.preferredCurrency) }}</strong>
-            </div>
-            <p>{{ transactionSubtitle(transaction) }}</p>
-          </article>
-        </div>
+      <div class="home-list" *ngIf="radarItemsCount(data) > 0; else noRadar">
+        <article class="proto-list-item home-radar" *ngFor="let reminder of data.reminders | slice:0:2">
+          <span class="material-symbols-rounded">event_upcoming</span>
+          <div>
+            <strong>{{ reminder.title }}</strong>
+            <p>{{ reminder.remindAt | date: 'dd/MM HH:mm' }}</p>
+          </div>
+        </article>
+
+        <article class="proto-list-item home-radar" *ngFor="let notification of data.notifications | slice:0:2">
+          <span class="material-symbols-rounded">campaign</span>
+          <div>
+            <strong>{{ notification.title }}</strong>
+            <p>{{ notification.message }}</p>
+          </div>
+        </article>
       </div>
 
-      <ng-template #noTransactions>
+      <ng-template #noRadar>
         <div class="proto-empty">
-          <strong>Sem movimentacoes</strong>
-          <p>As ultimas entradas e saidas vao aparecer aqui.</p>
+          <strong>Tudo calmo por aqui</strong>
+          <p>Sem lembretes ou alertas pendentes agora.</p>
         </div>
       </ng-template>
     </article>
@@ -206,10 +248,10 @@
 </div>
 
 <ng-template #loadingState>
-  <div class="proto-page">
+  <div class="proto-page dashboard-page dashboard-page--loading">
     <div class="proto-empty">
-      <strong>Carregando dashboard</strong>
-      <p>O Lumen esta montando a visao do seu dia.</p>
+      <strong>Carregando início</strong>
+      <p>O Lumen está montando a visão do seu dia.</p>
     </div>
   </div>
 </ng-template>
