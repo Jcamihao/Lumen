@@ -29,7 +29,7 @@
 
 .proto-sidebar--mobile {
   box-sizing: border-box;
-  padding-bottom: calc(6.8rem + var(--safe-bottom));
+  padding-bottom: calc(5.7rem + var(--safe-bottom));
   background:
     radial-gradient(circle at top left, color-mix(in srgb, white 5%, transparent), transparent 18rem),
     linear-gradient(180deg, var(--sidebar-shell-start), color-mix(in srgb, var(--sidebar-shell-end) 94%, black 6%));
@@ -229,7 +229,85 @@
 }
 
 @media (max-width: 420px) {
+  .proto-sidebar--mobile {
+    gap: 0.9rem;
+    padding: 1rem 1rem calc(5.15rem + var(--safe-bottom));
+  }
+
+  .proto-sidebar__top {
+    gap: 0.7rem;
+    padding-bottom: 0.85rem;
+  }
+
+  .proto-sidebar__brand-logo {
+    width: 3.4rem;
+  }
+
+  .proto-sidebar__brand-copy span {
+    font-size: 0.68rem;
+  }
+
+  .proto-sidebar__nav-block {
+    gap: 0.55rem;
+  }
+
+  .proto-sidebar__nav {
+    gap: 0.28rem;
+  }
+
+  .proto-sidebar__link {
+    min-height: 2.55rem;
+    padding: 0.62rem 0.8rem;
+    border-radius: 0.95rem;
+    font-size: 0.9rem;
+  }
+
+  .proto-sidebar__atelier {
+    gap: 0.45rem;
+    padding: 0.8rem 0.85rem;
+    border-radius: 1.1rem;
+  }
+
+  .proto-sidebar__atelier-tag {
+    min-height: 1.65rem;
+    padding-inline: 0.62rem;
+    font-size: 0.67rem;
+  }
+
+  .proto-sidebar__atelier strong {
+    font-size: 0.92rem;
+    line-height: 1.25;
+  }
+
+  .proto-sidebar__atelier p {
+    font-size: 0.79rem;
+    line-height: 1.35;
+  }
+
+  .proto-sidebar__profile {
+    padding-top: 0.5rem;
+  }
+
   .proto-sidebar__logout {
     width: 100%;
+    min-height: 2.55rem;
+    padding-block: 0.65rem;
+    font-size: 0.84rem;
+  }
+}
+
+@media (max-width: 420px) and (max-height: 780px) {
+  .proto-sidebar__atelier p {
+    display: none;
+  }
+
+  .proto-sidebar__atelier {
+    gap: 0.35rem;
+    padding: 0.72rem 0.8rem;
+  }
+
+  .proto-sidebar__link {
+    min-height: 2.45rem;
+    padding-block: 0.56rem;
   }
 }

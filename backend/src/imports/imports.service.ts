@@ -95,6 +95,28 @@ type ReceiptCategoryBreakdownItem = {
   itemCount: number;
 };
 
+type ReceiptItemPriceHistoryEntry = {
+  merchantName: string | null;
+  purchaseDate: string | null;
+  unitPrice: number;
+  quantity: number;
+  totalPrice: number;
+};
+
+type ReceiptItemPriceComparison = {
+  matchKey: string;
+  historyCount: number;
+  lowestUnitPrice: number;
+  averageUnitPrice: number;
+  latestUnitPrice: number;
+  cheapestMerchantName: string | null;
+  cheapestPurchaseDate: string | null;
+  currentUnitPrice: number | null;
+  currentVsLowestAmount: number | null;
+  currentVsLowestPercent: number | null;
+  history: ReceiptItemPriceHistoryEntry[];
+};
+
 @Injectable()
 export class ImportsService {
   constructor(
@@ -837,6 +859,17 @@ export class ImportsService {
       .trim();
   }
 
+  private normalizeReceiptItemMatchKey(value: string) {
+    return this.normalizeReceiptItemDescription(value)
+      .replace(/[^A-Za-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .map((token) => this.normalizeText(token))
+      .filter(Boolean)
+      .filter((token) => !['de', 'da', 'do', 'e', 'com'].includes(token))
+      .sort()
+      .join(' ');
+  }
+
   private inferReceiptItemCategory(description: string, aiHint: string | null) {
     const normalizedHint = this.normalizeProductHint(aiHint);
     if (normalizedHint) {
@@ -1073,12 +1106,33 @@ export class ImportsService {
       .trim();
   }
 
+  private resolveComparableUnitPrice(
+    quantity: number,
+    unitPrice: number | null,
+    totalPrice: number,
+  ) {
+    if (unitPrice !== null && Number.isFinite(unitPrice) && unitPrice >= 0) {
+      return unitPrice;
+    }
+
+    if (Number.isFinite(quantity) && quantity > 0 && Number.isFinite(totalPrice)) {
+      return totalPrice / quantity;
+    }
+
+    return null;
+  }
+
+  private roundCurrency(value: number) {
+    return Number(value.toFixed(2));
+  }
+
   private previewData(receiptScan: { previewData: Prisma.JsonValue | null }) {
     return (receiptScan.previewData || {}) as ReceiptPreviewData;
   }
 
-  private serializeReceiptPreview(receiptScan: {
+  private async serializeReceiptPreview(receiptScan: {
     id: string;
+    userId: string;
     fileName: string;
     merchantName: string | null;
     purchaseDate: Date | null;
@@ -1096,6 +1150,17 @@ export class ImportsService {
     previewData: Prisma.JsonValue | null;
   }) {
     const previewData = this.previewData(receiptScan);
+    const normalizedItems = receiptScan.items.map((item) => ({
+      description: item.description,
+      quantity: Number(item.quantity),
+      unitPrice: item.unitPrice !== null ? Number(item.unitPrice) : null,
+      totalPrice: Number(item.totalPrice),
+    }));
+    const itemComparisons = await this.buildReceiptItemPriceComparisons(
+      receiptScan.userId,
+      receiptScan.id,
+      normalizedItems,
+    );
     const categoryBreakdown = this.buildReceiptCategoryBreakdown(
       receiptScan.items.map((item, index) => ({
         categoryHint: previewData.itemCategoryHints?.[index] || null,
@@ -1141,8 +1206,136 @@ export class ImportsService {
         unitPrice: item.unitPrice !== null ? Number(item.unitPrice) : null,
         totalPrice: Number(item.totalPrice),
         categoryHint: previewData.itemCategoryHints?.[index] || null,
+        priceComparison: itemComparisons[index] || null,
       })),
     };
+  }
+
+  private async buildReceiptItemPriceComparisons(
+    userId: string,
+    receiptScanId: string,
+    items: Array<{
+      description: string;
+      quantity: number;
+      unitPrice: number | null;
+      totalPrice: number;
+    }>,
+  ): Promise<Array<ReceiptItemPriceComparison | null>> {
+    const historicalItems = await this.prisma.receiptScanItem.findMany({
+      where: {
+        receiptScan: {
+          userId,
+          status: ReceiptScanStatus.IMPORTED,
+          id: {
+            not: receiptScanId,
+          },
+        },
+      },
+      select: {
+        description: true,
+        quantity: true,
+        unitPrice: true,
+        totalPrice: true,
+        receiptScan: {
+          select: {
+            merchantName: true,
+            purchaseDate: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    const historyByKey = new Map<
+      string,
+      Array<
+        ReceiptItemPriceHistoryEntry & {
+          sortDate: Date;
+        }
+      >
+    >();
+
+    for (const item of historicalItems) {
+      const matchKey = this.normalizeReceiptItemMatchKey(item.description);
+      const comparableUnitPrice = this.resolveComparableUnitPrice(
+        Number(item.quantity),
+        item.unitPrice !== null ? Number(item.unitPrice) : null,
+        Number(item.totalPrice),
+      );
+
+      if (!matchKey || comparableUnitPrice === null) {
+        continue;
+      }
+
+      const historyEntry = {
+        merchantName: item.receiptScan.merchantName,
+        purchaseDate:
+          item.receiptScan.purchaseDate?.toISOString() ??
+          item.receiptScan.createdAt.toISOString(),
+        unitPrice: comparableUnitPrice,
+        quantity: Number(item.quantity),
+        totalPrice: Number(item.totalPrice),
+        sortDate: item.receiptScan.purchaseDate ?? item.receiptScan.createdAt,
+      };
+      const currentEntries = historyByKey.get(matchKey) || [];
+      currentEntries.push(historyEntry);
+      historyByKey.set(matchKey, currentEntries);
+    }
+
+    for (const entries of historyByKey.values()) {
+      entries.sort((left, right) => right.sortDate.getTime() - left.sortDate.getTime());
+    }
+
+    return items.map((item) => {
+      const matchKey = this.normalizeReceiptItemMatchKey(item.description);
+      const historyEntries = historyByKey.get(matchKey) || [];
+
+      if (!historyEntries.length) {
+        return null;
+      }
+
+      const cheapestEntry = historyEntries.reduce((best, current) =>
+        current.unitPrice < best.unitPrice ? current : best,
+      );
+      const latestEntry = historyEntries[0];
+      const currentUnitPrice = this.resolveComparableUnitPrice(
+        item.quantity,
+        item.unitPrice,
+        item.totalPrice,
+      );
+      const averageUnitPrice =
+        historyEntries.reduce((total, current) => total + current.unitPrice, 0) /
+        historyEntries.length;
+
+      return {
+        matchKey,
+        historyCount: historyEntries.length,
+        lowestUnitPrice: this.roundCurrency(cheapestEntry.unitPrice),
+        averageUnitPrice: this.roundCurrency(averageUnitPrice),
+        latestUnitPrice: this.roundCurrency(latestEntry.unitPrice),
+        cheapestMerchantName: cheapestEntry.merchantName,
+        cheapestPurchaseDate: cheapestEntry.purchaseDate,
+        currentUnitPrice:
+          currentUnitPrice !== null ? this.roundCurrency(currentUnitPrice) : null,
+        currentVsLowestAmount:
+          currentUnitPrice !== null
+            ? this.roundCurrency(currentUnitPrice - cheapestEntry.unitPrice)
+            : null,
+        currentVsLowestPercent:
+          currentUnitPrice !== null && cheapestEntry.unitPrice > 0
+            ? this.roundCurrency(
+                ((currentUnitPrice - cheapestEntry.unitPrice) /
+                  cheapestEntry.unitPrice) *
+                  100,
+              )
+            : null,
+        history: historyEntries.slice(0, 4).map(({ sortDate: _sortDate, ...entry }) => ({
+          ...entry,
+          unitPrice: this.roundCurrency(entry.unitPrice),
+          totalPrice: this.roundCurrency(entry.totalPrice),
+        })),
+      };
+    });
   }
 
   private buildReceiptCategoryBreakdown(

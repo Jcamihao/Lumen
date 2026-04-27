@@ -157,7 +157,7 @@ export class DashboardPageComponent {
       return '/finance';
     }
 
-    return '/dashboard';
+    return null;
   }
 
   protected primaryFocusTag(data: DashboardSummary) {

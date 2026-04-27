@@ -298,6 +298,29 @@ export type ReceiptImportItem = {
   unitPrice: number | null;
   totalPrice: number;
   categoryHint?: string | null;
+  priceComparison?: ReceiptImportItemPriceComparison | null;
+};
+
+export type ReceiptImportItemPriceHistoryEntry = {
+  merchantName: string | null;
+  purchaseDate: string | null;
+  unitPrice: number;
+  quantity: number;
+  totalPrice: number;
+};
+
+export type ReceiptImportItemPriceComparison = {
+  matchKey: string;
+  historyCount: number;
+  lowestUnitPrice: number;
+  averageUnitPrice: number;
+  latestUnitPrice: number;
+  cheapestMerchantName: string | null;
+  cheapestPurchaseDate: string | null;
+  currentUnitPrice: number | null;
+  currentVsLowestAmount: number | null;
+  currentVsLowestPercent: number | null;
+  history: ReceiptImportItemPriceHistoryEntry[];
 };
 
 export type ReceiptImportPreview = {

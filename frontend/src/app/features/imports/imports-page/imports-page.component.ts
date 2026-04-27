@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import {
   ImportPreview,
   ReceiptImportItem,
+  ReceiptImportItemPriceComparison,
   ReceiptImportPreview,
 } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
@@ -204,6 +205,59 @@ export class ImportsPageComponent {
       currency: 'BRL',
       maximumFractionDigits: 2,
     }).format(Number(amount || 0));
+  }
+
+  protected comparisonHistoryLabel(comparison: ReceiptImportItemPriceComparison) {
+    return `${comparison.historyCount} compra(s) parecida(s) salva(s)`;
+  }
+
+  protected comparisonSummary(comparison: ReceiptImportItemPriceComparison) {
+    const merchantName = comparison.cheapestMerchantName || 'estabelecimento anterior';
+    const purchaseDate = comparison.cheapestPurchaseDate
+      ? new Intl.DateTimeFormat('pt-BR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        }).format(new Date(comparison.cheapestPurchaseDate))
+      : null;
+    const bestPrice = this.previewAmount(comparison.lowestUnitPrice);
+    const delta = comparison.currentVsLowestAmount;
+
+    if (delta === null) {
+      return `Melhor histórico em ${merchantName}: ${bestPrice}${purchaseDate ? ` em ${purchaseDate}` : ''}.`;
+    }
+
+    if (delta > 0.01) {
+      return `Agora está ${this.previewAmount(delta)} acima do melhor preço salvo em ${merchantName}${purchaseDate ? ` (${purchaseDate})` : ''}.`;
+    }
+
+    if (delta < -0.01) {
+      return `Agora está ${this.previewAmount(Math.abs(delta))} abaixo do melhor preço salvo em ${merchantName}${purchaseDate ? ` (${purchaseDate})` : ''}.`;
+    }
+
+    return `Preço atual empatado com o melhor histórico em ${merchantName}${purchaseDate ? ` (${purchaseDate})` : ''}.`;
+  }
+
+  protected comparisonDeltaTone(comparison: ReceiptImportItemPriceComparison) {
+    const delta = comparison.currentVsLowestAmount;
+
+    if (delta === null) {
+      return 'info';
+    }
+
+    if (delta > 0.01) {
+      return 'warning';
+    }
+
+    if (delta < -0.01) {
+      return 'success';
+    }
+
+    return 'accent';
+  }
+
+  protected merchantLabel(merchantName: string | null) {
+    return merchantName || 'Estabelecimento sem nome';
   }
 
   protected confidenceLabel(confidence: 'low' | 'medium' | 'high') {

@@ -173,6 +173,38 @@
 
             <p>Qtd. {{ item.quantity }} · {{ item.unitPrice !== null ? previewAmount(item.unitPrice) : 'Sem valor unitário' }}</p>
 
+            <div
+              class="imports-item-comparison"
+              *ngIf="item.priceComparison as comparison"
+              [attr.data-tone]="comparisonDeltaTone(comparison)"
+            >
+              <div class="imports-item-comparison__head">
+                <strong>Melhor preço salvo: {{ previewAmount(comparison.lowestUnitPrice) }}</strong>
+                <span class="proto-chip">{{ comparisonHistoryLabel(comparison) }}</span>
+              </div>
+              <p>{{ comparisonSummary(comparison) }}</p>
+
+              <div class="imports-item-comparison__meta">
+                <span class="proto-chip">Média {{ previewAmount(comparison.averageUnitPrice) }}</span>
+                <span class="proto-chip">Último {{ previewAmount(comparison.latestUnitPrice) }}</span>
+                <span class="proto-chip" *ngIf="comparison.currentUnitPrice !== null">
+                  Atual {{ previewAmount(comparison.currentUnitPrice) }}
+                </span>
+              </div>
+
+              <div class="imports-item-comparison__history">
+                <article class="imports-item-comparison__entry" *ngFor="let entry of comparison.history">
+                  <strong>{{ merchantLabel(entry.merchantName) }}</strong>
+                  <span>
+                    {{ previewAmount(entry.unitPrice) }}
+                    <ng-container *ngIf="entry.purchaseDate">
+                      · {{ entry.purchaseDate | date: 'dd/MM/yyyy' }}
+                    </ng-container>
+                  </span>
+                </article>
+              </div>
+            </div>
+
             <div class="proto-list-item__meta-row">
               <strong>{{ previewAmount(item.totalPrice) }}</strong>
               <button

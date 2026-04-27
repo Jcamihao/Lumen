@@ -26,7 +26,11 @@
       <p>{{ primaryFocusText(data) }}</p>
 
       <div class="proto-actions-row home-command__actions">
-        <a class="proto-button" [routerLink]="primaryFocusRoute(data)">
+        <a
+          *ngIf="primaryFocusRoute(data) as primaryRoute"
+          class="proto-button"
+          [routerLink]="primaryRoute"
+        >
           <span class="material-symbols-rounded">{{ primaryFocusIcon(data) }}</span>
           {{ primaryFocusAction(data) }}
         </a>
