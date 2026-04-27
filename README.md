@@ -5,7 +5,7 @@
 <h1 align="center">✨ LUMEN</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.3.0-22c55e" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.4.0-22c55e" alt="Version" />
   <img src="https://img.shields.io/badge/Backend-NestJS%2010-e0234e?logo=nestjs&logoColor=white" alt="NestJS" />
   <img src="https://img.shields.io/badge/Frontend-Angular%2016-dd0031?logo=angular&logoColor=white" alt="Angular" />
   <img src="https://img.shields.io/badge/Status-Em%20Desenvolvimento-0ea5e9" alt="Status" />
@@ -13,7 +13,7 @@
 </p>
 
 # Tudo mais claro. Tudo mais simples.
-O LUMEN é um SaaS de organização de vida criado pela `codeStage Solucoes` para conectar tarefas, dinheiro, metas, tempo e decisões em uma única experiência. A versão 1.3.0 fortalece a inicialização mobile, suaviza a navegação interna e deixa o app mais previsível em cenários híbridos entre web e Capacitor.
+O LUMEN é um SaaS de organização de vida criado pela `codeStage Solucoes` para conectar tarefas, dinheiro, metas, tempo e decisões em uma única experiência. A versão 1.4.0 evolui a importação financeira com mais rastreabilidade, feedback visual e resumo de impacto no dashboard.
 
 ## ✨ Visão rápida
 
@@ -25,11 +25,11 @@ O LUMEN é um SaaS de organização de vida criado pela `codeStage Solucoes` par
 
 ## 🧩 Funcionalidades resumidas
 
-### 🆕 Destaques da versão 1.3.0
-- **Bootstrap mobile mais resiliente** com timeout controlado na hidratação local e logs mais claros para diagnosticar travas de inicialização.
-- **Navegação autenticada mais fluida** com animações entre páginas e redirecionamento inicial mais consistente para o fluxo de login.
-- **Compatibilidade melhor com ambientes nativos** ao desativar o service worker no Capacitor e ajustar o alvo de build para execução híbrida.
-- **API pronta para deploy gerenciado** com suporte explícito a `HOST=0.0.0.0` no backend.
+### 🆕 Destaques da versão 1.4.0
+- **Importação financeira mais robusta** com processamento de CSV mais tolerante e retorno detalhado sobre itens importados.
+- **Feedback operacional na tela de importações** com resumo, histórico e estados visuais para acompanhar cada carga.
+- **Dashboard alinhado às importações** com indicadores atualizados para leitura rápida do impacto financeiro.
+- **Sidebar mais limpa** com navegação ajustada para reduzir ruído no workspace.
 
 ### 🧭 1) Núcleo do workspace
 - Dashboard agregado com prioridades, metas, dinheiro, lembretes e notificações.
@@ -39,6 +39,7 @@ O LUMEN é um SaaS de organização de vida criado pela `codeStage Solucoes` par
 
 ### 📥 2) Importação e operação
 - Preview e commit de transações por CSV.
+- Resumo de importação com contadores, totais e mensagens de validação.
 - Notificações locais e feed interno de alertas.
 - Suporte integrado ao workspace.
 
@@ -128,6 +129,7 @@ npm --prefix frontend run build
 
 - 🧱 Arquitetura: `docs/architecture.md`
 - 🎨 Design system: `docs/design-system.md`
+- 📝 Release notes 1.4.0: `docs/releases/v1.4.0.md`
 - 📝 Release notes 1.3.0: `docs/releases/v1.3.0.md`
 - 📝 Release notes 1.2.0: `docs/releases/v1.2.0.md`
 - 📝 Release notes 1.1.0: `docs/releases/v1.1.0.md`
