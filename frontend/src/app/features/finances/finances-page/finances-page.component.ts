@@ -1,11 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Transaction } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
+import { ToastService } from '../../../core/services/toast.service';
 import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
 
 @Component({
@@ -21,6 +22,13 @@ export class FinancesPageComponent {
   private readonly authService = inject(AuthService);
   private readonly fb = inject(FormBuilder);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly toast = inject(ToastService);
+
+  private readonly now = new Date();
+  protected readonly filterMonth = signal(this.now.getMonth() + 1);
+  protected readonly filterYear = signal(this.now.getFullYear());
+  protected readonly filterType = signal<'' | 'INCOME' | 'EXPENSE' | 'TRANSFER'>('');
+
   protected readonly transactions = signal<Transaction[]>([]);
   protected readonly financeCategories = computed(
     () => this.authService.currentUser()?.financeCategories ?? [],
@@ -37,12 +45,11 @@ export class FinancesPageComponent {
   protected readonly netFlow = computed(
     () => this.incomeTotal() - this.expenseTotal(),
   );
-  protected readonly incomeCount = computed(
-    () => this.transactions().filter((item) => item.type === 'INCOME').length,
-  );
-  protected readonly expenseCount = computed(
-    () => this.transactions().filter((item) => item.type !== 'INCOME').length,
-  );
+
+  protected readonly monthLabel = computed(() => {
+    const d = new Date(this.filterYear(), this.filterMonth() - 1, 1);
+    return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  });
 
   protected readonly form = this.fb.nonNullable.group({
     description: ['', [Validators.required, Validators.minLength(2)]],
@@ -53,7 +60,39 @@ export class FinancesPageComponent {
   });
 
   constructor() {
-    this.reload();
+    effect(() => {
+      const month = this.filterMonth();
+      const year = this.filterYear();
+      const type = this.filterType();
+      this.loadTransactions({ month, year, type: type || undefined });
+    });
+  }
+
+  protected previousMonth() {
+    const m = this.filterMonth();
+    const y = this.filterYear();
+    if (m === 1) {
+      this.filterMonth.set(12);
+      this.filterYear.set(y - 1);
+    } else {
+      this.filterMonth.set(m - 1);
+    }
+  }
+
+  protected nextMonth() {
+    const m = this.filterMonth();
+    const y = this.filterYear();
+    if (m === 12) {
+      this.filterMonth.set(1);
+      this.filterYear.set(y + 1);
+    } else {
+      this.filterMonth.set(m + 1);
+    }
+  }
+
+  protected isCurrentMonth() {
+    const n = new Date();
+    return this.filterMonth() === n.getMonth() + 1 && this.filterYear() === n.getFullYear();
   }
 
   protected createTransaction() {
@@ -67,24 +106,32 @@ export class FinancesPageComponent {
         categoryId: raw.categoryId || undefined,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((transaction) => {
-        this.form.patchValue({
-          description: '',
-          amount: 0,
-          categoryId: '',
-        });
-        this.upsertTransaction(transaction);
+      .subscribe({
+        next: (transaction) => {
+          this.form.patchValue({ description: '', amount: 0, categoryId: '' });
+          this.upsertTransaction(transaction);
+          this.toast.success('Transação registrada.');
+        },
+        error: () => this.toast.error('Não foi possível registrar a transação.'),
       });
   }
 
   protected removeTransaction(id: string) {
+    if (!globalThis.confirm('Deseja excluir esta transação? Essa ação não pode ser desfeita.')) {
+      return;
+    }
+
     this.api
       .deleteTransaction(id)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
-        this.transactions.update((current) =>
-          current.filter((transaction) => transaction.id !== id),
-        );
+      .subscribe({
+        next: () => {
+          this.transactions.update((current) =>
+            current.filter((transaction) => transaction.id !== id),
+          );
+          this.toast.success('Transação removida.');
+        },
+        error: () => this.toast.error('Não foi possível remover a transação.'),
       });
   }
 
@@ -102,7 +149,8 @@ export class FinancesPageComponent {
     return `${transaction.type === 'INCOME' ? '+' : '-'} ${formatted}`;
   }
 
-  protected typeLabel(type: Transaction['type']) {
+  protected typeLabel(type: Transaction['type'] | '') {
+    if (!type) return 'Todos os tipos';
     return {
       INCOME: 'Receita',
       EXPENSE: 'Despesa',
@@ -126,9 +174,9 @@ export class FinancesPageComponent {
     return 'accent' as const;
   }
 
-  private reload() {
+  private loadTransactions(params: { month: number; year: number; type?: string }) {
     this.api
-      .listTransactions()
+      .listTransactions(params)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((transactions) => this.transactions.set(transactions));
   }

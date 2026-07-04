@@ -135,6 +135,7 @@ export class AssistantPageComponent {
 
   constructor() {
     this.restorePersistedHistory();
+    this.loadServerHistory();
 
     this.route.queryParamMap
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -465,6 +466,7 @@ export class AssistantPageComponent {
           this.activeMessageId.set(message.id);
           this.readingTab.set("summary");
           this.persistHistorySnapshot(nextHistory, message.id);
+          this.persistTurnToServer(question, reply);
         },
         error: () => {
           this.loading.set(false);
@@ -472,6 +474,63 @@ export class AssistantPageComponent {
             "Nao foi possivel consultar o Selah agora.",
           );
         },
+      });
+  }
+
+  private persistTurnToServer(question: string, reply: AssistantReply) {
+    if (this.offlineMode()) return;
+
+    this.api
+      .saveAssistantTurn({
+        question,
+        answer: reply.answer,
+        focusArea: reply.focusArea ?? null,
+        source: reply.source ?? null,
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({ error: () => { /* silent — local storage is primary */ } });
+  }
+
+  private loadServerHistory() {
+    if (this.offlineMode()) return;
+
+    this.api
+      .listAssistantHistory(20)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (turns) => {
+          if (!turns.length) return;
+
+          const serverMessages: AssistantMessage[] = turns.map((turn) => ({
+            id: `server-${turn.id}`,
+            question: turn.question,
+            reply: {
+              answer: turn.answer,
+              highlights: [],
+              suggestedActions: [],
+              actions: [],
+              proactiveSignals: [],
+              simulations: [],
+              continuity: { historyCount: 0, memorySummary: null, nextQuestion: null, followUpPrompt: null, originModule: null },
+              explainability: { reasoning: [], evidence: [], confidenceReason: '' },
+              focusArea: turn.focusArea ?? undefined,
+              source: (turn.source as AssistantReply['source']) ?? 'lumen_fallback',
+              confidence: 'medium',
+              disclaimer: null,
+              generatedAt: turn.createdAt,
+            },
+            createdAt: turn.createdAt,
+          }));
+
+          // Merge server history with local — deduplicate by question+createdAt
+          const existing = this.history();
+          if (existing.length) return; // local already loaded, keep it
+
+          this.history.set(serverMessages);
+          this.activeMessageId.set(serverMessages[0]?.id ?? null);
+          this.persistHistorySnapshot(serverMessages, serverMessages[0]?.id ?? null);
+        },
+        error: () => { /* silent */ },
       });
   }
 

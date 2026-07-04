@@ -141,6 +141,13 @@ export const routes: Routes = [
         pathMatch: 'full',
         redirectTo: 'support',
       },
+      {
+        path: 'admin/support',
+        loadComponent: () =>
+          import('./features/admin/admin-support-page/admin-support-page.component').then(
+            (module) => module.AdminSupportPageComponent,
+          ),
+      },
     ],
   },
   {

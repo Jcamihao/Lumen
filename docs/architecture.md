@@ -17,10 +17,11 @@ LUMEN foi estruturado como um monolito modular para acelerar produto sem abrir m
 - `dashboard`: endpoint agregador `/dashboard/summary`
 - `insights`: motor de regras para alertas e orientacao
 - `forecasts`: previsao financeira de 30 dias
-- `imports`: preview e commit de CSV com deduplicacao
-- `assistant`: respostas em linguagem natural baseadas no estado atual
+- `imports`: preview e commit de CSV com deduplicacao, alem de historico de importacoes e de scans de nota fiscal (imagem ou PDF)
+- `assistant`: respostas em linguagem natural baseadas no estado atual, com historico de turnos persistido (`AssistantTurn`)
 - `notifications`: feed de notificacoes
-- `life-engine`: invalida cache, agenda reminders e dispara reprocessamentos
+- `support-requests`: solicitacoes de feedback/bug report, com triagem administrativa por status
+- `life-engine`: invalida cache, agenda reminders, reagenda pendentes apos reinicio dos workers e dispara reprocessamentos
 
 ## Fluxo inteligente
 
@@ -44,6 +45,9 @@ LUMEN foi estruturado como um monolito modular para acelerar produto sem abrir m
 - `Forecast`
 - `ImportJob`
 - `Notification`
+- `AssistantTurn`
+- `AuthChallenge` (login MFA e recuperacao por e-mail)
+- `SupportRequest`
 
 ## Frontend
 
@@ -56,6 +60,7 @@ O frontend usa Angular standalone com shell autenticado por rotas. As features f
 - assistant
 - imports
 - settings
+- admin (triagem de solicitacoes de suporte)
 
 O design system se apoia em:
 

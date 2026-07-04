@@ -213,6 +213,88 @@
   border-top: 1px solid color-mix(in srgb, var(--surface-panel-border) 82%, transparent);
 }
 
+.imports-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+
+  .material-symbols-rounded {
+    font-size: 1.05rem;
+  }
+}
+
+.imports-history-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.2rem 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+
+  .material-symbols-rounded {
+    font-size: 1.2rem;
+    animation: spin 1.5s linear infinite;
+  }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.imports-csv-row {
+  gap: 0.4rem;
+  padding: 0.6rem 0.5rem;
+}
+
+.imports-csv-row .proto-list-item__top {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.imports-csv-row__fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.imports-csv-row__input,
+.imports-csv-row__select {
+  height: 2.1rem;
+  padding: 0 0.6rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--input-border, rgba(255 255 255 / 0.12));
+  background: var(--input-bg, var(--surface-elevated));
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+
+.imports-csv-row__input--desc {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+}
+
+.imports-csv-row__input--amount {
+  width: 7rem;
+}
+
+.imports-csv-row__input--date {
+  width: 9rem;
+}
+
+.imports-csv-row__select {
+  width: 9.5rem;
+}
+
+.imports-csv-row__category {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 0 0.1rem;
+}
+
 @media (max-width: 960px) {
   .imports-tabs {
     flex-direction: column;

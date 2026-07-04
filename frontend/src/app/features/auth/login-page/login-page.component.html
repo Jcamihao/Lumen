@@ -57,16 +57,27 @@
       </div>
 
       <div class="proto-auth-card__head">
-        <h1>{{ mfaChallenge() ? 'Confirme sua identidade' : 'Bem-vindo de volta' }}</h1>
-        <p *ngIf="!mfaChallenge()">Faça login para continuar exatamente de onde você parou.</p>
-        <p *ngIf="mfaChallenge()">
+        <h1>
+          {{
+            emailBypassChallenge()
+              ? 'Recuperação por email'
+              : mfaChallenge()
+                ? 'Confirme sua identidade'
+                : 'Bem-vindo de volta'
+          }}
+        </h1>
+        <p *ngIf="!mfaChallenge() && !emailBypassChallenge()">Faça login para continuar exatamente de onde você parou.</p>
+        <p *ngIf="mfaChallenge() && !emailBypassChallenge()">
           Digite o código do seu app autenticador ou um código de recuperação.
           Este desafio expira às {{ mfaExpiresAtLabel() }}.
+        </p>
+        <p *ngIf="emailBypassChallenge()">
+          Enviamos um código de 6 dígitos para o seu email. Digite-o abaixo.
         </p>
       </div>
 
       <form class="proto-auth-form" [formGroup]="form" (ngSubmit)="submit()">
-        <div class="proto-field" *ngIf="!mfaChallenge()">
+        <div class="proto-field" *ngIf="!mfaChallenge() && !emailBypassChallenge()">
           <label for="login-email">Email</label>
           <input
             id="login-email"
@@ -76,7 +87,7 @@
           />
         </div>
 
-        <div class="proto-field" *ngIf="!mfaChallenge()">
+        <div class="proto-field" *ngIf="!mfaChallenge() && !emailBypassChallenge()">
           <label for="login-password">Senha</label>
           <div class="auth-password">
             <input
@@ -101,7 +112,7 @@
           </div>
         </div>
 
-        <div class="auth-form-meta" *ngIf="!mfaChallenge()">
+        <div class="auth-form-meta" *ngIf="!mfaChallenge() && !emailBypassChallenge()">
           <label class="auth-check">
             <input type="checkbox" checked />
             <span>Lembrar de mim</span>
@@ -110,7 +121,7 @@
           <a class="auth-link" routerLink="/signup">Precisa de uma conta?</a>
         </div>
 
-        <div class="auth-mfa-card" *ngIf="mfaChallenge()" [formGroup]="mfaForm">
+        <div class="auth-mfa-card" *ngIf="mfaChallenge() && !emailBypassChallenge()" [formGroup]="mfaForm">
           <div class="proto-field">
             <label for="login-mfa-code">Código MFA</label>
             <input
@@ -125,6 +136,34 @@
             <strong class="proto-inline-title">Aceita dois formatos</strong>
             <p>Use o código de 6 dígitos do app autenticador ou um código de recuperação ainda não utilizado.</p>
           </div>
+
+          <button
+            type="button"
+            class="auth-link auth-bypass-link"
+            [disabled]="loading()"
+            (click)="requestEmailBypass()"
+          >
+            Não consigo acessar meu autenticador
+          </button>
+        </div>
+
+        <div class="auth-mfa-card" *ngIf="emailBypassChallenge()" [formGroup]="emailBypassForm">
+          <div class="proto-field">
+            <label for="login-bypass-code">Código recebido por email</label>
+            <input
+              id="login-bypass-code"
+              type="text"
+              inputmode="numeric"
+              maxlength="6"
+              formControlName="code"
+              placeholder="000000"
+            />
+          </div>
+
+          <div class="proto-note">
+            <strong class="proto-inline-title">Verifique sua caixa de entrada</strong>
+            <p>O código expira em 10 minutos e pode estar em spam. Após verificar, acesse o app autenticador para reconfigurar o MFA.</p>
+          </div>
         </div>
 
         <p class="auth-error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
@@ -133,14 +172,39 @@
           <button
             type="submit"
             class="proto-button auth-actions__primary"
-            [disabled]="(!mfaChallenge() && form.invalid) || (mfaChallenge() && mfaForm.invalid) || loading()"
+            [disabled]="
+              (!mfaChallenge() && !emailBypassChallenge() && form.invalid) ||
+              (mfaChallenge() && !emailBypassChallenge() && mfaForm.invalid) ||
+              (!!emailBypassChallenge() && emailBypassForm.invalid) ||
+              loading()
+            "
           >
-            <span class="material-symbols-rounded">{{ mfaChallenge() ? 'shield' : 'login' }}</span>
-            {{ loading() ? (mfaChallenge() ? 'Validando...' : 'Entrando...') : (mfaChallenge() ? 'Validar código' : 'Entrar') }}
+            <span class="material-symbols-rounded">
+              {{ emailBypassChallenge() ? 'mark_email_read' : mfaChallenge() ? 'shield' : 'login' }}
+            </span>
+            {{
+              loading()
+                ? 'Validando...'
+                : emailBypassChallenge()
+                  ? 'Verificar código'
+                  : mfaChallenge()
+                    ? 'Validar código'
+                    : 'Entrar'
+            }}
           </button>
 
           <button
-            *ngIf="mfaChallenge()"
+            *ngIf="emailBypassChallenge()"
+            type="button"
+            class="proto-button proto-button--secondary auth-actions__primary"
+            [disabled]="loading()"
+            (click)="cancelEmailBypass()"
+          >
+            Voltar
+          </button>
+
+          <button
+            *ngIf="mfaChallenge() && !emailBypassChallenge()"
             type="button"
             class="proto-button proto-button--secondary auth-actions__primary"
             [disabled]="loading()"

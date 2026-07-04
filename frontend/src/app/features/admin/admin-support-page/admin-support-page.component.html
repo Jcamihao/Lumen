@@ -1,0 +1,117 @@
+<div class="proto-page">
+  <header class="proto-header">
+    <div class="proto-header__copy">
+      <h2>Suporte — Admin</h2>
+      <p>Gerenciamento de solicitações de feedback, bugs e dúvidas dos usuários.</p>
+    </div>
+  </header>
+
+  <!-- Filtros de status -->
+  <div class="admin-support-filters">
+    <button
+      *ngFor="let opt of [
+        { value: '', label: 'Todos' },
+        { value: 'OPEN', label: 'Abertos' },
+        { value: 'IN_REVIEW', label: 'Em análise' },
+        { value: 'RESOLVED', label: 'Resolvidos' },
+        { value: 'CLOSED', label: 'Fechados' }
+      ]"
+      type="button"
+      class="proto-button proto-button--secondary admin-support-filter-btn"
+      [class.active]="filterStatus() === opt.value"
+      (click)="selectStatus($any(opt.value))"
+    >
+      {{ opt.label }}
+    </button>
+  </div>
+
+  <!-- Loading -->
+  <div class="proto-empty" *ngIf="loading()">
+    <span class="material-symbols-rounded admin-spin">progress_activity</span>
+    <p>Carregando solicitações...</p>
+  </div>
+
+  <!-- Empty state -->
+  <div class="proto-empty" *ngIf="!loading() && !filtered().length">
+    <strong>Nenhuma solicitação encontrada</strong>
+    <p>Não há registros para os filtros selecionados.</p>
+  </div>
+
+  <!-- Lista -->
+  <section class="proto-surface admin-support-list" *ngIf="!loading() && filtered().length">
+    <article
+      class="admin-support-item"
+      *ngFor="let req of filtered()"
+      [class.expanded]="isExpanded(req.id)"
+    >
+      <div class="admin-support-item__head" (click)="toggleExpand(req.id)">
+        <div class="admin-support-item__meta">
+          <span class="proto-tag" [attr.data-tone]="statusTone(req.status)">
+            {{ statusLabel(req.status) }}
+          </span>
+          <span class="proto-chip">{{ typeLabel(req.type) }}</span>
+          <span class="proto-chip" *ngIf="req.severity">{{ severityLabel(req.severity) }}</span>
+        </div>
+
+        <div class="admin-support-item__title-block">
+          <strong>{{ req.subject }}</strong>
+          <span class="admin-support-item__user">{{ req.user.name }} · {{ req.emailSnapshot }}</span>
+        </div>
+
+        <div class="admin-support-item__date">{{ dateLabel(req.createdAt) }}</div>
+
+        <span class="material-symbols-rounded admin-support-item__chevron">
+          {{ isExpanded(req.id) ? 'expand_less' : 'expand_more' }}
+        </span>
+      </div>
+
+      <div class="admin-support-item__body" *ngIf="isExpanded(req.id)">
+        <p class="admin-support-item__message">{{ req.message }}</p>
+
+        <div class="admin-support-item__details" *ngIf="req.screenPath || req.appVersion">
+          <span *ngIf="req.screenPath" class="proto-chip">{{ req.screenPath }}</span>
+          <span *ngIf="req.appVersion" class="proto-chip">v{{ req.appVersion }}</span>
+        </div>
+
+        <div class="proto-actions-row admin-support-item__actions">
+          <span class="admin-support-item__label">Mudar status:</span>
+          <button
+            *ngFor="let s of ['OPEN', 'IN_REVIEW', 'RESOLVED', 'CLOSED']"
+            type="button"
+            class="proto-button proto-button--secondary"
+            [class.active]="req.status === s"
+            [disabled]="req.status === s || updatingId() === req.id"
+            (click)="updateStatus(req.id, s)"
+          >
+            {{ statusLabel(s) }}
+          </button>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <!-- Paginação -->
+  <div class="admin-support-pagination" *ngIf="!loading()">
+    <button
+      type="button"
+      class="proto-button proto-button--secondary"
+      [disabled]="page() <= 1"
+      (click)="prevPage()"
+    >
+      <span class="material-symbols-rounded">chevron_left</span>
+      Anterior
+    </button>
+
+    <span class="proto-chip">Página {{ page() }}</span>
+
+    <button
+      type="button"
+      class="proto-button proto-button--secondary"
+      [disabled]="filtered().length < 30"
+      (click)="nextPage()"
+    >
+      Próxima
+      <span class="material-symbols-rounded">chevron_right</span>
+    </button>
+  </div>
+</div>

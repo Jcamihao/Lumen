@@ -124,11 +124,11 @@ export class SupportPageComponent {
   }
 
   protected statusTone(status: SupportRequest["status"]) {
-    if (status === "RESOLVED") {
+    if (status === "RESOLVED" || status === "CLOSED") {
       return "success";
     }
 
-    if (status === "REVIEWED") {
+    if (status === "IN_REVIEW") {
       return "accent";
     }
 
@@ -140,7 +140,11 @@ export class SupportPageComponent {
       return "Resolvido";
     }
 
-    if (status === "REVIEWED") {
+    if (status === "CLOSED") {
+      return "Encerrado";
+    }
+
+    if (status === "IN_REVIEW") {
       return "Em análise";
     }
 

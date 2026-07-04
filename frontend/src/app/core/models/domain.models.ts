@@ -2,6 +2,7 @@ export type User = {
   id: string;
   name: string;
   email: string;
+  role?: 'USER' | 'ADMIN';
   avatarUrl?: string | null;
   preferredCurrency: string;
   monthlyIncome: number;
@@ -41,6 +42,8 @@ export type Task = {
   priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
   hasFinancialImpact: boolean;
   estimatedAmount?: number | null;
+  isRecurring: boolean;
+  recurrenceRule?: string | null;
   category?: Category | null;
   subtasks: Array<{
     id: string;
@@ -95,20 +98,6 @@ export type Notification = {
   createdAt: string;
 };
 
-export type SupportRequest = {
-  id: string;
-  type: "FEEDBACK" | "BUG_REPORT";
-  status: "OPEN" | "REVIEWED" | "RESOLVED";
-  severity?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | null;
-  subject: string;
-  message: string;
-  emailSnapshot: string;
-  screenPath?: string | null;
-  appVersion?: string | null;
-  deviceInfo?: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
 
 export type NotificationCenterEntry = {
   id: string;
@@ -238,6 +227,11 @@ export type LoginMfaChallengeResponse = {
   availableMethods: Array<"totp" | "recovery_code">;
 };
 
+export type MfaBypassChallengeResponse = {
+  bypassChallengeId: string;
+  expiresAt: string;
+};
+
 export type LoginResult = AuthResponse | LoginMfaChallengeResponse;
 
 export type MfaSetupResponse = {
@@ -364,7 +358,59 @@ export type ReceiptImportCommitResponse = {
   transaction: Transaction;
 };
 
+export type GoalContribution = {
+  id: string;
+  description: string;
+  amount: number;
+  date: string;
+  type: 'INCOME' | 'EXPENSE' | 'TRANSFER';
+};
+
+export type ReceiptScanHistoryEntry = {
+  id: string;
+  fileName: string;
+  merchantName: string | null;
+  totalAmount: number;
+  status: string;
+  importedAt: string | null;
+  createdAt: string;
+};
+
+export type ImportJobHistoryEntry = {
+  id: string;
+  fileName: string;
+  status: string;
+  totalRows: number;
+  importedRows: number;
+  deduplicatedRows: number;
+  createdAt: string;
+};
+
 export type PrivacyExportPayload = {
   exportedAt: string;
   [key: string]: unknown;
+};
+
+export type AssistantHistoryTurn = {
+  id: string;
+  question: string;
+  answer: string;
+  focusArea: string | null;
+  source: string | null;
+  createdAt: string;
+};
+
+export type SupportRequest = {
+  id: string;
+  type: string;
+  status: 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'CLOSED';
+  severity: string | null;
+  subject: string;
+  message: string;
+  emailSnapshot: string;
+  screenPath: string | null;
+  appVersion: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user: { id: string; name: string; email: string };
 };

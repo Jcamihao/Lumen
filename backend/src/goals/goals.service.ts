@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { GoalStatus, Prisma, TransactionType } from '@prisma/client';
+import { GoalStatus, NotificationType, Prisma, TransactionType } from '@prisma/client';
 import { LifeEngineService } from '../life-engine/life-engine.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ContributeGoalDto } from './dto/contribute-goal.dto';
 import { CreateGoalDto } from './dto/create-goal.dto';
@@ -11,6 +12,7 @@ export class GoalsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly lifeEngineService: LifeEngineService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async list(userId: string) {
@@ -92,8 +94,29 @@ export class GoalsService {
       });
     }
 
+    if (nextStatus === GoalStatus.ACHIEVED && goal.status !== GoalStatus.ACHIEVED) {
+      await this.notificationsService.createNotification(
+        userId,
+        NotificationType.SYSTEM,
+        'Meta concluída',
+        `Parabéns! Você atingiu a meta "${goal.title}".`,
+      );
+    }
+
     await this.lifeEngineService.touchUserData(userId);
     return this.serializeGoal(updatedGoal);
+  }
+
+  async listContributions(userId: string, id: string) {
+    await this.findGoal(userId, id);
+
+    const transactions = await this.prisma.transaction.findMany({
+      where: { userId, linkedGoalId: id },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      select: { id: true, description: true, amount: true, date: true, type: true },
+    });
+
+    return transactions.map((t) => ({ ...t, amount: Number(t.amount) }));
   }
 
   async remove(userId: string, id: string) {

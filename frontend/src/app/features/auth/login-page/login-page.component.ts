@@ -4,7 +4,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AUTH_PASSWORD_MIN_LENGTH } from '../../../core/constants/auth.constants';
-import { LoginMfaChallengeResponse } from '../../../core/models/domain.models';
+import { LoginMfaChallengeResponse, MfaBypassChallengeResponse } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 
 @Component({
@@ -25,6 +25,7 @@ export class LoginPageComponent {
   protected readonly errorMessage = signal('');
   protected readonly showPassword = signal(false);
   protected readonly mfaChallenge = signal<LoginMfaChallengeResponse | null>(null);
+  protected readonly emailBypassChallenge = signal<MfaBypassChallengeResponse | null>(null);
   protected readonly passwordMinLength = AUTH_PASSWORD_MIN_LENGTH;
 
   protected readonly form = this.fb.nonNullable.group({
@@ -37,8 +38,16 @@ export class LoginPageComponent {
   protected readonly mfaForm = this.fb.nonNullable.group({
     code: ['', [Validators.required, Validators.minLength(6)]],
   });
+  protected readonly emailBypassForm = this.fb.nonNullable.group({
+    code: ['', [Validators.required, Validators.minLength(6), Validators.maxLength(6)]],
+  });
 
   protected submit() {
+    if (this.emailBypassChallenge()) {
+      this.submitEmailBypassCode();
+      return;
+    }
+
     if (this.mfaChallenge()) {
       this.submitMfaCode();
       return;
@@ -109,12 +118,71 @@ export class LoginPageComponent {
       });
   }
 
+  protected requestEmailBypass() {
+    const challenge = this.mfaChallenge();
+    if (!challenge) return;
+
+    this.loading.set(true);
+    this.errorMessage.set('');
+
+    this.authService
+      .requestMfaEmailBypass({ challengeId: challenge.challengeId })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (response) => {
+          this.loading.set(false);
+          this.emailBypassChallenge.set(response);
+          this.emailBypassForm.reset({ code: '' });
+        },
+        error: (error) => {
+          this.loading.set(false);
+          this.errorMessage.set(
+            error?.error?.message ?? 'Não foi possível enviar o código de recuperação.',
+          );
+        },
+      });
+  }
+
+  protected submitEmailBypassCode() {
+    const bypass = this.emailBypassChallenge();
+    if (!bypass || this.emailBypassForm.invalid) return;
+
+    this.loading.set(true);
+    this.errorMessage.set('');
+
+    this.authService
+      .verifyMfaEmailBypass({
+        bypassChallengeId: bypass.bypassChallengeId,
+        code: this.emailBypassForm.getRawValue().code,
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.loading.set(false);
+          this.router.navigate(['/dashboard']);
+        },
+        error: (error) => {
+          this.loading.set(false);
+          this.errorMessage.set(
+            error?.error?.message ?? 'Código inválido ou expirado.',
+          );
+        },
+      });
+  }
+
+  protected cancelEmailBypass() {
+    this.emailBypassChallenge.set(null);
+    this.emailBypassForm.reset({ code: '' });
+    this.errorMessage.set('');
+  }
+
   protected togglePasswordVisibility() {
     this.showPassword.update((value) => !value);
   }
 
   protected resetMfaChallenge() {
     this.mfaChallenge.set(null);
+    this.emailBypassChallenge.set(null);
     this.mfaForm.reset({ code: '' });
     this.errorMessage.set('');
   }

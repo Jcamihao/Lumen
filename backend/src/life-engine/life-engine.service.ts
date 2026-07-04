@@ -27,7 +27,7 @@ export class LifeEngineService {
       REMINDERS_QUEUE,
       'dispatch-reminder',
       { reminderId },
-      { delay },
+      { delay, jobId: `reminder:${reminderId}` },
     );
   }
 }

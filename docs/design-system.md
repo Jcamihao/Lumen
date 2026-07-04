@@ -26,6 +26,7 @@ LUMEN mistura a limpeza de um workspace de produtividade com o senso de confianc
 - `app-panel`: bloco reutilizavel de conteudo
 - `app-metric-card`: KPI card do dashboard
 - `app-empty-state`: vazio elegante com mensagem contextual
+- `app-toast`: pilha de notificacoes flutuantes (sucesso/erro/info) com auto-dismiss
 
 ## Experiencia
 

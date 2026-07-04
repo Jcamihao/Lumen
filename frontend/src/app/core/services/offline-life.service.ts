@@ -895,6 +895,8 @@ export class OfflineLifeService {
       priority: (payload["priority"] as Task["priority"]) || "MEDIUM",
       hasFinancialImpact: Boolean(payload["hasFinancialImpact"]),
       estimatedAmount: this.optionalNumber(payload["estimatedAmount"]),
+      isRecurring: Boolean(payload["isRecurring"]),
+      recurrenceRule: this.optionalString(payload["recurrenceRule"]),
       category: this.resolveTaskCategory(this.optionalString(payload["categoryId"])),
       subtasks: [],
     };
@@ -952,9 +954,9 @@ export class OfflineLifeService {
       emailSnapshot: user.email,
       screenPath: this.optionalString(payload["screenPath"]),
       appVersion: this.optionalString(payload["appVersion"]),
-      deviceInfo: this.optionalString(payload["deviceInfo"]),
       createdAt: now,
       updatedAt: now,
+      user: { id: user.id, name: user.name, email: user.email },
     };
   }
 

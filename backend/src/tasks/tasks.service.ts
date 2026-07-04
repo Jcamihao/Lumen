@@ -151,6 +151,11 @@ export class TasksService {
     });
 
     await this.lifeEngineService.touchUserData(userId);
+
+    if (dto.status === TaskStatus.DONE && task.isRecurring && task.recurrenceRule) {
+      await this.spawnNextRecurrence(userId, task);
+    }
+
     return this.serializeTask(task);
   }
 
@@ -206,6 +211,57 @@ export class TasksService {
         throw new NotFoundException('Meta vinculada nao encontrada.');
       }
     }
+  }
+
+  private async spawnNextRecurrence(userId: string, completedTask: any) {
+    const nextDueDate = completedTask.dueDate
+      ? this.computeNextDueDate(completedTask.dueDate, completedTask.recurrenceRule)
+      : null;
+
+    await this.prisma.task.create({
+      data: {
+        userId,
+        title: completedTask.title,
+        description: completedTask.description,
+        status: TaskStatus.PENDING,
+        priority: completedTask.priority,
+        categoryId: completedTask.categoryId,
+        isRecurring: true,
+        recurrenceRule: completedTask.recurrenceRule,
+        hasFinancialImpact: completedTask.hasFinancialImpact,
+        estimatedAmount: completedTask.estimatedAmount,
+        linkedGoalId: completedTask.linkedGoalId,
+        dueDate: nextDueDate,
+      },
+    });
+  }
+
+  private computeNextDueDate(from: Date, rule: string): Date {
+    const base = new Date(from);
+    const r = rule.trim().toLowerCase();
+
+    switch (r) {
+      case 'daily':     base.setDate(base.getDate() + 1);           break;
+      case 'weekly':    base.setDate(base.getDate() + 7);           break;
+      case 'biweekly':  base.setDate(base.getDate() + 14);          break;
+      case 'monthly':   base.setMonth(base.getMonth() + 1);         break;
+      case 'quarterly': base.setMonth(base.getMonth() + 3);         break;
+      case 'yearly':    base.setFullYear(base.getFullYear() + 1);   break;
+      default: {
+        const m = r.match(/^(\d+)(d|w|m|y)$/);
+        if (m) {
+          const n = parseInt(m[1], 10);
+          if (m[2] === 'd') base.setDate(base.getDate() + n);
+          else if (m[2] === 'w') base.setDate(base.getDate() + n * 7);
+          else if (m[2] === 'm') base.setMonth(base.getMonth() + n);
+          else if (m[2] === 'y') base.setFullYear(base.getFullYear() + n);
+        } else {
+          base.setDate(base.getDate() + 7);
+        }
+      }
+    }
+
+    return base;
   }
 
   private serializeTask(task: any) {

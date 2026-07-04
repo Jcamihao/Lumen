@@ -14,11 +14,12 @@ import { filter, startWith } from 'rxjs';
 import { LifeApiService } from '../../core/services/life-api.service';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
+import { ToastComponent } from '../toast/toast.component';
 
 @Component({
   selector: 'app-workspace-shell',
   standalone: true,
-  imports: [CommonModule, RouterOutlet, SidebarComponent, BottomNavComponent],
+  imports: [CommonModule, RouterOutlet, SidebarComponent, BottomNavComponent, ToastComponent],
   templateUrl: './workspace-shell.component.html',
   styleUrls: ['./workspace-shell.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

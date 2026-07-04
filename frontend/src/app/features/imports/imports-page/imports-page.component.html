@@ -24,12 +24,22 @@
     >
       Arquivo CSV
     </button>
+    <button
+      type="button"
+      class="imports-tab"
+      [class.active]="activeTab() === 'history'"
+      (click)="selectTab('history')"
+    >
+      <span class="material-symbols-rounded">history</span>
+      Histórico
+    </button>
   </div>
 
+  <!-- Aba Nota Fiscal -->
   <article class="proto-surface" *ngIf="activeTab() === 'receipt'">
     <div class="proto-surface__head">
       <div>
-        <h3>Importar nota fiscal por imagem</h3>
+        <h3>Importar nota fiscal por imagem ou PDF</h3>
         <p>Use IA para extrair automaticamente itens, total e estabelecimento.</p>
       </div>
       <span class="proto-tag" [attr.data-tone]="canUseReceiptAi() ? 'accent' : 'warning'">
@@ -42,7 +52,7 @@
         <span class="imports-upload-box__eyebrow">Fluxo guiado</span>
         <span class="material-symbols-rounded">photo_camera</span>
         <strong>Leve a nota para a mesa</strong>
-        <p>Selecione uma imagem para o Lumen extrair os itens, sugerir categoria e montar a compra.</p>
+        <p>Selecione uma imagem ou PDF para o Lumen extrair os itens, sugerir categoria e montar a compra.</p>
 
         <div class="imports-upload-box__notes">
           <span>Extrai itens</span>
@@ -51,9 +61,9 @@
         </div>
 
         <div class="proto-actions-row">
-          <input #receiptInput type="file" accept="image/*" hidden (change)="handleReceiptFile($event)" />
+          <input #receiptInput type="file" accept="image/*,application/pdf" hidden (change)="handleReceiptFile($event)" />
           <button type="button" class="proto-button" [disabled]="receiptLoading()" (click)="receiptInput.click()">
-            {{ receiptLoading() ? 'Lendo nota...' : 'Selecionar imagem' }}
+            {{ receiptLoading() ? 'Lendo nota...' : 'Selecionar imagem ou PDF' }}
           </button>
         </div>
       </div>
@@ -215,6 +225,14 @@
               >
                 Ajustar
               </button>
+              <button
+                type="button"
+                class="proto-button proto-button--ghost"
+                *ngIf="isEditingReceiptItem(index)"
+                (click)="stopEditingReceiptItem()"
+              >
+                Fechar
+              </button>
             </div>
 
             <div class="proto-form-grid" *ngIf="isEditingReceiptItem(index)">
@@ -272,11 +290,12 @@
     </ng-template>
   </article>
 
+  <!-- Aba CSV -->
   <article class="proto-surface" *ngIf="activeTab() === 'csv'">
     <div class="proto-surface__head">
       <div>
         <h3>Importar arquivo CSV</h3>
-        <p>Faça upload do extrato e revise a prévia antes de registrar no Lumen.</p>
+        <p>Faça upload do extrato e revise (e edite) a prévia antes de registrar no Lumen.</p>
       </div>
     </div>
 
@@ -290,7 +309,7 @@
         <div class="imports-upload-box__notes">
           <span>Prévia das linhas</span>
           <span>Detecção de duplicadas</span>
-          <span>Confirmação manual</span>
+          <span>Edição antes de confirmar</span>
         </div>
 
         <div class="proto-actions-row">
@@ -306,30 +325,134 @@
           <strong class="proto-inline-title">{{ importPreview.fileName }}</strong>
           <p>
             {{ importPreview.totalRows }} linhas encontradas, com
-            {{ importPreview.duplicates }} possível(is) duplicada(s).
+            {{ importPreview.duplicates }} possível(is) duplicada(s). Edite os campos antes de confirmar.
           </p>
         </div>
 
         <div class="proto-list">
-          <article class="proto-list-item" *ngFor="let row of importPreview.rows | slice:0:10">
+          <article class="proto-list-item imports-csv-row" *ngFor="let row of importPreview.rows; let index = index">
             <div class="proto-list-item__top">
-              <strong>{{ row.description }}</strong>
-              <span class="proto-tag">{{ row.type }}</span>
+              <div class="imports-csv-row__fields">
+                <input
+                  class="imports-csv-row__input imports-csv-row__input--desc"
+                  type="text"
+                  [value]="row.description"
+                  (change)="updateCsvRow(index, 'description', $any($event.target).value)"
+                  placeholder="Descrição"
+                />
+
+                <select
+                  class="imports-csv-row__select"
+                  [value]="row.type"
+                  (change)="updateCsvRow(index, 'type', $any($event.target).value)"
+                >
+                  <option value="INCOME">Receita</option>
+                  <option value="EXPENSE">Despesa</option>
+                  <option value="TRANSFER">Transferência</option>
+                </select>
+
+                <input
+                  class="imports-csv-row__input imports-csv-row__input--amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  [value]="row.amount"
+                  (change)="updateCsvRow(index, 'amount', +$any($event.target).value)"
+                />
+
+                <input
+                  class="imports-csv-row__input imports-csv-row__input--date"
+                  type="date"
+                  [value]="row.date"
+                  (change)="updateCsvRow(index, 'date', $any($event.target).value)"
+                />
+              </div>
+
+              <span class="proto-chip" *ngIf="row.duplicate" data-tone="warning">Duplicada</span>
             </div>
-            <p>{{ row.date | date: 'dd/MM/yyyy' }} · {{ row.categoryName || 'Sem categoria' }}</p>
-            <div class="proto-list-item__meta-row">
-              <strong>{{ row.amount | currency: 'BRL' : 'symbol' : '1.2-2' : 'pt-BR' }}</strong>
-              <span class="proto-chip" *ngIf="row.duplicate">Duplicada</span>
-            </div>
+
+            <p *ngIf="row.categoryName" class="imports-csv-row__category">{{ row.categoryName }}</p>
           </article>
         </div>
 
         <div class="proto-actions-row">
-          <button type="button" class="proto-button proto-button--secondary" (click)="commitImport()">
+          <button type="button" class="proto-button" (click)="commitImport()">
             Confirmar importação
+          </button>
+          <button type="button" class="proto-button proto-button--ghost" (click)="preview.set(null)">
+            Descartar
           </button>
         </div>
       </div>
     </div>
   </article>
+
+  <!-- Aba Histórico -->
+  <ng-container *ngIf="activeTab() === 'history'">
+    <div class="imports-history-loading" *ngIf="historyLoading()">
+      <span class="material-symbols-rounded">hourglass_empty</span>
+      Carregando histórico...
+    </div>
+
+    <ng-container *ngIf="!historyLoading()">
+      <article class="proto-surface" *ngIf="receiptHistory().length">
+        <div class="proto-surface__head">
+          <div>
+            <h3>Notas fiscais</h3>
+            <p>{{ receiptHistory().length }} nota(s) processada(s)</p>
+          </div>
+        </div>
+
+        <div class="proto-surface__body">
+          <div class="proto-list">
+            <article class="proto-list-item" *ngFor="let scan of receiptHistory()">
+              <div class="proto-list-item__top">
+                <strong>{{ scan.merchantName || scan.fileName }}</strong>
+                <span class="proto-tag" [attr.data-tone]="receiptStatusTone(scan.status)">
+                  {{ receiptStatusLabel(scan.status) }}
+                </span>
+              </div>
+              <p>{{ historyDateLabel(scan.importedAt || scan.createdAt) }}</p>
+              <div class="proto-list-item__meta-row">
+                <strong>{{ previewAmount(scan.totalAmount) }}</strong>
+                <span class="proto-chip">{{ scan.fileName }}</span>
+              </div>
+            </article>
+          </div>
+        </div>
+      </article>
+
+      <article class="proto-surface" *ngIf="csvHistory().length">
+        <div class="proto-surface__head">
+          <div>
+            <h3>Importações CSV</h3>
+            <p>{{ csvHistory().length }} arquivo(s) processado(s)</p>
+          </div>
+        </div>
+
+        <div class="proto-surface__body">
+          <div class="proto-list">
+            <article class="proto-list-item" *ngFor="let job of csvHistory()">
+              <div class="proto-list-item__top">
+                <strong>{{ job.fileName }}</strong>
+                <span class="proto-tag" [attr.data-tone]="receiptStatusTone(job.status)">
+                  {{ importJobStatusLabel(job.status) }}
+                </span>
+              </div>
+              <p>{{ historyDateLabel(job.createdAt) }}</p>
+              <div class="proto-list-item__meta-row">
+                <span class="proto-chip">{{ job.importedRows }} de {{ job.totalRows }} importadas</span>
+                <span class="proto-chip" *ngIf="job.deduplicatedRows">{{ job.deduplicatedRows }} duplicadas</span>
+              </div>
+            </article>
+          </div>
+        </div>
+      </article>
+
+      <div class="proto-empty" *ngIf="!receiptHistory().length && !csvHistory().length">
+        <strong>Nenhuma importação encontrada</strong>
+        <p>Faça a primeira importação por CSV ou nota fiscal para ver o histórico aqui.</p>
+      </div>
+    </ng-container>
+  </ng-container>
 </div>

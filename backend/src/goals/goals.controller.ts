@@ -35,6 +35,12 @@ export class GoalsController {
     return this.goalsService.update(user.sub, id, dto);
   }
 
+  @Get(':id/contributions')
+  @ApiOperation({ summary: 'Lista aportes de uma meta' })
+  listContributions(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.goalsService.listContributions(user.sub, id);
+  }
+
   @Patch(':id/contribute')
   @ApiOperation({ summary: 'Registra progresso de uma meta' })
   contribute(

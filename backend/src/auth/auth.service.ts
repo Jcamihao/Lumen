@@ -3,6 +3,7 @@ import {
   AuthSession,
   UserRole,
 } from "@prisma/client";
+import { randomInt } from "crypto";
 import {
   BadRequestException,
   Injectable,
@@ -23,6 +24,8 @@ import { LoginDto } from "./dto/login.dto";
 import { MfaCodeDto } from "./dto/mfa-code.dto";
 import { RefreshDto } from "./dto/refresh.dto";
 import { RegisterDto } from "./dto/register.dto";
+import { RequestEmailMfaBypassDto } from "./dto/request-email-mfa-bypass.dto";
+import { VerifyEmailMfaBypassDto } from "./dto/verify-email-mfa-bypass.dto";
 import { VerifyLoginMfaDto } from "./dto/verify-login-mfa.dto";
 import { MfaRecoveryCodeRecord, MfaService } from "./mfa.service";
 
@@ -321,6 +324,129 @@ export class AuthService {
       success: true,
       user: await this.usersService.getMe(userId),
     };
+  }
+
+  async requestEmailMfaBypass(
+    dto: RequestEmailMfaBypassDto,
+    request?: RequestWithContext,
+  ) {
+    this.assertMfaFeatureEnabled();
+
+    const loginChallenge = await this.prisma.authChallenge.findUnique({
+      where: { id: dto.challengeId },
+      include: { user: true },
+    });
+
+    if (
+      !loginChallenge ||
+      loginChallenge.type !== AuthChallengeType.MFA_LOGIN ||
+      loginChallenge.completedAt ||
+      loginChallenge.expiresAt <= new Date()
+    ) {
+      throw new UnauthorizedException(
+        "O desafio de autenticacao expirou ou nao e mais valido.",
+      );
+    }
+
+    const otp = String(randomInt(100000, 1000000));
+    const tokenHash = await bcrypt.hash(otp, 10);
+
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1_000);
+    const sessionContext = this.extractSessionContext(request);
+
+    await this.prisma.authChallenge.deleteMany({
+      where: {
+        userId: loginChallenge.userId,
+        type: AuthChallengeType.MFA_EMAIL_BYPASS,
+        completedAt: null,
+      },
+    });
+
+    const bypassChallenge = await this.prisma.authChallenge.create({
+      data: {
+        userId: loginChallenge.userId,
+        type: AuthChallengeType.MFA_EMAIL_BYPASS,
+        token: tokenHash,
+        expiresAt,
+        ipAddress: sessionContext.ipAddress,
+        userAgent: sessionContext.userAgent,
+      },
+    });
+
+    void this.mailService
+      .sendMfaBypassEmail({
+        email: loginChallenge.user.email,
+        name: loginChallenge.user.name,
+        otp,
+      })
+      .catch((error) => {
+        this.logger.warn(
+          `mfa_bypass_email_failed userId=${loginChallenge.userId} reason=${this.getErrorMessage(error)}`,
+        );
+      });
+
+    this.logger.log(
+      `mfa_email_bypass_requested userId=${loginChallenge.userId} bypassChallengeId=${bypassChallenge.id}`,
+    );
+
+    return {
+      bypassChallengeId: bypassChallenge.id,
+      expiresAt: bypassChallenge.expiresAt.toISOString(),
+    };
+  }
+
+  async verifyEmailMfaBypass(
+    dto: VerifyEmailMfaBypassDto,
+    request?: RequestWithContext,
+  ): Promise<AuthTokensResponse> {
+    this.assertMfaFeatureEnabled();
+
+    const challenge = await this.prisma.authChallenge.findUnique({
+      where: { id: dto.bypassChallengeId },
+      include: {
+        user: {
+          include: {
+            taskCategories: { orderBy: { name: "asc" } },
+            financeCategories: { orderBy: { name: "asc" } },
+          },
+        },
+      },
+    });
+
+    if (
+      !challenge ||
+      challenge.type !== AuthChallengeType.MFA_EMAIL_BYPASS ||
+      challenge.completedAt ||
+      challenge.expiresAt <= new Date() ||
+      !challenge.token
+    ) {
+      throw new UnauthorizedException(
+        "O codigo de recuperacao expirou ou nao e mais valido.",
+      );
+    }
+
+    const codeMatches = await bcrypt.compare(dto.code, challenge.token);
+    if (!codeMatches) {
+      throw new UnauthorizedException("Codigo de recuperacao invalido.");
+    }
+
+    await this.prisma.authChallenge.update({
+      where: { id: challenge.id },
+      data: { completedAt: new Date() },
+    });
+
+    await this.usersService.updateLastLogin(challenge.user.id);
+    this.logger.log(
+      `mfa_email_bypass_success userId=${challenge.user.id} challengeId=${challenge.id}`,
+    );
+
+    return this.issueTokens({
+      userId: challenge.user.id,
+      email: challenge.user.email,
+      role: challenge.user.role,
+      user: challenge.user,
+      sessionContext: this.extractSessionContext(request),
+    });
   }
 
   async refresh(dto: RefreshDto, request?: RequestWithContext) {

@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, comput
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter, map, startWith } from 'rxjs';
+import { LifeApiService } from '../../core/services/life-api.service';
 
 type NavItem = {
   label: string;
@@ -21,7 +22,11 @@ type NavItem = {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BottomNavComponent {
+  private readonly api = inject(LifeApiService);
   private readonly menuOpenState = signal(false);
+  protected readonly hasPendingSync = computed(
+    () => this.api.pendingSyncCount() > 0 || this.api.failedSyncCount() > 0,
+  );
 
   @Input()
   set menuOpen(value: boolean) {

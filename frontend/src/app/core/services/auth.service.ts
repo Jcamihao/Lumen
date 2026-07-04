@@ -18,6 +18,7 @@ import { environment } from "../../../environments/environment";
 import {
   AuthResponse,
   LoginResult,
+  MfaBypassChallengeResponse,
   MfaConfirmResponse,
   MfaDisableResponse,
   MfaSetupResponse,
@@ -92,6 +93,19 @@ export class AuthService {
   verifyLoginMfa(payload: { challengeId: string; code: string }) {
     return this.http
       .post<AuthResponse>(`${environment.apiBaseUrl}/auth/mfa/verify-login`, payload)
+      .pipe(tap((response) => this.setSession(response)));
+  }
+
+  requestMfaEmailBypass(payload: { challengeId: string }) {
+    return this.http.post<MfaBypassChallengeResponse>(
+      `${environment.apiBaseUrl}/auth/mfa/email-bypass/request`,
+      payload,
+    );
+  }
+
+  verifyMfaEmailBypass(payload: { bypassChallengeId: string; code: string }) {
+    return this.http
+      .post<AuthResponse>(`${environment.apiBaseUrl}/auth/mfa/email-bypass/verify`, payload)
       .pipe(tap((response) => this.setSession(response)));
   }
 

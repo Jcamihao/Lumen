@@ -145,23 +145,84 @@
                 {{ goal.targetAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
               </span>
               <span class="proto-chip" [attr.data-tone]="remainingAmount(goal) === 0 ? 'success' : 'accent'">
-                Faltam
-                {{ remainingAmount(goal) | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+                Faltam {{ remainingAmount(goal) | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
               </span>
               <span class="proto-tag">{{ goalDeadlineLabel(goal) }}</span>
             </div>
 
-            <div class="proto-actions-row goal-card__actions">
+            <!-- Aporte customizado -->
+            <div class="goal-card__contribute-form" *ngIf="isContributing(goal.id)">
+              <div class="proto-field goal-card__contribute-field">
+                <label>Valor do aporte</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  placeholder="0,00"
+                  [value]="contributeAmount()"
+                  (input)="contributeAmount.set(+$any($event.target).value)"
+                />
+              </div>
+              <div class="proto-actions-row">
+                <button type="button" class="proto-button" (click)="contributeCustom(goal)">
+                  Confirmar aporte
+                </button>
+                <button type="button" class="proto-button proto-button--ghost" (click)="cancelCustomContribute()">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+
+            <div class="proto-actions-row goal-card__actions" *ngIf="!isContributing(goal.id)">
               <button type="button" class="proto-button proto-button--secondary" (click)="contribute(goal, 500)">
                 + R$ 500
               </button>
               <button type="button" class="proto-button proto-button--secondary" (click)="contribute(goal, 1000)">
                 + R$ 1.000
               </button>
+              <button type="button" class="proto-button proto-button--secondary" (click)="openCustomContribute(goal.id)">
+                Outro valor
+              </button>
+              <button
+                type="button"
+                class="proto-button proto-button--ghost goal-card__history-btn"
+                (click)="toggleContributions(goal.id)"
+              >
+                <span class="material-symbols-rounded">
+                  {{ isContribExpanded(goal.id) ? 'expand_less' : 'history' }}
+                </span>
+                Aportes
+              </button>
               <button type="button" class="proto-button proto-button--ghost" (click)="removeGoal(goal.id)">
                 Remover
               </button>
             </div>
+
+            <!-- Histórico de aportes -->
+            <div class="goal-card__history" *ngIf="isContribExpanded(goal.id)">
+              <p class="goal-card__history-loading" *ngIf="loadingContribGoalId() === goal.id">
+                Carregando histórico...
+              </p>
+
+              <ng-container *ngIf="loadingContribGoalId() !== goal.id">
+                <div class="proto-list" *ngIf="contributionsOf(goal.id).length; else noContrib">
+                  <article class="proto-list-item goal-contrib-item" *ngFor="let contrib of contributionsOf(goal.id)">
+                    <div class="proto-list-item__top">
+                      <strong>{{ contrib.description }}</strong>
+                      <strong class="goal-contrib-item__amount">
+                        + {{ contrib.amount | currency: currencyCode() : 'symbol' : '1.2-2' : 'pt-BR' }}
+                      </strong>
+                    </div>
+                    <p>{{ contributionDateLabel(contrib.date) }}</p>
+                  </article>
+                </div>
+
+                <ng-template #noContrib>
+                  <p class="goal-card__history-empty">Nenhum aporte registrado ainda.</p>
+                </ng-template>
+              </ng-container>
+            </div>
+
           </article>
         </div>
       </div>

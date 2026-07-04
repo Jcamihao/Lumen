@@ -54,6 +54,12 @@ type ReminderEmailInput = {
   timezone?: string | null;
 };
 
+type MfaBypassEmailInput = {
+  email: string;
+  name?: string | null;
+  otp: string;
+};
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -135,6 +141,41 @@ export class MailService {
       text,
       html,
       tags: ["reminder"],
+    });
+  }
+
+  async sendMfaBypassEmail(input: MfaBypassEmailInput) {
+    const greetingName = input.name ? this.firstName(input.name) : "voce";
+    const subject = "LUMEN: codigo de acesso temporario";
+    const text = [
+      `Oi ${greetingName},`,
+      "",
+      "Recebemos uma solicitacao para acessar sua conta sem o autenticador.",
+      "",
+      `Seu codigo de acesso temporario e: ${input.otp}`,
+      "",
+      "Este codigo expira em 10 minutos e so pode ser usado uma vez.",
+      "Se nao foi voce, ignore este email.",
+      "",
+      "Equipe LUMEN",
+    ].join("\n");
+    const html = [
+      '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
+      `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
+      "<p>Recebemos uma solicitacao para acessar sua conta sem o autenticador.</p>",
+      `<p>Seu codigo de acesso temporario e: <strong style="font-size: 1.4rem; letter-spacing: 0.15em;">${this.escapeHtml(input.otp)}</strong></p>`,
+      "<p>Este codigo expira em <strong>10 minutos</strong> e so pode ser usado uma vez.</p>",
+      "<p style='color:#6b7280;font-size:0.875rem;'>Se nao foi voce, ignore este email.</p>",
+      "<p>Equipe LUMEN</p>",
+      "</body></html>",
+    ].join("");
+
+    return this.sendEmail({
+      to: input.email,
+      subject,
+      text,
+      html,
+      tags: ["mfa_bypass", "auth"],
     });
   }
 

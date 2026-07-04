@@ -78,6 +78,147 @@
   font-size: 0.82rem;
 }
 
+.tasks-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--surface-border, rgba(255 255 255 / 0.07));
+}
+
+.tasks-filters__search-wrap {
+  position: relative;
+  flex: 1 1 10rem;
+  min-width: 8rem;
+}
+
+.tasks-filters__search-icon {
+  position: absolute;
+  left: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1rem;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.tasks-filters__search {
+  width: 100%;
+  height: 2rem;
+  padding: 0 0.65rem 0 2rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--input-border, rgba(255 255 255 / 0.12));
+  background: var(--input-bg, var(--surface-elevated));
+  color: var(--text-primary);
+  font-size: 0.8rem;
+}
+
+.tasks-filters__select {
+  height: 2rem;
+  padding: 0 0.65rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--input-border, rgba(255 255 255 / 0.12));
+  background: var(--input-bg, var(--surface-elevated));
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.tasks-filters__clear {
+  min-height: 2rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 0.6rem;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+
+  .material-symbols-rounded {
+    font-size: 0.95rem;
+  }
+}
+
+.task-card__subtasks {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.32rem;
+  padding-top: 0.2rem;
+  border-top: 1px solid var(--surface-border, rgba(255 255 255 / 0.07));
+}
+
+.task-card__subtask-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.83rem;
+  color: var(--text-primary);
+
+  input[type='checkbox'] {
+    accent-color: var(--accent);
+    width: 0.9rem;
+    height: 0.9rem;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+}
+
+.task-card__subtask--done .task-card__subtask-label span {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.task-edit-form {
+  width: 100%;
+}
+
+.task-edit-form__recurring {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.task-edit-form__recurring-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  font-size: 0.84rem;
+  color: var(--text-primary);
+
+  input[type='checkbox'] {
+    accent-color: var(--accent);
+    width: 0.9rem;
+    height: 0.9rem;
+    cursor: pointer;
+  }
+}
+
+.task-edit-form__recurrence-select {
+  height: 2rem;
+  padding: 0 0.6rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--input-border, rgba(255 255 255 / 0.12));
+  background: var(--input-bg, var(--surface-elevated));
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.task-edit-form .proto-field label {
+  font-size: 0.72rem;
+}
+
+.task-edit-form input,
+.task-edit-form select,
+.task-edit-form textarea {
+  font-size: 0.84rem;
+}
+
 @media (max-width: 1200px) {
   .tasks-grid {
     grid-template-columns: 1fr;

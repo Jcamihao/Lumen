@@ -108,6 +108,52 @@
   color: var(--accent);
 }
 
+.finance-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--surface-border, rgba(255 255 255 / 0.07));
+}
+
+.finance-filters__period {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 1 1 auto;
+}
+
+.finance-filters__nav-btn {
+  min-height: 2rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 0.6rem;
+
+  .material-symbols-rounded {
+    font-size: 1.1rem;
+  }
+}
+
+.finance-filters__month-label {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 9rem;
+  text-align: center;
+  text-transform: capitalize;
+}
+
+.finance-filters__type-select {
+  height: 2rem;
+  padding: 0 0.65rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--input-border, rgba(255 255 255 / 0.12));
+  background: var(--input-bg, var(--surface-elevated));
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
 @media (max-width: 1200px) {
   .finance-grid {
     grid-template-columns: 1fr;

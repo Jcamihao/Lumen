@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   Post,
   UploadedFile,
   UseInterceptors,
@@ -18,6 +19,18 @@ import { ImportsService } from './imports.service';
 @Controller('imports')
 export class ImportsController {
   constructor(private readonly importsService: ImportsService) {}
+
+  @Get('receipts')
+  @ApiOperation({ summary: 'Lista historico de notas fiscais importadas' })
+  listReceipts(@CurrentUser() user: AuthenticatedUser) {
+    return this.importsService.listReceiptScans(user.sub);
+  }
+
+  @Get('transactions')
+  @ApiOperation({ summary: 'Lista historico de importacoes CSV' })
+  listTransactionImports(@CurrentUser() user: AuthenticatedUser) {
+    return this.importsService.listImportJobs(user.sub);
+  }
 
   @Post('transactions/preview')
   @UseInterceptors(FileInterceptor('file'))

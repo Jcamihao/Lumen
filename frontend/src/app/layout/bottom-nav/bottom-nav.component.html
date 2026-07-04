@@ -25,7 +25,14 @@
       (click)="requestMenu()"
       aria-label="Abrir menu"
     >
-      <span class="material-symbols-rounded">menu</span>
+      <span class="proto-bottom-nav__icon-wrap">
+        <span class="material-symbols-rounded">menu</span>
+        <span
+          *ngIf="hasPendingSync()"
+          class="proto-bottom-nav__sync-dot"
+          aria-label="Itens aguardando sincronização"
+        ></span>
+      </span>
       <span>Menu</span>
     </button>
   </div>

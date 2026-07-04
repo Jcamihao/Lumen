@@ -125,6 +125,42 @@ export class ImportsService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
+  async listReceiptScans(userId: string) {
+    const scans = await this.prisma.receiptScan.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+      select: {
+        id: true,
+        fileName: true,
+        merchantName: true,
+        totalAmount: true,
+        status: true,
+        importedAt: true,
+        createdAt: true,
+      },
+    });
+
+    return scans.map((s) => ({ ...s, totalAmount: Number(s.totalAmount) }));
+  }
+
+  async listImportJobs(userId: string) {
+    return this.prisma.importJob.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+      select: {
+        id: true,
+        fileName: true,
+        status: true,
+        totalRows: true,
+        importedRows: true,
+        deduplicatedRows: true,
+        createdAt: true,
+      },
+    });
+  }
+
   async previewTransactionsImport(userId: string, file?: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('Envie um arquivo CSV no campo file.');
@@ -499,18 +535,22 @@ export class ImportsService {
 
   private ensureReceiptFile(file?: Express.Multer.File) {
     if (!file) {
-      throw new BadRequestException('Envie uma imagem da nota fiscal no campo file.');
+      throw new BadRequestException('Envie uma imagem ou PDF da nota fiscal no campo file.');
     }
 
-    if (!file.mimetype.startsWith('image/')) {
+    const isImage = file.mimetype.startsWith('image/');
+    const isPdf = file.mimetype === 'application/pdf';
+
+    if (!isImage && !isPdf) {
       throw new BadRequestException(
-        'Envie uma imagem valida da nota fiscal em JPG, PNG, WEBP ou similar.',
+        'Formato invalido. Envie uma imagem (JPG, PNG, WEBP) ou um arquivo PDF da nota fiscal.',
       );
     }
 
-    const maxSizeBytes = 8 * 1024 * 1024;
+    const maxSizeBytes = isPdf ? 20 * 1024 * 1024 : 8 * 1024 * 1024;
+    const maxLabel = isPdf ? '20 MB' : '8 MB';
     if (file.size > maxSizeBytes) {
-      throw new BadRequestException('A imagem da nota deve ter no maximo 8 MB.');
+      throw new BadRequestException(`O arquivo da nota deve ter no maximo ${maxLabel}.`);
     }
   }
 

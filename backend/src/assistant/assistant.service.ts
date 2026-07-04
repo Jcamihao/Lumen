@@ -13,6 +13,7 @@ import { CreateTaskDto } from "../tasks/dto/create-task.dto";
 import { TasksService } from "../tasks/tasks.service";
 import { ApplyAssistantActionDto } from "./dto/apply-assistant-action.dto";
 import { AskAssistantHistoryItemDto } from "./dto/ask-assistant.dto";
+import { SaveAssistantTurnDto } from "./dto/save-assistant-turn.dto";
 
 type AssistantConfidence = "low" | "medium" | "high";
 
@@ -277,6 +278,46 @@ export class AssistantService {
       signals,
       actions,
     };
+  }
+
+  async listHistory(userId: string, limit = 20) {
+    const turns = await this.prisma.assistantTurn.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Math.max(limit, 1), 50),
+      select: {
+        id: true,
+        question: true,
+        answer: true,
+        focusArea: true,
+        source: true,
+        createdAt: true,
+      },
+    });
+
+    return turns;
+  }
+
+  async saveHistoryTurn(userId: string, dto: SaveAssistantTurnDto) {
+    const turn = await this.prisma.assistantTurn.create({
+      data: {
+        userId,
+        question: dto.question.slice(0, 2000),
+        answer: dto.answer.slice(0, 8000),
+        focusArea: dto.focusArea ?? null,
+        source: dto.source ?? null,
+      },
+      select: {
+        id: true,
+        question: true,
+        answer: true,
+        focusArea: true,
+        source: true,
+        createdAt: true,
+      },
+    });
+
+    return turn;
   }
 
   async applyAction(userId: string, dto: ApplyAssistantActionDto) {

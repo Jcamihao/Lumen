@@ -129,8 +129,44 @@
       <div class="proto-surface__head">
         <div>
           <h3>Movimentações</h3>
-          <p>{{ transactions().length }} transações registradas</p>
+          <p>{{ transactions().length }} transações no período</p>
         </div>
+      </div>
+
+      <div class="finance-filters">
+        <div class="finance-filters__period">
+          <button
+            type="button"
+            class="proto-button proto-button--ghost finance-filters__nav-btn"
+            (click)="previousMonth()"
+            aria-label="Mês anterior"
+          >
+            <span class="material-symbols-rounded">chevron_left</span>
+          </button>
+
+          <span class="finance-filters__month-label">{{ monthLabel() }}</span>
+
+          <button
+            type="button"
+            class="proto-button proto-button--ghost finance-filters__nav-btn"
+            (click)="nextMonth()"
+            [disabled]="isCurrentMonth()"
+            aria-label="Próximo mês"
+          >
+            <span class="material-symbols-rounded">chevron_right</span>
+          </button>
+        </div>
+
+        <select
+          class="finance-filters__type-select"
+          [value]="filterType()"
+          (change)="filterType.set($any($event.target).value)"
+        >
+          <option value="">Todos os tipos</option>
+          <option value="INCOME">Receitas</option>
+          <option value="EXPENSE">Despesas</option>
+          <option value="TRANSFER">Transferências</option>
+        </select>
       </div>
 
       <div class="proto-surface__body" *ngIf="transactions().length; else noTransactions">
@@ -175,8 +211,8 @@
 
       <ng-template #noTransactions>
         <div class="proto-empty">
-          <strong>Sem transações ainda</strong>
-          <p>Registre a primeira movimentação para destravar a leitura financeira.</p>
+          <strong>Sem transações no período</strong>
+          <p>Nenhuma movimentação encontrada para o filtro selecionado.</p>
         </div>
       </ng-template>
     </article>

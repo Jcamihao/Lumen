@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ForecastRiskLevel, TransactionType } from '@prisma/client';
-import { addDays, startOfDay } from 'date-fns';
+import { addDays, getDaysInMonth, startOfDay } from 'date-fns';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -86,8 +86,14 @@ export class ForecastsService {
       0,
     );
 
-    const predictedBalance = currentBalance + futureCashFlow - taskCosts;
     const monthlyIncome = Number(user.monthlyIncome ?? 0);
+    const daysInMonth = getDaysInMonth(now);
+    const remainingDays = daysInMonth - now.getDate();
+    const projectedMonthlyIncome =
+      monthlyIncome > 0 ? (monthlyIncome / daysInMonth) * remainingDays : 0;
+
+    const predictedBalance =
+      currentBalance + futureCashFlow - taskCosts + projectedMonthlyIncome;
     const exposure = Math.abs(futureCashFlow) + taskCosts;
 
     let riskLevel: ForecastRiskLevel = ForecastRiskLevel.LOW;
@@ -112,6 +118,8 @@ export class ForecastsService {
           futureCashFlow,
           taskCosts,
           monthlyIncome,
+          projectedMonthlyIncome,
+          remainingDays,
         },
       },
     });

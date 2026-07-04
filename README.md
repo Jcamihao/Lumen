@@ -5,7 +5,7 @@
 <h1 align="center">✨ LUMEN</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.4.0-22c55e" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.5.0-22c55e" alt="Version" />
   <img src="https://img.shields.io/badge/Backend-NestJS%2010-e0234e?logo=nestjs&logoColor=white" alt="NestJS" />
   <img src="https://img.shields.io/badge/Frontend-Angular%2016-dd0031?logo=angular&logoColor=white" alt="Angular" />
   <img src="https://img.shields.io/badge/Status-Em%20Desenvolvimento-0ea5e9" alt="Status" />
@@ -13,7 +13,7 @@
 </p>
 
 # Tudo mais claro. Tudo mais simples.
-O LUMEN é um SaaS de organização de vida criado pela `codeStage Solucoes` para conectar tarefas, dinheiro, metas, tempo e decisões em uma única experiência. A versão 1.4.0 evolui a importação financeira com mais rastreabilidade, feedback visual e resumo de impacto no dashboard.
+O LUMEN é um SaaS de organização de vida criado pela `codeStage Solucoes` para conectar tarefas, dinheiro, metas, tempo e decisões em uma única experiência. A versão 1.5.0 reforça a recuperação de acesso com MFA por e-mail, dá memória persistente ao Selah e entrega um painel administrativo de suporte com feedback via toasts.
 
 ## ✨ Visão rápida
 
@@ -25,11 +25,12 @@ O LUMEN é um SaaS de organização de vida criado pela `codeStage Solucoes` par
 
 ## 🧩 Funcionalidades resumidas
 
-### 🆕 Destaques da versão 1.4.0
-- **Importação financeira mais robusta** com processamento de CSV mais tolerante e retorno detalhado sobre itens importados.
-- **Feedback operacional na tela de importações** com resumo, histórico e estados visuais para acompanhar cada carga.
-- **Dashboard alinhado às importações** com indicadores atualizados para leitura rápida do impacto financeiro.
-- **Sidebar mais limpa** com navegação ajustada para reduzir ruído no workspace.
+### 🆕 Destaques da versão 1.5.0
+- **Recuperação de MFA por e-mail** para login quando o TOTP não está disponível.
+- **Histórico do Selah** com turnos de conversa persistidos por usuário.
+- **Painel administrativo de suporte** com triagem e atualização de status das solicitações.
+- **Notificações toast** reutilizáveis para feedback de sucesso, erro e informação.
+- **Tarefas recorrentes automáticas** e notas fiscais em PDF na importação.
 
 ### 🧭 1) Núcleo do workspace
 - Dashboard agregado com prioridades, metas, dinheiro, lembretes e notificações.
@@ -129,6 +130,7 @@ npm --prefix frontend run build
 
 - 🧱 Arquitetura: `docs/architecture.md`
 - 🎨 Design system: `docs/design-system.md`
+- 📝 Release notes 1.5.0: `docs/releases/v1.5.0.md`
 - 📝 Release notes 1.4.0: `docs/releases/v1.4.0.md`
 - 📝 Release notes 1.3.0: `docs/releases/v1.3.0.md`
 - 📝 Release notes 1.2.0: `docs/releases/v1.2.0.md`

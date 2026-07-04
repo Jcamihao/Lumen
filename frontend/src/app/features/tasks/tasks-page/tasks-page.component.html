@@ -126,69 +126,261 @@
       <div class="proto-surface__head">
         <div>
           <h3>Fila de tarefas</h3>
-          <p>Conclua, remova e acompanhe o que ainda precisa andar.</p>
+          <p>
+            {{ filteredTasks().length }} de {{ tasks().length }} tarefa(s)
+            <ng-container *ngIf="hasActiveFilters()"> com filtros ativos</ng-container>
+          </p>
         </div>
       </div>
 
-      <div class="proto-surface__body" *ngIf="tasks().length; else noTasks">
+      <!-- Filtros -->
+      <div class="tasks-filters">
+        <div class="tasks-filters__search-wrap">
+          <span class="material-symbols-rounded tasks-filters__search-icon">search</span>
+          <input
+            class="tasks-filters__search"
+            type="search"
+            placeholder="Buscar tarefas..."
+            [value]="filterSearch()"
+            (input)="filterSearch.set($any($event.target).value)"
+          />
+        </div>
+
+        <select
+          class="tasks-filters__select"
+          [value]="filterStatus()"
+          (change)="filterStatus.set($any($event.target).value)"
+        >
+          <option value="">Todos os status</option>
+          <option value="PENDING">Pendentes</option>
+          <option value="IN_PROGRESS">Em andamento</option>
+          <option value="DONE">Concluídas</option>
+          <option value="CANCELLED">Canceladas</option>
+        </select>
+
+        <select
+          class="tasks-filters__select"
+          [value]="filterPriority()"
+          (change)="filterPriority.set($any($event.target).value)"
+        >
+          <option value="">Todas as prioridades</option>
+          <option value="LOW">Baixa</option>
+          <option value="MEDIUM">Média</option>
+          <option value="HIGH">Alta</option>
+          <option value="CRITICAL">Crítica</option>
+        </select>
+
+        <select
+          class="tasks-filters__select"
+          [value]="filterCategory()"
+          (change)="filterCategory.set($any($event.target).value)"
+        >
+          <option value="">Todas as categorias</option>
+          <option *ngFor="let category of taskCategories()" [value]="category.id">
+            {{ category.name }}
+          </option>
+        </select>
+
+        <button
+          *ngIf="hasActiveFilters()"
+          type="button"
+          class="proto-button proto-button--ghost tasks-filters__clear"
+          (click)="clearFilters()"
+        >
+          <span class="material-symbols-rounded">filter_alt_off</span>
+          Limpar
+        </button>
+      </div>
+
+      <div class="proto-surface__body" *ngIf="filteredTasks().length; else noTasks">
         <div class="proto-list">
-          <article class="proto-list-item task-card" *ngFor="let task of tasks()">
-            <div class="proto-list-item__top task-card__top">
-              <div class="task-card__title-block">
-                <strong>{{ task.title }}</strong>
-                <p>{{ taskSubtitle(task) }}</p>
+          <article class="proto-list-item task-card" *ngFor="let task of filteredTasks()">
+
+            <!-- Modo leitura -->
+            <ng-container *ngIf="!isEditing(task)">
+              <div class="proto-list-item__top task-card__top">
+                <div class="task-card__title-block">
+                  <strong>{{ task.title }}</strong>
+                  <p>{{ taskSubtitle(task) }}</p>
+                </div>
+
+                <span class="proto-tag" [attr.data-tone]="taskStatusTone(task)">
+                  {{ task.status === 'DONE' ? 'Concluída' : priorityLabel(task.priority) }}
+                </span>
               </div>
 
-              <span class="proto-tag" [attr.data-tone]="taskStatusTone(task)">
-                {{ task.status === 'DONE' ? 'Concluída' : priorityLabel(task.priority) }}
-              </span>
-            </div>
+              <div class="task-card__badges">
+                <span class="proto-chip">{{ taskCategoryLabel(task) }}</span>
+                <span class="proto-chip">{{ taskDeadlineLabel(task) }}</span>
+                <span *ngIf="task.estimatedAmount" class="proto-chip" data-tone="accent">
+                  {{ task.estimatedAmount | currency: 'BRL' : 'symbol' : '1.0-0' : 'pt-BR' }}
+                </span>
+                <span
+                  *ngIf="task.hasFinancialImpact && !task.estimatedAmount"
+                  class="proto-chip"
+                  data-tone="warning"
+                >
+                  Impacto financeiro
+                </span>
+                <span *ngIf="task.subtasks.length" class="proto-chip">
+                  {{ subtaskProgress(task) }} subtarefas
+                </span>
+                <span *ngIf="task.isRecurring" class="proto-chip" data-tone="accent">
+                  <span class="material-symbols-rounded" style="font-size:0.75rem;vertical-align:middle">autorenew</span>
+                  {{ recurrenceLabel(task.recurrenceRule) }}
+                </span>
+              </div>
 
-            <div class="task-card__badges">
-              <span class="proto-chip">{{ taskCategoryLabel(task) }}</span>
-              <span class="proto-chip">{{ taskDeadlineLabel(task) }}</span>
-              <span
-                *ngIf="task.estimatedAmount"
-                class="proto-chip"
-                data-tone="accent"
-              >
-                {{ task.estimatedAmount | currency: 'BRL' : 'symbol' : '1.0-0' : 'pt-BR' }}
-              </span>
-              <span
-                *ngIf="task.hasFinancialImpact && !task.estimatedAmount"
-                class="proto-chip"
-                data-tone="warning"
-              >
-                Impacto financeiro
-              </span>
-            </div>
+              <!-- Subtarefas checklist -->
+              <ul class="task-card__subtasks" *ngIf="task.subtasks.length">
+                <li
+                  class="task-card__subtask"
+                  *ngFor="let sub of task.subtasks; let si = index"
+                  [class.task-card__subtask--done]="sub.isCompleted"
+                >
+                  <label class="task-card__subtask-label">
+                    <input
+                      type="checkbox"
+                      [checked]="sub.isCompleted"
+                      (change)="toggleSubtask(task, si)"
+                    />
+                    <span>{{ sub.title }}</span>
+                  </label>
+                </li>
+              </ul>
 
-            <div class="proto-actions-row task-card__actions">
-              <button
-                type="button"
-                class="proto-button proto-button--secondary"
-                *ngIf="task.status !== 'DONE'"
-                (click)="markDone(task)"
-              >
-                Concluir
-              </button>
+              <div class="proto-actions-row task-card__actions">
+                <button
+                  type="button"
+                  class="proto-button proto-button--secondary"
+                  *ngIf="task.status !== 'DONE'"
+                  (click)="markDone(task)"
+                >
+                  Concluir
+                </button>
 
-              <button
-                type="button"
-                class="proto-button proto-button--ghost"
-                (click)="removeTask(task.id)"
+                <button
+                  type="button"
+                  class="proto-button proto-button--secondary"
+                  (click)="startEdit(task)"
+                >
+                  <span class="material-symbols-rounded">edit</span>
+                  Editar
+                </button>
+
+                <button
+                  type="button"
+                  class="proto-button proto-button--ghost"
+                  (click)="removeTask(task.id)"
+                >
+                  Remover
+                </button>
+              </div>
+            </ng-container>
+
+            <!-- Modo edição inline -->
+            <ng-container *ngIf="isEditing(task)">
+              <form
+                class="task-edit-form proto-form-grid"
+                [formGroup]="editForm"
+                (ngSubmit)="saveEdit()"
               >
-                Remover
-              </button>
-            </div>
+                <div class="proto-field proto-field--full">
+                  <label>Título</label>
+                  <input type="text" formControlName="title" />
+                </div>
+
+                <div class="proto-field proto-field--full">
+                  <label>Descrição</label>
+                  <textarea rows="3" formControlName="description"></textarea>
+                </div>
+
+                <div class="proto-field">
+                  <label>Status</label>
+                  <select formControlName="status">
+                    <option value="PENDING">Pendente</option>
+                    <option value="IN_PROGRESS">Em andamento</option>
+                    <option value="DONE">Concluída</option>
+                    <option value="CANCELLED">Cancelada</option>
+                  </select>
+                </div>
+
+                <div class="proto-field">
+                  <label>Prioridade</label>
+                  <select formControlName="priority">
+                    <option value="LOW">Baixa</option>
+                    <option value="MEDIUM">Média</option>
+                    <option value="HIGH">Alta</option>
+                    <option value="CRITICAL">Crítica</option>
+                  </select>
+                </div>
+
+                <div class="proto-field">
+                  <label>Prazo</label>
+                  <input type="date" formControlName="dueDate" />
+                </div>
+
+                <div class="proto-field">
+                  <label>Categoria</label>
+                  <select formControlName="categoryId">
+                    <option value="">Sem categoria</option>
+                    <option *ngFor="let category of taskCategories()" [value]="category.id">
+                      {{ category.name }}
+                    </option>
+                  </select>
+                </div>
+
+                <div class="proto-field">
+                  <label>Impacto estimado</label>
+                  <input type="number" min="0" formControlName="estimatedAmount" />
+                </div>
+
+                <div class="proto-field proto-field--full task-edit-form__recurring">
+                  <label class="task-edit-form__recurring-toggle">
+                    <input type="checkbox" formControlName="isRecurring" />
+                    <span>Tarefa recorrente</span>
+                  </label>
+                  <select
+                    *ngIf="editForm.get('isRecurring')?.value"
+                    formControlName="recurrenceRule"
+                    class="task-edit-form__recurrence-select"
+                  >
+                    <option value="daily">Diária</option>
+                    <option value="weekly">Semanal</option>
+                    <option value="biweekly">Quinzenal</option>
+                    <option value="monthly">Mensal</option>
+                    <option value="quarterly">Trimestral</option>
+                    <option value="yearly">Anual</option>
+                  </select>
+                </div>
+
+                <div class="proto-actions-row task-card__actions proto-field--full">
+                  <button type="submit" class="proto-button" [disabled]="editForm.invalid">
+                    Salvar
+                  </button>
+                  <button type="button" class="proto-button proto-button--ghost" (click)="cancelEdit()">
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </ng-container>
+
           </article>
         </div>
       </div>
 
       <ng-template #noTasks>
         <div class="proto-empty">
-          <strong>Nenhuma tarefa cadastrada</strong>
-          <p>Crie a primeira tarefa para organizar seu ritmo do dia.</p>
+          <strong>{{ hasActiveFilters() ? 'Nenhuma tarefa encontrada' : 'Nenhuma tarefa cadastrada' }}</strong>
+          <p>{{ hasActiveFilters() ? 'Tente ajustar os filtros para ver mais resultados.' : 'Crie a primeira tarefa para organizar seu ritmo do dia.' }}</p>
+          <button
+            *ngIf="hasActiveFilters()"
+            type="button"
+            class="proto-button proto-button--ghost"
+            (click)="clearFilters()"
+          >
+            Limpar filtros
+          </button>
         </div>
       </ng-template>
     </article>

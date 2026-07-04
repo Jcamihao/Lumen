@@ -14,6 +14,7 @@ enum UserRole {
 
 enum AuthChallengeType {
   MFA_LOGIN
+  MFA_EMAIL_BYPASS
 }
 
 enum TaskStatus {
@@ -142,6 +143,7 @@ model User {
   receiptScans      ReceiptScan[]
   notifications     Notification[]
   supportRequests   SupportRequest[]
+  assistantTurns    AssistantTurn[]
   authSessions      AuthSession[]
   authChallenges    AuthChallenge[]
 
@@ -167,16 +169,17 @@ model AuthSession {
 }
 
 model AuthChallenge {
-  id         String            @id @default(uuid())
-  userId     String
-  type       AuthChallengeType
-  expiresAt  DateTime
+  id          String            @id @default(uuid())
+  userId      String
+  type        AuthChallengeType
+  expiresAt   DateTime
   completedAt DateTime?
-  ipAddress  String?
-  userAgent  String?
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
-  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token       String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, type, expiresAt, completedAt])
   @@index([expiresAt])
@@ -434,4 +437,17 @@ model SupportRequest {
 
   @@index([userId, type, createdAt])
   @@index([status, createdAt])
+}
+
+model AssistantTurn {
+  id        String   @id @default(uuid())
+  userId    String
+  question  String
+  answer    String
+  focusArea String?
+  source    String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }

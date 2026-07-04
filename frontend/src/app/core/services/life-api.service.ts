@@ -4,16 +4,20 @@ import { firstValueFrom, map, Observable, of, tap } from "rxjs";
 import { environment } from "../../../environments/environment";
 import {
   AssistantAction,
+  AssistantHistoryTurn,
   AssistantPulse,
   AssistantReply,
   DashboardSummary,
   Goal,
+  GoalContribution,
+  ImportJobHistoryEntry,
   ImportPreview,
   Notification,
   PrivacyExportPayload,
-  Reminder,
   ReceiptImportCommitResponse,
   ReceiptImportPreview,
+  ReceiptScanHistoryEntry,
+  Reminder,
   SupportRequest,
   Task,
   Transaction,
@@ -129,14 +133,19 @@ export class LifeApiService {
     );
   }
 
-  listTransactions() {
+  listTransactions(params?: { month?: number; year?: number; type?: string }) {
     if (!this.networkService.isOnline() || this.offlineLifeService.hasPendingSync()) {
       void this.flushPendingSync();
       return of(this.offlineLifeService.readTransactions());
     }
 
+    const httpParams: Record<string, string> = {};
+    if (params?.month) httpParams['month'] = String(params.month);
+    if (params?.year) httpParams['year'] = String(params.year);
+    if (params?.type) httpParams['type'] = params.type;
+
     return this.http
-      .get<Transaction[]>(`${environment.apiBaseUrl}/transactions`)
+      .get<Transaction[]>(`${environment.apiBaseUrl}/transactions`, { params: httpParams })
       .pipe(
         tap((transactions) => this.offlineLifeService.cacheTransactions(transactions)),
         this.withOfflineFallback(() => this.offlineLifeService.readTransactions()),
@@ -246,6 +255,12 @@ export class LifeApiService {
 
     return this.http.delete<{ success: boolean }>(`${environment.apiBaseUrl}/goals/${id}`).pipe(
       this.withMutationOfflineFallback(() => this.offlineLifeService.queueGoalDelete(id)),
+    );
+  }
+
+  listGoalContributions(goalId: string) {
+    return this.http.get<GoalContribution[]>(
+      `${environment.apiBaseUrl}/goals/${goalId}/contributions`,
     );
   }
 
@@ -374,6 +389,46 @@ export class LifeApiService {
 
     return this.http.delete<{ success: boolean }>(`${environment.apiBaseUrl}/reminders/${id}`).pipe(
       this.withMutationOfflineFallback(() => this.offlineLifeService.queueReminderDelete(id)),
+    );
+  }
+
+  listReceiptHistory() {
+    return this.http.get<ReceiptScanHistoryEntry[]>(
+      `${environment.apiBaseUrl}/imports/receipts`,
+    );
+  }
+
+  listCsvImportHistory() {
+    return this.http.get<ImportJobHistoryEntry[]>(
+      `${environment.apiBaseUrl}/imports/transactions`,
+    );
+  }
+
+  listAssistantHistory(limit = 20) {
+    return this.http.get<AssistantHistoryTurn[]>(
+      `${environment.apiBaseUrl}/assistant/history`,
+      { params: { limit: String(limit) } },
+    );
+  }
+
+  saveAssistantTurn(turn: { question: string; answer: string; focusArea?: string | null; source?: string | null }) {
+    return this.http.post<AssistantHistoryTurn>(
+      `${environment.apiBaseUrl}/assistant/history`,
+      { question: turn.question, answer: turn.answer, focusArea: turn.focusArea ?? undefined, source: turn.source ?? undefined },
+    );
+  }
+
+  listAdminSupportRequests(params?: { status?: string; page?: number }) {
+    return this.http.get<SupportRequest[]>(
+      `${environment.apiBaseUrl}/support-requests/admin`,
+      { params: { ...(params?.status ? { status: params.status } : {}), page: String(params?.page ?? 1) } },
+    );
+  }
+
+  updateSupportRequestStatus(id: string, status: string) {
+    return this.http.patch<{ id: string; status: string; updatedAt: string }>(
+      `${environment.apiBaseUrl}/support-requests/admin/${id}/status`,
+      { status },
     );
   }
 

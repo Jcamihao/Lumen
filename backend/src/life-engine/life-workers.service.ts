@@ -15,6 +15,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import {
   FORECASTS_QUEUE,
   INSIGHTS_QUEUE,
+  LifeEngineService,
   REMINDERS_QUEUE,
 } from "./life-engine.service";
 
@@ -30,6 +31,7 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
     private readonly forecastsService: ForecastsService,
     private readonly notificationsService: NotificationsService,
     private readonly mailService: MailService,
+    private readonly lifeEngineService: LifeEngineService,
   ) {}
 
   async onModuleInit() {
@@ -41,6 +43,8 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
       );
       return;
     }
+
+    await this.bootstrapPendingReminders();
 
     this.workers.push(
       new Worker(
@@ -148,6 +152,27 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy() {
     await Promise.all(this.workers.map((worker) => worker.close()));
+  }
+
+  private async bootstrapPendingReminders() {
+    try {
+      const pending = await this.prisma.reminder.findMany({
+        where: { status: ReminderStatus.SCHEDULED, remindAt: { gt: new Date() } },
+        select: { id: true, remindAt: true },
+      });
+
+      for (const reminder of pending) {
+        await this.lifeEngineService.scheduleReminder(reminder.id, reminder.remindAt);
+      }
+
+      if (pending.length > 0) {
+        this.logger.log(`bootstrap_reminders count=${pending.length}`);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `bootstrap_reminders_failed reason=${this.getErrorMessage(error)}`,
+      );
+    }
   }
 
   private getErrorMessage(error: unknown) {

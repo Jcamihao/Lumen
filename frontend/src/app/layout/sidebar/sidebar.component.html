@@ -40,6 +40,22 @@
     </nav>
   </div>
 
+  <div class="proto-sidebar__nav-block" *ngIf="authService.currentUser()?.role === 'ADMIN'">
+    <p class="section-kicker proto-sidebar__kicker">Admin</p>
+
+    <nav class="proto-sidebar__nav">
+      <a
+        class="proto-sidebar__link"
+        routerLink="/admin/support"
+        routerLinkActive="active"
+        (click)="requestClose()"
+      >
+        <span class="material-symbols-rounded">support_agent</span>
+        <span>Suporte</span>
+      </a>
+    </nav>
+  </div>
+
   <div class="proto-sidebar__profile">
     <button type="button" class="proto-sidebar__logout" (click)="logout()">
       <span class="material-symbols-rounded">logout</span>

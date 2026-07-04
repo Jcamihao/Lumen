@@ -18,6 +18,8 @@ import { LoginDto } from './dto/login.dto';
 import { MfaCodeDto } from './dto/mfa-code.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
+import { RequestEmailMfaBypassDto } from './dto/request-email-mfa-bypass.dto';
+import { VerifyEmailMfaBypassDto } from './dto/verify-email-mfa-bypass.dto';
 import { VerifyLoginMfaDto } from './dto/verify-login-mfa.dto';
 
 @ApiTags('auth')
@@ -61,6 +63,28 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const authResponse = await this.authService.verifyLoginMfa(dto, request);
+    return this.finalizeAuthResponse(authResponse, request, response);
+  }
+
+  @Public()
+  @Post('mfa/email-bypass/request')
+  @ApiOperation({ summary: 'Solicita codigo de recuperacao MFA por email' })
+  requestEmailMfaBypass(
+    @Body() dto: RequestEmailMfaBypassDto,
+    @Req() request: RequestWithContext,
+  ) {
+    return this.authService.requestEmailMfaBypass(dto, request);
+  }
+
+  @Public()
+  @Post('mfa/email-bypass/verify')
+  @ApiOperation({ summary: 'Verifica o codigo de recuperacao MFA enviado por email' })
+  async verifyEmailMfaBypass(
+    @Body() dto: VerifyEmailMfaBypassDto,
+    @Req() request: RequestWithContext,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const authResponse = await this.authService.verifyEmailMfaBypass(dto, request);
     return this.finalizeAuthResponse(authResponse, request, response);
   }
 
