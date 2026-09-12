@@ -1,7 +1,7 @@
 import { AssistantService } from "./assistant.service";
 
 describe("AssistantService", () => {
-  const buildDashboardService = () =>
+  const buildDashboardService = (overrides: Record<string, unknown> = {}) =>
     ({
       getSummary: jest.fn().mockResolvedValue({
         user: {
@@ -53,6 +53,7 @@ describe("AssistantService", () => {
           predictedBalance: 1700,
           riskLevel: "MEDIUM",
         },
+        ...overrides,
       }),
     }) as any;
 
@@ -169,5 +170,148 @@ describe("AssistantService", () => {
     expect(payload.message).toContain("[email removido]");
     expect(payload.questionContextSummary).toContain("prioridade");
     expect(postJsonSpy).toHaveBeenCalled();
+  });
+
+  describe("proactive signals", () => {
+    const buildService = (dashboardOverrides: Record<string, unknown> = {}) =>
+      new AssistantService(
+        buildDashboardService(dashboardOverrides),
+        buildConfigService(),
+        buildPrismaService({
+          privacyNoticeAcceptedAt: null,
+          aiAssistantEnabled: false,
+          aiAssistantConsentAt: null,
+        }),
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+      );
+
+    it("surfaces cash-risk from the forecast even without any insight", async () => {
+      const service = buildService({
+        forecast: { predictedBalance: -400, riskLevel: "HIGH" },
+      });
+
+      const response = await service.ask("user-1", "Como estou hoje?");
+
+      expect(response.proactiveSignals.map((signal) => signal.id)).toContain(
+        "cash-risk",
+      );
+    });
+
+    it("maps an insight into a signal using its persona as the title", async () => {
+      const service = buildService({
+        forecast: { predictedBalance: 1700, riskLevel: "MEDIUM" },
+        insights: [
+          {
+            type: "FINANCE",
+            severity: "WARNING",
+            message: "Suas despesas ja passaram de 85% da renda do mes.",
+            fingerprint: "FINANCE:expense_ratio:WARNING",
+            metadata: { persona: { name: "Lastro", role: "cuida do seu mes" } },
+          },
+        ],
+      });
+
+      const response = await service.ask("user-1", "Como estou hoje?");
+      const signal = response.proactiveSignals.find((entry) => entry.title === "Lastro");
+
+      expect(signal).toBeDefined();
+      expect(signal?.severity).toBe("warning");
+      expect(signal?.targetModule).toBe("finances");
+    });
+
+    it("excludes the calm fallback insight once the user asked something specific", async () => {
+      const service = buildService({
+        forecast: { predictedBalance: 1700, riskLevel: "MEDIUM" },
+        insights: [
+          {
+            type: "ROUTINE",
+            severity: "INFO",
+            message: "Seu momento parece equilibrado.",
+            fingerprint: "ROUTINE:calm:INFO",
+            metadata: { persona: { name: "Compasso", role: "observa o ritmo" } },
+          },
+        ],
+      });
+
+      const response = await service.ask("user-1", "Como estou hoje?");
+
+      expect(response.proactiveSignals).toHaveLength(0);
+    });
+
+    it("keeps the calm fallback insight in the pulse, where there is no active question", async () => {
+      const service = buildService({
+        forecast: { predictedBalance: 1700, riskLevel: "MEDIUM" },
+        insights: [
+          {
+            type: "ROUTINE",
+            severity: "INFO",
+            message: "Seu momento parece equilibrado.",
+            fingerprint: "ROUTINE:calm:INFO",
+            metadata: { persona: { name: "Compasso", role: "observa o ritmo" } },
+          },
+        ],
+      });
+
+      const pulse = await service.getPulse("user-1");
+
+      expect(pulse.signals.map((signal) => signal.title)).toContain("Compasso");
+    });
+
+    it("routes a ROUTINE insight to the module the question came from", async () => {
+      const service = buildService({
+        forecast: { predictedBalance: 1700, riskLevel: "MEDIUM" },
+        insights: [
+          {
+            type: "ROUTINE",
+            severity: "INFO",
+            message: "Hoje voce tem 5 compromissos ativos.",
+            fingerprint: "ROUTINE:busy_day:INFO",
+            metadata: { persona: { name: "Compasso", role: "observa o ritmo" } },
+          },
+        ],
+      });
+
+      const response = await service.ask("user-1", "Como estou hoje?", {
+        originModule: "tasks",
+      });
+      const signal = response.proactiveSignals.find((entry) => entry.title === "Compasso");
+
+      expect(signal?.targetModule).toBe("tasks");
+    });
+
+    it("caps signals at three even with cash-risk plus multiple insights", async () => {
+      const service = buildService({
+        forecast: { predictedBalance: -400, riskLevel: "HIGH" },
+        insights: [
+          {
+            type: "PRODUCTIVITY",
+            severity: "CRITICAL",
+            message: "Tarefas atrasadas.",
+            fingerprint: "PRODUCTIVITY:overdue_tasks:CRITICAL",
+            metadata: { persona: { name: "Norte", role: "" } },
+          },
+          {
+            type: "GOAL",
+            severity: "WARNING",
+            message: "Meta travada.",
+            fingerprint: "GOAL:stalled_goals:WARNING",
+            metadata: { persona: { name: "Horizonte", role: "" } },
+          },
+          {
+            type: "FINANCE",
+            severity: "WARNING",
+            message: "Cobranca duplicada.",
+            fingerprint: "FINANCE:duplicate_charges:abc123:WARNING",
+            metadata: { persona: { name: "Lastro", role: "" } },
+          },
+        ],
+      });
+
+      const response = await service.ask("user-1", "Como estou hoje?");
+
+      expect(response.proactiveSignals).toHaveLength(3);
+    });
   });
 });

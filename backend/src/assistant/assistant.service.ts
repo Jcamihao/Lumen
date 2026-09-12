@@ -67,6 +67,8 @@ type DashboardSummary = {
     type: string;
     message: string;
     severity: string;
+    /** type:key:severity, ver InsightsService.fingerprintOf */
+    fingerprint?: string;
     metadata?: { persona?: { name?: string; role?: string } } | null;
   }>;
   forecast: {
@@ -878,6 +880,54 @@ export class AssistantService {
     return actions.slice(0, 4);
   }
 
+  /**
+   * Modulo, pergunta de acompanhamento e rotulo de acao sugeridos por tipo de
+   * insight. O motor de insights nao carrega essas tres coisas (fala so em
+   * modulo de dominio, nao em UX de chat), entao ficam aqui, num unico lugar.
+   */
+  private readonly INSIGHT_SIGNAL_HINTS: Record<
+    string,
+    { targetModule: AssistantModule | null; suggestedPrompt: string; suggestedActionLabel: string }
+  > = {
+    PRODUCTIVITY: {
+      targetModule: "tasks",
+      suggestedPrompt: "Quais pendências atrasadas eu devo limpar primeiro?",
+      suggestedActionLabel: "Abrir tarefas",
+    },
+    FINANCE: {
+      targetModule: "finances",
+      suggestedPrompt: "O que eu preciso proteger primeiro no meu caixa este mês?",
+      suggestedActionLabel: "Olhar finanças",
+    },
+    GOAL: {
+      targetModule: "goals",
+      suggestedPrompt: "Como destravar minhas metas travadas?",
+      suggestedActionLabel: "Rever metas",
+    },
+    // ROUTINE nao tem modulo proprio: fica no modulo de onde a pergunta partiu
+    // (ou "dashboard" no pulso, sem pergunta), em vez de sempre mandar pro
+    // dashboard mesmo quando o usuario esta conversando a partir de outra tela.
+    ROUTINE: {
+      targetModule: null,
+      suggestedPrompt: "Onde vale colocar energia para ganhar mais tração esta semana?",
+      suggestedActionLabel: "Conversar com Selah",
+    },
+  };
+
+  /**
+   * Traduz os insights do motor (summary.insights, ja carimbados com persona
+   * e severidade) em sinais proativos do chat/pulso.
+   *
+   * Antes esse metodo reimplementava manualmente 3 das regras que o motor de
+   * insights ja calcula (tarefas atrasadas, meta travada, janela calma), com
+   * thresholds levemente diferentes dos do motor. Isso significava que todo
+   * detector novo em insights.service (cobranca duplicada, assinatura,
+   * impacto financeiro atrasado, meta bloqueada por tarefa) ficava invisivel
+   * aqui, so aparecendo no dashboard e no texto corrido da resposta.
+   *
+   * O risco de caixa fica de fora do mapeamento porque vem de Forecast, uma
+   * entidade separada de Insight — nao ha detector equivalente no motor.
+   */
   private buildProactiveSignals(
     summary: DashboardSummary,
     question: string,
@@ -901,51 +951,43 @@ export class AssistantService {
       });
     }
 
-    if (summary.tasks.overdueCount > 0) {
-      signals.push({
-        id: "overdue-stack",
-        title: "Fila atrasada pedindo espaço",
-        message: `Existem ${summary.tasks.overdueCount} pendência(s) atrasada(s), o que tende a contaminar foco e previsibilidade do restante da semana.`,
-        severity: summary.tasks.overdueCount >= 3 ? "critical" : "warning",
-        targetModule: "tasks",
-        suggestedPrompt: "Quais pendências atrasadas eu devo limpar primeiro?",
-        suggestedActionLabel: "Abrir tarefas",
-      });
-    }
+    const relevantInsights = summary.insights.filter((insight) => {
+      // O fallback "tudo calmo" e util no pulso vazio, mas polui a leitura
+      // quando o usuario ja fez uma pergunta especifica.
+      const isCalmFallback = insight.fingerprint?.split(":")[1] === "calm";
 
-    const stalledGoal = summary.goals.find((goal) => {
-      const progress = this.goalProgress(goal);
-      return progress < 35;
+      return !(hasQuestion && isCalmFallback);
     });
 
-    if (stalledGoal) {
-      signals.push({
-        id: "goal-stalled",
-        title: "Meta pedindo recalibração",
-        message: `${stalledGoal.title} ainda está em ${this.goalProgress(
-          stalledGoal,
-        )}% e pode precisar de aporte menor, prazo melhor ou passo intermediário.`,
-        severity: "info",
-        targetModule: "goals",
-        suggestedPrompt: `Como destravar a meta ${stalledGoal.title}?`,
-        suggestedActionLabel: "Rever metas",
-      });
-    }
+    for (const insight of relevantInsights) {
+      const hints =
+        this.INSIGHT_SIGNAL_HINTS[insight.type] ?? this.INSIGHT_SIGNAL_HINTS.ROUTINE;
+      const persona = insight.metadata?.persona?.name;
 
-    if (!signals.length && !hasQuestion) {
       signals.push({
-        id: "calm-window",
-        title: "Janela boa para avançar",
-        message:
-          "Seu cenário está relativamente estável agora. É um bom momento para atacar uma frente de crescimento, não só manutenção.",
-        severity: "info",
-        targetModule: originModule,
-        suggestedPrompt: "Onde vale colocar energia para ganhar mais tração esta semana?",
-        suggestedActionLabel: "Conversar com Selah",
+        id: insight.fingerprint ?? `insight-${insight.type.toLowerCase()}`,
+        title: persona ?? this.formatEnumLabel(insight.type),
+        message: insight.message,
+        severity: this.mapInsightSeverity(insight.severity),
+        targetModule: hints.targetModule ?? originModule,
+        suggestedPrompt: hints.suggestedPrompt,
+        suggestedActionLabel: hints.suggestedActionLabel,
       });
     }
 
     return signals.slice(0, 3);
+  }
+
+  private mapInsightSeverity(severity: string): AssistantProactiveSignalSeverity {
+    if (severity === "CRITICAL") {
+      return "critical";
+    }
+
+    if (severity === "WARNING") {
+      return "warning";
+    }
+
+    return "info";
   }
 
   private buildSimulations(summary: DashboardSummary, question: string) {
