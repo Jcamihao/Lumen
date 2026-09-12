@@ -84,8 +84,9 @@ enum SupportRequestType {
 
 enum SupportRequestStatus {
   OPEN
-  REVIEWED
+  IN_REVIEW
   RESOLVED
+  CLOSED
 }
 
 enum SupportRequestSeverity {

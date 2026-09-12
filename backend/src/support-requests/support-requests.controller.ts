@@ -1,12 +1,14 @@
 import { Body, Controller, Get, Param, Patch, Query, UseGuards } from '@nestjs/common';
 import { Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { SupportRequestStatus, UserRole } from '@prisma/client';
+import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
 import { CreateSupportRequestDto } from './dto/create-support-request.dto';
+import { ListSupportRequestsDto } from './dto/list-support-requests.dto';
+import { UpdateSupportRequestStatusDto } from './dto/update-support-request-status.dto';
 import { SupportRequestsService } from './support-requests.service';
 
 @ApiTags('support-requests')
@@ -36,13 +38,10 @@ export class SupportRequestsController {
   @Roles(UserRole.ADMIN)
   @UseGuards(RolesGuard)
   @ApiOperation({ summary: '[Admin] Lista todas as solicitacoes de suporte' })
-  listAll(
-    @Query('status') status?: SupportRequestStatus,
-    @Query('page') page?: string,
-  ) {
+  listAll(@Query() query: ListSupportRequestsDto) {
     return this.supportRequestsService.listAll({
-      status,
-      page: page ? Number(page) : 1,
+      status: query.status,
+      page: query.page ?? 1,
     });
   }
 
@@ -52,8 +51,8 @@ export class SupportRequestsController {
   @ApiOperation({ summary: '[Admin] Atualiza o status de uma solicitacao de suporte' })
   updateStatus(
     @Param('id') id: string,
-    @Body('status') status: SupportRequestStatus,
+    @Body() dto: UpdateSupportRequestStatusDto,
   ) {
-    return this.supportRequestsService.updateStatus(id, status);
+    return this.supportRequestsService.updateStatus(id, dto.status);
   }
 }
