@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { InsightSeverity, InsightType, Prisma } from '@prisma/client';
+import { InsightSeverity, InsightType, Prisma, ReceiptScanStatus } from '@prisma/client';
 import {
   differenceInCalendarDays,
   differenceInDays,
@@ -33,6 +33,19 @@ type ChargeOccurrence = {
   date: Date;
 };
 
+type ReceiptItemSnapshot = {
+  description: string;
+  totalPrice: number;
+};
+
+type ReceiptScanSnapshot = {
+  id: string;
+  merchantName: string;
+  purchaseDate: Date;
+  totalAmount: number;
+  items: ReceiptItemSnapshot[];
+};
+
 /**
  * Janela de leitura das despesas usada pelos detectores de cobranca.
  * 120 dias cobrem 4 ciclos mensais, o minimo para enxergar uma assinatura
@@ -48,6 +61,20 @@ const DUPLICATE_WINDOW_DAYS = 3;
 const MONTHLY_GAP_MIN_DAYS = 25;
 const MONTHLY_GAP_MAX_DAYS = 35;
 const MIN_OCCURRENCES_FOR_SUBSCRIPTION = 3;
+
+/** Quantas notas fiscais importadas olhar pra tras ao procurar pares pra comparar. */
+const RECEIPT_SCAN_MAX_ROWS = 200;
+
+/**
+ * Nome padrao quando o usuario nao informa (nem a OCR reconhece) o
+ * estabelecimento — ver commitReceiptImport em imports.service.ts. Comparar
+ * duas notas com esse nome misturaria lojas diferentes, entao ficam de fora.
+ */
+const UNNAMED_MERCHANT_FALLBACK = 'compra registrada';
+
+/** Alta o suficiente pra virar aviso, ou critica, de aumento de gasto no mesmo estabelecimento. */
+const RECEIPT_TOTAL_WARNING_PCT = 0.15;
+const RECEIPT_TOTAL_CRITICAL_PCT = 0.4;
 
 /**
  * Cada tipo de insight fala por uma persona propria, para que a leitura tenha
@@ -176,6 +203,7 @@ export class InsightsService {
       this.detectGoalsBlockedByTasks(context),
       this.detectDuplicateCharges(context),
       this.detectRecurringCharges(context),
+      this.detectReceiptComparison(context),
     ].filter((insight): insight is GeneratedInsight => insight !== null);
 
     if (insights.length === 0) {
@@ -229,6 +257,7 @@ export class InsightsService {
       goals,
       remindersToday,
       recentExpenses,
+      recentReceiptScans,
     ] = await Promise.all([
       this.prisma.user.findUniqueOrThrow({
         where: { id: userId },
@@ -304,6 +333,27 @@ export class InsightsService {
         orderBy: { date: 'desc' },
         take: CHARGE_WINDOW_MAX_ROWS,
       }),
+      this.prisma.receiptScan.findMany({
+        where: {
+          userId,
+          status: ReceiptScanStatus.IMPORTED,
+          merchantName: { not: null },
+        },
+        select: {
+          id: true,
+          merchantName: true,
+          purchaseDate: true,
+          totalAmount: true,
+          items: {
+            select: {
+              description: true,
+              totalPrice: true,
+            },
+          },
+        },
+        orderBy: { purchaseDate: 'desc' },
+        take: RECEIPT_SCAN_MAX_ROWS,
+      }),
     ]);
 
     return {
@@ -321,6 +371,18 @@ export class InsightsService {
         amount: Number(expense.amount),
         date: new Date(expense.date),
       })) as ChargeOccurrence[],
+      recentReceiptScans: (recentReceiptScans ?? [])
+        .filter((scan) => (scan.merchantName ?? '').trim().length > 0)
+        .map((scan) => ({
+          id: scan.id,
+          merchantName: (scan.merchantName ?? '').trim(),
+          purchaseDate: new Date(scan.purchaseDate ?? new Date()),
+          totalAmount: Number(scan.totalAmount),
+          items: scan.items.map((item) => ({
+            description: item.description,
+            totalPrice: Number(item.totalPrice),
+          })),
+        })) as ReceiptScanSnapshot[],
     };
   }
 
@@ -654,6 +716,190 @@ export class InsightsService {
         monthlyTotal,
       },
     };
+  }
+
+  /**
+   * Compara a ultima nota fiscal de um estabelecimento com a anterior do
+   * mesmo lugar: subiu ou caiu no total, qual item pesou mais, qual ficou
+   * mais barato, o que entrou e o que saiu da lista.
+   *
+   * So compara estabelecimentos com nome de verdade — duas notas sem nome
+   * reconhecido cairiam no mesmo rotulo generico e comparariam lojas
+   * diferentes entre si, o que geraria leitura errada.
+   */
+  private detectReceiptComparison(context: InsightContext): GeneratedInsight | null {
+    const byMerchant = new Map<string, ReceiptScanSnapshot[]>();
+
+    for (const scan of context.recentReceiptScans) {
+      const merchantKey = scan.merchantName.toLowerCase();
+
+      if (merchantKey === UNNAMED_MERCHANT_FALLBACK) {
+        continue;
+      }
+
+      const group = byMerchant.get(merchantKey);
+
+      if (group) {
+        group.push(scan);
+        continue;
+      }
+
+      byMerchant.set(merchantKey, [scan]);
+    }
+
+    const comparisons = [...byMerchant.values()]
+      .filter((scans) => scans.length >= 2)
+      // recentReceiptScans ja vem ordenado por purchaseDate desc da query.
+      .map(([current, previous]) => this.compareReceipts(current, previous))
+      .sort((a, b) => Math.abs(b.deltaPercent ?? 0) - Math.abs(a.deltaPercent ?? 0));
+
+    if (comparisons.length === 0) {
+      return null;
+    }
+
+    const lead = comparisons[0];
+    const severity =
+      lead.deltaPercent !== null && lead.deltaPercent >= RECEIPT_TOTAL_CRITICAL_PCT
+        ? InsightSeverity.CRITICAL
+        : lead.deltaPercent !== null && lead.deltaPercent >= RECEIPT_TOTAL_WARNING_PCT
+          ? InsightSeverity.WARNING
+          : InsightSeverity.INFO;
+
+    return {
+      type: InsightType.FINANCE,
+      key: `receipt_comparison:${this.hashSubject(
+        comparisons.map((entry) => entry.merchantName),
+      )}`,
+      severity,
+      message: this.describeReceiptComparison(
+        lead,
+        comparisons.length - 1,
+        context.user.preferredCurrency,
+      ),
+      metadata: {
+        comparisons: comparisons.map((entry) => ({
+          merchant: entry.merchantName,
+          previousTotal: entry.previousTotal,
+          currentTotal: entry.currentTotal,
+          deltaAmount: entry.deltaAmount,
+          deltaPercent: entry.deltaPercent,
+          topIncrease: entry.topIncrease,
+          topDecrease: entry.topDecrease,
+          itemsAdded: entry.itemsAdded,
+          itemsRemoved: entry.itemsRemoved,
+        })),
+      },
+    };
+  }
+
+  /** Compara duas notas do mesmo estabelecimento, item a item. */
+  private compareReceipts(current: ReceiptScanSnapshot, previous: ReceiptScanSnapshot) {
+    const previousItems = this.sumItemsByDescription(previous.items);
+    const currentItems = this.sumItemsByDescription(current.items);
+
+    let topIncrease: { description: string; previousPrice: number; currentPrice: number } | null =
+      null;
+    let topDecrease: { description: string; previousPrice: number; currentPrice: number } | null =
+      null;
+
+    for (const [normalizedDescription, currentPrice] of currentItems) {
+      const previousPrice = previousItems.get(normalizedDescription);
+
+      if (previousPrice === undefined) {
+        continue;
+      }
+
+      const delta = currentPrice.price - previousPrice.price;
+
+      if (delta > 0 && (!topIncrease || delta > topIncrease.currentPrice - topIncrease.previousPrice)) {
+        topIncrease = {
+          description: currentPrice.description,
+          previousPrice: previousPrice.price,
+          currentPrice: currentPrice.price,
+        };
+      }
+
+      if (delta < 0 && (!topDecrease || delta < topDecrease.currentPrice - topDecrease.previousPrice)) {
+        topDecrease = {
+          description: currentPrice.description,
+          previousPrice: previousPrice.price,
+          currentPrice: currentPrice.price,
+        };
+      }
+    }
+
+    const itemsAdded = [...currentItems.keys()]
+      .filter((key) => !previousItems.has(key))
+      .map((key) => currentItems.get(key)!.description);
+    const itemsRemoved = [...previousItems.keys()]
+      .filter((key) => !currentItems.has(key))
+      .map((key) => previousItems.get(key)!.description);
+
+    const deltaAmount = current.totalAmount - previous.totalAmount;
+    const deltaPercent = previous.totalAmount > 0 ? deltaAmount / previous.totalAmount : null;
+
+    return {
+      merchantName: current.merchantName,
+      previousTotal: previous.totalAmount,
+      currentTotal: current.totalAmount,
+      deltaAmount,
+      deltaPercent,
+      topIncrease,
+      topDecrease,
+      itemsAdded,
+      itemsRemoved,
+    };
+  }
+
+  /** Soma o valor de itens repetidos na mesma nota antes de comparar entre notas. */
+  private sumItemsByDescription(items: ReceiptItemSnapshot[]) {
+    const map = new Map<string, { description: string; price: number }>();
+
+    for (const item of items) {
+      const key = item.description.trim().toLowerCase();
+      const existing = map.get(key);
+
+      map.set(key, {
+        description: item.description,
+        price: (existing?.price ?? 0) + item.totalPrice,
+      });
+    }
+
+    return map;
+  }
+
+  private describeReceiptComparison(
+    comparison: ReturnType<InsightsService['compareReceipts']>,
+    otherMerchantsCount: number,
+    currency: string,
+  ) {
+    const currentAmount = this.formatAmount(comparison.currentTotal, currency);
+    const previousAmount = this.formatAmount(comparison.previousTotal, currency);
+    const trendWord = comparison.deltaAmount > 0 ? 'subiu' : comparison.deltaAmount < 0 ? 'caiu' : 'ficou igual';
+    const percentText =
+      comparison.deltaPercent !== null
+        ? ` (${trendWord} ${Math.round(Math.abs(comparison.deltaPercent) * 100)}%)`
+        : '';
+
+    let message = `Na sua ultima compra em ${comparison.merchantName}, o total foi ${currentAmount}${percentText} em relacao a compra anterior de ${previousAmount}.`;
+
+    if (comparison.topIncrease) {
+      message += ` Onde voce gastou mais: ${comparison.topIncrease.description}, que foi de ${this.formatAmount(comparison.topIncrease.previousPrice, currency)} para ${this.formatAmount(comparison.topIncrease.currentPrice, currency)}.`;
+    }
+
+    if (comparison.topDecrease) {
+      message += ` Onde voce ja melhorou: ${comparison.topDecrease.description} ficou mais barato, ajudando a segurar o total.`;
+    } else if (comparison.itemsRemoved.length > 0 && comparison.deltaAmount <= 0) {
+      message += ` Deixar de levar ${comparison.itemsRemoved.slice(0, 2).join(' e ')} ajudou a segurar o gasto — bom espaco pra repetir.`;
+    } else if (comparison.itemsAdded.length > 0) {
+      message += ` Novo nessa compra: ${comparison.itemsAdded.slice(0, 2).join(', ')}.`;
+    }
+
+    if (otherMerchantsCount > 0) {
+      message += ` Tambem notei variacao em outro${otherMerchantsCount > 1 ? 's' : ''} ${otherMerchantsCount} estabelecimento${otherMerchantsCount > 1 ? 's' : ''} recorrente${otherMerchantsCount > 1 ? 's' : ''}.`;
+    }
+
+    return message;
   }
 
   /**
