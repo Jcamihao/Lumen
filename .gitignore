@@ -3,7 +3,6 @@ dist
 coverage
 .angular
 .env
-backend/.env
 frontend/.angular
 frontend/dist
 backend/dist

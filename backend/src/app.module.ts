@@ -35,8 +35,8 @@ import { UsersModule } from "./users/users.module";
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: [
-        resolve(__dirname, "../.env"),
-        resolve(__dirname, "../.env.example"),
+        resolve(__dirname, "../../.env"),
+        resolve(__dirname, "../../.env.example"),
       ],
       load: [appConfig, authConfig, cacheConfig, mailConfig],
     }),

@@ -34,14 +34,28 @@ services:
       redis:
         condition: service_healthy
     environment:
-      PORT: ${PORT:-3000}
-      APP_URL: ${APP_URL:-http://localhost:3001}
-      DATABASE_URL: ${DATABASE_URL:-postgresql://lumen:lumen@postgres:5432/lumen?schema=public}
+      # PORT/DATABASE_URL/REDIS_URL/APP_URL sao fixos aqui (nao lidos do .env)
+      # porque a rede interna do Docker usa hostnames/portas diferentes do
+      # modo host (`npm run dev`) — ver comentario no .env da raiz.
+      PORT: 3000
+      APP_URL: http://localhost:${BACKEND_HOST_PORT:-3001}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lumen}:${POSTGRES_PASSWORD:-lumen}@postgres:5432/${POSTGRES_DB:-lumen}?schema=public
+      REDIS_URL: redis://redis:6379
+      APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS:-http://localhost:4200,http://127.0.0.1:4200,http://localhost:4201,http://127.0.0.1:4201,http://localhost:8100,http://127.0.0.1:8100,capacitor://localhost,http://localhost}
+      APP_SWAGGER_ENABLED: ${APP_SWAGGER_ENABLED:-true}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-lumen_access_secret}
       JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-lumen_refresh_secret}
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      AUTH_REFRESH_COOKIE_NAME: ${AUTH_REFRESH_COOKIE_NAME:-lumen.refreshToken}
+      AUTH_REFRESH_COOKIE_DOMAIN: ${AUTH_REFRESH_COOKIE_DOMAIN:-}
+      AUTH_REFRESH_COOKIE_PATH: ${AUTH_REFRESH_COOKIE_PATH:-/api/v1/auth}
+      AUTH_REFRESH_COOKIE_SECURE: ${AUTH_REFRESH_COOKIE_SECURE:-false}
+      AUTH_REFRESH_COOKIE_SAME_SITE: ${AUTH_REFRESH_COOKIE_SAME_SITE:-lax}
+      AUTH_MFA_ENABLED: ${AUTH_MFA_ENABLED:-false}
+      AUTH_MFA_ENCRYPTION_SECRET: ${AUTH_MFA_ENCRYPTION_SECRET:-lumen_mfa_encryption_secret}
+      AUTH_MFA_ISSUER: ${AUTH_MFA_ISSUER:-LUMEN}
+      AUTH_MFA_CHALLENGE_EXPIRES_IN_SECONDS: ${AUTH_MFA_CHALLENGE_EXPIRES_IN_SECONDS:-300}
       CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-300}
       SELAH_ASSISTANT_ENABLED: ${SELAH_ASSISTANT_ENABLED:-false}
       SELAH_BASE_URL: ${SELAH_BASE_URL:-}
@@ -50,6 +64,14 @@ services:
       SELAH_ASSISTANT_ROUTE: ${SELAH_ASSISTANT_ROUTE:-/v1/adapters/lumen/life-assistant/chat}
       SELAH_RECEIPT_ROUTE: ${SELAH_RECEIPT_ROUTE:-/v1/adapters/lumen/receipt-parser/parse}
       SELAH_TIMEOUT_MS: ${SELAH_TIMEOUT_MS:-9000}
+      SELAH_RECEIPT_TIMEOUT_MS: ${SELAH_RECEIPT_TIMEOUT_MS:-60000}
+      RESEND_ENABLED: ${RESEND_ENABLED:-false}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_BASE_URL: ${RESEND_BASE_URL:-https://api.resend.com}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+      RESEND_FROM_NAME: ${RESEND_FROM_NAME:-LUMEN}
+      RESEND_REPLY_TO: ${RESEND_REPLY_TO:-}
+      RESEND_TIMEOUT_MS: ${RESEND_TIMEOUT_MS:-10000}
     ports:
       - '${BACKEND_HOST_PORT:-3001}:3000'
 
@@ -57,14 +79,16 @@ services:
     build:
       context: ./frontend
       args:
-        FRONTEND_APP_API_BASE_URL: ${FRONTEND_APP_API_BASE_URL:-http://localhost:3001/api/v1}
-        FRONTEND_APP_WS_BASE_URL: ${FRONTEND_APP_WS_BASE_URL:-http://localhost:3001}
+        # Fixos (nao lidos do .env) pelo mesmo motivo do backend acima: o
+        # navegador acessa o frontend dockerizado pela porta mapeada no host.
+        FRONTEND_APP_API_BASE_URL: http://localhost:${BACKEND_HOST_PORT:-3001}/api/v1
+        FRONTEND_APP_WS_BASE_URL: http://localhost:${BACKEND_HOST_PORT:-3001}
         FRONTEND_APP_CLIENT_LOGGING_ENABLED: ${FRONTEND_APP_CLIENT_LOGGING_ENABLED:-true}
     depends_on:
       - backend
     environment:
-      FRONTEND_APP_API_BASE_URL: ${FRONTEND_APP_API_BASE_URL:-http://localhost:3001/api/v1}
-      FRONTEND_APP_WS_BASE_URL: ${FRONTEND_APP_WS_BASE_URL:-http://localhost:3001}
+      FRONTEND_APP_API_BASE_URL: http://localhost:${BACKEND_HOST_PORT:-3001}/api/v1
+      FRONTEND_APP_WS_BASE_URL: http://localhost:${BACKEND_HOST_PORT:-3001}
       FRONTEND_APP_CLIENT_LOGGING_ENABLED: ${FRONTEND_APP_CLIENT_LOGGING_ENABLED:-true}
     ports:
       - '${FRONTEND_HOST_PORT:-4201}:80'
