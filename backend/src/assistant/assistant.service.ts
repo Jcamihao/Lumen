@@ -67,6 +67,7 @@ type DashboardSummary = {
     type: string;
     message: string;
     severity: string;
+    metadata?: { persona?: { name?: string; role?: string } } | null;
   }>;
   forecast: {
     predictedBalance: number;
@@ -1717,10 +1718,14 @@ export class AssistantService {
     }
 
     return `Insights atuais:\n- ${insights
-      .map(
-        (insight) =>
-          `${this.formatEnumLabel(insight.severity)} | ${this.formatEnumLabel(insight.type)} | ${this.sanitizeExternalText(insight.message)}`,
-      )
+      .map((insight) => {
+        const persona = insight.metadata?.persona?.name;
+        const voice = persona
+          ? `${persona} (${this.formatEnumLabel(insight.type)})`
+          : this.formatEnumLabel(insight.type);
+
+        return `${this.formatEnumLabel(insight.severity)} | ${voice} | ${this.sanitizeExternalText(insight.message)}`;
+      })
       .join("\n- ")}`;
   }
 

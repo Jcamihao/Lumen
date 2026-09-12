@@ -42,6 +42,30 @@ const MONTHLY_GAP_MIN_DAYS = 25;
 const MONTHLY_GAP_MAX_DAYS = 35;
 const MIN_OCCURRENCES_FOR_SUBSCRIPTION = 3;
 
+/**
+ * Cada tipo de insight fala por uma persona propria, para que a leitura tenha
+ * voz e nao seja um bloco unico de texto. Trocar um nome aqui muda a voz em
+ * todo lugar que consome o insight (dashboard e Selah).
+ */
+const INSIGHT_PERSONAS: Record<InsightType, { name: string; role: string }> = {
+  [InsightType.PRODUCTIVITY]: {
+    name: 'Norte',
+    role: 'aponta o que destrava o seu dia',
+  },
+  [InsightType.FINANCE]: {
+    name: 'Lastro',
+    role: 'cuida do que sustenta o seu mes',
+  },
+  [InsightType.GOAL]: {
+    name: 'Horizonte',
+    role: 'acompanha o que voce quer alcancar',
+  },
+  [InsightType.ROUTINE]: {
+    name: 'Compasso',
+    role: 'observa o ritmo da sua rotina',
+  },
+};
+
 @Injectable()
 export class InsightsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -106,7 +130,18 @@ export class InsightsService {
       });
     }
 
-    return insights;
+    return insights.map((insight) => this.withPersona(insight));
+  }
+
+  /** Carimba a persona do tipo no metadata, sem exigir nada de cada detector. */
+  private withPersona(insight: GeneratedInsight): GeneratedInsight {
+    return {
+      ...insight,
+      metadata: {
+        ...(insight.metadata ?? {}),
+        persona: INSIGHT_PERSONAS[insight.type],
+      },
+    };
   }
 
   private async loadContext(userId: string) {

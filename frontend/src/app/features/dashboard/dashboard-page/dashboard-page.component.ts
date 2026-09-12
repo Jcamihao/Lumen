@@ -75,6 +75,15 @@ export class DashboardPageComponent {
     }[type];
   }
 
+  /** Nome da persona vindo do backend; cai no rotulo do tipo em insight offline. */
+  protected insightPersona(insight: Insight) {
+    return insight.metadata?.persona?.name ?? this.insightLabel(insight.type);
+  }
+
+  protected insightPersonaRole(insight: Insight) {
+    return insight.metadata?.persona?.role ?? null;
+  }
+
   protected insightLabel(type: Insight['type']) {
     return {
       PRODUCTIVITY: 'Tarefas',

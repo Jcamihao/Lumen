@@ -183,6 +183,62 @@ describe('InsightsService', () => {
     });
   });
 
+  describe('persona', () => {
+    it('stamps the persona of the type on every generated insight', async () => {
+      const now = new Date();
+      const prisma = buildPrisma([
+        { id: 't1', description: 'Streaming Plus', amount: 39.9, date: subDays(now, 10) },
+        { id: 't2', description: 'Streaming Plus', amount: 39.9, date: subDays(now, 9) },
+      ]);
+      prisma.task.findMany.mockResolvedValue([
+        { id: 'task-1', title: 'Atrasada', status: 'PENDING' },
+      ]);
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      const insights = generatedInsights(prisma);
+
+      expect(insights.length).toBeGreaterThan(1);
+      expect(
+        insights.every((insight) => (insight.metadata as any)?.persona?.name),
+      ).toBe(true);
+
+      const byType = (type: InsightType) =>
+        (insights.find((insight) => insight.type === type)?.metadata as any)?.persona?.name;
+
+      expect(byType(InsightType.PRODUCTIVITY)).toBe('Norte');
+      expect(byType(InsightType.FINANCE)).toBe('Lastro');
+    });
+
+    it('keeps the detector metadata alongside the persona', async () => {
+      const now = new Date();
+      const prisma = buildPrisma([
+        { id: 't1', description: 'Streaming Plus', amount: 39.9, date: subDays(now, 10) },
+        { id: 't2', description: 'Streaming Plus', amount: 39.9, date: subDays(now, 9) },
+      ]);
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      const duplicate = generatedInsights(prisma).find(
+        (insight) => (insight.metadata as any)?.duplicates !== undefined,
+      );
+
+      expect((duplicate?.metadata as any)?.persona?.name).toBe('Lastro');
+      expect((duplicate?.metadata as any)?.duplicates).toHaveLength(1);
+    });
+
+    it('stamps the persona on the fallback insight too', async () => {
+      const prisma = buildPrisma();
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      const insights = generatedInsights(prisma);
+
+      expect(insights).toHaveLength(1);
+      expect((insights[0].metadata as any)?.persona?.name).toBe('Compasso');
+    });
+  });
+
   it('scopes the expense window query to the user', async () => {
     const prisma = buildPrisma();
 

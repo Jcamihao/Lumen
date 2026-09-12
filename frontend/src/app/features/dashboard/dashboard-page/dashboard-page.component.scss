@@ -92,6 +92,7 @@
 .home-transaction small,
 .home-goal small,
 .home-radar p,
+.home-insight__voice small,
 .home-metric small {
   margin: 0;
   color: var(--text-medium);
@@ -387,4 +388,8 @@
 
 .home-insight__copy {
   flex: 1;
+}
+
+.home-insight__voice strong {
+  color: var(--accent-cool);
 }

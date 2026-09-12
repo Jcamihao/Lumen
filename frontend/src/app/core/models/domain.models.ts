@@ -77,11 +77,21 @@ export type Reminder = {
   remindAt: string;
 };
 
+export type InsightPersona = {
+  name: string;
+  role: string;
+};
+
 export type Insight = {
   id: string;
   type: "PRODUCTIVITY" | "FINANCE" | "GOAL" | "ROUTINE";
   message: string;
   severity: "INFO" | "WARNING" | "CRITICAL";
+  /** Carimbado pelo backend em insights.service. Ausente em insights gerados offline. */
+  metadata?: {
+    persona?: InsightPersona;
+    [key: string]: unknown;
+  } | null;
 };
 
 export type Forecast = {

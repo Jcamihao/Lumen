@@ -124,7 +124,11 @@
       >
         <span class="home-insight__icon material-symbols-rounded">{{ insightIcon(insight.type) }}</span>
         <span class="home-insight__copy">
-          <strong>{{ insight.message }}</strong>
+          <span class="home-insight__voice">
+            <strong>{{ insightPersona(insight) }}</strong>
+            <small *ngIf="insightPersonaRole(insight) as personaRole">{{ personaRole }}</small>
+          </span>
+          <span>{{ insight.message }}</span>
         </span>
         <span class="proto-tag" [attr.data-tone]="insightTone(insight.severity)">
           {{ insightLabel(insight.type) }}
