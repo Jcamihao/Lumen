@@ -8,12 +8,19 @@ import {
   startOfMonth,
   subDays,
 } from 'date-fns';
+import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 
 type GeneratedInsight = {
   type: InsightType;
   severity: InsightSeverity;
   message: string;
+  /**
+   * Identifica a regra que gerou o insight. Regras agregadas usam so a chave;
+   * detectores de cobranca somam um resumo do assunto, para que uma cobranca
+   * nova gere identidade nova (e portanto uma notificacao nova).
+   */
+  key: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -84,21 +91,39 @@ export class InsightsService {
     return this.refreshForUser(userId);
   }
 
+  /**
+   * Reconcilia os insights do usuario com a situacao atual.
+   *
+   * Faz upsert por fingerprint em vez de apagar e recriar tudo: enquanto a
+   * situacao persistir, a linha sobrevive e com ela o notifiedAt — que e o
+   * que impede o worker de notificar o mesmo alerta a cada ciclo da fila.
+   * Fingerprints que sumiram da geracao sao podados, entao uma situacao que
+   * se resolve e volta depois e tratada como nova (e avisa de novo).
+   */
   async refreshForUser(userId: string) {
     const generatedInsights = await this.generateInsights(userId);
+    const fingerprints = generatedInsights.map((insight) =>
+      this.fingerprintOf(insight),
+    );
 
     await this.prisma.$transaction([
       this.prisma.insight.deleteMany({
-        where: { userId },
+        where: { userId, fingerprint: { notIn: fingerprints } },
       }),
-      this.prisma.insight.createMany({
-        data: generatedInsights.map((insight) => ({
-          userId,
+      ...generatedInsights.map((insight) => {
+        const fingerprint = this.fingerprintOf(insight);
+        const content = {
           type: insight.type,
           severity: insight.severity,
           message: insight.message,
           metadata: insight.metadata as Prisma.InputJsonValue | undefined,
-        })),
+        };
+
+        return this.prisma.insight.upsert({
+          where: { userId_fingerprint: { userId, fingerprint } },
+          create: { userId, fingerprint, ...content },
+          update: content,
+        });
       }),
     ]);
 
@@ -107,6 +132,35 @@ export class InsightsService {
       orderBy: [{ severity: 'desc' }, { createdAt: 'desc' }],
       take: 8,
     });
+  }
+
+  /**
+   * Devolve os insights que ainda merecem notificacao e ja os marca como
+   * avisados, para que uma segunda passada da fila nao repita o alerta.
+   */
+  async takePendingNotifications(
+    userId: string,
+    severities: InsightSeverity[] = [InsightSeverity.CRITICAL],
+  ) {
+    const pending = await this.prisma.insight.findMany({
+      where: {
+        userId,
+        notifiedAt: null,
+        severity: { in: severities },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (pending.length === 0) {
+      return [];
+    }
+
+    await this.prisma.insight.updateMany({
+      where: { id: { in: pending.map((insight) => insight.id) } },
+      data: { notifiedAt: new Date() },
+    });
+
+    return pending;
   }
 
   private async generateInsights(userId: string): Promise<GeneratedInsight[]> {
@@ -125,6 +179,7 @@ export class InsightsService {
     if (insights.length === 0) {
       insights.push({
         type: InsightType.ROUTINE,
+        key: 'calm',
         severity: InsightSeverity.INFO,
         message: 'Seu momento parece equilibrado: sem alertas relevantes agora, com espaco para focar no que acelera seus objetivos.',
       });
@@ -142,6 +197,20 @@ export class InsightsService {
         persona: INSIGHT_PERSONAS[insight.type],
       },
     };
+  }
+
+  /**
+   * Identidade estavel da situacao: tipo, regra e severidade.
+   * A severidade entra de proposito — quando um alerta escala de WARNING para
+   * CRITICAL a situacao mudou de fato e merece ser avisada de novo.
+   */
+  private fingerprintOf(insight: GeneratedInsight) {
+    return `${insight.type}:${insight.key}:${insight.severity}`;
+  }
+
+  /** Resumo curto e estavel de um assunto, para compor a chave da regra. */
+  private hashSubject(parts: string[]) {
+    return createHash('sha1').update(parts.join('|')).digest('hex').slice(0, 12);
   }
 
   private async loadContext(userId: string) {
@@ -262,6 +331,7 @@ export class InsightsService {
 
     return {
       type: InsightType.PRODUCTIVITY,
+      key: 'overdue_tasks',
       severity:
         overdueTasks.length >= 3 ? InsightSeverity.CRITICAL : InsightSeverity.WARNING,
       message:
@@ -283,6 +353,7 @@ export class InsightsService {
 
     return {
       type: InsightType.FINANCE,
+      key: 'expense_ratio',
       severity:
         monthlyExpenses >= monthlyIncome ? InsightSeverity.CRITICAL : InsightSeverity.WARNING,
       message:
@@ -314,6 +385,7 @@ export class InsightsService {
 
     return {
       type: InsightType.GOAL,
+      key: 'stalled_goals',
       severity: InsightSeverity.WARNING,
       message: `${stalledGoals.length} meta(s) estao com pouco progresso para o prazo atual. Talvez seja hora de redistribuir esforco ou aporte.`,
       metadata: {
@@ -331,6 +403,7 @@ export class InsightsService {
 
     return {
       type: InsightType.ROUTINE,
+      key: 'busy_day',
       severity: InsightSeverity.INFO,
       message: `Hoje voce tem ${tasksToday.length} compromissos ativos. Priorize os de maior impacto financeiro e os que destravam outras frentes.`,
       metadata: {
@@ -348,6 +421,7 @@ export class InsightsService {
 
     return {
       type: InsightType.ROUTINE,
+      key: 'reminders_today',
       severity: InsightSeverity.INFO,
       message: `Existem ${remindersToday.length} lembrete(s) programados para hoje. Bom dia para operar no modo checklist.`,
       metadata: {
@@ -410,6 +484,9 @@ export class InsightsService {
 
     return {
       type: InsightType.FINANCE,
+      key: `duplicate_charges:${this.hashSubject(
+        duplicates.map((entry) => `${entry.description}:${entry.amount}`),
+      )}`,
       severity: InsightSeverity.WARNING,
       message,
       metadata: {
@@ -474,6 +551,9 @@ export class InsightsService {
 
     return {
       type: InsightType.FINANCE,
+      key: `recurring_charges:${this.hashSubject(
+        subscriptions.map((entry) => `${entry.description}:${entry.amount}`),
+      )}`,
       severity: InsightSeverity.INFO,
       message:
         subscriptions.length === 1

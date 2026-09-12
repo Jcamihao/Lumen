@@ -113,17 +113,21 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
         INSIGHTS_QUEUE,
         async (job) => {
           const userId = String(job.data.userId);
-          const insights = await this.insightsService.refreshForUser(userId);
-          const criticalInsight = insights.find(
-            (insight) => insight.severity === "CRITICAL",
-          );
 
-          if (criticalInsight) {
+          await this.insightsService.refreshForUser(userId);
+
+          // So notifica o que ainda nao foi avisado. Antes, o refresh recriava
+          // todos os insights a cada ciclo, entao o mesmo alerta critico virava
+          // notificacao nova toda vez que a fila rodava.
+          const pending =
+            await this.insightsService.takePendingNotifications(userId);
+
+          for (const insight of pending) {
             await this.notificationsService.createNotification(
               userId,
               NotificationType.INSIGHT,
-              "Alerta importante do LUMEN",
-              criticalInsight.message,
+              this.insightNotificationTitle(insight.metadata),
+              insight.message,
             );
           }
         },
@@ -148,6 +152,14 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
         { connection },
       ),
     );
+  }
+
+  /** Usa a persona do insight como remetente do alerta, quando existir. */
+  private insightNotificationTitle(metadata: unknown) {
+    const persona = (metadata as { persona?: { name?: string } } | null)?.persona
+      ?.name;
+
+    return persona ? `${persona} encontrou algo` : "Alerta importante do LUMEN";
   }
 
   async onModuleDestroy() {

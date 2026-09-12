@@ -14,7 +14,8 @@ const buildPrisma = (expenses: ExpenseSeed[] = []) => {
     insight: {
       findMany: jest.fn().mockResolvedValue([]),
       deleteMany: jest.fn().mockReturnValue({}),
-      createMany: jest.fn().mockReturnValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      upsert: jest.fn((args: any) => args),
     },
     $transaction: jest.fn().mockResolvedValue([]),
     user: {
@@ -48,10 +49,14 @@ const buildPrisma = (expenses: ExpenseSeed[] = []) => {
 
 /** Le os insights que o service mandou persistir, sem depender do retorno do banco. */
 const generatedInsights = (prisma: any) =>
-  prisma.insight.createMany.mock.calls[0][0].data as Array<{
+  prisma.insight.upsert.mock.calls.map((call: any[]) => ({
+    ...call[0].create,
+    fingerprint: call[0].where.userId_fingerprint.fingerprint,
+  })) as Array<{
     type: InsightType;
     severity: InsightSeverity;
     message: string;
+    fingerprint: string;
     metadata?: Record<string, unknown>;
   }>;
 
@@ -236,6 +241,135 @@ describe('InsightsService', () => {
 
       expect(insights).toHaveLength(1);
       expect((insights[0].metadata as any)?.persona?.name).toBe('Compasso');
+    });
+  });
+
+  describe('fingerprint', () => {
+    it('keeps the same fingerprint while the situation does not change', async () => {
+      const expenses = [
+        { id: 't1', description: 'Streaming Plus', amount: 39.9, date: subDays(new Date(), 10) },
+        { id: 't2', description: 'Streaming Plus', amount: 39.9, date: subDays(new Date(), 9) },
+      ];
+
+      const first = buildPrisma(expenses);
+      await new InsightsService(first).refreshForUser('user-1');
+
+      const second = buildPrisma(expenses);
+      await new InsightsService(second).refreshForUser('user-1');
+
+      expect(generatedInsights(first).map((insight) => insight.fingerprint)).toEqual(
+        generatedInsights(second).map((insight) => insight.fingerprint),
+      );
+    });
+
+    it('changes the fingerprint when a different charge is duplicated', async () => {
+      const now = new Date();
+      const first = buildPrisma([
+        { id: 't1', description: 'Streaming Plus', amount: 39.9, date: subDays(now, 10) },
+        { id: 't2', description: 'Streaming Plus', amount: 39.9, date: subDays(now, 9) },
+      ]);
+      await new InsightsService(first).refreshForUser('user-1');
+
+      const second = buildPrisma([
+        { id: 't3', description: 'Livraria', amount: 55, date: subDays(now, 4) },
+        { id: 't4', description: 'Livraria', amount: 55, date: subDays(now, 3) },
+      ]);
+      await new InsightsService(second).refreshForUser('user-1');
+
+      const fingerprintOfDuplicate = (prisma: any) =>
+        generatedInsights(prisma).find(
+          (insight) => (insight.metadata as any)?.duplicates !== undefined,
+        )?.fingerprint;
+
+      expect(fingerprintOfDuplicate(first)).toBeDefined();
+      expect(fingerprintOfDuplicate(second)).toBeDefined();
+      expect(fingerprintOfDuplicate(first)).not.toBe(fingerprintOfDuplicate(second));
+    });
+
+    it('changes the fingerprint when the alert escalates in severity', async () => {
+      const warning = buildPrisma();
+      warning.task.findMany.mockResolvedValue([{ id: 'a', title: 'Uma' }]);
+      await new InsightsService(warning).refreshForUser('user-1');
+
+      const critical = buildPrisma();
+      critical.task.findMany.mockResolvedValue([
+        { id: 'a', title: 'Uma' },
+        { id: 'b', title: 'Duas' },
+        { id: 'c', title: 'Tres' },
+      ]);
+      await new InsightsService(critical).refreshForUser('user-1');
+
+      const overdueFingerprint = (prisma: any) =>
+        generatedInsights(prisma).find(
+          (insight) => insight.type === InsightType.PRODUCTIVITY,
+        )?.fingerprint;
+
+      expect(overdueFingerprint(warning)).toContain('WARNING');
+      expect(overdueFingerprint(critical)).toContain('CRITICAL');
+      expect(overdueFingerprint(warning)).not.toBe(overdueFingerprint(critical));
+    });
+
+    it('prunes fingerprints that are no longer generated', async () => {
+      const prisma = buildPrisma();
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      expect(prisma.insight.deleteMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: 'user-1',
+            fingerprint: { notIn: expect.arrayContaining([expect.any(String)]) },
+          }),
+        }),
+      );
+    });
+
+    it('preserves notifiedAt on update, so a running alert is not re-notified', async () => {
+      const prisma = buildPrisma();
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      const updatePayload = prisma.insight.upsert.mock.calls[0][0].update;
+
+      expect(updatePayload).not.toHaveProperty('notifiedAt');
+    });
+  });
+
+  describe('takePendingNotifications', () => {
+    it('returns only un-notified critical insights and marks them as notified', async () => {
+      const prisma = buildPrisma();
+      prisma.insight.findMany.mockResolvedValueOnce([
+        { id: 'i1', severity: InsightSeverity.CRITICAL, message: 'Alerta' },
+      ]);
+
+      const pending = await new InsightsService(prisma).takePendingNotifications('user-1');
+
+      expect(prisma.insight.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: 'user-1',
+            notifiedAt: null,
+            severity: { in: [InsightSeverity.CRITICAL] },
+          }),
+        }),
+      );
+      expect(pending).toHaveLength(1);
+      expect(prisma.insight.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: { in: ['i1'] } },
+          data: { notifiedAt: expect.any(Date) },
+        }),
+      );
+    });
+
+    it('does not touch the database when nothing is pending', async () => {
+      const prisma = buildPrisma();
+      prisma.insight.findMany.mockResolvedValueOnce([]);
+
+      const pending = await new InsightsService(prisma).takePendingNotifications('user-1');
+
+      expect(pending).toEqual([]);
+      expect(prisma.insight.updateMany).not.toHaveBeenCalled();
     });
   });
 

@@ -323,16 +323,24 @@ model Reminder {
 }
 
 model Insight {
-  id        String          @id @default(uuid())
-  userId    String
-  type      InsightType
-  message   String
-  severity  InsightSeverity
-  metadata  Json?
-  createdAt DateTime        @default(now())
-  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String          @id @default(uuid())
+  userId      String
+  type        InsightType
+  message     String
+  severity    InsightSeverity
+  metadata    Json?
+  /// Identidade estavel da situacao detectada. Sobrevive ao refresh para que
+  /// o mesmo alerta nao seja notificado duas vezes.
+  fingerprint String
+  /// Quando a notificacao desse insight foi disparada. Null = ainda nao avisado.
+  notifiedAt  DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, fingerprint])
   @@index([userId, severity, createdAt])
+  @@index([userId, notifiedAt])
 }
 
 model Forecast {
