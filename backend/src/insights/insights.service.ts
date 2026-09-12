@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InsightSeverity, InsightType, Prisma } from '@prisma/client';
-import { differenceInDays, endOfDay, startOfDay, startOfMonth } from 'date-fns';
+import {
+  differenceInCalendarDays,
+  differenceInDays,
+  endOfDay,
+  startOfDay,
+  startOfMonth,
+  subDays,
+} from 'date-fns';
 import { PrismaService } from '../prisma/prisma.service';
 
 type GeneratedInsight = {
@@ -9,6 +16,31 @@ type GeneratedInsight = {
   message: string;
   metadata?: Record<string, unknown>;
 };
+
+type InsightContext = Awaited<ReturnType<InsightsService['loadContext']>>;
+
+type ChargeOccurrence = {
+  id: string;
+  description: string;
+  amount: number;
+  date: Date;
+};
+
+/**
+ * Janela de leitura das despesas usada pelos detectores de cobranca.
+ * 120 dias cobrem 4 ciclos mensais, o minimo para enxergar uma assinatura
+ * com tres ocorrencias e ainda sobrar folga.
+ */
+const CHARGE_WINDOW_DAYS = 120;
+const CHARGE_WINDOW_MAX_ROWS = 500;
+
+/** Cobrancas iguais dentro dessa janela sao tratadas como possivel duplicata. */
+const DUPLICATE_WINDOW_DAYS = 3;
+
+/** Intervalo aceito entre ocorrencias para considerar a cobranca mensal. */
+const MONTHLY_GAP_MIN_DAYS = 25;
+const MONTHLY_GAP_MAX_DAYS = 35;
+const MIN_OCCURRENCES_FOR_SUBSCRIPTION = 3;
 
 @Injectable()
 export class InsightsService {
@@ -54,147 +86,17 @@ export class InsightsService {
   }
 
   private async generateInsights(userId: string): Promise<GeneratedInsight[]> {
-    const now = new Date();
-    const todayStart = startOfDay(now);
-    const todayEnd = endOfDay(now);
-    const monthStart = startOfMonth(now);
+    const context = await this.loadContext(userId);
 
-    const [user, overdueTasks, tasksToday, monthlyExpensesAggregate, goals, remindersToday] =
-      await Promise.all([
-        this.prisma.user.findUniqueOrThrow({
-          where: { id: userId },
-        }),
-        this.prisma.task.findMany({
-          where: {
-            userId,
-            status: {
-              in: ['PENDING', 'IN_PROGRESS'],
-            },
-            dueDate: {
-              lt: todayStart,
-            },
-          },
-        }),
-        this.prisma.task.findMany({
-          where: {
-            userId,
-            dueDate: {
-              gte: todayStart,
-              lte: todayEnd,
-            },
-            status: {
-              in: ['PENDING', 'IN_PROGRESS'],
-            },
-          },
-        }),
-        this.prisma.transaction.aggregate({
-          where: {
-            userId,
-            type: 'EXPENSE',
-            date: {
-              gte: monthStart,
-              lte: now,
-            },
-          },
-          _sum: {
-            amount: true,
-          },
-        }),
-        this.prisma.goal.findMany({
-          where: {
-            userId,
-            status: {
-              in: ['ACTIVE', 'PLANNED'],
-            },
-          },
-        }),
-        this.prisma.reminder.findMany({
-          where: {
-            userId,
-            remindAt: {
-              gte: todayStart,
-              lte: todayEnd,
-            },
-          },
-        }),
-      ]);
-
-    const insights: GeneratedInsight[] = [];
-    const monthlyExpenses = Number(monthlyExpensesAggregate._sum.amount ?? 0);
-    const monthlyIncome = Number(user.monthlyIncome ?? 0);
-
-    if (overdueTasks.length > 0) {
-      insights.push({
-        type: InsightType.PRODUCTIVITY,
-        severity:
-          overdueTasks.length >= 3 ? InsightSeverity.CRITICAL : InsightSeverity.WARNING,
-        message:
-          overdueTasks.length >= 3
-            ? `Voce tem ${overdueTasks.length} tarefas atrasadas. Vale limpar essa fila hoje para recuperar tracao.`
-            : `Existe ${overdueTasks.length} tarefa atrasada. Resolver isso cedo tende a aliviar a semana.`,
-        metadata: {
-          overdueTasks: overdueTasks.length,
-        },
-      });
-    }
-
-    if (monthlyIncome > 0 && monthlyExpenses >= monthlyIncome * 0.85) {
-      insights.push({
-        type: InsightType.FINANCE,
-        severity:
-          monthlyExpenses >= monthlyIncome ? InsightSeverity.CRITICAL : InsightSeverity.WARNING,
-        message:
-          monthlyExpenses >= monthlyIncome
-            ? 'Suas despesas do mes ja encostaram na sua renda. Vale frear gastos variaveis e revisar contas futuras.'
-            : 'Suas despesas do mes ja passaram de 85% da sua renda. Um ajuste leve agora reduz risco no fechamento.',
-        metadata: {
-          monthlyExpenses,
-          monthlyIncome,
-        },
-      });
-    }
-
-    const stalledGoals = goals.filter((goal) => {
-      const targetAmount = Number(goal.targetAmount);
-      const currentAmount = Number(goal.currentAmount);
-      const progress = targetAmount > 0 ? currentAmount / targetAmount : 0;
-      const daysToTarget = goal.targetDate ? differenceInDays(goal.targetDate, now) : null;
-
-      return progress < 0.25 && daysToTarget !== null && daysToTarget <= 60;
-    });
-
-    if (stalledGoals.length > 0) {
-      insights.push({
-        type: InsightType.GOAL,
-        severity: InsightSeverity.WARNING,
-        message: `${stalledGoals.length} meta(s) estao com pouco progresso para o prazo atual. Talvez seja hora de redistribuir esforco ou aporte.`,
-        metadata: {
-          stalledGoals: stalledGoals.map((goal) => goal.title),
-        },
-      });
-    }
-
-    if (tasksToday.length >= 4) {
-      insights.push({
-        type: InsightType.ROUTINE,
-        severity: InsightSeverity.INFO,
-        message: `Hoje voce tem ${tasksToday.length} compromissos ativos. Priorize os de maior impacto financeiro e os que destravam outras frentes.`,
-        metadata: {
-          tasksToday: tasksToday.length,
-        },
-      });
-    }
-
-    if (remindersToday.length > 0) {
-      insights.push({
-        type: InsightType.ROUTINE,
-        severity: InsightSeverity.INFO,
-        message: `Existem ${remindersToday.length} lembrete(s) programados para hoje. Bom dia para operar no modo checklist.`,
-        metadata: {
-          remindersToday: remindersToday.length,
-        },
-      });
-    }
+    const insights = [
+      this.detectOverdueTasks(context),
+      this.detectExpenseRatio(context),
+      this.detectStalledGoals(context),
+      this.detectBusyDay(context),
+      this.detectRemindersToday(context),
+      this.detectDuplicateCharges(context),
+      this.detectRecurringCharges(context),
+    ].filter((insight): insight is GeneratedInsight => insight !== null);
 
     if (insights.length === 0) {
       insights.push({
@@ -205,5 +107,398 @@ export class InsightsService {
     }
 
     return insights;
+  }
+
+  private async loadContext(userId: string) {
+    const now = new Date();
+    const todayStart = startOfDay(now);
+    const todayEnd = endOfDay(now);
+    const monthStart = startOfMonth(now);
+
+    const [
+      user,
+      overdueTasks,
+      tasksToday,
+      monthlyExpensesAggregate,
+      goals,
+      remindersToday,
+      recentExpenses,
+    ] = await Promise.all([
+      this.prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+      }),
+      this.prisma.task.findMany({
+        where: {
+          userId,
+          status: {
+            in: ['PENDING', 'IN_PROGRESS'],
+          },
+          dueDate: {
+            lt: todayStart,
+          },
+        },
+      }),
+      this.prisma.task.findMany({
+        where: {
+          userId,
+          dueDate: {
+            gte: todayStart,
+            lte: todayEnd,
+          },
+          status: {
+            in: ['PENDING', 'IN_PROGRESS'],
+          },
+        },
+      }),
+      this.prisma.transaction.aggregate({
+        where: {
+          userId,
+          type: 'EXPENSE',
+          date: {
+            gte: monthStart,
+            lte: now,
+          },
+        },
+        _sum: {
+          amount: true,
+        },
+      }),
+      this.prisma.goal.findMany({
+        where: {
+          userId,
+          status: {
+            in: ['ACTIVE', 'PLANNED'],
+          },
+        },
+      }),
+      this.prisma.reminder.findMany({
+        where: {
+          userId,
+          remindAt: {
+            gte: todayStart,
+            lte: todayEnd,
+          },
+        },
+      }),
+      this.prisma.transaction.findMany({
+        where: {
+          userId,
+          type: 'EXPENSE',
+          date: {
+            gte: subDays(todayStart, CHARGE_WINDOW_DAYS),
+            lte: todayEnd,
+          },
+        },
+        select: {
+          id: true,
+          description: true,
+          amount: true,
+          date: true,
+        },
+        orderBy: { date: 'desc' },
+        take: CHARGE_WINDOW_MAX_ROWS,
+      }),
+    ]);
+
+    return {
+      now,
+      user,
+      overdueTasks,
+      tasksToday,
+      goals,
+      remindersToday,
+      monthlyExpenses: Number(monthlyExpensesAggregate._sum.amount ?? 0),
+      monthlyIncome: Number(user.monthlyIncome ?? 0),
+      recentExpenses: (recentExpenses ?? []).map((expense) => ({
+        id: expense.id,
+        description: expense.description,
+        amount: Number(expense.amount),
+        date: new Date(expense.date),
+      })) as ChargeOccurrence[],
+    };
+  }
+
+  private detectOverdueTasks(context: InsightContext): GeneratedInsight | null {
+    const { overdueTasks } = context;
+
+    if (overdueTasks.length === 0) {
+      return null;
+    }
+
+    return {
+      type: InsightType.PRODUCTIVITY,
+      severity:
+        overdueTasks.length >= 3 ? InsightSeverity.CRITICAL : InsightSeverity.WARNING,
+      message:
+        overdueTasks.length >= 3
+          ? `Voce tem ${overdueTasks.length} tarefas atrasadas. Vale limpar essa fila hoje para recuperar tracao.`
+          : `Existe ${overdueTasks.length} tarefa atrasada. Resolver isso cedo tende a aliviar a semana.`,
+      metadata: {
+        overdueTasks: overdueTasks.length,
+      },
+    };
+  }
+
+  private detectExpenseRatio(context: InsightContext): GeneratedInsight | null {
+    const { monthlyExpenses, monthlyIncome } = context;
+
+    if (monthlyIncome <= 0 || monthlyExpenses < monthlyIncome * 0.85) {
+      return null;
+    }
+
+    return {
+      type: InsightType.FINANCE,
+      severity:
+        monthlyExpenses >= monthlyIncome ? InsightSeverity.CRITICAL : InsightSeverity.WARNING,
+      message:
+        monthlyExpenses >= monthlyIncome
+          ? 'Suas despesas do mes ja encostaram na sua renda. Vale frear gastos variaveis e revisar contas futuras.'
+          : 'Suas despesas do mes ja passaram de 85% da sua renda. Um ajuste leve agora reduz risco no fechamento.',
+      metadata: {
+        monthlyExpenses,
+        monthlyIncome,
+      },
+    };
+  }
+
+  private detectStalledGoals(context: InsightContext): GeneratedInsight | null {
+    const { goals, now } = context;
+
+    const stalledGoals = goals.filter((goal) => {
+      const targetAmount = Number(goal.targetAmount);
+      const currentAmount = Number(goal.currentAmount);
+      const progress = targetAmount > 0 ? currentAmount / targetAmount : 0;
+      const daysToTarget = goal.targetDate ? differenceInDays(goal.targetDate, now) : null;
+
+      return progress < 0.25 && daysToTarget !== null && daysToTarget <= 60;
+    });
+
+    if (stalledGoals.length === 0) {
+      return null;
+    }
+
+    return {
+      type: InsightType.GOAL,
+      severity: InsightSeverity.WARNING,
+      message: `${stalledGoals.length} meta(s) estao com pouco progresso para o prazo atual. Talvez seja hora de redistribuir esforco ou aporte.`,
+      metadata: {
+        stalledGoals: stalledGoals.map((goal) => goal.title),
+      },
+    };
+  }
+
+  private detectBusyDay(context: InsightContext): GeneratedInsight | null {
+    const { tasksToday } = context;
+
+    if (tasksToday.length < 4) {
+      return null;
+    }
+
+    return {
+      type: InsightType.ROUTINE,
+      severity: InsightSeverity.INFO,
+      message: `Hoje voce tem ${tasksToday.length} compromissos ativos. Priorize os de maior impacto financeiro e os que destravam outras frentes.`,
+      metadata: {
+        tasksToday: tasksToday.length,
+      },
+    };
+  }
+
+  private detectRemindersToday(context: InsightContext): GeneratedInsight | null {
+    const { remindersToday } = context;
+
+    if (remindersToday.length === 0) {
+      return null;
+    }
+
+    return {
+      type: InsightType.ROUTINE,
+      severity: InsightSeverity.INFO,
+      message: `Existem ${remindersToday.length} lembrete(s) programados para hoje. Bom dia para operar no modo checklist.`,
+      metadata: {
+        remindersToday: remindersToday.length,
+      },
+    };
+  }
+
+  /**
+   * Cobranca repetida: mesma descricao e mesmo valor dentro de poucos dias.
+   * Costuma ser cobranca em duplicidade ou lancamento importado duas vezes.
+   */
+  private detectDuplicateCharges(context: InsightContext): GeneratedInsight | null {
+    const duplicates: Array<{
+      description: string;
+      amount: number;
+      occurrences: number;
+      lastDate: string;
+    }> = [];
+
+    for (const group of this.groupChargesByFingerprint(context.recentExpenses)) {
+      const ordered = [...group].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+      let cluster: ChargeOccurrence[] = [];
+
+      for (const charge of ordered) {
+        const previous = cluster[cluster.length - 1];
+
+        if (
+          previous &&
+          differenceInCalendarDays(charge.date, previous.date) > DUPLICATE_WINDOW_DAYS
+        ) {
+          cluster = [];
+        }
+
+        cluster.push(charge);
+
+        if (cluster.length >= 2) {
+          duplicates.push({
+            description: charge.description,
+            amount: charge.amount,
+            occurrences: cluster.length,
+            lastDate: charge.date.toISOString(),
+          });
+          break;
+        }
+      }
+    }
+
+    if (duplicates.length === 0) {
+      return null;
+    }
+
+    const currency = context.user.preferredCurrency;
+    const first = duplicates[0];
+    const message =
+      duplicates.length === 1
+        ? `Encontrei uma cobranca repetida: ${first.description} de ${this.formatAmount(first.amount, currency)} aparece ${first.occurrences} vezes em ate ${DUPLICATE_WINDOW_DAYS} dias. Vale conferir se nao foi cobrada em duplicidade.`
+        : `Encontrei ${duplicates.length} cobrancas repetidas em ate ${DUPLICATE_WINDOW_DAYS} dias, comecando por ${first.description} de ${this.formatAmount(first.amount, currency)}. Vale conferir se alguma foi cobrada em duplicidade.`;
+
+    return {
+      type: InsightType.FINANCE,
+      severity: InsightSeverity.WARNING,
+      message,
+      metadata: {
+        duplicates,
+        windowDays: DUPLICATE_WINDOW_DAYS,
+      },
+    };
+  }
+
+  /**
+   * Assinatura recorrente: mesma descricao e mesmo valor repetindo em
+   * intervalo mensal. Serve para revelar gastos fixos que passam batido.
+   */
+  private detectRecurringCharges(context: InsightContext): GeneratedInsight | null {
+    const subscriptions: Array<{
+      description: string;
+      amount: number;
+      occurrences: number;
+      lastDate: string;
+    }> = [];
+
+    for (const group of this.groupChargesByFingerprint(context.recentExpenses)) {
+      const uniqueDays = this.collapseToUniqueDays(group);
+
+      if (uniqueDays.length < MIN_OCCURRENCES_FOR_SUBSCRIPTION) {
+        continue;
+      }
+
+      const isMonthly = uniqueDays.every((charge, index) => {
+        if (index === 0) {
+          return true;
+        }
+
+        const gap = differenceInCalendarDays(charge.date, uniqueDays[index - 1].date);
+
+        return gap >= MONTHLY_GAP_MIN_DAYS && gap <= MONTHLY_GAP_MAX_DAYS;
+      });
+
+      if (!isMonthly) {
+        continue;
+      }
+
+      const last = uniqueDays[uniqueDays.length - 1];
+
+      subscriptions.push({
+        description: last.description,
+        amount: last.amount,
+        occurrences: uniqueDays.length,
+        lastDate: last.date.toISOString(),
+      });
+    }
+
+    if (subscriptions.length === 0) {
+      return null;
+    }
+
+    const currency = context.user.preferredCurrency;
+    const monthlyTotal = subscriptions.reduce(
+      (total, subscription) => total + subscription.amount,
+      0,
+    );
+
+    return {
+      type: InsightType.FINANCE,
+      severity: InsightSeverity.INFO,
+      message:
+        subscriptions.length === 1
+          ? `Identifiquei uma cobranca recorrente: ${subscriptions[0].description} de ${this.formatAmount(subscriptions[0].amount, currency)} por mes. Vale confirmar se ainda faz sentido manter.`
+          : `Identifiquei ${subscriptions.length} cobrancas recorrentes somando ${this.formatAmount(monthlyTotal, currency)} por mes. Vale revisar quais ainda valem a pena.`,
+      metadata: {
+        subscriptions,
+        monthlyTotal,
+      },
+    };
+  }
+
+  /**
+   * Agrupa despesas por descricao normalizada e valor, no mesmo espirito do
+   * fingerprint usado na deduplicacao de importacao de CSV.
+   */
+  private groupChargesByFingerprint(charges: ChargeOccurrence[]): ChargeOccurrence[][] {
+    const groups = new Map<string, ChargeOccurrence[]>();
+
+    for (const charge of charges) {
+      const fingerprint = `${charge.description.trim().toLowerCase()}:${charge.amount}`;
+      const group = groups.get(fingerprint);
+
+      if (group) {
+        group.push(charge);
+        continue;
+      }
+
+      groups.set(fingerprint, [charge]);
+    }
+
+    return [...groups.values()].filter((group) => group.length > 1);
+  }
+
+  /**
+   * Mantem uma ocorrencia por dia, em ordem crescente, para que uma cobranca
+   * duplicada no mesmo dia nao seja confundida com ciclo de assinatura.
+   */
+  private collapseToUniqueDays(charges: ChargeOccurrence[]): ChargeOccurrence[] {
+    const byDay = new Map<string, ChargeOccurrence>();
+
+    for (const charge of charges) {
+      const dayKey = startOfDay(charge.date).toISOString();
+
+      if (!byDay.has(dayKey)) {
+        byDay.set(dayKey, charge);
+      }
+    }
+
+    return [...byDay.values()].sort((a, b) => a.date.getTime() - b.date.getTime());
+  }
+
+  private formatAmount(amount: number, currency: string) {
+    try {
+      return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency,
+      }).format(amount);
+    } catch {
+      return amount.toFixed(2);
+    }
   }
 }
