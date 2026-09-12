@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
-import { DashboardSummary, Goal, Task, Transaction } from '../../../core/models/domain.models';
+import { DashboardSummary, Goal, Insight, Task, Transaction } from '../../../core/models/domain.models';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
 
@@ -52,6 +52,61 @@ export class DashboardPageComponent {
 
   protected firstName(name: string) {
     return name.trim().split(/\s+/)[0] || 'por aqui';
+  }
+
+  protected insightTone(severity: Insight['severity']) {
+    if (severity === 'CRITICAL') {
+      return 'danger';
+    }
+
+    if (severity === 'WARNING') {
+      return 'warning';
+    }
+
+    return 'accent';
+  }
+
+  protected insightIcon(type: Insight['type']) {
+    return {
+      PRODUCTIVITY: 'checklist',
+      FINANCE: 'account_balance_wallet',
+      GOAL: 'flag',
+      ROUTINE: 'routine',
+    }[type];
+  }
+
+  protected insightLabel(type: Insight['type']) {
+    return {
+      PRODUCTIVITY: 'Tarefas',
+      FINANCE: 'Finanças',
+      GOAL: 'Metas',
+      ROUTINE: 'Ritmo',
+    }[type];
+  }
+
+  protected insightRoute(type: Insight['type']) {
+    return {
+      PRODUCTIVITY: '/tasks',
+      FINANCE: '/finance',
+      GOAL: '/goals',
+      ROUTINE: '/tasks',
+    }[type];
+  }
+
+  protected insightsSubtitle(data: DashboardSummary) {
+    const total = data.insights.length;
+
+    if (total === 0) {
+      return 'Sem leituras relevantes agora.';
+    }
+
+    const critical = data.insights.filter((insight) => insight.severity === 'CRITICAL').length;
+
+    if (critical > 0) {
+      return `${critical} leitura(s) pedindo atenção imediata.`;
+    }
+
+    return `${total} leitura(s) do seu momento atual.`;
   }
 
   protected riskLabel(level: DashboardSummary['forecast']['riskLevel']) {

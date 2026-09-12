@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signa
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
 import { ActivatedRoute, Router } from "@angular/router";
-import { AssistantAction, AssistantModule, AssistantReply } from "../../../core/models/domain.models";
+import { AssistantAction, AssistantModule, AssistantPulse, AssistantReply } from "../../../core/models/domain.models";
 import { AuthService } from "../../../core/services/auth.service";
 import { LifeApiService } from "../../../core/services/life-api.service";
 import { NativeStorageService } from "../../../core/services/native-storage.service";
@@ -35,6 +35,7 @@ export class AssistantPageComponent {
   private readonly router = inject(Router);
 
   protected readonly history = signal<AssistantMessage[]>([]);
+  protected readonly pulse = signal<AssistantPulse | null>(null);
   protected readonly activeMessageId = signal<string | null>(null);
   protected readonly loading = signal(false);
   protected readonly consentDialogOpen = signal(false);
@@ -136,6 +137,7 @@ export class AssistantPageComponent {
   constructor() {
     this.restorePersistedHistory();
     this.loadServerHistory();
+    this.loadPulse();
 
     this.route.queryParamMap
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -153,6 +155,16 @@ export class AssistantPageComponent {
 
   protected usePrompt(prompt: string) {
     this.form.controls.question.setValue(prompt);
+  }
+
+  private loadPulse() {
+    this.api
+      .getAssistantPulse()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (pulse) => this.pulse.set(pulse),
+        error: () => this.pulse.set(null),
+      });
   }
 
   protected originModuleLabel() {

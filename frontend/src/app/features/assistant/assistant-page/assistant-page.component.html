@@ -12,6 +12,46 @@
     </div>
   </header>
 
+  <section class="proto-surface assistant-pulse" *ngIf="pulse() as currentPulse" aria-label="Pulso do Lumen">
+    <div class="proto-surface__head">
+      <div>
+        <h3>Seu pulso agora</h3>
+        <p>{{ currentPulse.summary }}</p>
+      </div>
+    </div>
+
+    <div class="proto-surface__body assistant-pulse__body">
+      <div class="assistant-pulse__signals" *ngIf="currentPulse.signals.length">
+        <article
+          class="proto-list-item assistant-pulse__signal"
+          *ngFor="let signal of currentPulse.signals | slice:0:3"
+          [attr.data-tone]="signalTone(signal)"
+        >
+          <span class="proto-tag" [attr.data-tone]="signalTone(signal)">{{ signal.title }}</span>
+          <p>{{ signal.message }}</p>
+          <button
+            type="button"
+            class="proto-button proto-button--ghost"
+            *ngIf="signal.suggestedPrompt as signalPrompt"
+            (click)="usePrompt(signalPrompt)"
+          >
+            {{ signal.suggestedActionLabel || 'Perguntar sobre isso' }}
+          </button>
+        </article>
+      </div>
+
+      <button
+        type="button"
+        class="proto-button proto-button--secondary assistant-pulse__question"
+        *ngIf="currentPulse.suggestedQuestion"
+        (click)="usePrompt(currentPulse.suggestedQuestion)"
+      >
+        <span class="material-symbols-rounded">auto_awesome</span>
+        {{ currentPulse.suggestedQuestion }}
+      </button>
+    </div>
+  </section>
+
   <section class="assistant-prompts">
     <button
       type="button"

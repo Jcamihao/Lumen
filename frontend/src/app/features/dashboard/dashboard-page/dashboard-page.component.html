@@ -105,11 +105,46 @@
     </a>
   </section>
 
+  <section class="proto-surface home-lane home-insights" aria-label="Leituras do Lumen">
+    <div class="home-section-head">
+      <div>
+        <span>01</span>
+        <h3>Leituras do Lumen</h3>
+        <p>{{ insightsSubtitle(data) }}</p>
+      </div>
+      <a class="proto-button proto-button--ghost" routerLink="/assistant">Conversar com o Selah</a>
+    </div>
+
+    <div class="home-list" *ngIf="data.insights.length; else noInsights">
+      <a
+        class="proto-list-item home-insight"
+        *ngFor="let insight of data.insights | slice:0:4"
+        [routerLink]="insightRoute(insight.type)"
+        [attr.data-tone]="insightTone(insight.severity)"
+      >
+        <span class="home-insight__icon material-symbols-rounded">{{ insightIcon(insight.type) }}</span>
+        <span class="home-insight__copy">
+          <strong>{{ insight.message }}</strong>
+        </span>
+        <span class="proto-tag" [attr.data-tone]="insightTone(insight.severity)">
+          {{ insightLabel(insight.type) }}
+        </span>
+      </a>
+    </div>
+
+    <ng-template #noInsights>
+      <div class="proto-empty">
+        <strong>Sem leituras agora</strong>
+        <p>Quando o Lumen encontrar um padrão relevante, ele aparece aqui.</p>
+      </div>
+    </ng-template>
+  </section>
+
   <section class="home-workspace">
     <article class="proto-surface home-lane home-lane--tasks">
       <div class="home-section-head">
         <div>
-          <span>01</span>
+          <span>02</span>
           <h3>Próximas ações</h3>
           <p>{{ data.tasks.todayCount }} tarefa(s) pedindo espaço hoje.</p>
         </div>
@@ -140,7 +175,7 @@
     <article class="proto-surface home-lane home-lane--finance">
       <div class="home-section-head">
         <div>
-          <span>02</span>
+          <span>03</span>
           <h3>Pulso financeiro</h3>
           <p>{{ financeSummaryText(data) }}</p>
         </div>
@@ -185,7 +220,7 @@
     <article class="proto-surface home-lane">
       <div class="home-section-head">
         <div>
-          <span>03</span>
+          <span>04</span>
           <h3>Metas em movimento</h3>
           <p>{{ data.goals.length }} objetivo(s) em acompanhamento.</p>
         </div>
@@ -216,7 +251,7 @@
     <article class="proto-surface home-lane">
       <div class="home-section-head">
         <div>
-          <span>04</span>
+          <span>05</span>
           <h3>Radar</h3>
           <p>Alertas, lembretes e sinais do Lumen.</p>
         </div>

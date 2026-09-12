@@ -220,3 +220,30 @@
     justify-content: flex-start;
   }
 }
+
+.assistant-pulse__body {
+  display: grid;
+  gap: 1rem;
+}
+
+.assistant-pulse__signals {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.assistant-pulse__signal {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+  min-width: 0;
+}
+
+.assistant-pulse__signal p {
+  margin: 0;
+  color: var(--text-medium);
+}
+
+.assistant-pulse__question {
+  justify-self: start;
+  text-align: left;
+}
