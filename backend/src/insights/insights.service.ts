@@ -172,6 +172,8 @@ export class InsightsService {
       this.detectStalledGoals(context),
       this.detectBusyDay(context),
       this.detectRemindersToday(context),
+      this.detectOverdueFinancialCost(context),
+      this.detectGoalsBlockedByTasks(context),
       this.detectDuplicateCharges(context),
       this.detectRecurringCharges(context),
     ].filter((insight): insight is GeneratedInsight => insight !== null);
@@ -426,6 +428,94 @@ export class InsightsService {
       message: `Existem ${remindersToday.length} lembrete(s) programados para hoje. Bom dia para operar no modo checklist.`,
       metadata: {
         remindersToday: remindersToday.length,
+      },
+    };
+  }
+
+  /**
+   * Dinheiro parado em tarefa adiada.
+   *
+   * Cruza atraso com impacto financeiro: o usuario ja marcou a tarefa como
+   * tendo custo e estimou um valor, entao da para dizer quanto esta preso na
+   * fila em vez de so contar quantas tarefas atrasaram.
+   */
+  private detectOverdueFinancialCost(context: InsightContext): GeneratedInsight | null {
+    const costly = context.overdueTasks.filter(
+      (task) => task.hasFinancialImpact && task.estimatedAmount !== null,
+    );
+
+    if (costly.length === 0) {
+      return null;
+    }
+
+    const total = costly.reduce((sum, task) => sum + Number(task.estimatedAmount), 0);
+
+    if (total <= 0) {
+      return null;
+    }
+
+    const { monthlyIncome } = context;
+    // Pesa o valor contra a renda quando ela e conhecida: o mesmo valor absoluto
+    // significa coisas diferentes para rendas diferentes.
+    const isCritical = monthlyIncome > 0 && total >= monthlyIncome * 0.25;
+    const amount = this.formatAmount(total, context.user.preferredCurrency);
+
+    return {
+      type: InsightType.PRODUCTIVITY,
+      key: 'overdue_financial_cost',
+      severity: isCritical ? InsightSeverity.CRITICAL : InsightSeverity.WARNING,
+      message:
+        costly.length === 1
+          ? `A tarefa ${costly[0].title} esta atrasada e carrega ${amount} de impacto estimado. Adiar isso adia o dinheiro junto.`
+          : `Voce tem ${amount} em impacto estimado parado em ${costly.length} tarefas atrasadas. Destravar essas primeiro tende a render mais que o resto da fila.`,
+      metadata: {
+        totalEstimatedAmount: total,
+        tasks: costly.map((task) => ({
+          id: task.id,
+          title: task.title,
+          estimatedAmount: Number(task.estimatedAmount),
+        })),
+      },
+    };
+  }
+
+  /**
+   * Meta que nao anda por causa de tarefa, nao de dinheiro.
+   *
+   * detectStalledGoals olha so o progresso e sugere "redistribuir esforco" sem
+   * saber o porque. Aqui o vinculo Task.linkedGoalId responde a causa.
+   */
+  private detectGoalsBlockedByTasks(context: InsightContext): GeneratedInsight | null {
+    const blocked = context.goals
+      .map((goal) => ({
+        goal,
+        overdue: context.overdueTasks.filter((task) => task.linkedGoalId === goal.id),
+      }))
+      .filter((entry) => entry.overdue.length >= 2)
+      .sort((a, b) => b.overdue.length - a.overdue.length);
+
+    if (blocked.length === 0) {
+      return null;
+    }
+
+    const worst = blocked[0];
+
+    return {
+      type: InsightType.GOAL,
+      key: `goals_blocked_by_tasks:${this.hashSubject(
+        blocked.map((entry) => entry.goal.id),
+      )}`,
+      severity: InsightSeverity.WARNING,
+      message:
+        blocked.length === 1
+          ? `A meta ${worst.goal.title} esta parada por tarefa, nao por dinheiro: ${worst.overdue.length} tarefas ligadas a ela estao atrasadas.`
+          : `${blocked.length} metas estao travadas por tarefas atrasadas, a comecar por ${worst.goal.title} com ${worst.overdue.length} pendencias.`,
+      metadata: {
+        blockedGoals: blocked.map((entry) => ({
+          id: entry.goal.id,
+          title: entry.goal.title,
+          overdueTasks: entry.overdue.length,
+        })),
       },
     };
   }

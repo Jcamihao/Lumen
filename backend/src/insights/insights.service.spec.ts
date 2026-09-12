@@ -188,6 +188,147 @@ describe('InsightsService', () => {
     });
   });
 
+  describe('detectOverdueFinancialCost', () => {
+    it('sums the estimated amount of overdue tasks with financial impact', async () => {
+      const prisma = buildPrisma();
+      prisma.task.findMany.mockResolvedValue([
+        {
+          id: 'task-1',
+          title: 'Renovar seguro do carro',
+          hasFinancialImpact: true,
+          estimatedAmount: 300,
+          linkedGoalId: null,
+        },
+        {
+          id: 'task-2',
+          title: 'Pagar mensalidade do curso',
+          hasFinancialImpact: true,
+          estimatedAmount: 220,
+          linkedGoalId: null,
+        },
+      ]);
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      const insight = generatedInsights(prisma).find(
+        (insight) => (insight.metadata as any)?.totalEstimatedAmount !== undefined,
+      );
+
+      expect(insight).toBeDefined();
+      expect(insight?.type).toBe(InsightType.PRODUCTIVITY);
+      expect((insight?.metadata as any)?.totalEstimatedAmount).toBe(520);
+      expect((insight?.metadata as any)?.tasks).toHaveLength(2);
+    });
+
+    it('ignores overdue tasks without financial impact', async () => {
+      const prisma = buildPrisma();
+      prisma.task.findMany.mockResolvedValue([
+        {
+          id: 'task-1',
+          title: 'Organizar mesa',
+          hasFinancialImpact: false,
+          estimatedAmount: null,
+          linkedGoalId: null,
+        },
+      ]);
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      expect(
+        generatedInsights(prisma).find(
+          (insight) => (insight.metadata as any)?.totalEstimatedAmount !== undefined,
+        ),
+      ).toBeUndefined();
+    });
+
+    it('escalates to critical when the amount reaches a quarter of the monthly income', async () => {
+      const prisma = buildPrisma();
+      prisma.user.findUniqueOrThrow.mockResolvedValue({
+        id: 'user-1',
+        monthlyIncome: 2000,
+        preferredCurrency: 'BRL',
+      });
+      prisma.task.findMany.mockResolvedValue([
+        {
+          id: 'task-1',
+          title: 'Consulta atrasada',
+          hasFinancialImpact: true,
+          estimatedAmount: 600,
+          linkedGoalId: null,
+        },
+      ]);
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      const insight = generatedInsights(prisma).find(
+        (insight) => (insight.metadata as any)?.totalEstimatedAmount !== undefined,
+      );
+
+      expect(insight?.severity).toBe(InsightSeverity.CRITICAL);
+    });
+  });
+
+  describe('detectGoalsBlockedByTasks', () => {
+    it('flags a goal with two or more overdue linked tasks', async () => {
+      const prisma = buildPrisma();
+      prisma.goal.findMany.mockResolvedValue([
+        { id: 'goal-1', title: 'Viagem para a praia' },
+      ]);
+      prisma.task.findMany.mockResolvedValue([
+        { id: 'task-1', title: 'Reservar hotel', hasFinancialImpact: false, estimatedAmount: null, linkedGoalId: 'goal-1' },
+        { id: 'task-2', title: 'Comprar passagem', hasFinancialImpact: false, estimatedAmount: null, linkedGoalId: 'goal-1' },
+      ]);
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      const insight = generatedInsights(prisma).find(
+        (insight) => (insight.metadata as any)?.blockedGoals !== undefined,
+      );
+
+      expect(insight).toBeDefined();
+      expect(insight?.type).toBe(InsightType.GOAL);
+      expect(insight?.message).toContain('Viagem para a praia');
+      expect((insight?.metadata as any)?.blockedGoals).toHaveLength(1);
+    });
+
+    it('does not flag a goal with only one overdue linked task', async () => {
+      const prisma = buildPrisma();
+      prisma.goal.findMany.mockResolvedValue([
+        { id: 'goal-1', title: 'Viagem para a praia' },
+      ]);
+      prisma.task.findMany.mockResolvedValue([
+        { id: 'task-1', title: 'Reservar hotel', hasFinancialImpact: false, estimatedAmount: null, linkedGoalId: 'goal-1' },
+      ]);
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      expect(
+        generatedInsights(prisma).find(
+          (insight) => (insight.metadata as any)?.blockedGoals !== undefined,
+        ),
+      ).toBeUndefined();
+    });
+
+    it('ignores overdue tasks not linked to any goal', async () => {
+      const prisma = buildPrisma();
+      prisma.goal.findMany.mockResolvedValue([
+        { id: 'goal-1', title: 'Viagem para a praia' },
+      ]);
+      prisma.task.findMany.mockResolvedValue([
+        { id: 'task-1', title: 'Tarefa solta 1', hasFinancialImpact: false, estimatedAmount: null, linkedGoalId: null },
+        { id: 'task-2', title: 'Tarefa solta 2', hasFinancialImpact: false, estimatedAmount: null, linkedGoalId: null },
+      ]);
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      expect(
+        generatedInsights(prisma).find(
+          (insight) => (insight.metadata as any)?.blockedGoals !== undefined,
+        ),
+      ).toBeUndefined();
+    });
+  });
+
   describe('persona', () => {
     it('stamps the persona of the type on every generated insight', async () => {
       const now = new Date();
