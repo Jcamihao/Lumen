@@ -1,9 +1,11 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
 import { LifeApiService } from '../../core/services/life-api.service';
 import { NotificationCenterService } from '../../core/services/notification-center.service';
+import { ToastService } from '../../core/services/toast.service';
 
 type NavItem = {
   icon: string;
@@ -36,6 +38,8 @@ export class SidebarComponent {
   protected readonly authService = inject(AuthService);
   protected readonly notificationCenter = inject(NotificationCenterService);
   private readonly api = inject(LifeApiService);
+  private readonly toast = inject(ToastService);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly primaryNavItems: NavItem[] = [
     { label: 'Início', icon: 'space_dashboard', route: '/dashboard', exact: true },
@@ -75,6 +79,14 @@ export class SidebarComponent {
     return symbol ? `${code} ${symbol}` : code;
   });
 
+  protected readonly currencyOptions = Object.entries(CURRENCY_SYMBOLS).map(([code, symbol]) => ({
+    code,
+    symbol,
+  }));
+
+  protected readonly currencyMenuOpen = signal(false);
+  protected readonly savingCurrency = signal(false);
+
   protected readonly userInitials = computed(() => {
     const name = this.authService.currentUser()?.name ?? '';
     return name.slice(0, 2).toUpperCase() || 'LU';
@@ -94,5 +106,28 @@ export class SidebarComponent {
     this.profileMenuOpen.set(false);
     this.authService.logout();
     this.requestClose();
+  }
+
+  protected setCurrency(code: string) {
+    this.currencyMenuOpen.set(false);
+
+    if (code === this.authService.currentUser()?.preferredCurrency) {
+      return;
+    }
+
+    this.savingCurrency.set(true);
+    this.api
+      .updateUser({ preferredCurrency: code })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (user) => {
+          this.authService.updateStoredUser(user);
+          this.savingCurrency.set(false);
+        },
+        error: () => {
+          this.savingCurrency.set(false);
+          this.toast.error('Não foi possível trocar a moeda.');
+        },
+      });
   }
 }

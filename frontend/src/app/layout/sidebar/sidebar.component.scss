@@ -123,13 +123,26 @@
 .proto-sidebar__status[data-tone='syncing'] { --tone: var(--warning); }
 .proto-sidebar__status[data-tone='offline'] { --tone: var(--text-secondary); }
 
-.proto-sidebar__currency {
+.proto-sidebar__currency-wrap {
+  position: relative;
   margin-left: auto;
+}
+
+.proto-sidebar__currency {
+  font: inherit;
   padding: 0.15rem 0.4rem;
   border: 1px solid var(--sidebar-panel-border);
+  background: var(--sidebar-shell-start);
   color: var(--sidebar-text);
   font-size: 0.68rem;
   letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.proto-sidebar__currency-menu {
+  top: calc(100% + 0.3rem);
+  right: 0;
+  min-width: 5.5rem;
 }
 
 .proto-sidebar__link {
@@ -246,40 +259,42 @@
   color: var(--sidebar-muted);
 }
 
-.proto-sidebar__profile-menu-btn:hover {
-  color: var(--sidebar-text);
-}
-
 .proto-sidebar__profile-menu {
-  position: absolute;
   left: 1.3rem;
   right: 1.3rem;
   bottom: calc(100% + 0.3rem);
-  display: grid;
+}
+
+.proto-sidebar__currency-menu,
+.proto-sidebar__profile-menu {
+  position: absolute;
   border: 1px solid var(--sidebar-panel-border);
   background: var(--sidebar-shell-start);
   box-shadow: var(--shadow-float);
-  z-index: 10;
+  z-index: 15;
 }
 
-.proto-sidebar__profile-menu a,
-.proto-sidebar__profile-menu button {
+.proto-sidebar__dropdown-item {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.65rem 0.85rem;
+  width: 100%;
+  padding: 0.6rem 0.85rem;
   color: var(--sidebar-text);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 600;
   text-align: left;
 }
 
-.proto-sidebar__profile-menu a:hover,
-.proto-sidebar__profile-menu button:hover {
+.proto-sidebar__dropdown-item:hover {
   background: var(--sidebar-link-hover);
 }
 
-.proto-sidebar__profile-menu button:last-child {
+.proto-sidebar__dropdown-item.active {
+  color: var(--accent);
+}
+
+.proto-sidebar__dropdown-item--danger {
   color: var(--sidebar-danger);
 }
 

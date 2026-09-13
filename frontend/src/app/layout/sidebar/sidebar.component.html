@@ -21,7 +21,30 @@
   <div class="proto-sidebar__status" [attr.data-tone]="syncStatusTone()">
     <span class="proto-sidebar__status-dot"></span>
     <span>{{ syncStatusLabel() }}</span>
-    <span class="proto-sidebar__currency">{{ currencyLabel() }}</span>
+
+    <div class="proto-sidebar__currency-wrap">
+      <button
+        type="button"
+        class="proto-sidebar__currency"
+        [disabled]="savingCurrency()"
+        [attr.aria-expanded]="currencyMenuOpen()"
+        (click)="currencyMenuOpen.set(!currencyMenuOpen())"
+      >
+        {{ currencyLabel() }}
+      </button>
+
+      <div class="proto-sidebar__currency-menu" *ngIf="currencyMenuOpen()">
+        <button
+          type="button"
+          class="proto-sidebar__dropdown-item"
+          *ngFor="let option of currencyOptions"
+          [class.active]="option.code === authService.currentUser()?.preferredCurrency"
+          (click)="setCurrency(option.code)"
+        >
+          {{ option.code }} {{ option.symbol }}
+        </button>
+      </div>
+    </div>
   </div>
 
   <div class="proto-sidebar__nav-block">
@@ -109,11 +132,11 @@
     </div>
 
     <div class="proto-sidebar__profile-menu" *ngIf="profileMenuOpen()">
-      <a routerLink="/settings" (click)="profileMenuOpen.set(false); requestClose()">
+      <a class="proto-sidebar__dropdown-item" routerLink="/settings" (click)="profileMenuOpen.set(false); requestClose()">
         <span class="material-symbols-rounded">settings</span>
         Configurações
       </a>
-      <button type="button" (click)="logout()">
+      <button type="button" class="proto-sidebar__dropdown-item proto-sidebar__dropdown-item--danger" (click)="logout()">
         <span class="material-symbols-rounded">logout</span>
         Sair
       </button>
