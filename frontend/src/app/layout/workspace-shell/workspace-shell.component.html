@@ -1,4 +1,6 @@
 <div class="workspace-shell">
+  <app-topbar></app-topbar>
+
   <aside class="workspace-shell__desktop-sidebar">
     <app-sidebar></app-sidebar>
   </aside>
@@ -20,8 +22,6 @@
   </div>
 
   <main class="workspace-shell__content">
-    <app-topbar></app-topbar>
-
     <div class="workspace-shell__content-inner ambient-shell">
       <section
         *ngIf="showSyncBanner()"

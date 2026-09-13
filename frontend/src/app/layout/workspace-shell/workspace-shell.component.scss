@@ -2,6 +2,7 @@
   min-height: 100vh;
   min-height: 100dvh;
   --workspace-sidebar-width: 19rem;
+  --topbar-height: 3.75rem;
   --mobile-nav-clearance: calc(5.6rem + var(--safe-bottom));
 }
 
@@ -163,7 +164,7 @@
   .workspace-shell__content {
     padding-left: var(--workspace-sidebar-width);
     padding-right: 1rem;
-    padding-top: 1rem;
+    padding-top: calc(var(--topbar-height) + 1rem);
     padding-bottom: 2rem;
   }
 }
