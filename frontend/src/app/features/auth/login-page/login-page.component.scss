@@ -22,7 +22,7 @@
 .auth-visual__orb {
   position: absolute;
   inset: auto;
-  border-radius: 999px;
+  border-radius: 0;
   pointer-events: none;
   background: radial-gradient(
     circle,
@@ -144,7 +144,7 @@
   height: 2.4rem;
   display: inline-grid;
   place-items: center;
-  border-radius: 999px;
+  border-radius: 0;
   color: var(--text-medium);
 }
 
@@ -159,7 +159,7 @@
   display: grid;
   gap: 0.85rem;
   padding: 1rem;
-  border-radius: 1.2rem;
+  border-radius: 0;
   border: 1px solid var(--surface-panel-border);
   background: var(--surface-panel);
 }

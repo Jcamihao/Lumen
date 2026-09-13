@@ -1,0 +1,29 @@
+<header class="proto-topbar proto-header--glass">
+  <a class="proto-topbar__brand" routerLink="/dashboard">
+    <img src="assets/logo/logo_lumen_s_fundo.png" alt="Logo do Lumen" />
+    <span>Lumen</span>
+  </a>
+
+  <span class="proto-topbar__crumb">{{ currentPageLabel() }}</span>
+
+  <div class="proto-topbar__actions">
+    <a class="proto-topbar__icon-button" routerLink="/notifications" aria-label="Alertas">
+      <span class="material-symbols-rounded">notifications</span>
+      <span class="proto-topbar__badge" *ngIf="notificationCenter.unreadCount() > 0">
+        {{ notificationCenter.unreadCount() }}
+      </span>
+    </a>
+
+    <a class="proto-button proto-button--secondary proto-topbar__cta" routerLink="/assistant">
+      <span class="material-symbols-rounded">auto_awesome</span>
+      <span class="proto-topbar__cta-label">Perguntar ao Selah</span>
+    </a>
+
+    <a class="proto-topbar__avatar" routerLink="/settings" aria-label="Configurações da conta">
+      <img *ngIf="authService.currentUser()?.avatarUrl as avatar; else fallbackInitials" [src]="avatar" alt="" />
+      <ng-template #fallbackInitials>
+        <span>{{ userInitials() }}</span>
+      </ng-template>
+    </a>
+  </div>
+</header>

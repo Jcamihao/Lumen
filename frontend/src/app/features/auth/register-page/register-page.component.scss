@@ -15,7 +15,7 @@
 .register-visual__orb {
   position: absolute;
   inset: auto;
-  border-radius: 999px;
+  border-radius: 0;
   pointer-events: none;
   background: radial-gradient(circle, color-mix(in srgb, white 20%, transparent), transparent 68%);
 }
@@ -133,7 +133,7 @@
   height: 2.4rem;
   display: inline-grid;
   place-items: center;
-  border-radius: 999px;
+  border-radius: 0;
   color: var(--text-medium);
 }
 
@@ -148,7 +148,7 @@
 .avatar-preview img {
   width: 4.5rem;
   height: 4.5rem;
-  border-radius: 1.25rem;
+  border-radius: 0;
   object-fit: cover;
   border: 1px solid var(--surface-panel-border);
 }
@@ -174,7 +174,7 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.9rem 1rem;
-  border-radius: 1rem;
+  border-radius: 0;
   border: 1px solid var(--surface-panel-border);
   background: var(--surface-panel);
   color: var(--text-strong);

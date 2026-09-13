@@ -21,7 +21,7 @@
   height: 3.25rem;
   display: inline-grid;
   place-items: center;
-  border-radius: 1rem;
+  border-radius: 0;
   background: var(--highlight-iris-bg);
   color: var(--highlight-iris-fg);
 }
@@ -92,7 +92,7 @@
 .finance-transaction .proto-button {
   min-height: 2.45rem;
   padding: 0.58rem 0.9rem;
-  border-radius: 0.95rem;
+  border-radius: 0;
   font-size: 0.88rem;
 }
 
@@ -127,7 +127,7 @@
 .finance-filters__nav-btn {
   min-height: 2rem;
   padding: 0.3rem 0.4rem;
-  border-radius: 0.6rem;
+  border-radius: 0;
 
   .material-symbols-rounded {
     font-size: 1.1rem;
@@ -146,7 +146,7 @@
 .finance-filters__type-select {
   height: 2rem;
   padding: 0 0.65rem;
-  border-radius: 0.6rem;
+  border-radius: 0;
   border: 1px solid var(--border);
   background: var(--input-background);
   color: var(--text-primary);

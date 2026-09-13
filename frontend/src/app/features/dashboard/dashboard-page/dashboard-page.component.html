@@ -87,7 +87,10 @@
       <span class="home-metric__icon material-symbols-rounded">account_balance_wallet</span>
       <strong>{{ data.forecast.predictedBalance | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
       <span>Previsão do mês</span>
-      <small>{{ projectionDelta(data) }} vs. saldo atual</small>
+      <small>
+        <span class="proto-delta" [ngClass]="'proto-delta--' + projectionDeltaTone(data)">{{ projectionDelta(data) }}</span>
+        vs. saldo atual
+      </small>
     </a>
 
     <a class="proto-metric home-metric" routerLink="/goals" data-tone="success">

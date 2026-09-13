@@ -259,13 +259,18 @@ textarea {
   background: var(--input-background);
   color: var(--text-primary);
   border-radius: var(--radius-sm);
-  padding: 0.95rem 1rem;
+  padding: 0.6rem 0.85rem;
   outline: none;
   transition:
     border-color var(--transition-fast),
     box-shadow var(--transition-fast),
     background-color var(--transition-fast),
     transform var(--transition-fast);
+}
+
+input,
+select {
+  min-height: 2.5rem;
 }
 
 input::placeholder,
@@ -751,6 +756,139 @@ strong {
   background: var(--chip-danger-bg);
   color: var(--chip-danger-text);
   border-color: var(--chip-danger-border);
+}
+
+/* Meridian — badge de variação inline (+12.4% / -3.2%). */
+.proto-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.proto-delta::before {
+  content: '▲';
+  font-size: 0.6em;
+}
+
+.proto-delta--down::before {
+  content: '▼';
+}
+
+.proto-delta--up {
+  color: var(--success);
+}
+
+.proto-delta--down {
+  color: var(--danger);
+}
+
+.proto-delta--flat {
+  color: var(--text-secondary);
+}
+
+.proto-delta--flat::before {
+  content: '—';
+}
+
+/* Meridian — enclosure quadrado 36x36 pra ícones. */
+.proto-icon-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text-primary);
+}
+
+.proto-icon-box .material-symbols-rounded {
+  font-size: 1.15rem;
+}
+
+.proto-icon-box--accent {
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+  background: var(--surface-soft);
+  color: var(--accent);
+}
+
+/* Meridian — card de monitoramento prioritário, borda-acento à esquerda. */
+.proto-priority-card {
+  position: relative;
+  padding: 1rem 1rem 1rem 1.15rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  background: var(--card);
+}
+
+.proto-priority-card[data-tone='warning'] {
+  border-left-color: var(--warning);
+}
+
+.proto-priority-card[data-tone='danger'] {
+  border-left-color: var(--danger);
+}
+
+.proto-priority-card[data-tone='success'] {
+  border-left-color: var(--success);
+}
+
+/* Meridian — header sticky com vidro fosco. */
+.proto-header--glass {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--surface-glass);
+  border-bottom: 1px solid var(--surface-glass-border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* Meridian — tabela financeira densa. */
+.proto-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.proto-table th {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.proto-table td {
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.proto-table tbody tr {
+  transition: background-color var(--transition-fast);
+}
+
+.proto-table tbody tr:hover {
+  background: var(--surface-soft);
+}
+
+.proto-table th[data-align='right'],
+.proto-table td[data-align='right'] {
+  text-align: right;
+}
+
+.proto-table tbody tr[data-selected='true'] {
+  border-left: 2px solid var(--accent);
+  background: var(--surface-soft);
 }
 
 .proto-grid {

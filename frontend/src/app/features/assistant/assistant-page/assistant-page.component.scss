@@ -14,7 +14,7 @@
   gap: 0.7rem;
   min-height: 4.25rem;
   padding: 0.95rem 1rem;
-  border-radius: 1rem;
+  border-radius: 0;
   background: var(--prompt-background);
   border: 1px solid var(--prompt-border);
   color: var(--text-strong);
@@ -89,7 +89,7 @@
 .assistant-reading__tab {
   min-height: 2.35rem;
   padding: 0.42rem 0.85rem;
-  border-radius: 999px;
+  border-radius: 0;
   border: 1px solid var(--surface-panel-border);
   background: var(--surface-panel);
   color: var(--text-medium);
@@ -117,7 +117,7 @@
   height: 1.85rem;
   display: inline-grid;
   place-items: center;
-  border-radius: 0.8rem;
+  border-radius: 0;
   background: var(--highlight-iris-bg);
   color: var(--highlight-iris-fg);
   font-size: 0.78rem;
@@ -180,7 +180,7 @@
   display: grid;
   gap: 1rem;
   padding: 1.4rem;
-  border-radius: 1.6rem;
+  border-radius: 0;
   background: var(--modal-background);
   border: 1px solid var(--modal-border);
   box-shadow: var(--modal-shadow);

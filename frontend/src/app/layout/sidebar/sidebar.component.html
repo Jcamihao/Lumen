@@ -22,12 +22,18 @@
     </button>
   </div>
 
+  <div class="proto-sidebar__status" [attr.data-tone]="syncStatusTone()">
+    <span class="proto-sidebar__status-dot"></span>
+    <span>{{ syncStatusLabel() }}</span>
+    <span class="proto-sidebar__currency">{{ authService.currentUser()?.preferredCurrency || 'BRL' }}</span>
+  </div>
+
   <div class="proto-sidebar__nav-block">
-    <p class="section-kicker proto-sidebar__kicker">Menu principal</p>
+    <p class="section-kicker proto-sidebar__kicker">Módulos principais</p>
 
     <nav class="proto-sidebar__nav">
       <a
-        *ngFor="let item of navItems"
+        *ngFor="let item of primaryNavItems"
         class="proto-sidebar__link"
         [routerLink]="item.route"
         routerLinkActive="active"
@@ -36,6 +42,30 @@
       >
         <span class="material-symbols-rounded">{{ item.icon }}</span>
         <span>{{ item.label }}</span>
+      </a>
+    </nav>
+  </div>
+
+  <div class="proto-sidebar__nav-block">
+    <p class="section-kicker proto-sidebar__kicker">Operações e dados</p>
+
+    <nav class="proto-sidebar__nav">
+      <a
+        *ngFor="let item of secondaryNavItems"
+        class="proto-sidebar__link"
+        [routerLink]="item.route"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="{ exact: item.exact ?? false }"
+        (click)="requestClose()"
+      >
+        <span class="material-symbols-rounded">{{ item.icon }}</span>
+        <span>{{ item.label }}</span>
+        <span
+          class="proto-sidebar__badge"
+          *ngIf="item.route === '/notifications' && notificationCenter.unreadCount() > 0"
+        >
+          {{ notificationCenter.unreadCount() }}
+        </span>
       </a>
     </nav>
   </div>

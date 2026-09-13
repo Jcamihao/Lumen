@@ -398,6 +398,13 @@ export class DashboardPageComponent {
     }[level] as 'success' | 'warning' | 'danger';
   }
 
+  protected projectionDeltaTone(data: DashboardSummary): 'up' | 'down' | 'flat' {
+    const difference = data.forecast.predictedBalance - data.finances.balance;
+    if (difference > 0) return 'up';
+    if (difference < 0) return 'down';
+    return 'flat';
+  }
+
   protected projectionDelta(data: DashboardSummary) {
     const difference = data.forecast.predictedBalance - data.finances.balance;
     const sign = difference >= 0 ? '+' : '-';
