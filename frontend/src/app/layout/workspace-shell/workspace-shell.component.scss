@@ -67,7 +67,7 @@
 
 .workspace-shell__sync-copy p {
   margin: 0;
-  color: var(--muted-foreground);
+  color: var(--text-medium);
   font-size: 0.9rem;
   line-height: 1.45;
 }
@@ -77,8 +77,8 @@
   border: 0;
   border-radius: 0;
   padding: 0.72rem 1rem;
-  background: color-mix(in srgb, var(--foreground) 90%, transparent);
-  color: white;
+  background: var(--text-primary);
+  color: var(--text-inverse);
   font: inherit;
   font-weight: 600;
   cursor: pointer;

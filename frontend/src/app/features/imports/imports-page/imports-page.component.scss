@@ -229,7 +229,7 @@
   align-items: center;
   gap: 0.6rem;
   padding: 1.2rem 0.5rem;
-  color: var(--text-muted);
+  color: var(--text-medium);
   font-size: 0.88rem;
 
   .material-symbols-rounded {
@@ -266,8 +266,8 @@
   height: 2.1rem;
   padding: 0 0.6rem;
   border-radius: 0.55rem;
-  border: 1px solid var(--input-border, rgba(255 255 255 / 0.12));
-  background: var(--input-bg, var(--surface-elevated));
+  border: 1px solid var(--border);
+  background: var(--input-background);
   color: var(--text-primary);
   font-size: 0.82rem;
 }
@@ -291,7 +291,7 @@
 
 .imports-csv-row__category {
   font-size: 0.78rem;
-  color: var(--text-muted);
+  color: var(--text-medium);
   padding: 0 0.1rem;
 }
 

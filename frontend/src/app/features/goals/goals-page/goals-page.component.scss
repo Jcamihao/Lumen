@@ -78,7 +78,7 @@
   display: grid;
   gap: 0.6rem;
   padding-top: 0.35rem;
-  border-top: 1px solid var(--surface-border, rgba(255 255 255 / 0.07));
+  border-top: 1px solid var(--border);
 }
 
 .goal-card__contribute-field {
@@ -96,14 +96,14 @@
 }
 
 .goal-card__history {
-  border-top: 1px solid var(--surface-border, rgba(255 255 255 / 0.07));
+  border-top: 1px solid var(--border);
   padding-top: 0.6rem;
 }
 
 .goal-card__history-loading,
 .goal-card__history-empty {
   font-size: 0.82rem;
-  color: var(--text-muted);
+  color: var(--text-medium);
   padding: 0.3rem 0;
 }
 
@@ -124,7 +124,7 @@
 
 .goal-contrib-item p {
   font-size: 0.78rem;
-  color: var(--text-muted);
+  color: var(--text-medium);
 }
 
 @media (max-width: 1200px) {

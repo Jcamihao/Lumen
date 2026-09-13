@@ -92,12 +92,12 @@
   --tab-active-bg: var(--accent);
   --tab-active-text: #ffffff;
   --tab-active-shadow: none;
-  --hero-start: #ffffff;
-  --hero-mid: #ffffff;
-  --hero-end: #ffffff;
-  --hero-muted: var(--text-medium);
-  --hero-glass: var(--surface-soft);
-  --hero-glass-border: var(--border);
+  --hero-start: #002f61;
+  --hero-mid: #00468c;
+  --hero-end: #006cd2;
+  --hero-muted: color-mix(in srgb, var(--text-inverse) 78%, transparent);
+  --hero-glass: rgba(255, 255, 255, 0.1);
+  --hero-glass-border: rgba(255, 255, 255, 0.22);
 
   /* No ambient glow/grain — flat, clinical canvas. */
   --body-glow-a: transparent;

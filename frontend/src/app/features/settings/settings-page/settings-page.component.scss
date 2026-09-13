@@ -56,7 +56,7 @@
     color-mix(in srgb, var(--accent-cool) 34%, var(--hero-start) 66%),
     color-mix(in srgb, var(--accent) 60%, var(--hero-end) 40%)
   );
-  color: var(--hero-text);
+  color: var(--text-inverse);
   font-size: 1.35rem;
   font-weight: 800;
   overflow: hidden;
