@@ -5,7 +5,11 @@ export const routes: Routes = [
   {
     path: '',
     pathMatch: 'full',
-    redirectTo: 'auth/login',
+    canActivate: [guestGuard],
+    loadComponent: () =>
+      import('./features/landing/landing-page/landing-page.component').then(
+        (module) => module.LandingPageComponent,
+      ),
   },
   {
     path: 'login',
