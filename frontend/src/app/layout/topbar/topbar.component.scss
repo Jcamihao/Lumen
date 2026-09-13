@@ -4,7 +4,8 @@
 
 @media (min-width: 1024px) {
   .proto-topbar {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
     align-items: center;
     gap: 1rem;
     position: fixed;
@@ -13,6 +14,13 @@
     padding: 0 1.1rem;
     z-index: 30;
   }
+}
+
+.proto-topbar__left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
 }
 
 .proto-topbar__brand {
@@ -45,7 +53,6 @@
 }
 
 .proto-topbar__actions {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -56,7 +63,10 @@
   position: relative;
   display: flex;
   align-items: center;
-  width: 20rem;
+  width: 100%;
+  max-width: 26rem;
+  min-width: 0;
+  margin: 0 auto;
 }
 
 .proto-topbar__search-icon {
@@ -228,6 +238,6 @@
   }
 
   .proto-topbar__search {
-    width: 12rem;
+    max-width: 14rem;
   }
 }
