@@ -15,7 +15,7 @@
   grid-template-columns: repeat(var(--nav-count), minmax(0, 1fr));
   gap: var(--nav-gap);
   padding: var(--nav-padding);
-  border-radius: 1.9rem;
+  border-radius: 0;
   background: linear-gradient(180deg, var(--bottom-nav-bg-start), var(--bottom-nav-bg-end));
   border: 1px solid var(--bottom-nav-border);
   backdrop-filter: blur(20px);
@@ -39,7 +39,7 @@
   position: absolute;
   inset: auto 12% -0.6rem;
   height: 1.2rem;
-  border-radius: 999px;
+  border-radius: 0;
   background: var(--bottom-nav-shadow-bar);
   filter: blur(18px);
   z-index: -1;
@@ -54,7 +54,7 @@
       var(--nav-count)
   );
   height: calc(100% - (var(--nav-padding) * 2));
-  border-radius: 1.45rem;
+  border-radius: 0;
   background: linear-gradient(135deg, var(--bottom-nav-indicator-start), var(--bottom-nav-indicator-mid) 55%, var(--bottom-nav-indicator-end));
   box-shadow: var(--bottom-nav-indicator-shadow);
   transform: translateX(calc(var(--active-index) * (100% + var(--nav-gap))));
@@ -73,7 +73,7 @@
   gap: 0.22rem;
   min-height: 3.65rem;
   padding: 0.45rem 0.1rem;
-  border-radius: 1.35rem;
+  border-radius: 0;
   color: var(--bottom-nav-item-text);
   font-size: 0.64rem;
   font-weight: 700;
@@ -100,7 +100,7 @@
   right: -0.25rem;
   width: 0.44rem;
   height: 0.44rem;
-  border-radius: 50%;
+  border-radius: 0;
   background: var(--accent);
   box-shadow: 0 0 0 2px var(--bottom-nav-bg-end, transparent);
 }
@@ -138,7 +138,7 @@
   }
 
   .proto-bottom-nav__track {
-    border-radius: 1.6rem;
+    border-radius: 0;
   }
 
   .proto-bottom-nav__item {

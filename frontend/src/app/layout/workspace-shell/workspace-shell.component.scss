@@ -45,7 +45,7 @@
   margin-bottom: 0.9rem;
   padding: 0.95rem 1rem;
   border: 1px solid var(--border);
-  border-radius: 1.1rem;
+  border-radius: 0;
   background: var(--card);
 }
 
@@ -75,7 +75,7 @@
 .workspace-shell__sync-action {
   flex-shrink: 0;
   border: 0;
-  border-radius: 999px;
+  border-radius: 0;
   padding: 0.72rem 1rem;
   background: color-mix(in srgb, var(--foreground) 90%, transparent);
   color: white;
@@ -98,7 +98,7 @@
   inset: -3rem auto auto -2rem;
   width: 18rem;
   height: 18rem;
-  border-radius: 999px;
+  border-radius: 0;
   background: radial-gradient(circle, var(--shell-aura-left), transparent 68%);
   animation: shellAuraFloatA 18s ease-in-out infinite alternate;
 }
