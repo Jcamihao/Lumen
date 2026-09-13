@@ -12,6 +12,12 @@ type NavItem = {
   exact?: boolean;
 };
 
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  BRL: 'R$',
+  USD: '$',
+  EUR: '€',
+};
+
 @Component({
   selector: 'app-sidebar',
   standalone: true,
@@ -59,8 +65,14 @@ export class SidebarComponent {
       case 'syncing':
         return 'Sincronizando';
       default:
-        return 'Sincronizado';
+        return 'Online • Sincronizado';
     }
+  });
+
+  protected readonly currencyLabel = computed(() => {
+    const code = this.authService.currentUser()?.preferredCurrency || 'BRL';
+    const symbol = CURRENCY_SYMBOLS[code];
+    return symbol ? `${code} ${symbol}` : code;
   });
 
   protected readonly userInitials = computed(() => {

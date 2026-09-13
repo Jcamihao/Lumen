@@ -9,7 +9,7 @@
     align-items: center;
     gap: 1rem;
     position: fixed;
-    inset: 0 0 auto 0;
+    inset: 0 0 auto var(--workspace-sidebar-width, 0px);
     height: var(--topbar-height, 4rem);
     padding: 0 1.3rem;
     z-index: 30;

@@ -11,13 +11,6 @@
   overflow: hidden;
 }
 
-@media (min-width: 1024px) {
-  :host(:not(.mobile-drawer)) {
-    top: var(--topbar-height, 0px);
-    height: calc(100dvh - var(--topbar-height, 0px));
-  }
-}
-
 .proto-sidebar {
   height: 100%;
   min-height: 0;

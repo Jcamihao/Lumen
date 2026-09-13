@@ -21,7 +21,7 @@
   <div class="proto-sidebar__status" [attr.data-tone]="syncStatusTone()">
     <span class="proto-sidebar__status-dot"></span>
     <span>{{ syncStatusLabel() }}</span>
-    <span class="proto-sidebar__currency">{{ authService.currentUser()?.preferredCurrency || 'BRL' }}</span>
+    <span class="proto-sidebar__currency">{{ currencyLabel() }}</span>
   </div>
 
   <div class="proto-sidebar__nav-block">
