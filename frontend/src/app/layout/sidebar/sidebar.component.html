@@ -1,9 +1,10 @@
 <aside class="proto-sidebar" [class.proto-sidebar--mobile]="mobile">
   <div class="proto-sidebar__top">
     <a class="proto-sidebar__brand" routerLink="/dashboard" (click)="requestClose()">
-      <span class="proto-sidebar__brand-copy">
-        <span>Clareza para sua vida</span>
+      <span class="proto-sidebar__brand-mark">
+        <span class="material-symbols-rounded">bolt</span>
       </span>
+      <span class="proto-sidebar__brand-name">Lumen</span>
     </a>
 
     <button
@@ -82,9 +83,40 @@
   </div>
 
   <div class="proto-sidebar__profile">
-    <button type="button" class="proto-sidebar__logout" (click)="logout()">
-      <span class="material-symbols-rounded">logout</span>
-      <span>Sair</span>
-    </button>
+    <div class="proto-sidebar__profile-card">
+      <span class="proto-sidebar__profile-avatar">
+        <img
+          *ngIf="authService.currentUser()?.avatarUrl as avatar; else fallbackInitials"
+          [src]="avatar"
+          alt=""
+        />
+        <ng-template #fallbackInitials>{{ userInitials() }}</ng-template>
+      </span>
+
+      <span class="proto-sidebar__profile-copy">
+        <strong>{{ authService.currentUser()?.name || 'Usuário' }}</strong>
+        <small>{{ userRoleLabel() }}</small>
+      </span>
+
+      <button
+        type="button"
+        class="proto-sidebar__profile-menu-btn"
+        aria-label="Mais opções"
+        (click)="profileMenuOpen.set(!profileMenuOpen())"
+      >
+        <span class="material-symbols-rounded">more_vert</span>
+      </button>
+    </div>
+
+    <div class="proto-sidebar__profile-menu" *ngIf="profileMenuOpen()">
+      <a routerLink="/settings" (click)="profileMenuOpen.set(false); requestClose()">
+        <span class="material-symbols-rounded">settings</span>
+        Configurações
+      </a>
+      <button type="button" (click)="logout()">
+        <span class="material-symbols-rounded">logout</span>
+        Sair
+      </button>
+    </div>
   </div>
 </aside>

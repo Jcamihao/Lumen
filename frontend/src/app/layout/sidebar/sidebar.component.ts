@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
 import { LifeApiService } from '../../core/services/life-api.service';
@@ -63,11 +63,23 @@ export class SidebarComponent {
     }
   });
 
+  protected readonly userInitials = computed(() => {
+    const name = this.authService.currentUser()?.name ?? '';
+    return name.slice(0, 2).toUpperCase() || 'LU';
+  });
+
+  protected readonly userRoleLabel = computed(() =>
+    this.authService.currentUser()?.role === 'ADMIN' ? 'Administrador' : 'Usuário',
+  );
+
+  protected readonly profileMenuOpen = signal(false);
+
   protected requestClose() {
     this.closeRequested.emit();
   }
 
   protected logout() {
+    this.profileMenuOpen.set(false);
     this.authService.logout();
     this.requestClose();
   }

@@ -1,5 +1,15 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  HostListener,
+  ViewChild,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter, map, startWith } from 'rxjs';
@@ -102,6 +112,17 @@ export class TopbarComponent {
   protected readonly hasMatches = computed(
     () => this.taskResults().length > 0 || this.transactionResults().length > 0,
   );
+
+  @ViewChild('searchInput') private readonly searchInputRef?: ElementRef<HTMLInputElement>;
+
+  @HostListener('document:keydown', ['$event'])
+  protected handleGlobalShortcut(event: KeyboardEvent) {
+    const isShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k';
+    if (!isShortcut) return;
+
+    event.preventDefault();
+    this.searchInputRef?.nativeElement.focus();
+  }
 
   constructor() {
     this.api

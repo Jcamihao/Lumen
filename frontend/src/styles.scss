@@ -135,12 +135,12 @@
   --sidebar-brand-end: #ffffff;
   --sidebar-link-hover: var(--surface-soft);
   --sidebar-link-hover-border: transparent;
-  --sidebar-link-active: var(--accent);
+  --sidebar-link-active: var(--surface-soft);
   --sidebar-link-active-border: transparent;
   --sidebar-link-active-shadow: none;
   --sidebar-link-marker: var(--accent);
   --sidebar-link-marker-ring: none;
-  --sidebar-link-icon-active: #ffffff;
+  --sidebar-link-icon-active: var(--accent);
   --sidebar-panel-bg: var(--card-muted);
   --sidebar-panel-border: var(--border);
   --sidebar-badge-bg: color-mix(in srgb, var(--accent) 10%, transparent);
