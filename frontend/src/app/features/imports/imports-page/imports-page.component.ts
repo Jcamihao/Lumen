@@ -41,6 +41,15 @@ export class ImportsPageComponent {
   protected readonly receiptDescription = signal('');
   protected readonly receiptCategoryId = signal('');
 
+  // Grupo de tags: escolhido ANTES do upload — o grupo e quem define o que
+  // pode ser comparado com o que (ver InsightsService.detectReceiptComparison
+  // no backend).
+  protected readonly selectedTagGroupId = signal('');
+  protected readonly compareWithPrevious = signal(false);
+  protected readonly newTagGroupName = signal('');
+  protected readonly creatingTagGroup = signal(false);
+  protected readonly tagGroupError = signal<string | null>(null);
+
   // History
   protected readonly receiptHistory = signal<ReceiptScanHistoryEntry[]>([]);
   protected readonly csvHistory = signal<ImportJobHistoryEntry[]>([]);
@@ -50,6 +59,7 @@ export class ImportsPageComponent {
   protected readonly expenseCategories = computed(
     () => this.auth.currentUser()?.financeCategories.filter((c) => c.type === 'EXPENSE') || [],
   );
+  protected readonly tagGroups = computed(() => this.auth.currentUser()?.tagGroups ?? []);
   protected readonly canUseReceiptAi = computed(() => {
     const user = this.auth.currentUser();
     return !!(user?.privacyNoticeAcceptedAt && user?.aiAssistantEnabled && user?.aiAssistantConsentAt);
@@ -88,11 +98,17 @@ export class ImportsPageComponent {
     const file = input.files?.item(0);
     if (!file) return;
 
+    if (!this.selectedTagGroupId()) {
+      this.receiptError.set('Escolha um grupo antes de enviar a nota fiscal.');
+      input.value = '';
+      return;
+    }
+
     this.receiptLoading.set(true);
     this.receiptError.set(null);
 
     this.api
-      .previewReceiptImport(file)
+      .previewReceiptImport(file, this.selectedTagGroupId(), this.compareWithPrevious())
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (preview) => {
@@ -108,6 +124,41 @@ export class ImportsPageComponent {
         error: (error) => {
           this.receiptLoading.set(false);
           this.receiptError.set(error?.error?.message || 'Nao foi possivel ler a nota fiscal com o SelahIA.');
+        },
+      });
+  }
+
+  protected selectTagGroup(id: string) {
+    this.selectedTagGroupId.set(id);
+    this.tagGroupError.set(null);
+  }
+
+  protected createTagGroupInline() {
+    const name = this.newTagGroupName().trim();
+    if (!name) return;
+
+    this.creatingTagGroup.set(true);
+    this.tagGroupError.set(null);
+
+    this.api
+      .createTagGroup({ name })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (group) => {
+          this.auth
+            .loadMe()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => {
+              this.selectedTagGroupId.set(group.id);
+              this.newTagGroupName.set('');
+              this.creatingTagGroup.set(false);
+            });
+        },
+        error: (error) => {
+          this.creatingTagGroup.set(false);
+          this.tagGroupError.set(
+            error?.error?.message || 'Nao foi possivel criar o grupo.',
+          );
         },
       });
   }
@@ -171,6 +222,8 @@ export class ImportsPageComponent {
           this.receiptTotalAmount.set(0);
           this.receiptDescription.set('');
           this.receiptCategoryId.set('');
+          this.selectedTagGroupId.set('');
+          this.compareWithPrevious.set(false);
           this.historyLoaded.set(false);
           this.toast.success('Nota fiscal registrada no financeiro.');
         },

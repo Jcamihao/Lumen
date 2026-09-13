@@ -22,6 +22,7 @@ import {
   CommitReceiptImportDto,
   CommitReceiptImportItemDto,
 } from './dto/commit-receipt-import.dto';
+import { PreviewReceiptImportDto } from './dto/preview-receipt-import.dto';
 
 type ParsedRow = {
   type: TransactionType;
@@ -320,7 +321,24 @@ export class ImportsService {
     };
   }
 
-  async previewReceiptImport(userId: string, file?: Express.Multer.File) {
+  async previewReceiptImport(
+    userId: string,
+    file: Express.Multer.File | undefined,
+    dto: PreviewReceiptImportDto,
+  ) {
+    // Valida o grupo ANTES de qualquer chamada de IA: o usuario escolhe o
+    // grupo primeiro, so depois manda a foto. Falhar aqui tambem evita gastar
+    // a chamada (paga e lenta) ao OCR com um grupo invalido.
+    const tagGroup = await this.prisma.tagGroup.findFirst({
+      where: { id: dto.tagGroupId, userId },
+    });
+
+    if (!tagGroup) {
+      throw new NotFoundException(
+        'Grupo de tags nao encontrado. Escolha um grupo antes de enviar a nota.',
+      );
+    }
+
     this.ensureReceiptFile(file);
     const aiContext = await this.ensureReceiptAiEnabled(userId);
     const parsedReceipt = await this.parseReceiptWithSelah(file!, aiContext.expenseCategoryNames);
@@ -378,6 +396,8 @@ export class ImportsService {
         fileName: file!.originalname,
         mimeType: file!.mimetype,
         status: ReceiptScanStatus.PREVIEWED,
+        tagGroupId: tagGroup.id,
+        compareWithPrevious: dto.compareWithPrevious ?? false,
         merchantName,
         documentNumber: this.optionalString(parsedReceipt.documentNumber),
         purchaseDate,

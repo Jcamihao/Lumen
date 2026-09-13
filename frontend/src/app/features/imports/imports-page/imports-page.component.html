@@ -60,9 +60,61 @@
           <span>Revisa antes de salvar</span>
         </div>
 
+        <div class="imports-tag-group">
+          <div class="proto-field proto-field--full">
+            <label>Grupo desta nota</label>
+            <p class="proto-muted">
+              Escolha antes de enviar a foto. Para a comparação funcionar, as notas precisam estar no mesmo grupo.
+            </p>
+
+            <div class="imports-tag-group__chips">
+              <button
+                type="button"
+                class="proto-chip imports-tag-group__chip"
+                *ngFor="let group of tagGroups()"
+                [class.active]="selectedTagGroupId() === group.id"
+                [style.--chip-color]="group.color || 'var(--accent)'"
+                (click)="selectTagGroup(group.id)"
+              >
+                {{ group.name }}
+              </button>
+            </div>
+
+            <div class="imports-tag-group__new">
+              <input
+                type="text"
+                style="flex:1"
+                placeholder="Novo grupo (ex.: Farmácia)"
+                [ngModel]="newTagGroupName()"
+                (ngModelChange)="newTagGroupName.set($event)"
+                [disabled]="creatingTagGroup()"
+              />
+              <button
+                type="button"
+                class="proto-button proto-button--ghost"
+                [disabled]="creatingTagGroup() || !newTagGroupName().trim()"
+                (click)="createTagGroupInline()"
+              >
+                {{ creatingTagGroup() ? 'Criando...' : '+ Criar grupo' }}
+              </button>
+            </div>
+
+            <p class="import-error" *ngIf="tagGroupError()">{{ tagGroupError() }}</p>
+          </div>
+
+          <label class="proto-muted imports-tag-group__compare">
+            <input
+              type="checkbox"
+              [ngModel]="compareWithPrevious()"
+              (ngModelChange)="compareWithPrevious.set($event)"
+            />
+            Comparar com a nota anterior deste grupo assim que eu confirmar
+          </label>
+        </div>
+
         <div class="proto-actions-row">
           <input #receiptInput type="file" accept="image/*,application/pdf" hidden (change)="handleReceiptFile($event)" />
-          <button type="button" class="proto-button" [disabled]="receiptLoading()" (click)="receiptInput.click()">
+          <button type="button" class="proto-button" [disabled]="receiptLoading() || !selectedTagGroupId()" (click)="receiptInput.click()">
             {{ receiptLoading() ? 'Lendo nota...' : 'Selecionar imagem ou PDF' }}
           </button>
         </div>

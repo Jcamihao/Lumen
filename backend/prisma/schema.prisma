@@ -147,6 +147,7 @@ model User {
   assistantTurns    AssistantTurn[]
   authSessions      AuthSession[]
   authChallenges    AuthChallenge[]
+  tagGroups         TagGroup[]
 
   @@index([email])
 }
@@ -372,6 +373,26 @@ model ImportJob {
   @@index([userId, status, createdAt])
 }
 
+model TagGroup {
+  id        String        @id @default(uuid())
+  userId    String
+  name      String
+  /// Cor em hex (#RRGGBB) usada pra destacar o grupo na UI. Opcional — sem
+  /// cor, a UI cai no estilo padrao de tag.
+  color     String?
+  /// Grupos que o app cria automaticamente pro usuario (ver DEFAULT_TAG_GROUPS).
+  /// Sinalizacao apenas — o usuario pode renomear ou apagar normalmente.
+  isDefault Boolean       @default(false)
+  sortOrder Int           @default(0)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  receiptScans ReceiptScan[]
+
+  @@unique([userId, name])
+  @@index([userId, sortOrder])
+}
+
 model ReceiptScan {
   id             String            @id @default(uuid())
   userId         String
@@ -390,14 +411,24 @@ model ReceiptScan {
   previewData    Json?
   importedAt     DateTime?
   transactionId  String?           @unique
+  /// Grupo escolhido pelo usuario ANTES do upload (ex.: "Padaria"). Preenchido
+  /// no preview e imutavel no commit. Nulo = nota de antes desse recurso, fora
+  /// da comparacao entre notas.
+  tagGroupId     String?
+  /// Escolha do usuario feita junto com o grupo, antes do upload: comparar
+  /// esta nota com a anterior do mesmo grupo assim que ela for confirmada.
+  /// Default false — a comparacao e opcional, nao automatica.
+  compareWithPrevious Boolean      @default(false)
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   transaction    Transaction?      @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  tagGroup       TagGroup?         @relation(fields: [tagGroupId], references: [id], onDelete: SetNull)
   items          ReceiptScanItem[]
 
   @@index([userId, status, createdAt])
   @@index([purchaseDate])
+  @@index([tagGroupId])
 }
 
 model ReceiptScanItem {

@@ -18,6 +18,7 @@ import {
   ReceiptImportPreview,
   ReceiptScanHistoryEntry,
   Reminder,
+  TagGroup,
   SupportRequest,
   Task,
   Transaction,
@@ -451,13 +452,31 @@ export class LifeApiService {
     );
   }
 
-  previewReceiptImport(file: File) {
+  previewReceiptImport(file: File, tagGroupId: string, compareWithPrevious: boolean) {
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("tagGroupId", tagGroupId);
+    formData.append("compareWithPrevious", String(compareWithPrevious));
     return this.http.post<ReceiptImportPreview>(
       `${environment.apiBaseUrl}/imports/receipts/preview`,
       formData,
     );
+  }
+
+  getTagGroups() {
+    return this.http.get<TagGroup[]>(`${environment.apiBaseUrl}/tag-groups`);
+  }
+
+  createTagGroup(payload: { name: string; color?: string }) {
+    return this.http.post<TagGroup>(`${environment.apiBaseUrl}/tag-groups`, payload);
+  }
+
+  updateTagGroup(id: string, payload: { name?: string; color?: string }) {
+    return this.http.patch<TagGroup>(`${environment.apiBaseUrl}/tag-groups/${id}`, payload);
+  }
+
+  deleteTagGroup(id: string) {
+    return this.http.delete<{ success: boolean }>(`${environment.apiBaseUrl}/tag-groups/${id}`);
   }
 
   commitReceiptImport(payload: {

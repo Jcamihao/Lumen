@@ -20,6 +20,7 @@ export type User = {
   mfaRecoveryCodesRemaining?: number;
   taskCategories: Category[];
   financeCategories: FinanceCategory[];
+  tagGroups: TagGroup[];
 };
 
 export type Category = {
@@ -31,6 +32,14 @@ export type Category = {
 
 export type FinanceCategory = Category & {
   type: "INCOME" | "EXPENSE" | "TRANSFER";
+};
+
+export type TagGroup = {
+  id: string;
+  name: string;
+  color: string | null;
+  isDefault: boolean;
+  sortOrder: number;
 };
 
 export type Task = {

@@ -15,6 +15,9 @@ type ReceiptScanSeed = {
   purchaseDate: Date;
   totalAmount: number;
   items: Array<{ description: string; totalPrice: number }>;
+  tagGroupId: string;
+  tagGroup: { name: string };
+  compareWithPrevious: boolean;
 };
 
 const buildPrisma = (expenses: ExpenseSeed[] = [], receiptScans: ReceiptScanSeed[] = []) => {
@@ -341,29 +344,37 @@ describe('InsightsService', () => {
   });
 
   describe('detectReceiptComparison', () => {
-    it('compares the two most recent scans from the same merchant', async () => {
+    const scan = (overrides: Partial<ReceiptScanSeed> & Pick<ReceiptScanSeed, 'id' | 'purchaseDate' | 'totalAmount'>): ReceiptScanSeed => ({
+      merchantName: 'Mercado Bom Preco',
+      tagGroupId: 'group-compras',
+      tagGroup: { name: 'Compras do mes' },
+      compareWithPrevious: false,
+      items: [],
+      ...overrides,
+    });
+
+    it('compares the two most recent scans of the same group when the newest opted in', async () => {
       const now = new Date();
       const prisma = buildPrisma([], [
-        {
+        scan({
           id: 'r2',
-          merchantName: 'Mercado Bom Preco',
           purchaseDate: now,
           totalAmount: 342,
+          compareWithPrevious: true,
           items: [
             { description: 'Arroz 5kg', totalPrice: 32 },
             { description: 'Feijao 1kg', totalPrice: 8 },
           ],
-        },
-        {
+        }),
+        scan({
           id: 'r1',
-          merchantName: 'Mercado Bom Preco',
           purchaseDate: subDays(now, 30),
           totalAmount: 305,
           items: [
             { description: 'Arroz 5kg', totalPrice: 25 },
             { description: 'Feijao 1kg', totalPrice: 8 },
           ],
-        },
+        }),
       ]);
 
       await new InsightsService(prisma).refreshForUser('user-1');
@@ -374,7 +385,7 @@ describe('InsightsService', () => {
 
       expect(insight).toBeDefined();
       expect(insight?.type).toBe(InsightType.FINANCE);
-      expect(insight?.message).toContain('Mercado Bom Preco');
+      expect(insight?.message).toContain('Compras do mes');
       expect(insight?.message).toContain('Arroz 5kg');
 
       const comparison = (insight?.metadata as any).comparisons[0];
@@ -383,15 +394,11 @@ describe('InsightsService', () => {
       expect(comparison.topIncrease.description).toBe('Arroz 5kg');
     });
 
-    it('does nothing on the first scan of a merchant, with nothing to compare yet', async () => {
+    it('does nothing when the newest scan of the pair did not opt in to comparison', async () => {
+      const now = new Date();
       const prisma = buildPrisma([], [
-        {
-          id: 'r1',
-          merchantName: 'Mercado Novo',
-          purchaseDate: new Date(),
-          totalAmount: 120,
-          items: [{ description: 'Cafe', totalPrice: 20 }],
-        },
+        scan({ id: 'r2', purchaseDate: now, totalAmount: 342, compareWithPrevious: false }),
+        scan({ id: 'r1', purchaseDate: subDays(now, 30), totalAmount: 305 }),
       ]);
 
       await new InsightsService(prisma).refreshForUser('user-1');
@@ -403,23 +410,60 @@ describe('InsightsService', () => {
       ).toBeUndefined();
     });
 
-    it('ignores receipts without a recognized merchant name, to avoid comparing different stores', async () => {
+    it('does nothing on the first scan of a group, with nothing to compare yet', async () => {
+      const prisma = buildPrisma([], [
+        scan({
+          id: 'r1',
+          purchaseDate: new Date(),
+          totalAmount: 120,
+          compareWithPrevious: true,
+          items: [{ description: 'Cafe', totalPrice: 20 }],
+        }),
+      ]);
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      expect(
+        generatedInsights(prisma).find(
+          (insight) => (insight.metadata as any)?.comparisons !== undefined,
+        ),
+      ).toBeUndefined();
+    });
+
+    it('does not compare scans from different groups, even from the same merchant', async () => {
       const now = new Date();
       const prisma = buildPrisma([], [
-        {
+        scan({
           id: 'r2',
-          merchantName: 'Compra registrada',
           purchaseDate: now,
-          totalAmount: 500,
-          items: [],
-        },
-        {
+          totalAmount: 342,
+          compareWithPrevious: true,
+          tagGroupId: 'group-padaria',
+          tagGroup: { name: 'Padaria' },
+        }),
+        scan({
           id: 'r1',
-          merchantName: 'Compra registrada',
-          purchaseDate: subDays(now, 10),
-          totalAmount: 50,
-          items: [],
-        },
+          purchaseDate: subDays(now, 30),
+          totalAmount: 305,
+          tagGroupId: 'group-compras',
+          tagGroup: { name: 'Compras do mes' },
+        }),
+      ]);
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      expect(
+        generatedInsights(prisma).find(
+          (insight) => (insight.metadata as any)?.comparisons !== undefined,
+        ),
+      ).toBeUndefined();
+    });
+
+    it('ignores scans without a group, since the group is what makes them comparable', async () => {
+      const now = new Date();
+      const prisma = buildPrisma([], [
+        { ...scan({ id: 'r2', purchaseDate: now, totalAmount: 500, compareWithPrevious: true }), tagGroupId: null as any },
+        { ...scan({ id: 'r1', purchaseDate: subDays(now, 10), totalAmount: 50 }), tagGroupId: null as any },
       ]);
 
       await new InsightsService(prisma).refreshForUser('user-1');
@@ -434,20 +478,8 @@ describe('InsightsService', () => {
     it('escalates to critical when the total jumps 40% or more', async () => {
       const now = new Date();
       const prisma = buildPrisma([], [
-        {
-          id: 'r2',
-          merchantName: 'Mercado Bom Preco',
-          purchaseDate: now,
-          totalAmount: 420,
-          items: [],
-        },
-        {
-          id: 'r1',
-          merchantName: 'Mercado Bom Preco',
-          purchaseDate: subDays(now, 30),
-          totalAmount: 300,
-          items: [],
-        },
+        scan({ id: 'r2', purchaseDate: now, totalAmount: 420, compareWithPrevious: true }),
+        scan({ id: 'r1', purchaseDate: subDays(now, 30), totalAmount: 300 }),
       ]);
 
       await new InsightsService(prisma).refreshForUser('user-1');
@@ -462,20 +494,19 @@ describe('InsightsService', () => {
     it('points out an item that got cheaper as an improvement', async () => {
       const now = new Date();
       const prisma = buildPrisma([], [
-        {
+        scan({
           id: 'r2',
-          merchantName: 'Mercado Bom Preco',
           purchaseDate: now,
           totalAmount: 100,
+          compareWithPrevious: true,
           items: [{ description: 'Oleo', totalPrice: 8 }],
-        },
-        {
+        }),
+        scan({
           id: 'r1',
-          merchantName: 'Mercado Bom Preco',
           purchaseDate: subDays(now, 30),
           totalAmount: 100,
           items: [{ description: 'Oleo', totalPrice: 12 }],
-        },
+        }),
       ]);
 
       await new InsightsService(prisma).refreshForUser('user-1');
@@ -486,6 +517,34 @@ describe('InsightsService', () => {
 
       expect(insight?.message).toContain('melhorou');
       expect((insight?.metadata as any).comparisons[0].topDecrease.description).toBe('Oleo');
+    });
+
+    it('names both merchants in the message when the group spans different stores', async () => {
+      const now = new Date();
+      const prisma = buildPrisma([], [
+        scan({
+          id: 'r2',
+          purchaseDate: now,
+          totalAmount: 342,
+          compareWithPrevious: true,
+          merchantName: 'Padaria Central',
+        }),
+        scan({
+          id: 'r1',
+          purchaseDate: subDays(now, 30),
+          totalAmount: 305,
+          merchantName: 'Padaria Sao Jose',
+        }),
+      ]);
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      const insight = generatedInsights(prisma).find(
+        (insight) => (insight.metadata as any)?.comparisons !== undefined,
+      );
+
+      expect(insight?.message).toContain('Padaria Central');
+      expect(insight?.message).toContain('Padaria Sao Jose');
     });
   });
 

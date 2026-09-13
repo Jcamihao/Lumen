@@ -316,3 +316,27 @@
     flex-direction: column;
   }
 }
+
+.imports-tag-group,
+.imports-tag-group__chips,
+.imports-tag-group__new,
+.imports-tag-group__compare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.imports-tag-group {
+  width: 100%;
+  flex-direction: column;
+}
+
+.imports-tag-group__chip {
+  background: transparent;
+}
+
+.imports-tag-group__chip.active {
+  background: color-mix(in srgb, var(--chip-color, var(--accent)) 18%, transparent);
+  border-color: var(--chip-color, var(--accent));
+}

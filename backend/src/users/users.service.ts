@@ -6,6 +6,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { Prisma, TransactionType, UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { DEFAULT_TAG_GROUPS } from "../tag-groups/tag-groups.service";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import {
   CURRENT_AI_CONSENT_VERSION,
@@ -102,6 +103,15 @@ export class UsersService {
           },
         ],
       }),
+      this.prisma.tagGroup.createMany({
+        data: DEFAULT_TAG_GROUPS.map((group, index) => ({
+          userId: user.id,
+          name: group.name,
+          color: group.color,
+          isDefault: true,
+          sortOrder: index,
+        })),
+      }),
     ]);
 
     return this.findById(user.id);
@@ -113,6 +123,9 @@ export class UsersService {
       include: {
         taskCategories: true,
         financeCategories: true,
+        tagGroups: {
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        },
       },
     });
   }
@@ -126,6 +139,9 @@ export class UsersService {
         },
         financeCategories: {
           orderBy: { name: "asc" },
+        },
+        tagGroups: {
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         },
       },
     });
@@ -222,6 +238,9 @@ export class UsersService {
         },
         financeCategories: {
           orderBy: [{ type: "asc" }, { name: "asc" }],
+        },
+        tagGroups: {
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         },
         tasks: {
           include: {

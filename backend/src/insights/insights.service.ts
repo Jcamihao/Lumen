@@ -44,6 +44,14 @@ type ReceiptScanSnapshot = {
   purchaseDate: Date;
   totalAmount: number;
   items: ReceiptItemSnapshot[];
+  tagGroupId: string;
+  tagGroupName: string;
+  /**
+   * Escolha do usuario feita antes do upload: comparar esta nota com a
+   * anterior do mesmo grupo. A comparacao e opcional — so acontece quando a
+   * nota mais recente do par pediu.
+   */
+  compareWithPrevious: boolean;
 };
 
 /**
@@ -64,13 +72,6 @@ const MIN_OCCURRENCES_FOR_SUBSCRIPTION = 3;
 
 /** Quantas notas fiscais importadas olhar pra tras ao procurar pares pra comparar. */
 const RECEIPT_SCAN_MAX_ROWS = 200;
-
-/**
- * Nome padrao quando o usuario nao informa (nem a OCR reconhece) o
- * estabelecimento — ver commitReceiptImport em imports.service.ts. Comparar
- * duas notas com esse nome misturaria lojas diferentes, entao ficam de fora.
- */
-const UNNAMED_MERCHANT_FALLBACK = 'compra registrada';
 
 /** Alta o suficiente pra virar aviso, ou critica, de aumento de gasto no mesmo estabelecimento. */
 const RECEIPT_TOTAL_WARNING_PCT = 0.15;
@@ -337,13 +338,20 @@ export class InsightsService {
         where: {
           userId,
           status: ReceiptScanStatus.IMPORTED,
-          merchantName: { not: null },
+          // So participa da comparacao quem tem grupo — e o grupo, nao mais o
+          // nome do estabelecimento, que define o que e comparavel com o que.
+          tagGroupId: { not: null },
         },
         select: {
           id: true,
           merchantName: true,
           purchaseDate: true,
           totalAmount: true,
+          tagGroupId: true,
+          compareWithPrevious: true,
+          tagGroup: {
+            select: { name: true },
+          },
           items: {
             select: {
               description: true,
@@ -372,12 +380,15 @@ export class InsightsService {
         date: new Date(expense.date),
       })) as ChargeOccurrence[],
       recentReceiptScans: (recentReceiptScans ?? [])
-        .filter((scan) => (scan.merchantName ?? '').trim().length > 0)
+        .filter((scan) => !!scan.tagGroupId)
         .map((scan) => ({
           id: scan.id,
           merchantName: (scan.merchantName ?? '').trim(),
           purchaseDate: new Date(scan.purchaseDate ?? new Date()),
           totalAmount: Number(scan.totalAmount),
+          tagGroupId: scan.tagGroupId as string,
+          tagGroupName: scan.tagGroup?.name ?? 'Grupo removido',
+          compareWithPrevious: scan.compareWithPrevious,
           items: scan.items.map((item) => ({
             description: item.description,
             totalPrice: Number(item.totalPrice),
@@ -719,36 +730,32 @@ export class InsightsService {
   }
 
   /**
-   * Compara a ultima nota fiscal de um estabelecimento com a anterior do
-   * mesmo lugar: subiu ou caiu no total, qual item pesou mais, qual ficou
-   * mais barato, o que entrou e o que saiu da lista.
+   * Compara a ultima nota fiscal de um grupo de tags com a anterior do mesmo
+   * grupo: subiu ou caiu no total, qual item pesou mais, qual ficou mais
+   * barato, o que entrou e o que saiu da lista.
    *
-   * So compara estabelecimentos com nome de verdade — duas notas sem nome
-   * reconhecido cairiam no mesmo rotulo generico e comparariam lojas
-   * diferentes entre si, o que geraria leitura errada.
+   * O grupo, escolhido pelo usuario antes do upload, e quem define o que e
+   * comparavel com o que — nao o nome do estabelecimento. Duas notas so
+   * comparam se estiverem no mesmo grupo, e so quando a nota mais recente do
+   * par pediu a comparacao (compareWithPrevious): a comparacao e opcional,
+   * nao automatica so por existir um par no mesmo grupo.
    */
   private detectReceiptComparison(context: InsightContext): GeneratedInsight | null {
-    const byMerchant = new Map<string, ReceiptScanSnapshot[]>();
+    const byGroup = new Map<string, ReceiptScanSnapshot[]>();
 
     for (const scan of context.recentReceiptScans) {
-      const merchantKey = scan.merchantName.toLowerCase();
-
-      if (merchantKey === UNNAMED_MERCHANT_FALLBACK) {
-        continue;
-      }
-
-      const group = byMerchant.get(merchantKey);
+      const group = byGroup.get(scan.tagGroupId);
 
       if (group) {
         group.push(scan);
         continue;
       }
 
-      byMerchant.set(merchantKey, [scan]);
+      byGroup.set(scan.tagGroupId, [scan]);
     }
 
-    const comparisons = [...byMerchant.values()]
-      .filter((scans) => scans.length >= 2)
+    const comparisons = [...byGroup.values()]
+      .filter((scans) => scans.length >= 2 && scans[0].compareWithPrevious)
       // recentReceiptScans ja vem ordenado por purchaseDate desc da query.
       .map(([current, previous]) => this.compareReceipts(current, previous))
       .sort((a, b) => Math.abs(b.deltaPercent ?? 0) - Math.abs(a.deltaPercent ?? 0));
@@ -768,7 +775,7 @@ export class InsightsService {
     return {
       type: InsightType.FINANCE,
       key: `receipt_comparison:${this.hashSubject(
-        comparisons.map((entry) => entry.merchantName),
+        comparisons.map((entry) => entry.tagGroupId),
       )}`,
       severity,
       message: this.describeReceiptComparison(
@@ -778,7 +785,9 @@ export class InsightsService {
       ),
       metadata: {
         comparisons: comparisons.map((entry) => ({
-          merchant: entry.merchantName,
+          tagGroup: entry.tagGroupName,
+          currentMerchant: entry.currentMerchant,
+          previousMerchant: entry.previousMerchant,
           previousTotal: entry.previousTotal,
           currentTotal: entry.currentTotal,
           deltaAmount: entry.deltaAmount,
@@ -792,7 +801,7 @@ export class InsightsService {
     };
   }
 
-  /** Compara duas notas do mesmo estabelecimento, item a item. */
+  /** Compara duas notas do mesmo grupo de tags, item a item. */
   private compareReceipts(current: ReceiptScanSnapshot, previous: ReceiptScanSnapshot) {
     const previousItems = this.sumItemsByDescription(previous.items);
     const currentItems = this.sumItemsByDescription(current.items);
@@ -839,7 +848,10 @@ export class InsightsService {
     const deltaPercent = previous.totalAmount > 0 ? deltaAmount / previous.totalAmount : null;
 
     return {
-      merchantName: current.merchantName,
+      tagGroupId: current.tagGroupId,
+      tagGroupName: current.tagGroupName,
+      currentMerchant: current.merchantName || null,
+      previousMerchant: previous.merchantName || null,
       previousTotal: previous.totalAmount,
       currentTotal: current.totalAmount,
       deltaAmount,
@@ -870,7 +882,7 @@ export class InsightsService {
 
   private describeReceiptComparison(
     comparison: ReturnType<InsightsService['compareReceipts']>,
-    otherMerchantsCount: number,
+    otherGroupsCount: number,
     currency: string,
   ) {
     const currentAmount = this.formatAmount(comparison.currentTotal, currency);
@@ -880,8 +892,16 @@ export class InsightsService {
       comparison.deltaPercent !== null
         ? ` (${trendWord} ${Math.round(Math.abs(comparison.deltaPercent) * 100)}%)`
         : '';
+    // O grupo pode ter notas de estabelecimentos diferentes (ex.: "Compras do
+    // mes" cobrindo mais de um mercado). So cita o nome quando ele existe e
+    // ajuda a identificar a nota — nunca repete o mesmo nome duas vezes.
+    const currentSuffix = comparison.currentMerchant ? ` (${comparison.currentMerchant})` : '';
+    const previousSuffix =
+      comparison.previousMerchant && comparison.previousMerchant !== comparison.currentMerchant
+        ? ` (${comparison.previousMerchant})`
+        : '';
 
-    let message = `Na sua ultima compra em ${comparison.merchantName}, o total foi ${currentAmount}${percentText} em relacao a compra anterior de ${previousAmount}.`;
+    let message = `Na comparacao do grupo ${comparison.tagGroupName}, a nota mais recente${currentSuffix} ficou em ${currentAmount}${percentText} em relacao a nota anterior${previousSuffix} de ${previousAmount}.`;
 
     if (comparison.topIncrease) {
       message += ` Onde voce gastou mais: ${comparison.topIncrease.description}, que foi de ${this.formatAmount(comparison.topIncrease.previousPrice, currency)} para ${this.formatAmount(comparison.topIncrease.currentPrice, currency)}.`;
@@ -895,8 +915,8 @@ export class InsightsService {
       message += ` Novo nessa compra: ${comparison.itemsAdded.slice(0, 2).join(', ')}.`;
     }
 
-    if (otherMerchantsCount > 0) {
-      message += ` Tambem notei variacao em outro${otherMerchantsCount > 1 ? 's' : ''} ${otherMerchantsCount} estabelecimento${otherMerchantsCount > 1 ? 's' : ''} recorrente${otherMerchantsCount > 1 ? 's' : ''}.`;
+    if (otherGroupsCount > 0) {
+      message += ` Tambem notei variacao em outro${otherGroupsCount > 1 ? 's' : ''} ${otherGroupsCount} grupo${otherGroupsCount > 1 ? 's' : ''} com comparacao ativada.`;
     }
 
     return message;

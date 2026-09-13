@@ -1446,6 +1446,7 @@ export class OfflineLifeService {
       timezone: "America/Sao_Paulo",
       taskCategories: [],
       financeCategories: [],
+      tagGroups: [],
     };
   }
 }

@@ -174,6 +174,9 @@ export class AuthService {
             financeCategories: {
               orderBy: { name: "asc" },
             },
+            tagGroups: {
+              orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+            },
           },
         },
       },
@@ -408,6 +411,7 @@ export class AuthService {
           include: {
             taskCategories: { orderBy: { name: "asc" } },
             financeCategories: { orderBy: { name: "asc" } },
+            tagGroups: { orderBy: [{ sortOrder: "asc" }, { name: "asc" }] },
           },
         },
       },

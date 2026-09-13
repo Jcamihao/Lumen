@@ -115,6 +115,21 @@ async function main() {
       }),
     ]);
 
+  await Promise.all([
+    prisma.tagGroup.create({
+      data: { userId: user.id, name: "Compras do mes", color: "#F4A261", isDefault: true, sortOrder: 0 },
+    }),
+    prisma.tagGroup.create({
+      data: { userId: user.id, name: "Padaria", color: "#E76F51", isDefault: true, sortOrder: 1 },
+    }),
+    prisma.tagGroup.create({
+      data: { userId: user.id, name: "Farmacia", color: "#2A9D8F", isDefault: true, sortOrder: 2 },
+    }),
+    prisma.tagGroup.create({
+      data: { userId: user.id, name: "Restaurante", color: "#E9C46A", isDefault: true, sortOrder: 3 },
+    }),
+  ]);
+
   const goal = await prisma.goal.create({
     data: {
       userId: user.id,

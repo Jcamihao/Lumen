@@ -25,6 +25,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { RemindersModule } from "./reminders/reminders.module";
 import { TaskCategoriesModule } from "./task-categories/task-categories.module";
+import { TagGroupsModule } from "./tag-groups/tag-groups.module";
 import { TasksModule } from "./tasks/tasks.module";
 import { TransactionsModule } from "./transactions/transactions.module";
 import { SupportRequestsModule } from "./support-requests/support-requests.module";
@@ -45,6 +46,7 @@ import { UsersModule } from "./users/users.module";
     UsersModule,
     AuthModule,
     TaskCategoriesModule,
+    TagGroupsModule,
     FinanceCategoriesModule,
     TasksModule,
     TransactionsModule,

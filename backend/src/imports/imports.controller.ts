@@ -12,6 +12,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
 import { CommitImportDto } from './dto/commit-import.dto';
 import { CommitReceiptImportDto } from './dto/commit-receipt-import.dto';
+import { PreviewReceiptImportDto } from './dto/preview-receipt-import.dto';
 import { ImportsService } from './imports.service';
 
 @ApiTags('imports')
@@ -55,9 +56,10 @@ export class ImportsController {
   @ApiOperation({ summary: 'Faz preview de nota fiscal por IA com itens extraidos da imagem' })
   previewReceipt(
     @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: PreviewReceiptImportDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    return this.importsService.previewReceiptImport(user.sub, file);
+    return this.importsService.previewReceiptImport(user.sub, file, dto);
   }
 
   @Post('receipts/commit')
