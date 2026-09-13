@@ -1,64 +1,133 @@
 <div class="landing">
-  <div class="landing__bg" aria-hidden="true">
-    <video #bgVideo class="landing__bg-video" autoplay muted loop playsinline>
-      <source src="assets/vids/anim_fundo.mp4" type="video/mp4" />
-    </video>
-  </div>
+  <section class="landing__hero-screen">
+    <div class="landing__bg" aria-hidden="true">
+      <video #bgVideo class="landing__bg-video" autoplay muted loop playsinline>
+        <source src="assets/vids/anim_fundo.mp4" type="video/mp4" />
+      </video>
+      <span class="landing__grain"></span>
+    </div>
 
-  <header class="landing__nav">
-    <span></span>
+    <header class="landing__nav">
+      <nav class="landing__nav-links" aria-label="Principal">
+        <a href="#recursos">Recursos</a>
+        <a href="#como-funciona">Como funciona</a>
+      </nav>
 
-    <a class="landing__logo" routerLink="/">
-      <img src="assets/logo/logo_lumen_s_fundo.png" alt="Lumen" />
+      <a class="landing__logo" routerLink="/">
+        <img src="assets/logo/logo_lumen_s_fundo.png" alt="Lumen" />
+      </a>
+
+      <div class="landing__nav-actions">
+        <a class="landing-btn landing-btn--ghost" routerLink="/auth/login">Entrar</a>
+        <a class="landing-btn landing-btn--primary" routerLink="/auth/register">
+          <span>Criar conta</span>
+          <span class="landing-btn__icon">
+            <span class="material-symbols-rounded">arrow_forward</span>
+          </span>
+        </a>
+      </div>
+    </header>
+
+    <main class="landing__hero">
+      <div class="landing__badge">
+        <span class="landing__badge-dot"></span>
+        <span>Clareza para sua vida</span>
+      </div>
+
+      <h1 class="landing__headline">
+        <span class="landing__headline-mask">
+          <span class="landing__headline-rise" style="--d: 0.16s">Sua vida organizada</span>
+        </span>
+        <span class="landing__headline-mask">
+          <span class="landing__headline-rise" style="--d: 0.3s">
+            <span class="landing__headline-muted">começa com </span
+            ><span class="landing__headline-accent">clareza.</span>
+          </span>
+        </span>
+      </h1>
+
+      <div class="landing__actions">
+        <a class="landing-btn landing-btn--primary landing__wipe" style="--d: 0.46s" routerLink="/auth/register">
+          <span>Criar conta grátis</span>
+          <span class="landing-btn__icon">
+            <span class="material-symbols-rounded">arrow_forward</span>
+          </span>
+        </a>
+        <a class="landing-btn landing-btn--ghost landing__wipe" style="--d: 0.56s" routerLink="/auth/login">
+          Já tenho conta
+        </a>
+      </div>
+    </main>
+
+    <footer class="landing__lede">
+      <span class="landing__lede-rise" style="--d: 0.68s">
+        O Lumen organiza tarefas, finanças e metas em um só lugar — e o Selah, seu assistente com IA,
+        encontra padrões que você não veria sozinho: onde gastou mais, o que está atrasado, o que
+        está te travando.
+      </span>
+    </footer>
+  </section>
+
+  <section class="landing__section" id="recursos">
+    <p class="section-kicker">Recursos</p>
+    <h2 class="landing__section-title">Tudo que organiza sua vida, num só lugar</h2>
+
+    <div class="landing__feature-grid">
+      <article class="landing__feature">
+        <span class="material-symbols-rounded">checklist</span>
+        <h3>Tarefas</h3>
+        <p>Prioridade, prazo e impacto financeiro de cada pendência, sem planilha.</p>
+      </article>
+
+      <article class="landing__feature">
+        <span class="material-symbols-rounded">account_balance_wallet</span>
+        <h3>Finanças</h3>
+        <p>Receitas, despesas e notas fiscais organizadas por grupo, com comparação entre meses.</p>
+      </article>
+
+      <article class="landing__feature">
+        <span class="material-symbols-rounded">flag</span>
+        <h3>Metas</h3>
+        <p>Progresso real, cruzado com tarefas e gastos que estão te atrasando ou te ajudando.</p>
+      </article>
+
+      <article class="landing__feature">
+        <span class="material-symbols-rounded">auto_awesome</span>
+        <h3>Selah</h3>
+        <p>Assistente com IA que lê tudo isso junto e avisa o que você não veria sozinho.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="landing__section" id="como-funciona">
+    <p class="section-kicker">Como funciona</p>
+    <h2 class="landing__section-title">Três passos, sem fricção</h2>
+
+    <div class="landing__steps">
+      <article class="landing__step">
+        <span class="landing__step-index">01</span>
+        <h3>Registre o que já faz</h3>
+        <p>Tarefas, gastos e metas — direto no app ou mandando a foto da nota fiscal.</p>
+      </article>
+
+      <article class="landing__step">
+        <span class="landing__step-index">02</span>
+        <h3>O Selah cruza os dados</h3>
+        <p>Tarefa atrasada com impacto financeiro, meta travada por gasto fora do previsto.</p>
+      </article>
+
+      <article class="landing__step">
+        <span class="landing__step-index">03</span>
+        <h3>Você recebe a leitura</h3>
+        <p>Prioridades claras no início do dia, sem precisar caçar informação espalhada.</p>
+      </article>
+    </div>
+
+    <a class="landing-btn landing-btn--primary landing__section-cta" routerLink="/auth/register">
+      <span>Criar conta grátis</span>
+      <span class="landing-btn__icon">
+        <span class="material-symbols-rounded">arrow_forward</span>
+      </span>
     </a>
-
-    <div class="landing__nav-actions">
-      <a class="landing-btn landing-btn--ghost" routerLink="/auth/login">Entrar</a>
-      <a class="landing-btn landing-btn--primary" routerLink="/auth/register">
-        <span>Criar conta</span>
-        <span class="landing-btn__icon">
-          <span class="material-symbols-rounded">arrow_forward</span>
-        </span>
-      </a>
-    </div>
-  </header>
-
-  <main class="landing__hero">
-    <div class="landing__badge">
-      <span class="landing__badge-dot"></span>
-      <span>Clareza para sua vida</span>
-    </div>
-
-    <h1 class="landing__headline">
-      <span class="landing__headline-mask">
-        <span class="landing__headline-rise" style="--d: 0.16s">Sua vida organizada</span>
-      </span>
-      <span class="landing__headline-mask">
-        <span class="landing__headline-rise" style="--d: 0.3s">
-          <span class="landing__headline-muted">começa com </span
-          ><span class="landing__headline-accent">clareza.</span>
-        </span>
-      </span>
-    </h1>
-
-    <div class="landing__actions">
-      <a class="landing-btn landing-btn--primary landing__wipe" style="--d: 0.46s" routerLink="/auth/register">
-        <span>Criar conta grátis</span>
-        <span class="landing-btn__icon">
-          <span class="material-symbols-rounded">arrow_forward</span>
-        </span>
-      </a>
-      <a class="landing-btn landing-btn--ghost landing__wipe" style="--d: 0.56s" routerLink="/auth/login">
-        Já tenho conta
-      </a>
-    </div>
-  </main>
-
-  <footer class="landing__lede">
-    <span class="landing__lede-rise" style="--d: 0.68s">
-      O Lumen organiza tarefas, finanças e metas em um só lugar — e o Selah, seu assistente com IA,
-      encontra padrões que você não veria sozinho: onde gastou mais, o que está atrasado, o que
-      está te travando.
-    </span>
-  </footer>
+  </section>
 </div>
