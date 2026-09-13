@@ -18,12 +18,12 @@
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(45% 45% at 50% 50%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 72%),
-    radial-gradient(40% 40% at 50% 50%, color-mix(in srgb, var(--accent-light) 18%, transparent), transparent 72%);
+    radial-gradient(50% 50% at 50% 50%, color-mix(in srgb, var(--accent) 34%, transparent), transparent 70%),
+    radial-gradient(45% 45% at 50% 50%, color-mix(in srgb, var(--accent-light) 55%, transparent), transparent 70%);
   background-repeat: no-repeat;
-  background-size: 65% 65%, 55% 55%;
-  background-position: 12% 8%, 88% 90%;
-  animation: landing-ambient 42s ease-in-out infinite alternate;
+  background-size: 85% 85%, 75% 75%;
+  background-position: 5% 0%, 95% 100%;
+  animation: landing-ambient 14s ease-in-out infinite alternate;
 }
 
 .landing__nav,
@@ -198,8 +198,8 @@
 }
 
 @keyframes landing-ambient {
-  from { background-position: 12% 8%, 88% 90%; }
-  to { background-position: 24% 18%, 76% 78%; }
+  from { background-position: 0% 0%, 100% 100%; }
+  to { background-position: 30% 25%, 65% 70%; }
 }
 
 @media (max-width: 640px) {
