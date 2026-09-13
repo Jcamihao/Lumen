@@ -3,7 +3,6 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular
 import { RouterOutlet } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AuthService } from '../core/services/auth.service';
-import { ThemeService } from '../core/services/theme.service';
 
 @Component({
   selector: 'app-root',
@@ -15,12 +14,9 @@ import { ThemeService } from '../core/services/theme.service';
 })
 export class AppComponent {
   private readonly authService = inject(AuthService);
-  private readonly themeService = inject(ThemeService);
   private readonly destroyRef = inject(DestroyRef);
 
   constructor() {
-    this.themeService.mode();
-
     if (!this.authService.hasStoredSessionHint()) {
       return;
     }

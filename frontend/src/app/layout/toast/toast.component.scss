@@ -16,26 +16,24 @@
   gap: 0.65rem;
   padding: 0.75rem 0.9rem;
   border-radius: 0.95rem;
-  border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
-  background: var(--surface-elevated);
-  box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.1),
-    0 1px 4px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--shadow-soft);
   font-size: 0.875rem;
   pointer-events: auto;
   animation: toast-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .toast--success {
-  color: #15803d;
-  border-color: color-mix(in srgb, #15803d 32%, transparent);
-  background: color-mix(in srgb, #15803d 8%, var(--surface-elevated));
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 32%, transparent);
+  background: color-mix(in srgb, var(--success) 10%, var(--card));
 }
 
 .toast--error {
-  color: #dc2626;
-  border-color: color-mix(in srgb, #dc2626 32%, transparent);
-  background: color-mix(in srgb, #dc2626 8%, var(--surface-elevated));
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 32%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, var(--card));
 }
 
 .toast__icon {

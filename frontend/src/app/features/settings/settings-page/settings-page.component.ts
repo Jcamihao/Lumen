@@ -16,7 +16,6 @@ import {
 } from "../../../core/constants/privacy.constants";
 import { AuthService } from "../../../core/services/auth.service";
 import { LifeApiService } from "../../../core/services/life-api.service";
-import { ThemeId, ThemeService } from "../../../core/services/theme.service";
 
 @Component({
   selector: "app-settings-page",
@@ -29,7 +28,6 @@ import { ThemeId, ThemeService } from "../../../core/services/theme.service";
 export class SettingsPageComponent {
   private qrCodeModulePromise: Promise<typeof import("qrcode")> | null = null;
   protected readonly mfaFeatureEnabled = environment.mfaEnabled;
-  protected readonly themeService = inject(ThemeService);
   protected readonly authService = inject(AuthService);
   private readonly api = inject(LifeApiService);
   private readonly fb = inject(FormBuilder);
@@ -42,7 +40,6 @@ export class SettingsPageComponent {
   protected readonly loggingOutAllDevices = signal(false);
   protected readonly mfaSetupLoading = signal(false);
   protected readonly mfaActionLoading = signal(false);
-  protected readonly themes = this.themeService.themes;
   protected readonly feedbackMessage = signal("");
   protected readonly errorMessage = signal("");
   protected readonly mfaSetupSecret = signal<string | null>(null);
@@ -55,13 +52,12 @@ export class SettingsPageComponent {
   protected readonly privacyNoticeVersion = CURRENT_PRIVACY_NOTICE_VERSION;
   protected readonly aiConsentVersion = CURRENT_AI_CONSENT_VERSION;
   protected readonly activeTab = signal<
-    "profile" | "finance" | "privacy" | "theme" | "account"
+    "profile" | "finance" | "privacy" | "account"
   >("profile");
   protected readonly settingsTabs = [
     { id: "profile" as const, label: "Perfil" },
     { id: "finance" as const, label: "Finanças" },
     { id: "privacy" as const, label: "Privacidade" },
-    { id: "theme" as const, label: "Tema" },
     { id: "account" as const, label: "Conta" },
   ];
 
@@ -429,17 +425,9 @@ export class SettingsPageComponent {
   }
 
   protected selectTab(
-    tab: "profile" | "finance" | "privacy" | "theme" | "account",
+    tab: "profile" | "finance" | "privacy" | "account",
   ) {
     this.activeTab.set(tab);
-  }
-
-  protected setTheme(themeId: ThemeId) {
-    this.themeService.setTheme(themeId);
-  }
-
-  protected isThemeActive(themeId: ThemeId) {
-    return this.themeService.themeId() === themeId;
   }
 
   protected privacyAcceptedLabel() {

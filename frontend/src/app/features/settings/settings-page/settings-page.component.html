@@ -171,56 +171,6 @@
     </form>
   </article>
 
-  <article class="proto-surface" *ngIf="activeTab() === 'theme'">
-    <div class="proto-surface__head">
-      <div>
-        <h3>Aparência</h3>
-        <p>Personalize a aparência geral do Lumen.</p>
-      </div>
-    </div>
-
-    <div class="proto-surface__body">
-      <div class="theme-grid">
-        <button
-          *ngFor="let theme of themes"
-          type="button"
-          class="theme-card"
-          [class.active]="isThemeActive(theme.id)"
-          [style.--theme-preview-start]="theme.preview.start"
-          [style.--theme-preview-mid]="theme.preview.mid"
-          [style.--theme-preview-end]="theme.preview.end"
-          [style.--theme-preview-surface]="theme.preview.surface"
-          [style.--theme-preview-ink]="theme.preview.ink"
-          [style.--theme-preview-accent]="theme.preview.accent"
-          (click)="setTheme(theme.id)"
-        >
-          <div class="theme-card__preview" aria-hidden="true">
-            <span class="theme-card__preview-bar"></span>
-            <span class="theme-card__preview-panel"></span>
-            <span class="theme-card__preview-chip"></span>
-          </div>
-
-          <div class="theme-card__copy">
-            <div class="theme-card__meta">
-              <strong>{{ theme.label }}</strong>
-              <small>{{ theme.badge }}</small>
-            </div>
-
-            <span>{{ isThemeActive(theme.id) ? 'Ativo agora' : theme.description }}</span>
-          </div>
-        </button>
-      </div>
-
-      <div class="proto-note">
-        <strong class="proto-inline-title">Tema atual</strong>
-        <p>
-          O workspace está usando {{ themeService.currentTheme().label }}
-          em modo {{ themeService.mode() === 'light' ? 'claro' : 'escuro' }}.
-        </p>
-      </div>
-    </div>
-  </article>
-
   <article class="proto-surface" *ngIf="activeTab() === 'account'">
     <div class="proto-surface__head">
       <div>

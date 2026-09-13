@@ -203,113 +203,6 @@
   margin-top: 0.2rem;
 }
 
-.theme-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-.theme-card {
-  display: grid;
-  gap: 0.85rem;
-  padding: 1rem;
-  border-radius: 1.3rem;
-  border: 1px solid var(--surface-panel-border);
-  background: var(--surface-panel);
-  text-align: left;
-  transition:
-    transform var(--transition-base),
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast),
-    background-color var(--transition-fast);
-}
-
-.theme-card:hover,
-.theme-card:focus-visible {
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--accent) 20%, var(--surface-panel-border));
-  box-shadow: var(--shadow-soft);
-  outline: none;
-}
-
-.theme-card.active {
-  border-color: var(--tab-border);
-  box-shadow: var(--tab-active-shadow);
-  background: color-mix(in srgb, var(--surface-panel) 88%, var(--surface-soft) 12%);
-}
-
-.theme-card__preview {
-  position: relative;
-  width: 100%;
-  height: 6rem;
-  overflow: hidden;
-  border-radius: 1.05rem;
-  border: 1px solid color-mix(in srgb, var(--theme-preview-ink) 14%, transparent);
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, white 20%, transparent), transparent 30%),
-    linear-gradient(
-      135deg,
-      var(--theme-preview-start),
-      var(--theme-preview-mid) 58%,
-      var(--theme-preview-end)
-    );
-}
-
-.theme-card__preview-bar,
-.theme-card__preview-panel,
-.theme-card__preview-chip {
-  position: absolute;
-  left: 0.75rem;
-  border-radius: 999px;
-}
-
-.theme-card__preview-bar {
-  top: 0.75rem;
-  width: 58%;
-  height: 0.55rem;
-  background: color-mix(in srgb, var(--theme-preview-ink) 22%, transparent);
-}
-
-.theme-card__preview-panel {
-  top: 1.7rem;
-  width: 68%;
-  height: 2.15rem;
-  border-radius: 0.9rem;
-  background: color-mix(in srgb, var(--theme-preview-surface) 90%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 20%, transparent);
-}
-
-.theme-card__preview-chip {
-  bottom: 0.8rem;
-  width: 3.5rem;
-  height: 1rem;
-  background: color-mix(in srgb, var(--theme-preview-accent) 86%, white 14%);
-}
-
-.theme-card__copy {
-  display: grid;
-  gap: 0.35rem;
-  min-width: 0;
-}
-
-.theme-card__meta {
-  display: grid;
-  gap: 0.2rem;
-}
-
-.theme-card__meta small {
-  color: var(--text-secondary);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.theme-card span {
-  color: var(--text-medium);
-  font-size: 0.85rem;
-}
-
 .account-stack {
   display: grid;
   gap: 1rem;
@@ -324,10 +217,6 @@
   .settings-tab {
     flex: 1 1 calc(50% - 0.5rem);
     justify-content: center;
-  }
-
-  .theme-grid {
-    grid-template-columns: 1fr;
   }
 
   .settings-switch-card,

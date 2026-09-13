@@ -6,9 +6,9 @@
 
   .admin-support-filter-btn {
     &.active {
-      background-color: var(--color-accent, #6366f1);
-      color: #fff;
-      border-color: var(--color-accent, #6366f1);
+      background-color: var(--accent);
+      color: var(--primary-dark);
+      border-color: var(--accent);
     }
   }
 }
@@ -19,14 +19,14 @@
 }
 
 .admin-support-item {
-  border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+  border-bottom: 1px solid var(--border);
 
   &:last-child {
     border-bottom: none;
   }
 
   &.expanded {
-    background-color: var(--color-surface-alt, rgba(0, 0, 0, 0.02));
+    background-color: var(--surface-soft);
   }
 
   &__head {
@@ -39,7 +39,7 @@
     user-select: none;
 
     &:hover {
-      background-color: var(--color-hover, rgba(0, 0, 0, 0.03));
+      background-color: var(--surface-soft);
     }
   }
 
@@ -66,7 +66,7 @@
 
   &__user {
     font-size: 0.75rem;
-    color: var(--color-text-muted, #888);
+    color: var(--text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -74,13 +74,13 @@
 
   &__date {
     font-size: 0.75rem;
-    color: var(--color-text-muted, #888);
+    color: var(--text-secondary);
     white-space: nowrap;
   }
 
   &__chevron {
     font-size: 1.25rem;
-    color: var(--color-text-muted, #888);
+    color: var(--text-secondary);
   }
 
   &__body {
@@ -93,7 +93,7 @@
   &__message {
     font-size: 0.875rem;
     line-height: 1.5;
-    color: var(--color-text, #1a1a1a);
+    color: var(--text-primary);
     margin: 0;
     white-space: pre-wrap;
     word-break: break-word;
@@ -112,9 +112,9 @@
 
     .proto-button {
       &.active {
-        background-color: var(--color-accent, #6366f1);
-        color: #fff;
-        border-color: var(--color-accent, #6366f1);
+        background-color: var(--accent);
+        color: var(--primary-dark);
+        border-color: var(--accent);
       }
 
       &:disabled:not(.active) {
@@ -125,7 +125,7 @@
 
   &__label {
     font-size: 0.8rem;
-    color: var(--color-text-muted, #888);
+    color: var(--text-secondary);
   }
 }
 
@@ -140,7 +140,7 @@
 .admin-spin {
   animation: spin 1.2s linear infinite;
   font-size: 2rem;
-  color: var(--color-accent, #6366f1);
+  color: var(--accent);
 }
 
 @keyframes spin {
