@@ -31,6 +31,9 @@ export class TasksPageComponent {
   protected readonly taskCategories = computed(
     () => this.authService.currentUser()?.taskCategories ?? [],
   );
+  protected readonly currencyCode = computed(
+    () => this.authService.currentUser()?.preferredCurrency ?? 'BRL',
+  );
 
   // --- Filters ---
   protected readonly filterSearch = signal('');

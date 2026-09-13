@@ -303,7 +303,8 @@ export class ImportsPageComponent {
   }
 
   protected previewAmount(amount: number) {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 }).format(Number(amount || 0));
+    const currency = this.auth.currentUser()?.preferredCurrency ?? 'BRL';
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency, maximumFractionDigits: 2 }).format(Number(amount || 0));
   }
 
   protected comparisonHistoryLabel(comparison: ReceiptImportItemPriceComparison) {

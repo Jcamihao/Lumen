@@ -339,7 +339,7 @@ export class DashboardPageComponent {
     return task.description || task.category?.name || 'Sem categoria definida';
   }
 
-  protected taskMeta(task: Task) {
+  protected taskMeta(task: Task, currencyCode: string) {
     const dueLabel = task.dueDate
       ? new Date(task.dueDate).toLocaleDateString('pt-BR', {
           day: '2-digit',
@@ -353,7 +353,7 @@ export class DashboardPageComponent {
 
     return `${dueLabel} · custo previsto ${new Intl.NumberFormat('pt-BR', {
       style: 'currency',
-      currency: 'BRL',
+      currency: currencyCode,
       maximumFractionDigits: 0,
     }).format(task.estimatedAmount)}`;
   }

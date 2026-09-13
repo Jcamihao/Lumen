@@ -34,6 +34,10 @@ export class AssistantPageComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
+  protected readonly currencyCode = computed(
+    () => this.authService.currentUser()?.preferredCurrency ?? 'BRL',
+  );
+
   protected readonly history = signal<AssistantMessage[]>([]);
   protected readonly pulse = signal<AssistantPulse | null>(null);
   protected readonly activeMessageId = signal<string | null>(null);

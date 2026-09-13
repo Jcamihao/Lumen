@@ -308,14 +308,14 @@
                 <div class="proto-list-item__top">
                   <strong>{{ simulation.title }}</strong>
                   <span class="proto-tag" [attr.data-tone]="simulationTone(simulation)">
-                    {{ simulation.monthlyDelta | currency: 'BRL' : 'symbol' : '1.0-0' : 'pt-BR' }}
+                    {{ simulation.monthlyDelta | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
                   </span>
                 </div>
                 <p>{{ simulation.summary }}</p>
                 <div class="assistant-simulation-card__facts">
                   <span class="proto-chip">
                     Projeção:
-                    {{ simulation.projectedBalance | currency: 'BRL' : 'symbol' : '1.0-0' : 'pt-BR' }}
+                    {{ simulation.projectedBalance | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
                   </span>
                   <span class="proto-chip">{{ confidenceValueLabel(simulation.confidence) }}</span>
                 </div>

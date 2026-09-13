@@ -163,7 +163,7 @@
           <span class="home-task__status" [attr.data-tone]="priorityTone(task.priority)"></span>
           <span class="home-task__copy">
             <strong>{{ task.title }}</strong>
-            <small>{{ taskMeta(task) }}</small>
+            <small>{{ taskMeta(task, data.user.preferredCurrency) }}</small>
           </span>
           <span class="proto-tag" [attr.data-tone]="priorityTone(task.priority)">
             {{ priorityLabel(task.priority) }}
