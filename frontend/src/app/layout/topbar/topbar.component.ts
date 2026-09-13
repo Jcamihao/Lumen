@@ -1,9 +1,11 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter, map, startWith } from 'rxjs';
+import { Task, Transaction } from '../../core/models/domain.models';
 import { AuthService } from '../../core/services/auth.service';
+import { LifeApiService } from '../../core/services/life-api.service';
 import { NotificationCenterService } from '../../core/services/notification-center.service';
 
 type BreadcrumbItem = {
@@ -25,6 +27,8 @@ const BREADCRUMB_ITEMS: BreadcrumbItem[] = [
   { label: 'Suporte administrativo', route: '/admin/support' },
 ];
 
+const MAX_RESULTS_PER_KIND = 5;
+
 @Component({
   selector: 'app-topbar',
   standalone: true,
@@ -36,7 +40,9 @@ const BREADCRUMB_ITEMS: BreadcrumbItem[] = [
 export class TopbarComponent {
   protected readonly authService = inject(AuthService);
   protected readonly notificationCenter = inject(NotificationCenterService);
+  private readonly api = inject(LifeApiService);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   private readonly currentUrl = toSignal(
     this.router.events.pipe(
@@ -62,4 +68,84 @@ export class TopbarComponent {
     const name = this.authService.currentUser()?.name ?? '';
     return name.slice(0, 2).toUpperCase() || 'LU';
   });
+
+  protected readonly currencyCode = computed(
+    () => this.authService.currentUser()?.preferredCurrency ?? 'BRL',
+  );
+
+  // --- Busca global (tarefas + transações + atalho pro Selah) ---
+  private readonly searchTasks = signal<Task[]>([]);
+  private readonly searchTransactions = signal<Transaction[]>([]);
+  protected readonly searchQuery = signal('');
+  protected readonly searchOpen = signal(false);
+
+  private readonly normalizedQuery = computed(() => this.searchQuery().trim().toLowerCase());
+
+  protected readonly taskResults = computed(() => {
+    const term = this.normalizedQuery();
+    if (term.length < 2) return [];
+
+    return this.searchTasks()
+      .filter((task) => `${task.title} ${task.description ?? ''}`.toLowerCase().includes(term))
+      .slice(0, MAX_RESULTS_PER_KIND);
+  });
+
+  protected readonly transactionResults = computed(() => {
+    const term = this.normalizedQuery();
+    if (term.length < 2) return [];
+
+    return this.searchTransactions()
+      .filter((transaction) => transaction.description.toLowerCase().includes(term))
+      .slice(0, MAX_RESULTS_PER_KIND);
+  });
+
+  protected readonly hasMatches = computed(
+    () => this.taskResults().length > 0 || this.transactionResults().length > 0,
+  );
+
+  constructor() {
+    this.api
+      .listTasks()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((tasks) => this.searchTasks.set(tasks));
+
+    this.api
+      .listTransactions()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((transactions) => this.searchTransactions.set(transactions));
+  }
+
+  protected onSearchFocus() {
+    this.searchOpen.set(true);
+  }
+
+  protected onSearchBlur() {
+    // Delay pra permitir o clique num resultado antes do dropdown fechar.
+    setTimeout(() => this.searchOpen.set(false), 150);
+  }
+
+  protected closeSearch() {
+    this.searchQuery.set('');
+    this.searchOpen.set(false);
+  }
+
+  protected askSelahWithQuery() {
+    const prompt = this.searchQuery().trim();
+    if (!prompt) return;
+
+    this.router.navigate(['/assistant'], {
+      queryParams: { prompt, originModule: 'search' },
+    });
+    this.closeSearch();
+  }
+
+  protected goToTask(task: Task) {
+    this.router.navigate(['/tasks'], { queryParams: { search: task.title } });
+    this.closeSearch();
+  }
+
+  protected goToTransaction(transaction: Transaction) {
+    this.router.navigate(['/finance'], { queryParams: { search: transaction.description } });
+    this.closeSearch();
+  }
 }

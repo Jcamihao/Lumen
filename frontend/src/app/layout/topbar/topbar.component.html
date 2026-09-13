@@ -7,6 +7,59 @@
   <span class="proto-topbar__crumb">{{ currentPageLabel() }}</span>
 
   <div class="proto-topbar__actions">
+    <div class="proto-topbar__search">
+      <span class="material-symbols-rounded proto-topbar__search-icon">search</span>
+      <input
+        type="search"
+        class="proto-topbar__search-input"
+        placeholder="Buscar transações, tarefas ou perguntar ao Selah..."
+        [value]="searchQuery()"
+        (input)="searchQuery.set($any($event.target).value)"
+        (focus)="onSearchFocus()"
+        (blur)="onSearchBlur()"
+        (keydown.enter)="askSelahWithQuery()"
+        (keydown.escape)="closeSearch()"
+      />
+
+      <div class="proto-topbar__search-results" *ngIf="searchOpen() && searchQuery().trim().length >= 2">
+        <ng-container *ngIf="hasMatches(); else noMatches">
+          <p class="proto-topbar__search-group" *ngIf="taskResults().length">Tarefas</p>
+          <button
+            type="button"
+            class="proto-topbar__search-item"
+            *ngFor="let task of taskResults()"
+            (click)="goToTask(task)"
+          >
+            <span class="material-symbols-rounded">checklist</span>
+            <span class="proto-topbar__search-item-label">{{ task.title }}</span>
+          </button>
+
+          <p class="proto-topbar__search-group" *ngIf="transactionResults().length">Transações</p>
+          <button
+            type="button"
+            class="proto-topbar__search-item"
+            *ngFor="let transaction of transactionResults()"
+            (click)="goToTransaction(transaction)"
+          >
+            <span class="material-symbols-rounded">account_balance_wallet</span>
+            <span class="proto-topbar__search-item-label">{{ transaction.description }}</span>
+            <span class="proto-topbar__search-item-amount">
+              {{ transaction.amount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+            </span>
+          </button>
+        </ng-container>
+
+        <ng-template #noMatches>
+          <p class="proto-topbar__search-empty">Sem resultados em tarefas ou transações.</p>
+        </ng-template>
+
+        <button type="button" class="proto-topbar__search-item proto-topbar__search-item--selah" (click)="askSelahWithQuery()">
+          <span class="material-symbols-rounded">auto_awesome</span>
+          <span class="proto-topbar__search-item-label">Perguntar ao Selah: "{{ searchQuery() }}"</span>
+        </button>
+      </div>
+    </div>
+
     <a class="proto-topbar__icon-button" routerLink="/notifications" aria-label="Alertas">
       <span class="material-symbols-rounded">notifications</span>
       <span class="proto-topbar__badge" *ngIf="notificationCenter.unreadCount() > 0">

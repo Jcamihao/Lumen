@@ -134,7 +134,7 @@
       </div>
 
       <div class="finance-filters">
-        <div class="finance-filters__period">
+        <div class="finance-filters__period" *ngIf="!filterSearch()">
           <button
             type="button"
             class="proto-button proto-button--ghost finance-filters__nav-btn"
@@ -156,6 +156,21 @@
             <span class="material-symbols-rounded">chevron_right</span>
           </button>
         </div>
+
+        <div class="finance-filters__search" *ngIf="filterSearch()">
+          <span>Buscando "{{ filterSearch() }}" em todo o período</span>
+          <button type="button" class="proto-button proto-button--ghost" (click)="filterSearch.set('')">
+            Limpar
+          </button>
+        </div>
+
+        <input
+          type="search"
+          class="finance-filters__search-input"
+          placeholder="Buscar por descrição"
+          [value]="filterSearch()"
+          (input)="filterSearch.set($any($event.target).value)"
+        />
 
         <select
           class="finance-filters__type-select"

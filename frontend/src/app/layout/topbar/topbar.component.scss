@@ -52,6 +52,114 @@
   flex-shrink: 0;
 }
 
+.proto-topbar__search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 20rem;
+}
+
+.proto-topbar__search-icon {
+  position: absolute;
+  left: 0.7rem;
+  font-size: 1.05rem;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.proto-topbar__search-input {
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.75rem 0.4rem 2.15rem;
+  border: 1px solid var(--border);
+  background: var(--card-muted);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.proto-topbar__search-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.proto-topbar__search-results {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  right: 0;
+  max-height: 22rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--shadow-float);
+  z-index: 40;
+}
+
+.proto-topbar__search-group {
+  margin: 0;
+  padding: 0.5rem 0.85rem 0.3rem;
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.proto-topbar__search-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.proto-topbar__search-item:hover {
+  background: var(--surface-soft);
+}
+
+.proto-topbar__search-item .material-symbols-rounded {
+  flex-shrink: 0;
+  font-size: 1.05rem;
+  color: var(--text-secondary);
+}
+
+.proto-topbar__search-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proto-topbar__search-item-amount {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.proto-topbar__search-item--selah {
+  border-top: 1px solid var(--border);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.proto-topbar__search-item--selah .material-symbols-rounded {
+  color: var(--accent);
+}
+
+.proto-topbar__search-empty {
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
 .proto-topbar__icon-button {
   position: relative;
   display: inline-flex;
@@ -117,5 +225,9 @@
 @media (min-width: 1024px) and (max-width: 1279px) {
   .proto-topbar__cta-label {
     display: none;
+  }
+
+  .proto-topbar__search {
+    width: 12rem;
   }
 }

@@ -29,6 +29,12 @@ export class TransactionsService {
         userId,
         type: query.type,
         categoryId: query.categoryId,
+        description: query.search
+          ? {
+              contains: query.search,
+              mode: 'insensitive',
+            }
+          : undefined,
         date: query.dateFrom || query.dateTo || monthStart || monthEnd
           ? {
               gte: query.dateFrom ? new Date(query.dateFrom) : monthStart,

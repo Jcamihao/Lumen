@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Transaction } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
@@ -23,11 +23,13 @@ export class FinancesPageComponent {
   private readonly fb = inject(FormBuilder);
   private readonly destroyRef = inject(DestroyRef);
   private readonly toast = inject(ToastService);
+  private readonly route = inject(ActivatedRoute);
 
   private readonly now = new Date();
   protected readonly filterMonth = signal(this.now.getMonth() + 1);
   protected readonly filterYear = signal(this.now.getFullYear());
   protected readonly filterType = signal<'' | 'INCOME' | 'EXPENSE' | 'TRANSFER'>('');
+  protected readonly filterSearch = signal('');
 
   protected readonly transactions = signal<Transaction[]>([]);
   protected readonly financeCategories = computed(
@@ -64,8 +66,23 @@ export class FinancesPageComponent {
       const month = this.filterMonth();
       const year = this.filterYear();
       const type = this.filterType();
-      this.loadTransactions({ month, year, type: type || undefined });
+      const search = this.filterSearch().trim();
+
+      if (search) {
+        this.loadTransactions({ type: type || undefined, search });
+      } else {
+        this.loadTransactions({ month, year, type: type || undefined });
+      }
     });
+
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((params) => {
+        const search = params.get('search')?.trim();
+        if (search) {
+          this.filterSearch.set(search);
+        }
+      });
   }
 
   protected previousMonth() {
@@ -174,7 +191,7 @@ export class FinancesPageComponent {
     return 'accent' as const;
   }
 
-  private loadTransactions(params: { month: number; year: number; type?: string }) {
+  private loadTransactions(params: { month?: number; year?: number; type?: string; search?: string }) {
     this.api
       .listTransactions(params)
       .pipe(takeUntilDestroyed(this.destroyRef))

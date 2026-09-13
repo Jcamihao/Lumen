@@ -27,4 +27,8 @@ export class ListTransactionsQueryDto {
   @IsOptional()
   @IsInt()
   year?: number;
+
+  @IsOptional()
+  @IsString()
+  search?: string;
 }

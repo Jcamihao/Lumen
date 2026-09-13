@@ -134,7 +134,7 @@ export class LifeApiService {
     );
   }
 
-  listTransactions(params?: { month?: number; year?: number; type?: string }) {
+  listTransactions(params?: { month?: number; year?: number; type?: string; search?: string }) {
     if (!this.networkService.isOnline() || this.offlineLifeService.hasPendingSync()) {
       void this.flushPendingSync();
       return of(this.offlineLifeService.readTransactions());
@@ -144,6 +144,7 @@ export class LifeApiService {
     if (params?.month) httpParams['month'] = String(params.month);
     if (params?.year) httpParams['year'] = String(params.year);
     if (params?.type) httpParams['type'] = params.type;
+    if (params?.search) httpParams['search'] = params.search;
 
     return this.http
       .get<Transaction[]>(`${environment.apiBaseUrl}/transactions`, { params: httpParams })
