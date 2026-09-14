@@ -6,8 +6,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: var(--toggle-size, 2.5rem);
+  height: var(--toggle-size, 2.5rem);
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text-medium);

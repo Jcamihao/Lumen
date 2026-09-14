@@ -123,9 +123,13 @@
 .proto-sidebar__status[data-tone='syncing'] { --tone: var(--warning); }
 .proto-sidebar__status[data-tone='offline'] { --tone: var(--text-secondary); }
 
+.proto-sidebar__theme-toggle {
+  margin-left: auto;
+  --toggle-size: 1.7rem;
+}
+
 .proto-sidebar__currency-wrap {
   position: relative;
-  margin-left: auto;
 }
 
 .proto-sidebar__currency {
