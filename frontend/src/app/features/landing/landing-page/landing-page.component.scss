@@ -31,7 +31,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06) 35%, rgba(255, 255, 255, 0.3) 70%, rgba(255, 255, 255, 0.65) 88%, var(--background) 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 60%, rgba(255, 255, 255, 0.06) 78%, rgba(255, 255, 255, 0.24) 90%, var(--background) 100%);
 }
 
 .landing__bg-video {
