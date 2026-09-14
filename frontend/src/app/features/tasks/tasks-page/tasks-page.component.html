@@ -2,7 +2,7 @@
   <header class="proto-header">
     <div class="proto-header__copy">
       <h2>Tarefas</h2>
-      <p>Gerencie suas prioridades e acompanhe o impacto financeiro de cada ação.</p>
+      <p>Acompanhe seus compromissos, prazos e prioridades num só lugar.</p>
     </div>
 
     <div class="proto-header__action">
@@ -41,13 +41,6 @@
       <p>Alta prioridade</p>
     </article>
 
-    <article class="proto-metric">
-      <div class="proto-metric__top">
-        <span class="proto-icon-bubble"><span class="material-symbols-rounded">payments</span></span>
-      </div>
-      <strong>{{ totalImpact() | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
-      <p>Impacto total estimado</p>
-    </article>
   </section>
 
   <section class="tasks-grid">
@@ -55,7 +48,7 @@
       <div class="proto-surface__head">
         <div>
           <h3>Nova tarefa</h3>
-          <p>Adicione uma ação com prazo, prioridade e efeito previsto no caixa.</p>
+          <p>Adicione um compromisso com prazo, prioridade e categoria.</p>
         </div>
       </div>
 
@@ -104,17 +97,6 @@
                 {{ category.name }}
               </option>
             </select>
-          </div>
-
-          <div class="proto-field">
-            <label for="task-amount">Impacto estimado</label>
-            <input
-              id="task-amount"
-              type="number"
-              min="0"
-              formControlName="estimatedAmount"
-              placeholder="0"
-            />
           </div>
 
           <div class="proto-field proto-field--full task-recurring-row">
@@ -259,16 +241,6 @@
               <div class="task-card__badges">
                 <span class="proto-chip">{{ taskCategoryLabel(task) }}</span>
                 <span class="proto-chip">{{ taskDeadlineLabel(task) }}</span>
-                <span *ngIf="task.estimatedAmount" class="proto-chip" data-tone="accent">
-                  {{ task.estimatedAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
-                </span>
-                <span
-                  *ngIf="task.hasFinancialImpact && !task.estimatedAmount"
-                  class="proto-chip"
-                  data-tone="warning"
-                >
-                  Impacto financeiro
-                </span>
                 <span *ngIf="task.subtasks.length" class="proto-chip">
                   {{ subtaskProgress(task) }} subtarefas
                 </span>
@@ -375,11 +347,6 @@
                       {{ category.name }}
                     </option>
                   </select>
-                </div>
-
-                <div class="proto-field">
-                  <label>Impacto estimado</label>
-                  <input type="number" min="0" formControlName="estimatedAmount" />
                 </div>
 
                 <div class="proto-field proto-field--full task-recurring-row">

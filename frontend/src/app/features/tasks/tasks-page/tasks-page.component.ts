@@ -73,9 +73,6 @@ export class TasksPageComponent {
   protected readonly highPriorityCount = computed(
     () => this.activeTasks().filter((task) => task.priority === 'HIGH' || task.priority === 'CRITICAL').length,
   );
-  protected readonly totalImpact = computed(
-    () => this.activeTasks().reduce((total, task) => total + Number(task.estimatedAmount || 0), 0),
-  );
 
   // --- Create form ---
   protected readonly form = this.fb.nonNullable.group({
@@ -85,7 +82,6 @@ export class TasksPageComponent {
     dueTime: [''],
     priority: ['MEDIUM'],
     categoryId: [''],
-    estimatedAmount: [0],
     isRecurring: [false],
     recurrenceRule: ['daily'],
     hasReminder: [false],
@@ -100,7 +96,6 @@ export class TasksPageComponent {
     dueDate: [''],
     priority: ['MEDIUM'],
     categoryId: [''],
-    estimatedAmount: [0],
     status: ['PENDING'],
     isRecurring: [false],
     recurrenceRule: [''],
@@ -151,8 +146,6 @@ export class TasksPageComponent {
         dueDate: dueDateIso,
         priority: raw.priority,
         categoryId: raw.categoryId || undefined,
-        hasFinancialImpact: !!raw.estimatedAmount,
-        estimatedAmount: raw.estimatedAmount || undefined,
         isRecurring: raw.isRecurring,
         recurrenceRule: raw.isRecurring ? raw.recurrenceRule : undefined,
       })
@@ -179,7 +172,6 @@ export class TasksPageComponent {
             dueTime: '',
             priority: 'MEDIUM',
             categoryId: '',
-            estimatedAmount: 0,
             isRecurring: false,
             recurrenceRule: 'daily',
             hasReminder: false,
@@ -200,7 +192,6 @@ export class TasksPageComponent {
       dueDate: task.dueDate ? task.dueDate.slice(0, 10) : '',
       priority: task.priority,
       categoryId: task.category?.id ?? '',
-      estimatedAmount: task.estimatedAmount ?? 0,
       status: task.status,
       isRecurring: task.isRecurring,
       recurrenceRule: task.recurrenceRule ?? '',
@@ -224,8 +215,6 @@ export class TasksPageComponent {
         priority: raw.priority,
         categoryId: raw.categoryId || null,
         status: raw.status,
-        hasFinancialImpact: !!raw.estimatedAmount,
-        estimatedAmount: raw.estimatedAmount || null,
         isRecurring: raw.isRecurring,
         recurrenceRule: raw.recurrenceRule || null,
       })
