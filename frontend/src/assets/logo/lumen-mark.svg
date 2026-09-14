@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Lumen">
-  <path
-    fill-rule="evenodd"
-    fill="#006cd2"
-    d="M24,20 L58,20 L58,66 L96,66 L96,100 L24,100 Z M67,74 A17,17 0 1 0 33,74 A17,17 0 1 0 67,74 Z"
-  />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 90" role="img" aria-label="Lumen">
+  <g fill="#006cd2" transform="translate(2.3,-6) skewX(-12)">
+    <path d="M37,14 L67,14 L62,29 L32,29 Z"/>
+    <path d="M34,32 L64,32 L59,47 L29,47 Z"/>
+    <path d="M31,50 L61,50 L56,65 L26,65 Z"/>
+    <path d="M31,70 L97,70 L88,88 L22,88 Z"/>
+  </g>
 </svg>
