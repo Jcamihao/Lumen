@@ -396,6 +396,33 @@
   margin-top: clamp(32px, 5vw, 56px);
 }
 
+.landing__faq-list {
+  display: grid;
+  gap: 1px;
+  margin-top: clamp(28px, 4vw, 48px);
+  background: var(--border);
+  border: 1px solid var(--border);
+}
+
+.landing__faq-item {
+  padding: 1.35rem 1.5rem;
+  background: var(--card);
+}
+
+.landing__faq-item h3 {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+.landing__faq-item p {
+  margin-top: 0.4rem;
+  max-width: 42rem;
+  color: var(--text-medium);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
 @keyframes landing-rise {
   from { transform: translate3d(0, 100%, 0); }
   to { transform: translate3d(0, 0, 0); }
