@@ -62,11 +62,11 @@
 }
 
 .auth-brand__logo {
-  width: 100%;
+  width: clamp(6.4rem, 13vw, 8.5rem);
   max-width: 100%;
   height: auto;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .auth-brand__logo--contrast {
@@ -124,7 +124,7 @@
 }
 
 .auth-mobile-brand .auth-brand__logo {
-  width: 100%;
+  width: clamp(5.5rem, 22vw, 7rem);
 }
 
 .auth-password {
