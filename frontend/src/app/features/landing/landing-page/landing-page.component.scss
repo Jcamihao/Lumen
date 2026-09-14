@@ -31,7 +31,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06) 35%, rgba(255, 255, 255, 0.3) 78%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06) 35%, rgba(255, 255, 255, 0.3) 70%, rgba(255, 255, 255, 0.65) 88%, var(--background) 100%);
 }
 
 .landing__bg-video {
@@ -327,6 +327,9 @@
 
 .landing__section {
   padding: clamp(48px, 8vw, 96px) clamp(20px, 3.5vw, 64px);
+}
+
+.landing__section + .landing__section {
   border-top: 1px solid var(--border);
 }
 
