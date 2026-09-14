@@ -78,6 +78,8 @@ export type Goal = {
   currentAmount: number;
   targetDate?: string | null;
   status: "PLANNED" | "ACTIVE" | "ACHIEVED" | "PAUSED";
+  recurringAmount?: number | null;
+  recurringDay?: number | null;
 };
 
 export type Reminder = {

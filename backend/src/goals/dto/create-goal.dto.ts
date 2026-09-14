@@ -1,5 +1,15 @@
 import { GoalStatus } from '@prisma/client';
-import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class CreateGoalDto {
   @IsString()
@@ -24,4 +34,16 @@ export class CreateGoalDto {
   @IsOptional()
   @IsEnum(GoalStatus)
   status?: GoalStatus;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  recurringAmount?: number;
+
+  /** Dia do mes (1-28, evita meses curtos) em que o aporte automatico roda. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(28)
+  recurringDay?: number;
 }

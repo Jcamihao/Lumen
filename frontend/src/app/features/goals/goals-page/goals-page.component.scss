@@ -74,6 +74,45 @@
   font-size: 0.88rem;
 }
 
+.goal-card__recurring {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.84rem;
+  color: var(--text-medium);
+
+  .material-symbols-rounded {
+    font-size: 1.1rem;
+    color: var(--accent);
+  }
+}
+
+.goal-card__recurring-label {
+  flex: 1 1 auto;
+}
+
+.goal-card__recurring .proto-button {
+  min-height: 2.25rem;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.78rem;
+}
+
+.goal-card__recurring-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.goal-card__recurring-toggle input[type="checkbox"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--accent);
+}
+
 .goal-card__contribute-form {
   display: grid;
   gap: 0.6rem;

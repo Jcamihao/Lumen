@@ -34,6 +34,9 @@ export class GoalsService {
         currentAmount: new Prisma.Decimal(dto.currentAmount ?? 0),
         targetDate: dto.targetDate ? new Date(dto.targetDate) : undefined,
         status: dto.status ?? GoalStatus.ACTIVE,
+        recurringAmount:
+          dto.recurringAmount !== undefined ? new Prisma.Decimal(dto.recurringAmount) : undefined,
+        recurringDay: dto.recurringDay,
       },
     });
 
@@ -60,6 +63,13 @@ export class GoalsService {
               ? new Date(dto.targetDate)
               : undefined,
         status: dto.status,
+        recurringAmount:
+          dto.recurringAmount === null
+            ? null
+            : dto.recurringAmount !== undefined
+              ? new Prisma.Decimal(dto.recurringAmount)
+              : undefined,
+        recurringDay: dto.recurringDay === null ? null : dto.recurringDay,
       },
     });
 
@@ -154,6 +164,7 @@ export class GoalsService {
       ...goal,
       targetAmount: Number(goal.targetAmount),
       currentAmount: Number(goal.currentAmount),
+      recurringAmount: goal.recurringAmount === null ? null : Number(goal.recurringAmount),
     };
   }
 }

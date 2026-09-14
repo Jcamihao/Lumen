@@ -55,7 +55,15 @@ export class GoalsPageComponent {
     targetAmount: [12000, [Validators.required, Validators.min(1)]],
     currentAmount: [0],
     targetDate: [''],
+    recurringEnabled: [false],
+    recurringAmount: [200, [Validators.min(1)]],
+    recurringDay: [5, [Validators.min(1), Validators.max(28)]],
   });
+
+  // Edicao de aporte automatico numa meta ja existente
+  protected readonly recurringEditGoalId = signal<string | null>(null);
+  protected readonly recurringDraftAmount = signal(200);
+  protected readonly recurringDraftDay = signal(5);
 
   constructor() {
     this.reload();
@@ -119,15 +127,92 @@ export class GoalsPageComponent {
         targetAmount: raw.targetAmount,
         currentAmount: raw.currentAmount || 0,
         targetDate: raw.targetDate || undefined,
+        recurringAmount: raw.recurringEnabled ? raw.recurringAmount : undefined,
+        recurringDay: raw.recurringEnabled ? raw.recurringDay : undefined,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (goal) => {
-          this.form.reset({ title: '', description: '', targetAmount: 12000, currentAmount: 0, targetDate: '' });
+          this.form.reset({
+            title: '',
+            description: '',
+            targetAmount: 12000,
+            currentAmount: 0,
+            targetDate: '',
+            recurringEnabled: false,
+            recurringAmount: 200,
+            recurringDay: 5,
+          });
           this.upsertGoal(goal);
           this.toast.success('Meta criada.');
         },
         error: () => this.toast.error('Não foi possível criar a meta.'),
+      });
+  }
+
+  protected hasRecurring(goal: Goal) {
+    return !!goal.recurringAmount && !!goal.recurringDay;
+  }
+
+  protected recurringLabel(goal: Goal) {
+    if (!this.hasRecurring(goal)) return 'Sem aporte automático configurado';
+    const amount = new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: this.currencyCode(),
+    }).format(goal.recurringAmount!);
+    return `${amount} todo dia ${goal.recurringDay} do mês`;
+  }
+
+  protected isEditingRecurring(goalId: string) {
+    return this.recurringEditGoalId() === goalId;
+  }
+
+  protected openRecurringEdit(goal: Goal) {
+    this.recurringEditGoalId.set(goal.id);
+    this.recurringDraftAmount.set(goal.recurringAmount || 200);
+    this.recurringDraftDay.set(goal.recurringDay || 5);
+  }
+
+  protected cancelRecurringEdit() {
+    this.recurringEditGoalId.set(null);
+  }
+
+  protected saveRecurring(goal: Goal) {
+    const amount = this.recurringDraftAmount();
+    const day = this.recurringDraftDay();
+    if (!amount || amount <= 0) {
+      this.toast.error('Informe um valor válido para o aporte automático.');
+      return;
+    }
+    if (!day || day < 1 || day > 28) {
+      this.toast.error('Escolha um dia entre 1 e 28.');
+      return;
+    }
+
+    this.api
+      .updateGoal(goal.id, { recurringAmount: amount, recurringDay: day })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (updatedGoal) => {
+          this.upsertGoal(updatedGoal);
+          this.recurringEditGoalId.set(null);
+          this.toast.success('Aporte automático configurado.');
+        },
+        error: () => this.toast.error('Não foi possível salvar o aporte automático.'),
+      });
+  }
+
+  protected removeRecurring(goal: Goal) {
+    this.api
+      .updateGoal(goal.id, { recurringAmount: null, recurringDay: null })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (updatedGoal) => {
+          this.upsertGoal(updatedGoal);
+          this.recurringEditGoalId.set(null);
+          this.toast.success('Aporte automático removido.');
+        },
+        error: () => this.toast.error('Não foi possível remover o aporte automático.'),
       });
   }
 

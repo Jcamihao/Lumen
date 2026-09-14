@@ -98,6 +98,31 @@
             <label for="goal-date">Prazo</label>
             <input id="goal-date" type="date" formControlName="targetDate" />
           </div>
+
+          <div class="proto-field proto-field--full goal-card__recurring-toggle">
+            <label for="goal-recurring-enabled">
+              <input id="goal-recurring-enabled" type="checkbox" formControlName="recurringEnabled" />
+              Aportar automaticamente todo mês
+            </label>
+          </div>
+
+          <ng-container *ngIf="form.controls.recurringEnabled.value">
+            <div class="proto-field">
+              <label for="goal-recurring-amount">Valor do aporte automático</label>
+              <input
+                id="goal-recurring-amount"
+                type="number"
+                min="1"
+                step="0.01"
+                formControlName="recurringAmount"
+              />
+            </div>
+
+            <div class="proto-field">
+              <label for="goal-recurring-day">Dia do mês (1-28)</label>
+              <input id="goal-recurring-day" type="number" min="1" max="28" formControlName="recurringDay" />
+            </div>
+          </ng-container>
         </div>
 
         <div class="proto-actions-row">
@@ -148,6 +173,54 @@
                 Faltam {{ remainingAmount(goal) | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
               </span>
               <span class="proto-tag">{{ goalDeadlineLabel(goal) }}</span>
+            </div>
+
+            <!-- Aporte automático -->
+            <div class="goal-card__recurring" *ngIf="!isEditingRecurring(goal.id)">
+              <span class="material-symbols-rounded">autorenew</span>
+              <span class="goal-card__recurring-label">{{ recurringLabel(goal) }}</span>
+              <button type="button" class="proto-button proto-button--ghost" (click)="openRecurringEdit(goal)">
+                {{ hasRecurring(goal) ? 'Editar' : 'Configurar' }}
+              </button>
+              <button
+                type="button"
+                class="proto-button proto-button--ghost"
+                *ngIf="hasRecurring(goal)"
+                (click)="removeRecurring(goal)"
+              >
+                Remover
+              </button>
+            </div>
+
+            <div class="goal-card__contribute-form" *ngIf="isEditingRecurring(goal.id)">
+              <div class="proto-field goal-card__contribute-field">
+                <label>Valor do aporte automático</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  [value]="recurringDraftAmount()"
+                  (input)="recurringDraftAmount.set(+$any($event.target).value)"
+                />
+              </div>
+              <div class="proto-field goal-card__contribute-field">
+                <label>Dia do mês (1-28)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="28"
+                  [value]="recurringDraftDay()"
+                  (input)="recurringDraftDay.set(+$any($event.target).value)"
+                />
+              </div>
+              <div class="proto-actions-row">
+                <button type="button" class="proto-button" (click)="saveRecurring(goal)">
+                  Salvar aporte automático
+                </button>
+                <button type="button" class="proto-button proto-button--ghost" (click)="cancelRecurringEdit()">
+                  Cancelar
+                </button>
+              </div>
             </div>
 
             <!-- Aporte customizado -->

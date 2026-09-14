@@ -5,7 +5,14 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { InsightSeverity, NotificationType, ReminderStatus } from "@prisma/client";
+import {
+  GoalStatus,
+  InsightSeverity,
+  NotificationType,
+  Prisma,
+  ReminderStatus,
+  TransactionType,
+} from "@prisma/client";
 import { Worker } from "bullmq";
 import { CacheQueueService } from "../cache-queue/cache-queue.service";
 import { DashboardService } from "../dashboard/dashboard.service";
@@ -182,16 +189,23 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
     );
 
     const users = await this.prisma.user.findMany({
-      select: { id: true, timezone: true, lastWeeklyDigestAt: true },
+      select: { id: true, timezone: true, lastWeeklyDigestAt: true, preferredCurrency: true },
     });
 
     let touched = 0;
     let digests = 0;
+    let autoContributions = 0;
 
     for (const user of users) {
       if (this.localHourFor(user.timezone) !== targetHour) {
         continue;
       }
+
+      autoContributions += await this.processRecurringGoalContributions(
+        user.id,
+        user.timezone,
+        user.preferredCurrency,
+      );
 
       await this.lifeEngineService.touchUserData(user.id);
       touched += 1;
@@ -204,8 +218,80 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
 
     if (touched > 0) {
       this.logger.log(
-        `pulse_scan touched=${touched} digests=${digests} targetHour=${targetHour}`,
+        `pulse_scan touched=${touched} digests=${digests} autoContributions=${autoContributions} targetHour=${targetHour}`,
       );
+    }
+  }
+
+  /**
+   * Aporte automatico de metas — mesma mecanica do contribute() manual
+   * (GoalsService), so que disparada pelo relogio (dia do mes configurado
+   * em recurringDay) em vez de um clique. Nao chama GoalsService direto pra
+   * evitar dependencia circular de modulo (GoalsModule ja importa
+   * LifeEngineModule).
+   */
+  private async processRecurringGoalContributions(
+    userId: string,
+    timezone: string,
+    preferredCurrency: string,
+  ): Promise<number> {
+    const day = this.localDayOfMonthFor(timezone);
+    if (day < 1) return 0;
+
+    const dueGoals = await this.prisma.goal.findMany({
+      where: {
+        userId,
+        status: GoalStatus.ACTIVE,
+        recurringAmount: { not: null },
+        recurringDay: day,
+      },
+    });
+
+    for (const goal of dueGoals) {
+      const amount = Number(goal.recurringAmount);
+      const nextCurrentAmount = Number(goal.currentAmount) + amount;
+      const nextStatus =
+        nextCurrentAmount >= Number(goal.targetAmount) ? GoalStatus.ACHIEVED : goal.status;
+
+      await this.prisma.goal.update({
+        where: { id: goal.id },
+        data: { currentAmount: new Prisma.Decimal(nextCurrentAmount), status: nextStatus },
+      });
+
+      await this.prisma.transaction.create({
+        data: {
+          userId,
+          type: TransactionType.TRANSFER,
+          description: `Aporte automático para a meta ${goal.title}`,
+          amount: new Prisma.Decimal(amount),
+          date: new Date(),
+          linkedGoalId: goal.id,
+        },
+      });
+
+      const formattedAmount = this.formatCurrency(amount, preferredCurrency);
+      await this.notificationsService.createNotification(
+        userId,
+        NotificationType.SYSTEM,
+        nextStatus === GoalStatus.ACHIEVED ? "Meta concluída" : "Aporte automático realizado",
+        nextStatus === GoalStatus.ACHIEVED
+          ? `O aporte automático de ${formattedAmount} concluiu a meta "${goal.title}".`
+          : `Aporte automático de ${formattedAmount} aplicado na meta "${goal.title}".`,
+      );
+
+      this.logger.log(
+        `goal_recurring_contribution goalId=${goal.id} userId=${userId} amount=${amount}`,
+      );
+    }
+
+    return dueGoals.length;
+  }
+
+  private formatCurrency(amount: number, currency: string) {
+    try {
+      return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(amount);
+    } catch {
+      return `${amount.toFixed(2)} ${currency}`;
     }
   }
 
@@ -334,6 +420,19 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
     } catch {
       // Fuso horario invalido salvo no usuario: nunca bate a hora alvo, em
       // vez de derrubar o scan inteiro pra todo mundo.
+      return -1;
+    }
+  }
+
+  private localDayOfMonthFor(timezone: string): number {
+    try {
+      const dayText = new Intl.DateTimeFormat("en-US", {
+        timeZone: timezone,
+        day: "numeric",
+      }).format(new Date());
+
+      return parseInt(dayText, 10);
+    } catch {
       return -1;
     }
   }
