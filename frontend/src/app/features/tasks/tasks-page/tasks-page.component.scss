@@ -162,14 +162,14 @@
   width: 100%;
 }
 
-.task-edit-form__recurring {
+.task-recurring-row {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   flex-wrap: wrap;
 }
 
-.task-edit-form__recurring-toggle {
+.task-recurring-toggle {
   display: flex;
   align-items: center;
   gap: 0.4rem;
@@ -185,14 +185,8 @@
   }
 }
 
-.task-edit-form__recurrence-select {
-  height: 2rem;
-  padding: 0 0.6rem;
-  border-radius: 0;
-  border: 1px solid var(--border);
-  background: var(--input-background);
-  color: var(--text-primary);
-  font-size: 0.82rem;
+.task-recurring-select {
+  width: auto;
   cursor: pointer;
 }
 

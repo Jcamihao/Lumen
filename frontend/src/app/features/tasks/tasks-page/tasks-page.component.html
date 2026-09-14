@@ -111,6 +111,26 @@
               placeholder="0"
             />
           </div>
+
+          <div class="proto-field proto-field--full task-recurring-row">
+            <label class="task-recurring-toggle">
+              <input id="task-recurring" type="checkbox" formControlName="isRecurring" />
+              <span>Tarefa recorrente (rotina, tipo arrumar a cama ou lavar a louça)</span>
+            </label>
+            <select
+              *ngIf="form.get('isRecurring')?.value"
+              formControlName="recurrenceRule"
+              class="task-recurring-select"
+              aria-label="Frequência da recorrência"
+            >
+              <option value="daily">Diária</option>
+              <option value="weekly">Semanal</option>
+              <option value="biweekly">Quinzenal</option>
+              <option value="monthly">Mensal</option>
+              <option value="quarterly">Trimestral</option>
+              <option value="yearly">Anual</option>
+            </select>
+          </div>
         </div>
 
         <div class="proto-actions-row">
@@ -335,15 +355,15 @@
                   <input type="number" min="0" formControlName="estimatedAmount" />
                 </div>
 
-                <div class="proto-field proto-field--full task-edit-form__recurring">
-                  <label class="task-edit-form__recurring-toggle">
+                <div class="proto-field proto-field--full task-recurring-row">
+                  <label class="task-recurring-toggle">
                     <input type="checkbox" formControlName="isRecurring" />
                     <span>Tarefa recorrente</span>
                   </label>
                   <select
                     *ngIf="editForm.get('isRecurring')?.value"
                     formControlName="recurrenceRule"
-                    class="task-edit-form__recurrence-select"
+                    class="task-recurring-select"
                   >
                     <option value="daily">Diária</option>
                     <option value="weekly">Semanal</option>

@@ -85,6 +85,8 @@ export class TasksPageComponent {
     priority: ['MEDIUM'],
     categoryId: [''],
     estimatedAmount: [0],
+    isRecurring: [false],
+    recurrenceRule: ['daily'],
   });
 
   // --- Edit form ---
@@ -132,11 +134,22 @@ export class TasksPageComponent {
         categoryId: raw.categoryId || undefined,
         hasFinancialImpact: !!raw.estimatedAmount,
         estimatedAmount: raw.estimatedAmount || undefined,
+        isRecurring: raw.isRecurring,
+        recurrenceRule: raw.isRecurring ? raw.recurrenceRule : undefined,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (task) => {
-          this.form.reset({ title: '', description: '', dueDate: '', priority: 'MEDIUM', categoryId: '', estimatedAmount: 0 });
+          this.form.reset({
+            title: '',
+            description: '',
+            dueDate: '',
+            priority: 'MEDIUM',
+            categoryId: '',
+            estimatedAmount: 0,
+            isRecurring: false,
+            recurrenceRule: 'daily',
+          });
           this.upsertTask(task);
           this.toast.success('Tarefa criada.');
         },
