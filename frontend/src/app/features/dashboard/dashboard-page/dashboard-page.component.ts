@@ -2,7 +2,14 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
-import { DashboardSummary, Goal, Insight, Task, Transaction } from '../../../core/models/domain.models';
+import {
+  DashboardSummary,
+  ForecastAccuracy,
+  Goal,
+  Insight,
+  Task,
+  Transaction,
+} from '../../../core/models/domain.models';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
 
@@ -18,12 +25,18 @@ export class DashboardPageComponent {
   private readonly api = inject(LifeApiService);
   private readonly destroyRef = inject(DestroyRef);
   protected readonly summary = signal<DashboardSummary | null>(null);
+  protected readonly forecastAccuracy = signal<ForecastAccuracy | null>(null);
 
   constructor() {
     this.api
       .getDashboardSummary()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((summary) => this.summary.set(summary));
+
+    this.api
+      .getForecastAccuracy()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((accuracy) => this.forecastAccuracy.set(accuracy));
   }
 
   protected greeting(name: string) {
@@ -453,6 +466,22 @@ export class DashboardPageComponent {
     }
 
     return Math.round(28 + ((value - min) / (max - min)) * 68);
+  }
+
+  protected forecastAccuracyLabel(accuracy: ForecastAccuracy) {
+    const date = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(
+      new Date(accuracy.targetDate),
+    );
+    const errorAbs = Math.abs(accuracy.errorPercent);
+    const direction = accuracy.errorPercent >= 0 ? 'subestimou' : 'superestimou';
+    return `Previsão de ${date} ${direction} o saldo em ${errorAbs.toFixed(1)}%`;
+  }
+
+  protected forecastAccuracyTone(accuracy: ForecastAccuracy): 'success' | 'warning' | 'danger' {
+    const errorAbs = Math.abs(accuracy.errorPercent);
+    if (errorAbs <= 10) return 'success';
+    if (errorAbs <= 25) return 'warning';
+    return 'danger';
   }
 
   protected formatCurrency(value: number, currencyCode: string) {

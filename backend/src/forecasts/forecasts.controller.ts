@@ -21,4 +21,10 @@ export class ForecastsController {
   refresh(@CurrentUser() user: AuthenticatedUser) {
     return this.forecastsService.recalculateForUser(user.sub);
   }
+
+  @Get('accuracy')
+  @ApiOperation({ summary: 'Ultima previsao ja conferida contra o saldo real' })
+  accuracy(@CurrentUser() user: AuthenticatedUser) {
+    return this.forecastsService.getLatestAccuracy(user.sub);
+  }
 }

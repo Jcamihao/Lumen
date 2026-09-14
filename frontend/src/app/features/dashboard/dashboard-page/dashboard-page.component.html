@@ -91,6 +91,9 @@
         <span class="proto-delta" [ngClass]="'proto-delta--' + projectionDeltaTone(data)">{{ projectionDelta(data) }}</span>
         vs. saldo atual
       </small>
+      <small class="home-metric__accuracy" *ngIf="forecastAccuracy() as accuracy" [attr.data-tone]="forecastAccuracyTone(accuracy)">
+        {{ forecastAccuracyLabel(accuracy) }}
+      </small>
     </a>
 
     <a class="proto-metric home-metric" routerLink="/goals" data-tone="success">

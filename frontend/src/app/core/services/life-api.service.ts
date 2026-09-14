@@ -8,6 +8,7 @@ import {
   AssistantPulse,
   AssistantReply,
   DashboardSummary,
+  ForecastAccuracy,
   Goal,
   GoalContribution,
   ImportJobHistoryEntry,
@@ -102,6 +103,21 @@ export class LifeApiService {
     return this.http.get<Insight[]>(`${environment.apiBaseUrl}/insights`).pipe(
       this.withOfflineFallback(() => [] as Insight[]),
     );
+  }
+
+  /**
+   * Ultima previsao ja conferida contra o saldo real (backend so preenche
+   * apos o targetDate de 30 dias passar). Null enquanto nao houver nenhuma
+   * ainda — nao ha cache offline porque nao ha nada util a mostrar sem rede.
+   */
+  getForecastAccuracy() {
+    if (!this.networkService.isOnline()) {
+      return of(null as ForecastAccuracy | null);
+    }
+
+    return this.http
+      .get<ForecastAccuracy | null>(`${environment.apiBaseUrl}/forecasts/accuracy`)
+      .pipe(this.withOfflineFallback(() => null as ForecastAccuracy | null));
   }
 
   listTasks() {

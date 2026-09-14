@@ -195,6 +195,7 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
     let touched = 0;
     let digests = 0;
     let autoContributions = 0;
+    let forecastsResolved = 0;
 
     for (const user of users) {
       if (this.localHourFor(user.timezone) !== targetHour) {
@@ -210,6 +211,8 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
       await this.lifeEngineService.touchUserData(user.id);
       touched += 1;
 
+      forecastsResolved += await this.forecastsService.resolveMatureSnapshots(user.id);
+
       if (this.isMondayLocal(user.timezone) && this.daysSince(user.lastWeeklyDigestAt) >= 6) {
         const sent = await this.sendWeeklyDigest(user.id);
         if (sent) digests += 1;
@@ -218,7 +221,7 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
 
     if (touched > 0) {
       this.logger.log(
-        `pulse_scan touched=${touched} digests=${digests} autoContributions=${autoContributions} targetHour=${targetHour}`,
+        `pulse_scan touched=${touched} digests=${digests} autoContributions=${autoContributions} forecastsResolved=${forecastsResolved} targetHour=${targetHour}`,
       );
     }
   }

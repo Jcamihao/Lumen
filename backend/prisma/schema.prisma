@@ -143,6 +143,7 @@ model User {
   reminders         Reminder[]
   insights          Insight[]
   forecasts         Forecast[]
+  forecastSnapshots ForecastSnapshot[]
   importJobs        ImportJob[]
   receiptScans      ReceiptScan[]
   notifications     Notification[]
@@ -365,6 +366,25 @@ model Forecast {
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, referenceDate])
+}
+
+/// Retrato de uma previsao no momento em que foi calculada, pra comparar
+/// depois com o saldo real quando targetDate chega — Forecast sozinho so
+/// guarda a ultima previsao, sem historico de acerto/erro.
+model ForecastSnapshot {
+  id               String    @id @default(uuid())
+  userId           String
+  predictedBalance Decimal   @db.Decimal(12, 2)
+  predictedAt      DateTime  @default(now())
+  targetDate       DateTime
+  actualBalance    Decimal?  @db.Decimal(12, 2)
+  errorPercent     Decimal?  @db.Decimal(7, 2)
+  resolvedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, targetDate])
+  @@index([userId, resolvedAt])
 }
 
 model ImportJob {

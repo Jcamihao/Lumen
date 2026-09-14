@@ -111,6 +111,14 @@ export type Forecast = {
   riskLevel: "LOW" | "MEDIUM" | "HIGH";
 };
 
+export type ForecastAccuracy = {
+  targetDate: string;
+  predictedBalance: number;
+  actualBalance: number;
+  errorPercent: number;
+  resolvedAt: string;
+};
+
 export type Notification = {
   id: string;
   title: string;

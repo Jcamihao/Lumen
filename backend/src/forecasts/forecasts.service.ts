@@ -124,10 +124,91 @@ export class ForecastsService {
       },
     });
 
+    // Retrato pra conferir depois (resolveMatureSnapshots, quando horizon
+    // chegar) se a previsao bateu com o saldo real — Forecast sozinho so
+    // guarda a ultima leitura, sem historico de acerto.
+    await this.prisma.forecastSnapshot.create({
+      data: {
+        userId,
+        predictedBalance,
+        predictedAt: now,
+        targetDate: horizon,
+      },
+    });
+
     return {
       ...forecast,
       predictedBalance: Number(forecast.predictedBalance),
     };
+  }
+
+  /**
+   * Roda no pulse scan (uma vez por dia por usuario, mesmo gatilho do
+   * aporte automatico de metas). Fecha todo snapshot cujo targetDate ja
+   * chegou: compara a previsao gravada com o saldo real de hoje e grava o
+   * erro percentual, uma unica vez (resolvedAt marca isso).
+   */
+  async resolveMatureSnapshots(userId: string): Promise<number> {
+    const now = new Date();
+
+    const due = await this.prisma.forecastSnapshot.findMany({
+      where: { userId, targetDate: { lte: now }, resolvedAt: null },
+    });
+
+    if (due.length === 0) return 0;
+
+    const actualBalance = await this.computeBalanceAsOf(userId, now);
+
+    for (const snapshot of due) {
+      const predicted = Number(snapshot.predictedBalance);
+      const errorPercent =
+        predicted !== 0
+          ? ((actualBalance - predicted) / Math.abs(predicted)) * 100
+          : actualBalance === 0
+            ? 0
+            : 100;
+
+      await this.prisma.forecastSnapshot.update({
+        where: { id: snapshot.id },
+        data: { actualBalance, errorPercent, resolvedAt: now },
+      });
+    }
+
+    return due.length;
+  }
+
+  /**
+   * Ultima previsao ja conferida, pra mostrar "sua previsao de [data]
+   * errou por X%" em Financas. Null enquanto nenhum snapshot chegou no
+   * targetDate ainda (primeiros 30 dias de uso nao tem o que mostrar).
+   */
+  async getLatestAccuracy(userId: string) {
+    const snapshot = await this.prisma.forecastSnapshot.findFirst({
+      where: { userId, resolvedAt: { not: null } },
+      orderBy: { resolvedAt: 'desc' },
+    });
+
+    if (!snapshot) return null;
+
+    return {
+      targetDate: snapshot.targetDate,
+      predictedBalance: Number(snapshot.predictedBalance),
+      actualBalance: Number(snapshot.actualBalance),
+      errorPercent: Number(snapshot.errorPercent),
+      resolvedAt: snapshot.resolvedAt,
+    };
+  }
+
+  private async computeBalanceAsOf(userId: string, asOf: Date) {
+    const transactions = await this.prisma.transaction.findMany({
+      where: { userId, date: { lte: asOf } },
+    });
+
+    return transactions.reduce(
+      (total, transaction) =>
+        total + this.getSignedAmount(transaction.type, Number(transaction.amount)),
+      0,
+    );
   }
 
   private getSignedAmount(type: TransactionType, amount: number) {

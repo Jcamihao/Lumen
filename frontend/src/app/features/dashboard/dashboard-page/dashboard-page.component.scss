@@ -183,6 +183,18 @@
 .home-metric[data-tone='warning'] { --tone: var(--warning); }
 .home-metric[data-tone='danger'] { --tone: var(--danger); }
 
+.home-metric__accuracy {
+  grid-column: 2;
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.home-metric__accuracy[data-tone='success'] { color: var(--success); }
+.home-metric__accuracy[data-tone='warning'] { color: var(--warning); }
+.home-metric__accuracy[data-tone='danger'] { color: var(--danger); }
+
 .home-metric__icon {
   grid-row: 1 / span 3;
   width: 2.25rem;
