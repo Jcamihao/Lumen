@@ -9,9 +9,9 @@
 
     <header class="landing__nav">
       <nav class="landing__nav-links" aria-label="Principal">
-        <a href="#recursos">Recursos</a>
-        <a href="#como-funciona">Como funciona</a>
-        <a href="#faq">Perguntas frequentes</a>
+        <a href="#recursos" (click)="scrollToSection($event, 'recursos')">Recursos</a>
+        <a href="#como-funciona" (click)="scrollToSection($event, 'como-funciona')">Como funciona</a>
+        <a href="#faq" (click)="scrollToSection($event, 'faq')">Perguntas frequentes</a>
       </nav>
 
       <a class="landing__logo" routerLink="/">
@@ -71,31 +71,51 @@
 
   <section class="landing__section" id="recursos">
     <p class="section-kicker">Recursos</p>
-    <h2 class="landing__section-title">Tudo que organiza sua vida, num só lugar</h2>
+    <h2 class="landing__section-title">Tudo que você hoje faz na planilha, num só lugar</h2>
+    <p class="landing__section-subtitle">
+      Chega de aba nova todo mês, fórmula quebrada e nota fiscal perdida no WhatsApp. Aqui,
+      tarefa, gasto e meta vivem conectados — e se atualizam sozinhos.
+    </p>
 
     <div class="landing__feature-grid">
       <article class="landing__feature">
         <span class="material-symbols-rounded">checklist</span>
         <h3>Tarefas</h3>
-        <p>Prioridade, prazo e impacto financeiro de cada pendência, sem planilha.</p>
+        <ul class="landing__feature-list">
+          <li>Prioridade, prazo e categoria personalizada em cada tarefa</li>
+          <li>Recorrência automática — diária, semanal, mensal — recria a próxima ao concluir</li>
+          <li>Marque impacto financeiro estimado e vincule direto a uma meta</li>
+        </ul>
       </article>
 
       <article class="landing__feature">
         <span class="material-symbols-rounded">account_balance_wallet</span>
         <h3>Finanças</h3>
-        <p>Receitas, despesas e notas fiscais organizadas por grupo, com comparação entre meses.</p>
+        <ul class="landing__feature-list">
+          <li>Receitas, despesas e transferências por categoria, com cor e ícone</li>
+          <li>Um lançamento pode nascer de uma tarefa ou virar aporte de uma meta</li>
+          <li>Previsão de caixa dos próximos 30 dias, com risco calculado a partir da sua renda</li>
+        </ul>
       </article>
 
       <article class="landing__feature">
         <span class="material-symbols-rounded">flag</span>
         <h3>Metas</h3>
-        <p>Progresso real, cruzado com tarefas e gastos que estão te atrasando ou te ajudando.</p>
+        <ul class="landing__feature-list">
+          <li>Valor-alvo, prazo e progresso calculado automaticamente</li>
+          <li>Cada aporte gera uma transação real nas finanças — sem planilha paralela</li>
+          <li>Meta é marcada como concluída sozinha ao bater o valor</li>
+        </ul>
       </article>
 
       <article class="landing__feature">
         <span class="material-symbols-rounded">auto_awesome</span>
         <h3>Selah</h3>
-        <p>Assistente com IA que lê tudo isso junto e avisa o que você não veria sozinho.</p>
+        <ul class="landing__feature-list">
+          <li>Resumo diário (Pulse) com os principais sinais, sem precisar perguntar nada</li>
+          <li>Detecta gasto duplicado, assinatura esquecida e meta travada por tarefa atrasada</li>
+          <li>Simula cenários: cortar 10% do gasto variável, quitar dívida em X meses, quanto aportar na meta</li>
+        </ul>
       </article>
     </div>
   </section>
@@ -103,24 +123,38 @@
   <section class="landing__section" id="como-funciona">
     <p class="section-kicker">Como funciona</p>
     <h2 class="landing__section-title">Três passos, sem fricção</h2>
+    <p class="landing__section-subtitle">
+      Sem planilha paralela pra fechar o mês, sem exportar nada pra outro app. Você registra
+      uma vez e o Lumen mantém tarefas, finanças e metas na mesma leitura.
+    </p>
 
     <div class="landing__steps">
       <article class="landing__step">
         <span class="landing__step-index">01</span>
-        <h3>Registre o que já faz</h3>
-        <p>Tarefas, gastos e metas — direto no app ou mandando a foto da nota fiscal.</p>
+        <h3>Comece em 1 tela</h3>
+        <p>
+          Nome, e-mail, renda mensal e moeda preferida — sem wizard. Você já cai no dashboard
+          com categorias padrão prontas (Moradia, Alimentação, Salário, Pessoal, Trabalho, Casa).
+        </p>
       </article>
 
       <article class="landing__step">
         <span class="landing__step-index">02</span>
-        <h3>O Selah cruza os dados</h3>
-        <p>Tarefa atrasada com impacto financeiro, meta travada por gasto fora do previsto.</p>
+        <h3>Registre no seu ritmo</h3>
+        <p>
+          Digite a tarefa ou o gasto, importe o extrato em CSV, ou manda a foto da nota fiscal —
+          o Lumen lê os itens, sugere a categoria e compara o preço com sua última compra do mesmo produto.
+        </p>
       </article>
 
       <article class="landing__step">
         <span class="landing__step-index">03</span>
-        <h3>Você recebe a leitura</h3>
-        <p>Prioridades claras no início do dia, sem precisar caçar informação espalhada.</p>
+        <h3>O Selah cruza tudo</h3>
+        <p>
+          O Pulse diário aponta o que importa: tarefa atrasada com custo, assinatura recorrente
+          esquecida, meta travada por gasto fora do previsto — e simula cenários, como cortar
+          10% do gasto variável ou quitar uma dívida em X meses.
+        </p>
       </article>
     </div>
 

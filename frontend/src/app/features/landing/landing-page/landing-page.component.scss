@@ -343,6 +343,14 @@
   color: var(--text-primary);
 }
 
+.landing__section-subtitle {
+  margin-top: 0.75rem;
+  max-width: 34rem;
+  color: var(--text-medium);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
 .landing__feature-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
@@ -370,12 +378,35 @@
   color: var(--text-primary);
 }
 
-.landing__feature p,
 .landing__step p {
   margin-top: 0.4rem;
   color: var(--text-medium);
   font-size: 0.88rem;
-  line-height: 1.45;
+  line-height: 1.5;
+}
+
+.landing__feature-list {
+  margin-top: 0.6rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.landing__feature-list li {
+  position: relative;
+  padding-left: 0.9rem;
+  color: var(--text-medium);
+  font-size: 0.86rem;
+  line-height: 1.42;
+}
+
+.landing__feature-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 4px;
+  height: 4px;
+  background: var(--accent);
 }
 
 .landing__steps {

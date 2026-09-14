@@ -32,4 +32,12 @@ export class LandingPageComponent implements AfterViewInit {
       // ação manual possível, mas o resto da página continua funcional.
     });
   }
+
+  // Scroll manual em vez de depender do href="#id" nativo: dentro do SPA o
+  // Router não tem anchorScrolling habilitado, então o navegador nem sempre
+  // rola pra âncora de forma confiável.
+  protected scrollToSection(event: Event, sectionId: string): void {
+    event.preventDefault();
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
