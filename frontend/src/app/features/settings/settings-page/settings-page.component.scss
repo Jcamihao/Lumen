@@ -2,6 +2,31 @@
   display: block;
 }
 
+#settings-avatar {
+  padding: 0.4rem;
+  cursor: pointer;
+}
+
+#settings-avatar::file-selector-button {
+  height: 2.2rem;
+  margin-right: 0.75rem;
+  padding: 0 0.85rem;
+  border: 1px solid var(--secondary-button-border);
+  border-radius: 0;
+  background: var(--secondary-button-background);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+#settings-avatar::file-selector-button:hover {
+  background: var(--card-muted);
+  border-color: var(--text-primary);
+}
+
 .settings-tabs {
   display: flex;
   flex-wrap: wrap;
