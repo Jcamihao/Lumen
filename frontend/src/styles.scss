@@ -725,6 +725,14 @@ strong {
   box-shadow: none;
 }
 
+.proto-button--ghost:hover,
+.proto-button--ghost:focus-visible {
+  background: var(--card-muted);
+  border-color: var(--text-primary);
+  color: var(--text-strong);
+  outline: none;
+}
+
 .proto-chip,
 .proto-tag {
   display: inline-flex;
