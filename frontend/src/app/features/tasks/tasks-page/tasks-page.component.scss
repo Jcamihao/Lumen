@@ -183,11 +183,21 @@
     height: 0.9rem;
     cursor: pointer;
   }
+
+  i {
+    color: var(--text-medium);
+    font-style: italic;
+  }
 }
 
 .task-recurring-select {
   width: auto;
   cursor: pointer;
+}
+
+.task-recurring-hint {
+  font-size: 0.78rem;
+  color: var(--danger);
 }
 
 .task-edit-form .proto-field label {

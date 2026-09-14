@@ -92,6 +92,11 @@
           </div>
 
           <div class="proto-field">
+            <label for="task-due-time">Horário (opcional, exceto pra lembrete)</label>
+            <input id="task-due-time" type="time" formControlName="dueTime" />
+          </div>
+
+          <div class="proto-field">
             <label for="task-category">Categoria</label>
             <select id="task-category" formControlName="categoryId">
               <option value="">Sem categoria</option>
@@ -115,7 +120,7 @@
           <div class="proto-field proto-field--full task-recurring-row">
             <label class="task-recurring-toggle">
               <input id="task-recurring" type="checkbox" formControlName="isRecurring" />
-              <span>Tarefa recorrente (rotina, tipo arrumar a cama ou lavar a louça)</span>
+              <span>É uma rotina? <i>(tipo arrumar a cama, lavar a louça...)</i></span>
             </label>
             <select
               *ngIf="form.get('isRecurring')?.value"
@@ -130,6 +135,28 @@
               <option value="quarterly">Trimestral</option>
               <option value="yearly">Anual</option>
             </select>
+          </div>
+
+          <div class="proto-field proto-field--full task-recurring-row">
+            <label class="task-recurring-toggle">
+              <input id="task-reminder" type="checkbox" formControlName="hasReminder" />
+              <span>Quer um lembrete?</span>
+            </label>
+            <select
+              *ngIf="form.get('hasReminder')?.value"
+              formControlName="reminderOffsetMinutes"
+              class="task-recurring-select"
+              aria-label="Antecedência do lembrete"
+            >
+              <option [ngValue]="480">8 horas antes</option>
+              <option [ngValue]="240">4 horas antes</option>
+              <option [ngValue]="120">2 horas antes</option>
+              <option [ngValue]="30">30 minutos antes</option>
+              <option [ngValue]="15">15 minutos antes</option>
+            </select>
+            <span *ngIf="reminderMissingSchedule()" class="task-recurring-hint">
+              Defina data e horário do prazo pra usar lembrete.
+            </span>
           </div>
         </div>
 

@@ -82,11 +82,14 @@ export class TasksPageComponent {
     title: ['', [Validators.required, Validators.minLength(2)]],
     description: [''],
     dueDate: [''],
+    dueTime: [''],
     priority: ['MEDIUM'],
     categoryId: [''],
     estimatedAmount: [0],
     isRecurring: [false],
     recurrenceRule: ['daily'],
+    hasReminder: [false],
+    reminderOffsetMinutes: [30],
   });
 
   // --- Edit form ---
@@ -123,13 +126,29 @@ export class TasksPageComponent {
     this.filterCategory.set('');
   }
 
-  protected createTask() {
+  protected reminderMissingSchedule(): boolean {
     const raw = this.form.getRawValue();
+    return raw.hasReminder && (!raw.dueDate || !raw.dueTime);
+  }
+
+  protected createTask() {
+    if (this.reminderMissingSchedule()) {
+      this.toast.error('Pra usar lembrete, defina data e horário do prazo.');
+      return;
+    }
+
+    const raw = this.form.getRawValue();
+    const dueDateIso = raw.dueDate
+      ? raw.dueTime
+        ? `${raw.dueDate}T${raw.dueTime}:00`
+        : raw.dueDate
+      : undefined;
+
     this.api
       .createTask({
         title: raw.title,
         description: raw.description || undefined,
-        dueDate: raw.dueDate || undefined,
+        dueDate: dueDateIso,
         priority: raw.priority,
         categoryId: raw.categoryId || undefined,
         hasFinancialImpact: !!raw.estimatedAmount,
@@ -140,15 +159,31 @@ export class TasksPageComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (task) => {
+          if (raw.hasReminder && dueDateIso && raw.dueTime) {
+            const remindAt = new Date(
+              new Date(dueDateIso).getTime() - raw.reminderOffsetMinutes * 60_000,
+            ).toISOString();
+
+            this.api
+              .createReminder({ title: `Lembrete: ${raw.title}`, remindAt, taskId: task.id })
+              .pipe(takeUntilDestroyed(this.destroyRef))
+              .subscribe({
+                error: () => this.toast.error('Tarefa criada, mas o lembrete não foi salvo.'),
+              });
+          }
+
           this.form.reset({
             title: '',
             description: '',
             dueDate: '',
+            dueTime: '',
             priority: 'MEDIUM',
             categoryId: '',
             estimatedAmount: 0,
             isRecurring: false,
             recurrenceRule: 'daily',
+            hasReminder: false,
+            reminderOffsetMinutes: 30,
           });
           this.upsertTask(task);
           this.toast.success('Tarefa criada.');
