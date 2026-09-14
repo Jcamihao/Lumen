@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, inject } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ThemeService } from '../../../core/services/theme.service';
 import { ThemeToggleComponent } from '../../../shared/theme-toggle/theme-toggle.component';
@@ -18,6 +18,8 @@ export class LandingPageComponent implements AfterViewInit {
   protected readonly logoSrc = computed(() =>
     this.theme.theme() === 'dark' ? 'assets/logo/lumen-mark-inverse.svg' : 'assets/logo/lumen-mark.svg',
   );
+
+  protected readonly mobileMenuOpen = signal(false);
 
   @ViewChild('bgVideo') private readonly bgVideoRef?: ElementRef<HTMLVideoElement>;
 
@@ -46,6 +48,11 @@ export class LandingPageComponent implements AfterViewInit {
   // rola pra âncora de forma confiável.
   protected scrollToSection(event: Event, sectionId: string): void {
     event.preventDefault();
+    this.mobileMenuOpen.set(false);
     document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  protected toggleMobileMenu(): void {
+    this.mobileMenuOpen.update((open) => !open);
   }
 }

@@ -19,6 +19,16 @@
       </a>
 
       <div class="landing__nav-actions">
+        <button
+          type="button"
+          class="landing-btn landing-btn--ghost landing__burger"
+          [attr.aria-expanded]="mobileMenuOpen()"
+          aria-controls="landing-mobile-menu"
+          [attr.aria-label]="mobileMenuOpen() ? 'Fechar menu' : 'Abrir menu'"
+          (click)="toggleMobileMenu()"
+        >
+          <span class="material-symbols-rounded">{{ mobileMenuOpen() ? 'close' : 'menu' }}</span>
+        </button>
         <app-theme-toggle class="landing__theme-toggle" variant="glass"></app-theme-toggle>
         <a class="landing-btn landing-btn--ghost" routerLink="/auth/login">Entrar</a>
         <a class="landing-btn landing-btn--primary" routerLink="/auth/register">
@@ -29,6 +39,17 @@
         </a>
       </div>
     </header>
+
+    <nav
+      id="landing-mobile-menu"
+      class="landing__mobile-menu"
+      aria-label="Principal (mobile)"
+      *ngIf="mobileMenuOpen()"
+    >
+      <a href="#recursos" (click)="scrollToSection($event, 'recursos')">Recursos</a>
+      <a href="#como-funciona" (click)="scrollToSection($event, 'como-funciona')">Como funciona</a>
+      <a href="#faq" (click)="scrollToSection($event, 'faq')">Perguntas frequentes</a>
+    </nav>
 
     <main class="landing__hero">
       <div class="landing__badge">

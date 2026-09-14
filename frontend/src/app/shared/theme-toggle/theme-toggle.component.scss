@@ -26,8 +26,8 @@
 }
 
 .theme-toggle--glass {
-  width: 58px;
-  height: 58px;
+  width: var(--toggle-size, 58px);
+  height: var(--toggle-size, 58px);
   border-color: rgba(0, 0, 0, 0.12);
   background: rgba(255, 255, 255, 0.55);
   color: var(--text-primary);
