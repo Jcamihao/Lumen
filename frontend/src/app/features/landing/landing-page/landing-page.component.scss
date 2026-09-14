@@ -501,7 +501,9 @@
     }
 
     &::after {
-      background: radial-gradient(circle at center, transparent 30%, var(--background) 95%);
+      background:
+        linear-gradient(180deg, transparent 55%, var(--background) 97%),
+        radial-gradient(circle at center, transparent 30%, var(--background) 95%);
     }
   }
 
