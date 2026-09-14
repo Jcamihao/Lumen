@@ -61,7 +61,7 @@ export class OfflineLifeService {
           this.readScopedValue("sync-queue", [] as SyncQueueItem[]),
         ),
       );
-    });
+    }, { allowSignalWrites: true });
   }
 
   hasPendingSync() {

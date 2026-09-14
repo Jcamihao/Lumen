@@ -74,7 +74,7 @@ export class NotificationCenterService {
           void this.load();
         });
       }
-    });
+    }, { allowSignalWrites: true });
 
     effect(() => {
       const initialized = this.initialized();
