@@ -359,6 +359,8 @@
   .home-transaction,
   .home-goal__top {
     display: grid;
+    grid-template-columns: 1fr;
+    justify-content: stretch;
   }
 
   .home-header__actions > *,
