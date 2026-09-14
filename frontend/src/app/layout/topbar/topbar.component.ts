@@ -17,6 +17,7 @@ import { Task, Transaction } from '../../core/models/domain.models';
 import { AuthService } from '../../core/services/auth.service';
 import { LifeApiService } from '../../core/services/life-api.service';
 import { NotificationCenterService } from '../../core/services/notification-center.service';
+import { ThemeToggleComponent } from '../../shared/theme-toggle/theme-toggle.component';
 
 type BreadcrumbItem = {
   label: string;
@@ -42,7 +43,7 @@ const MAX_RESULTS_PER_KIND = 5;
 @Component({
   selector: 'app-topbar',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, ThemeToggleComponent],
   templateUrl: './topbar.component.html',
   styleUrls: ['./topbar.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -193,6 +193,84 @@
   --modal-shadow: var(--shadow-float);
 }
 
+/* Pitch Obsidian Precision — dark mode. Only literals need overriding;
+   every var()-aliased token (--surface-panel, --tab-active-bg, etc.)
+   re-resolves automatically once the base tokens below change. */
+html[data-theme='dark'] {
+  color-scheme: dark;
+
+  --primary-dark: #ffffff;
+  --sidebar: #0d0e11;
+  --background: #09090b;
+  --card: #0d0e11;
+  --card-muted: #121418;
+  --surface-soft: color-mix(in srgb, #2563eb 8%, transparent);
+  --surface-strong: color-mix(in srgb, #2563eb 14%, transparent);
+  --border: #22242a;
+  --divider: #22242a;
+  --text-primary: #ffffff;
+  --text-strong: #f4f4f5;
+  --text-medium: #a1a1aa;
+  --text-secondary: #71717a;
+
+  --accent: #2563eb;
+  --accent-hover: #3b82f6;
+  --accent-light: #60a5fa;
+  --accent-cool: var(--accent);
+
+  --success: #10b981;
+  --danger: #f43f5e;
+  --warning: #f59e0b;
+
+  --sidebar-text: #ffffff;
+  --sidebar-muted: #a1a1aa;
+
+  --shadow-soft: none;
+  --shadow-card: none;
+  --shadow-float: 0 16px 32px -8px rgba(0, 0, 0, 0.85);
+
+  --surface-glass: rgba(13, 14, 17, 0.85);
+  --surface-glass-strong: rgba(13, 14, 17, 0.92);
+  --surface-glass-border: rgba(39, 39, 42, 0.7);
+  --input-background: #0d0e11;
+  --secondary-button-background: #121418;
+  --secondary-button-border: #27272a;
+
+  --hero-start: #0b1a33;
+  --hero-mid: #123566;
+  --hero-end: #2563eb;
+  --hero-glass: rgba(255, 255, 255, 0.06);
+  --hero-glass-border: rgba(255, 255, 255, 0.14);
+
+  --mobile-menu-overlay: rgba(0, 0, 0, 0.6);
+
+  --sidebar-shell-start: #0d0e11;
+  --sidebar-shell-end: #0d0e11;
+  --sidebar-brand-start: #0d0e11;
+  --sidebar-brand-mid: #0d0e11;
+  --sidebar-brand-end: #0d0e11;
+
+  --bottom-nav-bg-start: #0d0e11;
+  --bottom-nav-bg-end: #0d0e11;
+
+  --chip-accent-border: rgba(37, 99, 235, 0.25);
+  --chip-warning-bg: rgba(245, 158, 11, 0.1);
+  --chip-warning-border: rgba(245, 158, 11, 0.25);
+  --chip-danger-bg: rgba(244, 63, 94, 0.1);
+  --chip-danger-text: #f43f5e;
+  --chip-danger-border: rgba(244, 63, 94, 0.25);
+  --highlight-warm-bg: rgba(245, 158, 11, 0.1);
+  --highlight-mint-bg: rgba(16, 185, 129, 0.1);
+  --highlight-mint-fg: #10b981;
+  --highlight-unread-border: rgba(37, 99, 235, 0.25);
+  --danger-soft-bg: rgba(244, 63, 94, 0.1);
+  --danger-soft-border: rgba(244, 63, 94, 0.25);
+
+  --modal-backdrop: rgba(0, 0, 0, 0.7);
+  --modal-background: #181a20;
+  --modal-border: #3f3f46;
+}
+
 
 
 

@@ -1,16 +1,24 @@
 import { CommonModule } from '@angular/common';
-import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { ThemeService } from '../../../core/services/theme.service';
+import { ThemeToggleComponent } from '../../../shared/theme-toggle/theme-toggle.component';
 
 @Component({
   selector: 'app-landing-page',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, ThemeToggleComponent],
   templateUrl: './landing-page.component.html',
   styleUrls: ['./landing-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LandingPageComponent implements AfterViewInit {
+  private readonly theme = inject(ThemeService);
+
+  protected readonly logoSrc = computed(() =>
+    this.theme.theme() === 'dark' ? 'assets/logo/lumen-mark-inverse.svg' : 'assets/logo/lumen-mark.svg',
+  );
+
   @ViewChild('bgVideo') private readonly bgVideoRef?: ElementRef<HTMLVideoElement>;
 
   ngAfterViewInit() {

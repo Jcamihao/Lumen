@@ -15,10 +15,11 @@
       </nav>
 
       <a class="landing__logo" routerLink="/">
-        <img src="assets/logo/lumen-mark.svg" alt="Lumen" />
+        <img [src]="logoSrc()" alt="Lumen" />
       </a>
 
       <div class="landing__nav-actions">
+        <app-theme-toggle class="landing__theme-toggle" variant="glass"></app-theme-toggle>
         <a class="landing-btn landing-btn--ghost" routerLink="/auth/login">Entrar</a>
         <a class="landing-btn landing-btn--primary" routerLink="/auth/register">
           <span>Criar conta</span>

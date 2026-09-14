@@ -477,6 +477,84 @@
   to { mask-size: calc(100% + 72px) 100%; -webkit-mask-size: calc(100% + 72px) 100%; }
 }
 
+/* ---------- dark mode (Pitch Obsidian Precision) ----------
+   A maior parte da página já é 100% tokenizada (var(--text-primary),
+   var(--card), var(--accent)...) e vira dark sozinha. Só precisa de
+   override aqui o que é cor fixa (vidro branco, véu, sombra do texto
+   mudo) — coisas pensadas especificamente pro vídeo claro. */
+
+:host-context([data-theme='dark']) {
+  --glass: rgba(18, 19, 24, 0.75);
+
+  .landing__bg {
+    background-color: var(--background);
+    background-image:
+      radial-gradient(circle at 50% 20%, rgba(37, 99, 235, 0.12) 0%, transparent 60%),
+      linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    background-size: 100% 100%, 64px 64px, 64px 64px;
+
+    &-video {
+      opacity: 0.28;
+      mix-blend-mode: screen;
+      filter: contrast(1.15) brightness(0.9);
+    }
+
+    &::after {
+      background: radial-gradient(circle at center, transparent 30%, var(--background) 95%);
+    }
+  }
+
+  .landing__nav-links {
+    background: var(--glass);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+
+    a {
+      color: #d4d4d8;
+
+      &:hover { color: #60a5fa; }
+    }
+  }
+
+  .landing-btn--ghost {
+    --hover-bg: rgba(255, 255, 255, 0.08);
+    background: var(--glass);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+
+    &:hover {
+      background: rgba(18, 19, 24, 0.95);
+      border-color: rgba(255, 255, 255, 0.24);
+    }
+  }
+
+  .landing-btn--light {
+    /* Fica clara de propósito nos dois temas — maior contraste contra
+       o fundo, não deve escurecer junto com o resto. */
+    background: #ffffff;
+    color: #09090b;
+  }
+
+  .landing__badge {
+    background: var(--glass);
+    border-color: rgba(59, 130, 246, 0.35);
+    color: #d4d4d8;
+  }
+
+  .landing__headline-muted {
+    color: var(--text-medium);
+    text-shadow: none;
+  }
+
+  .landing__headline-accent {
+    &::before { color: #93c5fd; }
+    &::after { color: #3b82f6; }
+  }
+
+  .landing__lede {
+    background: var(--glass);
+  }
+}
+
 @media (max-width: 640px) {
   .landing__nav {
     grid-template-columns: auto 1fr auto;
