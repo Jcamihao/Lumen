@@ -41,4 +41,7 @@ export const appConfig = registerAs('app', () => ({
     process.env.APP_SWAGGER_ENABLED,
     (process.env.NODE_ENV ?? 'development') !== 'production',
   ),
+  // Hora local (0-23) em que o Selah roda o pulso diario por conta propria,
+  // mesmo que o usuario nao tenha mexido em nada no app naquele dia.
+  selahPulseHourLocal: parseInt(process.env.SELAH_PULSE_HOUR ?? '7', 10),
 }));

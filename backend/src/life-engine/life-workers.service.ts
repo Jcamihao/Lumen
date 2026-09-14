@@ -4,6 +4,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { NotificationType, ReminderStatus } from "@prisma/client";
 import { Worker } from "bullmq";
 import { CacheQueueService } from "../cache-queue/cache-queue.service";
@@ -16,6 +17,7 @@ import {
   FORECASTS_QUEUE,
   INSIGHTS_QUEUE,
   LifeEngineService,
+  PULSE_SCAN_QUEUE,
   REMINDERS_QUEUE,
 } from "./life-engine.service";
 
@@ -32,6 +34,7 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
     private readonly notificationsService: NotificationsService,
     private readonly mailService: MailService,
     private readonly lifeEngineService: LifeEngineService,
+    private readonly configService: ConfigService,
   ) {}
 
   async onModuleInit() {
@@ -45,6 +48,7 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
     }
 
     await this.bootstrapPendingReminders();
+    await this.lifeEngineService.schedulePulseScan();
 
     this.workers.push(
       new Worker(
@@ -151,7 +155,60 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
         },
         { connection },
       ),
+      new Worker(
+        PULSE_SCAN_QUEUE,
+        async () => {
+          await this.runPulseScan();
+        },
+        { connection },
+      ),
     );
+  }
+
+  /**
+   * Roda a cada tick do PULSE_SCAN_QUEUE (de hora em hora). Recalcula
+   * insights so de quem esta, agora, na hora local configurada — reusa o
+   * mesmo touchUserData() que ja dispara reativamente apos uma mutacao, so
+   * que aqui o gatilho e o relogio, nao uma acao do usuario.
+   */
+  private async runPulseScan() {
+    const targetHour = this.configService.get<number>(
+      "app.selahPulseHourLocal",
+      7,
+    );
+
+    const users = await this.prisma.user.findMany({
+      select: { id: true, timezone: true },
+    });
+
+    let touched = 0;
+
+    for (const user of users) {
+      if (this.localHourFor(user.timezone) === targetHour) {
+        await this.lifeEngineService.touchUserData(user.id);
+        touched += 1;
+      }
+    }
+
+    if (touched > 0) {
+      this.logger.log(`pulse_scan touched=${touched} targetHour=${targetHour}`);
+    }
+  }
+
+  private localHourFor(timezone: string): number {
+    try {
+      const hourText = new Intl.DateTimeFormat("en-US", {
+        timeZone: timezone,
+        hour: "numeric",
+        hour12: false,
+      }).format(new Date());
+
+      return parseInt(hourText, 10) % 24;
+    } catch {
+      // Fuso horario invalido salvo no usuario: nunca bate a hora alvo, em
+      // vez de derrubar o scan inteiro pra todo mundo.
+      return -1;
+    }
   }
 
   /** Usa a persona do insight como remetente do alerta, quando existir. */
