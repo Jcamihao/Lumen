@@ -5,9 +5,10 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { NotificationType, ReminderStatus } from "@prisma/client";
+import { InsightSeverity, NotificationType, ReminderStatus } from "@prisma/client";
 import { Worker } from "bullmq";
 import { CacheQueueService } from "../cache-queue/cache-queue.service";
+import { DashboardService } from "../dashboard/dashboard.service";
 import { ForecastsService } from "../forecasts/forecasts.service";
 import { InsightsService } from "../insights/insights.service";
 import { MailService } from "../mail/mail.service";
@@ -35,6 +36,7 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
     private readonly mailService: MailService,
     private readonly lifeEngineService: LifeEngineService,
     private readonly configService: ConfigService,
+    private readonly dashboardService: DashboardService,
   ) {}
 
   async onModuleInit() {
@@ -134,6 +136,8 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
               insight.message,
             );
           }
+
+          await this.escalateStaleInsights(userId);
         },
         { connection },
       ),
@@ -178,21 +182,144 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
     );
 
     const users = await this.prisma.user.findMany({
-      select: { id: true, timezone: true },
+      select: { id: true, timezone: true, lastWeeklyDigestAt: true },
     });
 
     let touched = 0;
+    let digests = 0;
 
     for (const user of users) {
-      if (this.localHourFor(user.timezone) === targetHour) {
-        await this.lifeEngineService.touchUserData(user.id);
-        touched += 1;
+      if (this.localHourFor(user.timezone) !== targetHour) {
+        continue;
+      }
+
+      await this.lifeEngineService.touchUserData(user.id);
+      touched += 1;
+
+      if (this.isMondayLocal(user.timezone) && this.daysSince(user.lastWeeklyDigestAt) >= 6) {
+        const sent = await this.sendWeeklyDigest(user.id);
+        if (sent) digests += 1;
       }
     }
 
     if (touched > 0) {
-      this.logger.log(`pulse_scan touched=${touched} targetHour=${targetHour}`);
+      this.logger.log(
+        `pulse_scan touched=${touched} digests=${digests} targetHour=${targetHour}`,
+      );
     }
+  }
+
+  /**
+   * Resumo semanal — cadencia propria (segunda-feira local, uma vez a cada
+   * >=6 dias), independente do pulso diario. Reusa DashboardService.getSummary
+   * em vez de reimplementar as agregacoes de tarefas/financas/metas.
+   */
+  private async sendWeeklyDigest(userId: string): Promise<boolean> {
+    try {
+      const summary = (await this.dashboardService.getSummary(userId)) as {
+        user: { name: string; preferredCurrency: string };
+        tasks: { overdueCount: number };
+        finances: { balance: number; monthlyExpenses: number; monthlyIncome: number };
+        goals: { title: string; currentAmount: number; targetAmount: number }[];
+      };
+
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
+      });
+
+      if (!user) return false;
+
+      await this.mailService.sendWeeklyDigestEmail({
+        email: user.email,
+        name: summary.user.name,
+        preferredCurrency: summary.user.preferredCurrency,
+        overdueTasksCount: summary.tasks.overdueCount,
+        balance: summary.finances.balance,
+        monthlyExpenses: summary.finances.monthlyExpenses,
+        monthlyIncome: summary.finances.monthlyIncome,
+        goals: summary.goals,
+      });
+
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { lastWeeklyDigestAt: new Date() },
+      });
+
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        `weekly_digest_failed userId=${userId} reason=${this.getErrorMessage(error)}`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Insight CRITICAL notificado (in-app) ha dias sem resolucao ganha uma
+   * escalada por email, uma unica vez (escalatedAt marca isso). So escala o
+   * que ainda esta presente na geracao mais recente — refreshForUser acabou
+   * de rodar na mesma chamada, entao o estado no banco ja e o atual.
+   */
+  private async escalateStaleInsights(userId: string) {
+    const days = this.configService.get<number>("app.selahEscalationDays", 3);
+    const threshold = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const stale = await this.prisma.insight.findMany({
+      where: {
+        userId,
+        severity: InsightSeverity.CRITICAL,
+        notifiedAt: { not: null, lte: threshold },
+        escalatedAt: null,
+      },
+    });
+
+    if (stale.length === 0) return;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, name: true },
+    });
+
+    if (!user) return;
+
+    for (const insight of stale) {
+      try {
+        await this.mailService.sendInsightEscalationEmail({
+          email: user.email,
+          name: user.name,
+          message: insight.message,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `insight_escalation_email_failed insightId=${insight.id} reason=${this.getErrorMessage(error)}`,
+        );
+      }
+    }
+
+    await this.prisma.insight.updateMany({
+      where: { id: { in: stale.map((insight) => insight.id) } },
+      data: { escalatedAt: new Date() },
+    });
+
+    this.logger.log(`insight_escalation userId=${userId} count=${stale.length}`);
+  }
+
+  private isMondayLocal(timezone: string): boolean {
+    try {
+      const weekday = new Intl.DateTimeFormat("en-US", {
+        timeZone: timezone,
+        weekday: "short",
+      }).format(new Date());
+      return weekday === "Mon";
+    } catch {
+      return false;
+    }
+  }
+
+  private daysSince(date: Date | null): number {
+    if (!date) return Infinity;
+    return (Date.now() - date.getTime()) / (24 * 60 * 60 * 1000);
   }
 
   private localHourFor(timezone: string): number {

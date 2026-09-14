@@ -54,6 +54,23 @@ type ReminderEmailInput = {
   timezone?: string | null;
 };
 
+type InsightEscalationEmailInput = {
+  email: string;
+  name?: string | null;
+  message: string;
+};
+
+type WeeklyDigestEmailInput = {
+  email: string;
+  name?: string | null;
+  preferredCurrency: string;
+  overdueTasksCount: number;
+  balance: number;
+  monthlyExpenses: number;
+  monthlyIncome: number;
+  goals: { title: string; currentAmount: number; targetAmount: number }[];
+};
+
 type MfaBypassEmailInput = {
   email: string;
   name?: string | null;
@@ -141,6 +158,105 @@ export class MailService {
       text,
       html,
       tags: ["reminder"],
+    });
+  }
+
+  /**
+   * Dispara quando um insight CRITICAL fica notificado (in-app) sem
+   * resolucao por dias seguidos — o usuario viu o alerta no app mas nao
+   * agiu, ou nem abriu o app depois. Canal diferente do in-app, uma unica
+   * vez por insight (controlado por escalatedAt no chamador).
+   */
+  async sendInsightEscalationEmail(input: InsightEscalationEmailInput) {
+    const greetingName = input.name ? this.firstName(input.name) : "voce";
+    const subject = "LUMEN: um alerta continua sem resolucao";
+    const text = [
+      `Oi ${greetingName},`,
+      "",
+      `Isso ainda esta pendente: ${input.message}`,
+      "",
+      "Ja avisamos isso dentro do app ha alguns dias e continua sem resolucao.",
+      "Abra o LUMEN quando puder dar uma olhada.",
+      "Equipe LUMEN",
+    ].join("\n");
+    const html = [
+      '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
+      `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
+      `<p>Isso ainda esta pendente: <strong>${this.escapeHtml(input.message)}</strong></p>`,
+      "<p>Ja avisamos isso dentro do app ha alguns dias e continua sem resolucao.</p>",
+      "<p>Abra o LUMEN quando puder dar uma olhada.</p>",
+      "<p>Equipe LUMEN</p>",
+      "</body></html>",
+    ].join("");
+
+    return this.sendEmail({
+      to: input.email,
+      subject,
+      text,
+      html,
+      tags: ["insight_escalation"],
+    });
+  }
+
+  /** Resumo semanal — cadencia separada do pulso diario, panorama da semana. */
+  async sendWeeklyDigestEmail(input: WeeklyDigestEmailInput) {
+    const greetingName = input.name ? this.firstName(input.name) : "voce";
+    const money = (value: number) =>
+      new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: input.preferredCurrency || "BRL",
+      }).format(value);
+
+    const overdueLine =
+      input.overdueTasksCount > 0
+        ? `${input.overdueTasksCount} tarefa(s) atrasada(s).`
+        : "Nenhuma tarefa atrasada.";
+
+    const goalLines = input.goals.slice(0, 3).map((goal) => {
+      const pct = goal.targetAmount > 0
+        ? Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100))
+        : 0;
+      return `${goal.title}: ${pct}% (${money(goal.currentAmount)} de ${money(goal.targetAmount)})`;
+    });
+
+    const subject = "LUMEN: seu resumo da semana";
+    const text = [
+      `Oi ${greetingName},`,
+      "",
+      "Seu resumo da semana:",
+      `- Saldo atual: ${money(input.balance)}`,
+      `- Receitas do mes: ${money(input.monthlyIncome)}`,
+      `- Despesas do mes: ${money(input.monthlyExpenses)}`,
+      `- ${overdueLine}`,
+      ...(goalLines.length ? ["", "Metas em andamento:", ...goalLines.map((line) => `- ${line}`)] : []),
+      "",
+      "Abra o LUMEN para o detalhe completo.",
+      "Equipe LUMEN",
+    ].join("\n");
+    const html = [
+      '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
+      `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
+      "<p>Seu resumo da semana:</p>",
+      "<ul>",
+      `<li>Saldo atual: <strong>${this.escapeHtml(money(input.balance))}</strong></li>`,
+      `<li>Receitas do mes: ${this.escapeHtml(money(input.monthlyIncome))}</li>`,
+      `<li>Despesas do mes: ${this.escapeHtml(money(input.monthlyExpenses))}</li>`,
+      `<li>${this.escapeHtml(overdueLine)}</li>`,
+      "</ul>",
+      goalLines.length
+        ? `<p>Metas em andamento:</p><ul>${goalLines.map((line) => `<li>${this.escapeHtml(line)}</li>`).join("")}</ul>`
+        : "",
+      "<p>Abra o LUMEN para o detalhe completo.</p>",
+      "<p>Equipe LUMEN</p>",
+      "</body></html>",
+    ].join("");
+
+    return this.sendEmail({
+      to: input.email,
+      subject,
+      text,
+      html,
+      tags: ["weekly_digest"],
     });
   }
 

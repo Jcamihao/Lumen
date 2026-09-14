@@ -44,4 +44,7 @@ export const appConfig = registerAs('app', () => ({
   // Hora local (0-23) em que o Selah roda o pulso diario por conta propria,
   // mesmo que o usuario nao tenha mexido em nada no app naquele dia.
   selahPulseHourLocal: parseInt(process.env.SELAH_PULSE_HOUR ?? '7', 10),
+  // Insight CRITICAL notificado (in-app) sem resolucao por N dias seguidos
+  // ganha uma escalada por email, uma unica vez.
+  selahEscalationDays: parseInt(process.env.SELAH_ESCALATION_DAYS ?? '3', 10),
 }));

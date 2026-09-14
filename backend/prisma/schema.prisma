@@ -119,6 +119,9 @@ model User {
   monthlyIncome     Decimal            @default(0) @db.Decimal(12, 2)
   monthClosingDay   Int                @default(30)
   timezone          String             @default("America/Sao_Paulo")
+  /// Ultimo resumo semanal enviado por email pelo pulso agendado do Selah.
+  /// Null = nunca recebeu. Evita reenviar no mesmo ciclo semanal.
+  lastWeeklyDigestAt DateTime?
   privacyNoticeAcceptedAt DateTime?
   privacyNoticeVersion    String?
   aiAssistantEnabled      Boolean      @default(false)
@@ -335,6 +338,9 @@ model Insight {
   fingerprint String
   /// Quando a notificacao desse insight foi disparada. Null = ainda nao avisado.
   notifiedAt  DateTime?
+  /// Quando o alerta foi escalado por email por ter ficado CRITICAL e
+  /// notificado sem resolucao por dias seguidos. Null = ainda nao escalado.
+  escalatedAt DateTime?
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
