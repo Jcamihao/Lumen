@@ -727,9 +727,7 @@ strong {
 
 .proto-button--ghost:hover,
 .proto-button--ghost:focus-visible {
-  background: var(--card-muted);
-  border-color: var(--text-primary);
-  color: var(--text-strong);
+  color: var(--text-inverse);
   outline: none;
 }
 
