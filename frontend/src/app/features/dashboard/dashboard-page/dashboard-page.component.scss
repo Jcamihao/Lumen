@@ -393,6 +393,13 @@
   flex: 1;
 }
 
+.home-insight__voice {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 .home-insight__voice strong {
   color: var(--accent-cool);
 }

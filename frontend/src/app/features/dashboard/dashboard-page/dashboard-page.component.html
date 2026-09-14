@@ -115,7 +115,7 @@
         <h3>Leituras do Lumen</h3>
         <p>{{ insightsSubtitle(data) }}</p>
       </div>
-      <a class="proto-button proto-button--ghost" routerLink="/assistant">Conversar com o Selah</a>
+      <a class="proto-button" routerLink="/assistant">Conversar com o Selah</a>
     </div>
 
     <div class="home-list" *ngIf="data.insights.length; else noInsights">
@@ -155,7 +155,7 @@
           <h3>Próximas ações</h3>
           <p>{{ data.tasks.todayCount }} tarefa(s) pedindo espaço hoje.</p>
         </div>
-        <a class="proto-button proto-button--ghost" routerLink="/tasks">Abrir tarefas</a>
+        <a class="proto-button" routerLink="/tasks">Abrir tarefas</a>
       </div>
 
       <div class="home-list" *ngIf="todayTasks(data).length; else noTodayTasks">
@@ -186,7 +186,7 @@
           <h3>Pulso financeiro</h3>
           <p>{{ financeSummaryText(data) }}</p>
         </div>
-        <a class="proto-button proto-button--ghost" routerLink="/finance">Abrir finanças</a>
+        <a class="proto-button" routerLink="/finance">Abrir finanças</a>
       </div>
 
       <div class="home-chart" aria-label="Projeção financeira da semana">
@@ -231,7 +231,7 @@
           <h3>Metas em movimento</h3>
           <p>{{ data.goals.length }} objetivo(s) em acompanhamento.</p>
         </div>
-        <a class="proto-button proto-button--ghost" routerLink="/goals">Ver metas</a>
+        <a class="proto-button" routerLink="/goals">Ver metas</a>
       </div>
 
       <div class="home-list" *ngIf="data.goals.length; else noGoals">
@@ -262,7 +262,7 @@
           <h3>Radar</h3>
           <p>Alertas, lembretes e sinais do Lumen.</p>
         </div>
-        <a class="proto-button proto-button--ghost" routerLink="/notifications">Abrir alertas</a>
+        <a class="proto-button" routerLink="/notifications">Abrir alertas</a>
       </div>
 
       <div class="home-list" *ngIf="radarItemsCount(data) > 0; else noRadar">
