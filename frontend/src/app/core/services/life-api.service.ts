@@ -12,6 +12,7 @@ import {
   GoalContribution,
   ImportJobHistoryEntry,
   ImportPreview,
+  Insight,
   Notification,
   PrivacyExportPayload,
   ReceiptImportCommitResponse,
@@ -85,6 +86,21 @@ export class LifeApiService {
 
     return this.http.get<AssistantPulse>(`${environment.apiBaseUrl}/assistant/pulse`).pipe(
       this.withOfflineFallback(() => this.offlineLifeService.buildOfflineAssistantPulse()),
+    );
+  }
+
+  /**
+   * So-mente leitura — insights sao computados pelo backend, nao ha fila de
+   * sincronizacao offline pra eles (nao ha o que reenviar). Sem rede, volta
+   * lista vazia em vez de quebrar quem consome (ex.: busca global).
+   */
+  listInsights() {
+    if (!this.networkService.isOnline()) {
+      return of([] as Insight[]);
+    }
+
+    return this.http.get<Insight[]>(`${environment.apiBaseUrl}/insights`).pipe(
+      this.withOfflineFallback(() => [] as Insight[]),
     );
   }
 

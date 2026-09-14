@@ -13,7 +13,7 @@ import {
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { filter, map, startWith } from 'rxjs';
-import { Task, Transaction } from '../../core/models/domain.models';
+import { Goal, Insight, Task, Transaction } from '../../core/models/domain.models';
 import { AuthService } from '../../core/services/auth.service';
 import { LifeApiService } from '../../core/services/life-api.service';
 import { NotificationCenterService } from '../../core/services/notification-center.service';
@@ -84,9 +84,11 @@ export class TopbarComponent {
     () => this.authService.currentUser()?.preferredCurrency ?? 'BRL',
   );
 
-  // --- Busca global (tarefas + transações + atalho pro Selah) ---
+  // --- Busca global (tarefas + transações + metas + insights + atalho pro Selah) ---
   private readonly searchTasks = signal<Task[]>([]);
   private readonly searchTransactions = signal<Transaction[]>([]);
+  private readonly searchGoals = signal<Goal[]>([]);
+  private readonly searchInsights = signal<Insight[]>([]);
   protected readonly searchQuery = signal('');
   protected readonly searchOpen = signal(false);
 
@@ -110,8 +112,30 @@ export class TopbarComponent {
       .slice(0, MAX_RESULTS_PER_KIND);
   });
 
+  protected readonly goalResults = computed(() => {
+    const term = this.normalizedQuery();
+    if (term.length < 2) return [];
+
+    return this.searchGoals()
+      .filter((goal) => `${goal.title} ${goal.description ?? ''}`.toLowerCase().includes(term))
+      .slice(0, MAX_RESULTS_PER_KIND);
+  });
+
+  protected readonly insightResults = computed(() => {
+    const term = this.normalizedQuery();
+    if (term.length < 2) return [];
+
+    return this.searchInsights()
+      .filter((insight) => insight.message.toLowerCase().includes(term))
+      .slice(0, MAX_RESULTS_PER_KIND);
+  });
+
   protected readonly hasMatches = computed(
-    () => this.taskResults().length > 0 || this.transactionResults().length > 0,
+    () =>
+      this.taskResults().length > 0 ||
+      this.transactionResults().length > 0 ||
+      this.goalResults().length > 0 ||
+      this.insightResults().length > 0,
   );
 
   @ViewChild('searchInput') private readonly searchInputRef?: ElementRef<HTMLInputElement>;
@@ -135,6 +159,16 @@ export class TopbarComponent {
       .listTransactions()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((transactions) => this.searchTransactions.set(transactions));
+
+    this.api
+      .listGoals()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((goals) => this.searchGoals.set(goals));
+
+    this.api
+      .listInsights()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((insights) => this.searchInsights.set(insights));
   }
 
   protected onSearchFocus() {
@@ -168,6 +202,26 @@ export class TopbarComponent {
 
   protected goToTransaction(transaction: Transaction) {
     this.router.navigate(['/finance'], { queryParams: { search: transaction.description } });
+    this.closeSearch();
+  }
+
+  protected goToGoal(_goal: Goal) {
+    // Metas não têm busca/filtro na própria tela ainda, então não há
+    // queryParam útil pra passar — só leva pra lá.
+    this.router.navigate(['/goals']);
+    this.closeSearch();
+  }
+
+  protected insightIcon(type: Insight['type']) {
+    return { PRODUCTIVITY: 'checklist', FINANCE: 'account_balance_wallet', GOAL: 'flag', ROUTINE: 'routine' }[type];
+  }
+
+  private insightRoute(type: Insight['type']) {
+    return { PRODUCTIVITY: '/tasks', FINANCE: '/finance', GOAL: '/goals', ROUTINE: '/tasks' }[type];
+  }
+
+  protected goToInsight(insight: Insight) {
+    this.router.navigate([this.insightRoute(insight.type)]);
     this.closeSearch();
   }
 }

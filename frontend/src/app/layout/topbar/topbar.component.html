@@ -11,7 +11,7 @@
       #searchInput
       type="search"
       class="proto-topbar__search-input"
-      placeholder="Buscar transações, tarefas ou perguntar ao Selah..."
+      placeholder="Buscar em tudo ou perguntar ao Selah..."
       [value]="searchQuery()"
       (input)="searchQuery.set($any($event.target).value)"
       (focus)="onSearchFocus()"
@@ -47,10 +47,32 @@
             {{ transaction.amount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
           </span>
         </button>
+
+        <p class="proto-topbar__search-group" *ngIf="goalResults().length">Metas</p>
+        <button
+          type="button"
+          class="proto-topbar__search-item"
+          *ngFor="let goal of goalResults()"
+          (click)="goToGoal(goal)"
+        >
+          <span class="material-symbols-rounded">flag</span>
+          <span class="proto-topbar__search-item-label">{{ goal.title }}</span>
+        </button>
+
+        <p class="proto-topbar__search-group" *ngIf="insightResults().length">Leituras do Selah</p>
+        <button
+          type="button"
+          class="proto-topbar__search-item"
+          *ngFor="let insight of insightResults()"
+          (click)="goToInsight(insight)"
+        >
+          <span class="material-symbols-rounded">{{ insightIcon(insight.type) }}</span>
+          <span class="proto-topbar__search-item-label">{{ insight.message }}</span>
+        </button>
       </ng-container>
 
       <ng-template #noMatches>
-        <p class="proto-topbar__search-empty">Sem resultados em tarefas ou transações.</p>
+        <p class="proto-topbar__search-empty">Sem resultados em tarefas, transações, metas ou leituras do Selah.</p>
       </ng-template>
 
       <button type="button" class="proto-topbar__search-item proto-topbar__search-item--selah" (click)="askSelahWithQuery()">
