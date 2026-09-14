@@ -260,7 +260,10 @@
 }
 
 .landing__headline-muted {
-  color: var(--text-secondary);
+  /* --text-secondary é claro demais sobre o vídeo (some nas áreas mais
+     claras); aqui precisa de contraste garantido em qualquer fundo. */
+  color: #4b5563;
+  text-shadow: 0 1px 3px rgba(255, 255, 255, 0.25);
 }
 
 .landing__headline-accent {
