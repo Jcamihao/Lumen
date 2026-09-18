@@ -67,6 +67,7 @@ describe("AssistantService", () => {
       privacyNoticeAcceptedAt?: Date | null;
       aiAssistantEnabled?: boolean;
       aiAssistantConsentAt?: Date | null;
+      transactions?: unknown[];
     } = {},
   ) =>
     ({
@@ -81,6 +82,9 @@ describe("AssistantService", () => {
             overrides.aiAssistantConsentAt ??
             new Date("2026-03-26T12:00:00.000Z"),
         }),
+      },
+      transaction: {
+        findMany: jest.fn().mockResolvedValue(overrides.transactions ?? []),
       },
     }) as any;
 
@@ -170,6 +174,84 @@ describe("AssistantService", () => {
     expect(payload.message).toContain("[email removido]");
     expect(payload.questionContextSummary).toContain("prioridade");
     expect(postJsonSpy).toHaveBeenCalled();
+  });
+
+  describe("personalized simulations", () => {
+    const monthDate = (offset: number) => {
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth() - offset, 5).toISOString();
+    };
+
+    it("picks the real variable-spending category over the flat 10%, and the real average surplus over the flat 8 months", async () => {
+      const transactions = [
+        { type: "INCOME", amount: 5000, date: monthDate(0), category: null },
+        { type: "INCOME", amount: 5000, date: monthDate(1), category: null },
+        { type: "INCOME", amount: 5000, date: monthDate(2), category: null },
+        { type: "EXPENSE", amount: 500, date: monthDate(0), category: { name: "Lazer" } },
+        { type: "EXPENSE", amount: 100, date: monthDate(1), category: { name: "Lazer" } },
+        { type: "EXPENSE", amount: 300, date: monthDate(2), category: { name: "Lazer" } },
+        { type: "EXPENSE", amount: 1200, date: monthDate(0), category: { name: "Aluguel" } },
+        { type: "EXPENSE", amount: 1200, date: monthDate(1), category: { name: "Aluguel" } },
+        { type: "EXPENSE", amount: 1200, date: monthDate(2), category: { name: "Aluguel" } },
+      ];
+
+      const service = new AssistantService(
+        buildDashboardService(),
+        buildConfigService(),
+        buildPrismaService({
+          privacyNoticeAcceptedAt: null,
+          aiAssistantEnabled: false,
+          aiAssistantConsentAt: null,
+          transactions,
+        }),
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+      );
+
+      const response = await service.ask(
+        "user-1",
+        "Tenho uma dívida de R$ 10.500, como organizo isso?",
+      );
+
+      // Aluguel tem o maior total (3.600), mas e fixo (mesmo valor todo mes)
+      // — so Lazer oscila mes a mes, entao e ela que deve ser sugerida.
+      const expenseSim = response.simulations.find(
+        (sim) => sim.id === "expense-trim-category",
+      );
+      expect(expenseSim?.title).toBe("Corte em Lazer");
+      expect(expenseSim?.summary).toContain("Lazer");
+      expect(expenseSim?.summary).not.toContain("Aluguel");
+
+      // Sobra media real: (3300+3700+3500)/3 = 3500/mes -> 10500/3500 = 3 meses.
+      const debtSim = response.simulations.find((sim) => sim.id === "debt-personalized");
+      expect(debtSim?.title).toBe("Parcelamento em 3 meses");
+      expect(debtSim?.monthlyDelta).toBe(-3500);
+    });
+
+    it("falls back to the flat 10% cut and 8-month split without transaction history", async () => {
+      const service = new AssistantService(
+        buildDashboardService(),
+        buildConfigService(),
+        buildPrismaService({
+          privacyNoticeAcceptedAt: null,
+          aiAssistantEnabled: false,
+          aiAssistantConsentAt: null,
+          transactions: [],
+        }),
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+      );
+
+      const response = await service.ask(
+        "user-1",
+        "Tenho uma dívida de R$ 8.000, como organizo isso?",
+      );
+
+      expect(response.simulations.map((sim) => sim.id)).toContain("expense-trim-10");
+      expect(response.simulations.map((sim) => sim.id)).toContain("debt-8x");
+    });
   });
 
   describe("proactive signals", () => {

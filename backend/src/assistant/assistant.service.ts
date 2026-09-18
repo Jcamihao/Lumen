@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { TransactionType } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { request as httpRequest } from "http";
 import { request as httpsRequest } from "https";
@@ -120,6 +121,16 @@ type AssistantProactiveSignal = {
   suggestedActionLabel: string | null;
 };
 
+/**
+ * Analise real de transacoes dos ultimos 3 meses, calculada uma vez em
+ * ask() e reusada em buildSimulations — troca os fixos "10% de corte" e
+ * "8 meses de parcela" por numeros baseados no historico de cada usuario.
+ */
+type SpendingAnalysis = {
+  topVariableCategory: { name: string; total: number } | null;
+  avgMonthlySurplus: number | null;
+};
+
 type AssistantSimulation = {
   id: string;
   title: string;
@@ -223,9 +234,10 @@ export class AssistantService {
       originModule?: AssistantModule;
     },
   ): Promise<AssistantReply> {
-    const [summary, privacySettings] = await Promise.all([
+    const [summary, privacySettings, spendingAnalysis] = await Promise.all([
       this.dashboardService.getSummary(userId) as Promise<DashboardSummary>,
       this.loadPrivacySettings(userId),
+      this.analyzeSpending(userId),
     ]);
     const selahResult = await this.askSelah(
       summary,
@@ -244,6 +256,7 @@ export class AssistantService {
         options?.history || [],
         options?.originModule || "general",
         generatedAt,
+        spendingAnalysis,
       );
     }
 
@@ -258,6 +271,7 @@ export class AssistantService {
       options?.history || [],
       options?.originModule || "general",
       generatedAt,
+      spendingAnalysis,
     );
   }
 
@@ -709,6 +723,7 @@ export class AssistantService {
     history: AskAssistantHistoryItemDto[],
     originModule: AssistantModule,
     generatedAt: string,
+    spendingAnalysis: SpendingAnalysis,
   ): AssistantReply {
     const focusArea = reply.focusArea || this.resolveFocusArea(this.detectIntent(question));
     const continuity = this.buildContinuity(
@@ -724,7 +739,7 @@ export class AssistantService {
       generatedAt: reply.generatedAt || generatedAt,
       actions: this.buildActionSuggestions(summary, question, originModule, focusArea),
       proactiveSignals: this.buildProactiveSignals(summary, question, originModule),
-      simulations: this.buildSimulations(summary, question),
+      simulations: this.buildSimulations(summary, question, spendingAnalysis),
       continuity,
       explainability: this.buildExplainability(summary, question, reply, continuity),
     };
@@ -990,7 +1005,91 @@ export class AssistantService {
     return "info";
   }
 
-  private buildSimulations(summary: DashboardSummary, question: string) {
+  /**
+   * Analisa transacoes reais dos ultimos 3 meses pra alimentar as
+   * simulacoes: qual categoria de gasto variavel tem mais folga pra cortar
+   * (em vez de "10% fixo" generico), e qual a sobra media mensal real do
+   * usuario (em vez de "8 meses fixo" pra qualquer divida).
+   */
+  private async analyzeSpending(userId: string): Promise<SpendingAnalysis> {
+    const now = new Date();
+    const since = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+
+    const transactions = await this.prisma.transaction.findMany({
+      where: {
+        userId,
+        date: { gte: since },
+        type: { in: [TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.TRANSFER] },
+      },
+      select: {
+        type: true,
+        amount: true,
+        date: true,
+        category: { select: { name: true } },
+      },
+    });
+
+    const monthIndexOf = (date: Date) =>
+      (now.getFullYear() - date.getFullYear()) * 12 + (now.getMonth() - date.getMonth());
+
+    // Sobra media mensal real (entradas - saidas - transferencias), mesma
+    // convencao de sinal usada no resto do app (ForecastsService, saldo do
+    // dashboard): so INCOME e positivo.
+    const monthlyNet = [0, 0, 0];
+    for (const transaction of transactions) {
+      const index = monthIndexOf(new Date(transaction.date));
+      if (index < 0 || index > 2) continue;
+
+      const amount = Number(transaction.amount);
+      monthlyNet[index] += transaction.type === TransactionType.INCOME ? amount : -amount;
+    }
+    const avgMonthlySurplus = monthlyNet.reduce((sum, value) => sum + value, 0) / 3;
+
+    // Categoria de maior gasto variavel: agrupa EXPENSE por categoria em
+    // baldes mensais e descarta quem tem pouca oscilacao (provavel conta
+    // fixa, tipo aluguel) antes de escolher a de maior total.
+    const categoryBuckets = new Map<string, number[]>();
+    for (const transaction of transactions) {
+      if (transaction.type !== TransactionType.EXPENSE || !transaction.category?.name) continue;
+
+      const index = monthIndexOf(new Date(transaction.date));
+      if (index < 0 || index > 2) continue;
+
+      const name = transaction.category.name;
+      const bucket = categoryBuckets.get(name) ?? [0, 0, 0];
+      bucket[index] += Number(transaction.amount);
+      categoryBuckets.set(name, bucket);
+    }
+
+    let topVariableCategory: SpendingAnalysis["topVariableCategory"] = null;
+    for (const [name, monthly] of categoryBuckets) {
+      const total = monthly.reduce((sum, value) => sum + value, 0);
+      const mean = total / 3;
+      if (mean <= 0) continue;
+
+      const variance = monthly.reduce((sum, value) => sum + (value - mean) ** 2, 0) / 3;
+      const coefficientOfVariation = Math.sqrt(variance) / mean;
+
+      // cv baixo = valor quase identico todo mes = provavel gasto fixo,
+      // nao "variavel" — nao serve pra sugestao de corte.
+      if (coefficientOfVariation <= 0.2) continue;
+
+      if (!topVariableCategory || total > topVariableCategory.total) {
+        topVariableCategory = { name, total };
+      }
+    }
+
+    return {
+      topVariableCategory,
+      avgMonthlySurplus: transactions.length > 0 ? avgMonthlySurplus : null,
+    };
+  }
+
+  private buildSimulations(
+    summary: DashboardSummary,
+    question: string,
+    spendingAnalysis: SpendingAnalysis,
+  ) {
     const simulations: AssistantSimulation[] = [];
     const currency = this.currency(summary);
     const forecastBalance = Number(summary.forecast.predictedBalance ?? 0);
@@ -998,7 +1097,28 @@ export class AssistantService {
     const topGoal = summary.goals[0];
     const debtAmount = this.extractQuestionAmount(question);
 
-    if (monthlyExpenses > 0) {
+    if (spendingAnalysis.topVariableCategory) {
+      const { name, total } = spendingAnalysis.topVariableCategory;
+      const delta = Math.round(total * 0.1);
+      simulations.push({
+        id: "expense-trim-category",
+        title: `Corte em ${name}`,
+        summary: `"${name}" foi sua categoria de maior gasto variável nos últimos 3 meses (${this.formatCurrency(
+          total,
+          currency,
+        )} no total). Enxugando 10% dela, a projeção vai para ${this.formatCurrency(
+          forecastBalance + delta,
+          currency,
+        )}.`,
+        monthlyDelta: delta,
+        projectedBalance: forecastBalance + delta,
+        confidence: "medium",
+        assumptions: [
+          "Baseado no histórico real de transações da categoria nos últimos 3 meses, não numa média genérica.",
+          "Categoria considerada variável por oscilar de mês a mês — gastos fixos como aluguel ficam de fora.",
+        ],
+      });
+    } else if (monthlyExpenses > 0) {
       const delta = Math.round(monthlyExpenses * 0.1);
       simulations.push({
         id: "expense-trim-10",
@@ -1012,12 +1132,37 @@ export class AssistantService {
         confidence: "medium",
         assumptions: [
           "Estimativa baseada nas despesas registradas neste mês.",
-          "Não considera novas contas ainda não lançadas no LUMEN.",
+          "Sem categorias com histórico suficiente nos últimos 3 meses pra apontar uma específica.",
         ],
       });
     }
 
-    if (debtAmount) {
+    if (debtAmount && spendingAnalysis.avgMonthlySurplus && spendingAnalysis.avgMonthlySurplus > 0) {
+      const surplus = spendingAnalysis.avgMonthlySurplus;
+      const months = Math.min(Math.max(Math.ceil(debtAmount / surplus), 1), 60);
+      const monthlyParcel = Math.round(debtAmount / months);
+      simulations.push({
+        id: "debt-personalized",
+        title: `Parcelamento em ${months} ${months === 1 ? "mês" : "meses"}`,
+        summary: `Para uma dívida aproximada de ${this.formatCurrency(
+          debtAmount,
+          currency,
+        )}, usando sua sobra média real dos últimos 3 meses (${this.formatCurrency(
+          surplus,
+          currency,
+        )}/mês), uma quitação em ${months} ${months === 1 ? "mês" : "meses"} sugere parcela perto de ${this.formatCurrency(
+          monthlyParcel,
+          currency,
+        )}.`,
+        monthlyDelta: -monthlyParcel,
+        projectedBalance: forecastBalance - monthlyParcel,
+        confidence: "medium",
+        assumptions: [
+          "Baseado na sobra média real (entradas menos saídas) dos últimos 3 meses, não num prazo fixo de 8 meses.",
+          "Cálculo simplificado, sem juros, multas ou descontos de negociação.",
+        ],
+      });
+    } else if (debtAmount) {
       const monthlyParcel = Math.round(debtAmount / 8);
       simulations.push({
         id: "debt-8x",
@@ -1033,8 +1178,8 @@ export class AssistantService {
         projectedBalance: forecastBalance - monthlyParcel,
         confidence: "low",
         assumptions: [
+          "Sem sobra mensal positiva nos últimos 3 meses pra personalizar o prazo — usando 8 meses como referência neutra.",
           "Cálculo simplificado, sem juros, multas ou descontos de negociação.",
-          "Serve só para testar conforto mensal antes de assumir um acordo.",
         ],
       });
     }
