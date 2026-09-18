@@ -189,6 +189,24 @@
   font-size: 0.9rem;
 }
 
+.register-selah-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.7rem 0.85rem;
+  background: var(--accent-pale, color-mix(in srgb, var(--accent) 12%, transparent));
+  border: 1px dashed color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--text-medium);
+  font-size: 0.85rem;
+  line-height: 1.4;
+
+  .material-symbols-rounded {
+    font-size: 1.1rem;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+}
+
 .register-section h3 {
   margin: 0;
   font-family: var(--font-display);

@@ -20,7 +20,12 @@ type ReceiptScanSeed = {
   compareWithPrevious: boolean;
 };
 
-const buildPrisma = (expenses: ExpenseSeed[] = [], receiptScans: ReceiptScanSeed[] = []) => {
+const buildPrisma = (
+  expenses: ExpenseSeed[] = [],
+  receiptScans: ReceiptScanSeed[] = [],
+  userOverrides: Record<string, unknown> = {},
+  goals: unknown[] = [],
+) => {
   const prisma = {
     insight: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -34,6 +39,8 @@ const buildPrisma = (expenses: ExpenseSeed[] = [], receiptScans: ReceiptScanSeed
         id: 'user-1',
         monthlyIncome: 5000,
         preferredCurrency: 'BRL',
+        createdAt: subDays(new Date(), 365),
+        ...userOverrides,
       }),
     },
     task: {
@@ -48,7 +55,7 @@ const buildPrisma = (expenses: ExpenseSeed[] = [], receiptScans: ReceiptScanSeed
       findMany: jest.fn().mockResolvedValue(expenses),
     },
     goal: {
-      findMany: jest.fn().mockResolvedValue([]),
+      findMany: jest.fn().mockResolvedValue(goals),
     },
     reminder: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -338,6 +345,121 @@ describe('InsightsService', () => {
       expect(
         generatedInsights(prisma).find(
           (insight) => (insight.metadata as any)?.blockedGoals !== undefined,
+        ),
+      ).toBeUndefined();
+    });
+  });
+
+  describe('detectUpcomingBirthday', () => {
+    /**
+     * Constroi o birthDate do jeito que ele realmente chega em producao:
+     * um instante fixo em UTC (meia-noite), como o Postgres/Prisma devolvem
+     * pra uma coluna de data. Construir via `new Date(ano, mes, dia)` (fuso
+     * local) mascarava o bug de off-by-one que existia antes do fix com
+     * getUTCMonth()/getUTCDate() — passava mesmo com a leitura errada,
+     * porque escrita e leitura usavam o mesmo fuso.
+     */
+    const utcDateDaysFromNow = (days: number, yearsAgo = 30) => {
+      const now = new Date();
+      const future = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days);
+      return new Date(
+        Date.UTC(future.getFullYear() - yearsAgo, future.getMonth(), future.getDate()),
+      );
+    };
+
+    it('flags a birthday happening within the next 7 days', async () => {
+      const prisma = buildPrisma([], [], { birthDate: utcDateDaysFromNow(3) });
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      const insight = generatedInsights(prisma).find((item) =>
+        item.fingerprint.startsWith('ROUTINE:birthday_soon:'),
+      );
+
+      expect(insight).toBeDefined();
+      expect(insight?.message.toLowerCase()).toContain('aniversario');
+      expect((insight?.metadata as any)?.daysUntil).toBe(3);
+    });
+
+    it('does not flag a birthday far in the future', async () => {
+      const prisma = buildPrisma([], [], { birthDate: utcDateDaysFromNow(60) });
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      expect(
+        generatedInsights(prisma).find((item) =>
+          item.fingerprint.startsWith('ROUTINE:birthday_soon:'),
+        ),
+      ).toBeUndefined();
+    });
+
+    it('does nothing when the user has no birthDate declared', async () => {
+      const prisma = buildPrisma([], [], { birthDate: null });
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      expect(
+        generatedInsights(prisma).find((item) =>
+          item.fingerprint.startsWith('ROUTINE:birthday_soon:'),
+        ),
+      ).toBeUndefined();
+    });
+  });
+
+  describe('detectPrimaryGoalWithoutTracking', () => {
+    it('flags a declared primary goal with no tracked goal, past the grace period', async () => {
+      const prisma = buildPrisma([], [], {
+        primaryGoal: 'Sair das dividas',
+        createdAt: subDays(new Date(), 10),
+      });
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      const insight = generatedInsights(prisma).find((item) =>
+        item.fingerprint.startsWith('GOAL:primary_goal_untracked:'),
+      );
+
+      expect(insight).toBeDefined();
+      expect(insight?.message).toContain('Sair das dividas');
+    });
+
+    it('does not flag right after signup (grace period)', async () => {
+      const prisma = buildPrisma([], [], {
+        primaryGoal: 'Sair das dividas',
+        createdAt: new Date(),
+      });
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      expect(
+        generatedInsights(prisma).find((item) =>
+          item.fingerprint.startsWith('GOAL:primary_goal_untracked:'),
+        ),
+      ).toBeUndefined();
+    });
+
+    it('does not flag once the user already has a tracked goal', async () => {
+      const prisma = buildPrisma(
+        [],
+        [],
+        { primaryGoal: 'Sair das dividas', createdAt: subDays(new Date(), 10) },
+        [
+          {
+            id: 'goal-1',
+            title: 'Quitar cartao',
+            targetAmount: 1000,
+            currentAmount: 500,
+            status: 'ACTIVE',
+            targetDate: null,
+          },
+        ],
+      );
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      expect(
+        generatedInsights(prisma).find((item) =>
+          item.fingerprint.startsWith('GOAL:primary_goal_untracked:'),
         ),
       ).toBeUndefined();
     });

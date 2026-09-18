@@ -24,6 +24,9 @@ type DashboardSummary = {
     name: string;
     preferredCurrency: string;
     monthlyIncome: number;
+    birthDate?: Date | string | null;
+    occupation?: string | null;
+    primaryGoal?: string | null;
   };
   tasks: {
     todayCount: number;
@@ -1318,6 +1321,7 @@ export class AssistantService {
     return [
       `Intenção principal da resposta: ${intent}.`,
       `Usuario em analise: ${firstName}.`,
+      this.describeUserProfile(summary.user),
       `Leitura do dia: ${summary.tasks.todayCount} tarefa(s) para hoje, ${summary.tasks.overdueCount} atrasada(s), ${criticalInsights.length} insight(s) critico(s) e ${warningInsights.length} insight(s) de atencao.`,
       `Leitura financeira: saldo atual ${this.formatCurrency(summary.finances.balance, currency)}, entradas no mes ${this.formatCurrency(summary.finances.monthlyIncome, currency)}, saidas no mes ${this.formatCurrency(summary.finances.monthlyExpenses, currency)}, previsao ${this.formatCurrency(Number(summary.forecast.predictedBalance ?? 0), currency)} e risco ${String(summary.forecast.riskLevel).toLowerCase()}.`,
       this.describeDecisionAnchors(openTasks, recentTransactions, goals, summary.insights, currency),
@@ -1882,6 +1886,63 @@ export class AssistantService {
         return `${this.sanitizeExternalText(transaction.description)} | ${type} | ${this.formatCurrency(Number(transaction.amount), currency)} | ${this.formatDate(transaction.date)} | ${category}`;
       })
       .join("\n- ")}`;
+  }
+
+  /**
+   * Perfil pessoal declarado no cadastro/configuracoes — permite que o
+   * Selah personalize conselhos por faixa etaria, profissao e o objetivo
+   * que o usuario disse ter ao entrar no LUMEN, em vez de falar generico.
+   */
+  private describeUserProfile(user: DashboardSummary["user"]) {
+    const parts: string[] = [];
+
+    const age = this.calculateAge(user.birthDate);
+    if (age !== null) {
+      parts.push(`${age} anos`);
+    }
+
+    if (user.occupation) {
+      parts.push(this.sanitizeExternalText(user.occupation));
+    }
+
+    if (parts.length === 0 && !user.primaryGoal) {
+      return "";
+    }
+
+    const profileLine = parts.length
+      ? `Perfil pessoal: ${parts.join(", ")}.`
+      : "";
+    const goalLine = user.primaryGoal
+      ? `Objetivo principal declarado no cadastro: "${this.sanitizeExternalText(user.primaryGoal)}".`
+      : "";
+
+    return [profileLine, goalLine].filter(Boolean).join("\n");
+  }
+
+  /**
+   * birthDate e um campo so-de-data, gravado a meia-noite UTC — ler com
+   * getFullYear()/getMonth()/getDate() (fuso local do processo) pode voltar
+   * um dia quando o servidor roda a oeste de UTC (ex: America/Sao_Paulo faz
+   * 01/01T00:00Z virar 31/12 as 21h local, subtraindo 1 ano errado da
+   * idade). Os metodos UTC leem o dia civil exatamente como foi gravado.
+   */
+  private calculateAge(birthDate: Date | string | null | undefined) {
+    if (!birthDate) return null;
+
+    const birth = new Date(birthDate);
+    if (Number.isNaN(birth.getTime())) return null;
+
+    const now = new Date();
+    let age = now.getFullYear() - birth.getUTCFullYear();
+    const hasHadBirthdayThisYear =
+      now.getMonth() > birth.getUTCMonth() ||
+      (now.getMonth() === birth.getUTCMonth() && now.getDate() >= birth.getUTCDate());
+
+    if (!hasHadBirthdayThisYear) {
+      age -= 1;
+    }
+
+    return age >= 0 ? age : null;
   }
 
   private describeGoals(goals: DashboardSummary["goals"]) {

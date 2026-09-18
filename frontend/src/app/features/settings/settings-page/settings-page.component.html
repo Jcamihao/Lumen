@@ -68,6 +68,32 @@
           <label for="settings-email">Email</label>
           <input id="settings-email" type="email" [value]="authService.currentUser()?.email || ''" disabled />
         </div>
+
+        <div class="proto-field">
+          <label for="settings-phone">Telefone</label>
+          <input id="settings-phone" type="tel" formControlName="phone" placeholder="(11) 91234-5678" />
+        </div>
+
+        <div class="proto-field">
+          <label for="settings-birthdate">Data de nascimento</label>
+          <input id="settings-birthdate" type="date" formControlName="birthDate" />
+        </div>
+
+        <div class="proto-field">
+          <label for="settings-occupation">Profissão</label>
+          <input id="settings-occupation" type="text" formControlName="occupation" placeholder="Ex: Engenheira, autônomo, estudante" />
+        </div>
+
+        <div class="proto-field proto-field--full">
+          <label for="settings-primary-goal">Seu objetivo principal no Lumen</label>
+          <input
+            id="settings-primary-goal"
+            type="text"
+            formControlName="primaryGoal"
+            placeholder="Ex: sair das dívidas, guardar pra uma viagem, organizar a rotina"
+          />
+          <span class="settings-field-hint">O Selah usa isso pra personalizar conselhos e insights pra você.</span>
+        </div>
       </div>
 
       <p class="settings-feedback settings-feedback--ok" *ngIf="feedbackMessage()">{{ feedbackMessage() }}</p>

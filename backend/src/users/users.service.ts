@@ -18,6 +18,10 @@ type CreateUserInput = {
   email: string;
   passwordHash: string;
   avatarUrl?: string;
+  phone?: string;
+  birthDate?: string;
+  occupation?: string;
+  primaryGoal?: string;
   preferredCurrency?: string;
   monthlyIncome?: number;
   monthClosingDay?: number;
@@ -45,6 +49,10 @@ export class UsersService {
         email: input.email,
         passwordHash: input.passwordHash,
         avatarUrl: input.avatarUrl,
+        phone: input.phone,
+        birthDate: input.birthDate ? new Date(input.birthDate) : undefined,
+        occupation: input.occupation,
+        primaryGoal: input.primaryGoal,
         role: input.role ?? UserRole.USER,
         preferredCurrency: input.preferredCurrency ?? "BRL",
         monthlyIncome:
@@ -189,6 +197,10 @@ export class UsersService {
       data: {
         name: dto.name,
         avatarUrl: dto.avatarUrl,
+        phone: dto.phone,
+        birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
+        occupation: dto.occupation,
+        primaryGoal: dto.primaryGoal,
         preferredCurrency: dto.preferredCurrency,
         monthlyIncome:
           dto.monthlyIncome !== undefined

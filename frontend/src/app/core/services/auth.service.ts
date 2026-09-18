@@ -78,6 +78,10 @@ export class AuthService {
     email: string;
     password: string;
     avatarUrl?: string;
+    phone?: string;
+    birthDate?: string;
+    occupation?: string;
+    primaryGoal?: string;
     privacyNoticeAccepted: boolean;
     aiAssistantEnabled?: boolean;
     monthlyIncome?: number;

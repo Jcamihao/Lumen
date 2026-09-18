@@ -4,6 +4,10 @@ export type User = {
   email: string;
   role?: 'USER' | 'ADMIN';
   avatarUrl?: string | null;
+  phone?: string | null;
+  birthDate?: string | null;
+  occupation?: string | null;
+  primaryGoal?: string | null;
   preferredCurrency: string;
   monthlyIncome: number;
   monthClosingDay: number;

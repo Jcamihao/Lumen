@@ -123,6 +123,36 @@
                 </div>
               </div>
 
+              <div class="proto-field proto-field--full register-selah-hint">
+                <span class="material-symbols-rounded">auto_awesome</span>
+                <span>Os campos abaixo ajudam o Selah a personalizar conselhos e insights pra você — todos opcionais.</span>
+              </div>
+
+              <div class="proto-field">
+                <label for="register-phone">Telefone</label>
+                <input id="register-phone" type="tel" formControlName="phone" placeholder="(11) 91234-5678" />
+              </div>
+
+              <div class="proto-field">
+                <label for="register-birthdate">Data de nascimento</label>
+                <input id="register-birthdate" type="date" formControlName="birthDate" />
+              </div>
+
+              <div class="proto-field">
+                <label for="register-occupation">Profissão</label>
+                <input id="register-occupation" type="text" formControlName="occupation" placeholder="Ex: Engenheira, autônomo, estudante" />
+              </div>
+
+              <div class="proto-field proto-field--full">
+                <label for="register-primary-goal">Seu objetivo principal no Lumen</label>
+                <input
+                  id="register-primary-goal"
+                  type="text"
+                  formControlName="primaryGoal"
+                  placeholder="Ex: sair das dívidas, guardar pra uma viagem, organizar a rotina"
+                />
+              </div>
+
               <div class="proto-field">
                 <label for="register-income">Renda mensal estimada</label>
                 <input id="register-income" type="number" min="0" formControlName="monthlyIncome" />

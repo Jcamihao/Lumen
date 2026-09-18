@@ -51,6 +51,9 @@ export class DashboardService {
           name: true,
           preferredCurrency: true,
           monthlyIncome: true,
+          birthDate: true,
+          occupation: true,
+          primaryGoal: true,
         },
       }),
       this.prisma.task.count({
@@ -208,6 +211,9 @@ export class DashboardService {
         name: user.name,
         preferredCurrency: user.preferredCurrency,
         monthlyIncome: Number(user.monthlyIncome ?? 0),
+        birthDate: user.birthDate,
+        occupation: user.occupation,
+        primaryGoal: user.primaryGoal,
       },
       tasks: {
         todayCount: tasksTodayCount,

@@ -2,6 +2,13 @@
   display: block;
 }
 
+.settings-field-hint {
+  margin-top: 0.3rem;
+  color: var(--text-medium);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
 #settings-avatar {
   padding: 0.4rem;
   cursor: pointer;

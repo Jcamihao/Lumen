@@ -176,6 +176,63 @@ describe("AssistantService", () => {
     expect(postJsonSpy).toHaveBeenCalled();
   });
 
+  it("feeds the user's personal profile (age, occupation, primary goal) into the SelahIA context", async () => {
+    // 1o de janeiro, 30 anos atras, em UTC — o mesmo jeito que birthDate
+    // chega do Postgres/Prisma (timestamp a meia-noite UTC). Construir a
+    // idade esperada aqui e o servico calcular do mesmo jeito garante que o
+    // teste falharia se calculateAge voltasse a usar getMonth()/getDate()
+    // (fuso local) em vez de getUTCMonth()/getUTCDate().
+    const birthDate = new Date(Date.UTC(new Date().getUTCFullYear() - 30, 0, 1)).toISOString();
+
+    const service = new AssistantService(
+      buildDashboardService({
+        user: {
+          name: "Marina Costa",
+          preferredCurrency: "BRL",
+          monthlyIncome: 8500,
+          birthDate,
+          occupation: "Engenheira de dados",
+          primaryGoal: "Sair das dividas e comecar a investir",
+        },
+      }),
+      buildConfigService({
+        SELAH_ASSISTANT_ENABLED: "true",
+        SELAH_BASE_URL: "http://localhost:3010",
+        SELAH_ASSISTANT_ROUTE: "/v1/adapters/lumen/life-assistant/chat",
+        SELAH_SOURCE_APP: "LumenBack",
+        SELAH_TIMEOUT_MS: "2500",
+      }),
+      buildPrismaService(),
+      { create: jest.fn() } as any,
+      { create: jest.fn() } as any,
+      { create: jest.fn() } as any,
+    );
+
+    const postJsonSpy = jest.spyOn(service as any, "postJson").mockResolvedValue({
+      statusCode: 200,
+      body: JSON.stringify({
+        answer: "Resposta de teste.",
+        highlights: [],
+        suggestedActions: [],
+        focusArea: "Prioridades",
+        confidence: "high",
+        disclaimer: null,
+        provider: "SelahIA",
+        model: "gemini-2.5-flash",
+        generatedAt: "2026-03-26T12:00:00.000Z",
+      }),
+    });
+
+    await service.ask("user-1", "O que devo priorizar agora?");
+    const [, body] = postJsonSpy.mock.calls[0];
+    const payload = JSON.parse(String(body));
+
+    expect(payload.applicationPromptContext).toContain("Perfil pessoal: 30 anos, Engenheira de dados.");
+    expect(payload.applicationPromptContext).toContain(
+      'Objetivo principal declarado no cadastro: "Sair das dividas e comecar a investir".',
+    );
+  });
+
   describe("personalized simulations", () => {
     const monthDate = (offset: number) => {
       const now = new Date();

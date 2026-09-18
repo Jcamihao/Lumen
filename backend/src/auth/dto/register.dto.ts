@@ -1,10 +1,12 @@
 import {
   IsBoolean,
+  IsDateString,
   IsEmail,
   IsInt,
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Max,
   Min,
@@ -28,6 +30,27 @@ export class RegisterDto {
   @IsString()
   @MaxLength(4500000)
   avatarUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^$|^[0-9()+\-.\s]{8,20}$/, {
+    message: "Informe um telefone valido.",
+  })
+  phone?: string;
+
+  @IsOptional()
+  @IsDateString()
+  birthDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  occupation?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(280)
+  primaryGoal?: string;
 
   @IsBoolean()
   privacyNoticeAccepted!: boolean;

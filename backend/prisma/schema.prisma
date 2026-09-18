@@ -115,6 +115,13 @@ model User {
   passwordHash      String
   avatarUrl         String?
   role              UserRole           @default(USER)
+  phone             String?
+  birthDate         DateTime?
+  occupation        String?
+  /// Objetivo principal declarado no cadastro (texto livre). Usado pelo
+  /// Selah como contexto e para sugerir criar a primeira meta quando o
+  /// usuario ainda nao tem nenhuma cadastrada.
+  primaryGoal       String?
   preferredCurrency String             @default("BRL")
   monthlyIncome     Decimal            @default(0) @db.Decimal(12, 2)
   monthClosingDay   Int                @default(30)

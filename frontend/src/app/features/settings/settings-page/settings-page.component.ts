@@ -67,6 +67,10 @@ export class SettingsPageComponent {
       [Validators.required, Validators.minLength(2)],
     ],
     avatarUrl: [this.authService.currentUser()?.avatarUrl ?? ""],
+    phone: [this.authService.currentUser()?.phone ?? ""],
+    birthDate: [this.authService.currentUser()?.birthDate?.slice(0, 10) ?? ""],
+    occupation: [this.authService.currentUser()?.occupation ?? ""],
+    primaryGoal: [this.authService.currentUser()?.primaryGoal ?? ""],
     monthlyIncome: [this.authService.currentUser()?.monthlyIncome ?? 0],
     monthClosingDay: [this.authService.currentUser()?.monthClosingDay ?? 30],
     preferredCurrency: [
@@ -102,8 +106,10 @@ export class SettingsPageComponent {
     this.feedbackMessage.set("");
     this.errorMessage.set("");
 
+    const raw = this.form.getRawValue();
+
     this.api
-      .updateUser(this.form.getRawValue())
+      .updateUser({ ...raw, birthDate: raw.birthDate || undefined })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (user) => {
