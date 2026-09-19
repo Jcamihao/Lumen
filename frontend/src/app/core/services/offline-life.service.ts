@@ -897,6 +897,8 @@ export class OfflineLifeService {
       estimatedAmount: this.optionalNumber(payload["estimatedAmount"]),
       isRecurring: Boolean(payload["isRecurring"]),
       recurrenceRule: this.optionalString(payload["recurrenceRule"]),
+      streakCount: 0,
+      longestStreak: 0,
       category: this.resolveTaskCategory(this.optionalString(payload["categoryId"])),
       subtasks: [],
     };

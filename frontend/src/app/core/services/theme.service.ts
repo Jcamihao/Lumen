@@ -33,10 +33,9 @@ export class ThemeService {
       return stored;
     }
 
-    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
-
+    // Modo claro é o padrão do app — não segue mais o prefers-color-scheme
+    // do sistema. O usuário ainda pode trocar pra escuro manualmente
+    // (persistido via STORAGE_KEY acima).
     return 'light';
   }
 

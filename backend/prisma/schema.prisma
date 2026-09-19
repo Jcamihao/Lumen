@@ -263,6 +263,8 @@ model Task {
   categoryId         String?
   isRecurring        Boolean        @default(false)
   recurrenceRule     String?
+  streakCount        Int            @default(0)
+  longestStreak      Int            @default(0)
   hasFinancialImpact Boolean        @default(false)
   estimatedAmount    Decimal?       @db.Decimal(12, 2)
   linkedGoalId       String?

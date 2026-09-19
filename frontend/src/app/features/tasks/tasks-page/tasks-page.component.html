@@ -41,6 +41,14 @@
       <p>Alta prioridade</p>
     </article>
 
+    <article class="proto-metric">
+      <div class="proto-metric__top">
+        <span class="proto-icon-bubble"><span class="material-symbols-rounded">local_fire_department</span></span>
+      </div>
+      <strong>{{ bestActiveStreak() }}</strong>
+      <p>Maior sequência ativa</p>
+    </article>
+
   </section>
 
   <section class="tasks-grid">
@@ -247,6 +255,10 @@
                 <span *ngIf="task.isRecurring" class="proto-chip" data-tone="accent">
                   <span class="material-symbols-rounded" style="font-size:0.75rem;vertical-align:middle">autorenew</span>
                   {{ recurrenceLabel(task.recurrenceRule) }}
+                </span>
+                <span *ngIf="task.isRecurring && task.streakCount > 0" class="proto-chip" data-tone="accent">
+                  <span class="material-symbols-rounded" style="font-size:0.75rem;vertical-align:middle">local_fire_department</span>
+                  {{ task.streakCount }} {{ task.streakCount === 1 ? 'dia' : 'dias' }}
                 </span>
               </div>
 

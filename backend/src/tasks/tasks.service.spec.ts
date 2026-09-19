@@ -149,4 +149,166 @@ describe("TasksService", () => {
       expect(prisma.task.create).not.toHaveBeenCalled();
     });
   });
+
+  describe("habit streaks", () => {
+    // Mimica o comportamento real do Prisma: uma chave com valor `undefined`
+    // em `data` significa "nao alterar", nao "apagar o campo" — diferente de
+    // um simples object spread, que sobrescreveria com `undefined`.
+    const reflectingUpdate = (existingTask: Record<string, any>) =>
+      jest.fn().mockImplementation(({ data }: any) => {
+        const definedChanges = Object.fromEntries(
+          Object.entries(data).filter(([, value]) => value !== undefined),
+        );
+        return Promise.resolve({ ...existingTask, ...definedChanges });
+      });
+
+    const baseHabit = {
+      id: "task-1",
+      userId: "user-1",
+      title: "Exercitar-se",
+      priority: "MEDIUM",
+      status: "PENDING",
+      isRecurring: true,
+      recurrenceRule: "daily",
+      categoryId: null,
+      hasFinancialImpact: false,
+      estimatedAmount: null,
+      linkedGoalId: null,
+    };
+
+    it("starts the streak at 1 on the first completion", async () => {
+      const existingTask = {
+        ...baseHabit,
+        dueDate: new Date("2026-09-19T23:59:00.000Z"),
+        streakCount: 0,
+        longestStreak: 0,
+      };
+      const prisma = buildPrisma({
+        task: {
+          findMany: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue(existingTask),
+          update: reflectingUpdate(existingTask),
+          create: jest.fn().mockResolvedValue({ id: "task-2" }),
+          delete: jest.fn(),
+        },
+      });
+      const service = new TasksService(prisma, buildLifeEngine());
+
+      await service.update("user-1", "task-1", { status: "DONE" } as any);
+
+      const updateData = prisma.task.update.mock.calls[0][0].data;
+      expect(updateData.streakCount).toBe(1);
+      expect(updateData.longestStreak).toBe(1);
+
+      const spawnedData = prisma.task.create.mock.calls[0][0].data;
+      expect(spawnedData.streakCount).toBe(1);
+      expect(spawnedData.longestStreak).toBe(1);
+    });
+
+    it("increments the streak when completed on time", async () => {
+      const existingTask = {
+        ...baseHabit,
+        dueDate: new Date("2026-09-19T23:59:00.000Z"),
+        streakCount: 5,
+        longestStreak: 5,
+      };
+      const prisma = buildPrisma({
+        task: {
+          findMany: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue(existingTask),
+          update: reflectingUpdate(existingTask),
+          create: jest.fn().mockResolvedValue({ id: "task-2" }),
+          delete: jest.fn(),
+        },
+      });
+      const service = new TasksService(prisma, buildLifeEngine());
+
+      await service.update("user-1", "task-1", { status: "DONE" } as any);
+
+      const updateData = prisma.task.update.mock.calls[0][0].data;
+      expect(updateData.streakCount).toBe(6);
+      expect(updateData.longestStreak).toBe(6);
+    });
+
+    it("resets the streak to 1 when completed late, without regressing the record", async () => {
+      const existingTask = {
+        ...baseHabit,
+        dueDate: new Date("2020-01-01T00:00:00.000Z"), // ja venceu
+        streakCount: 5,
+        longestStreak: 8,
+      };
+      const prisma = buildPrisma({
+        task: {
+          findMany: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue(existingTask),
+          update: reflectingUpdate(existingTask),
+          create: jest.fn().mockResolvedValue({ id: "task-2" }),
+          delete: jest.fn(),
+        },
+      });
+      const service = new TasksService(prisma, buildLifeEngine());
+
+      await service.update("user-1", "task-1", { status: "DONE" } as any);
+
+      const updateData = prisma.task.update.mock.calls[0][0].data;
+      expect(updateData.streakCount).toBe(1);
+      expect(updateData.longestStreak).toBe(8);
+    });
+
+    it("never touches the streak for a non-recurring task", async () => {
+      const existingTask = {
+        id: "task-1",
+        userId: "user-1",
+        title: "Tarefa unica",
+        status: "PENDING",
+        isRecurring: false,
+        recurrenceRule: null,
+        dueDate: new Date("2026-09-19T23:59:00.000Z"),
+        streakCount: 0,
+        longestStreak: 0,
+      };
+      const prisma = buildPrisma({
+        task: {
+          findMany: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue(existingTask),
+          update: reflectingUpdate(existingTask),
+          create: jest.fn(),
+          delete: jest.fn(),
+        },
+      });
+      const service = new TasksService(prisma, buildLifeEngine());
+
+      await service.update("user-1", "task-1", { status: "DONE" } as any);
+
+      const updateData = prisma.task.update.mock.calls[0][0].data;
+      expect(updateData.streakCount).toBeUndefined();
+      expect(updateData.longestStreak).toBeUndefined();
+    });
+
+    it("does not recount the streak when a task already DONE is patched again", async () => {
+      const existingTask = {
+        ...baseHabit,
+        status: "DONE",
+        dueDate: new Date("2026-09-19T23:59:00.000Z"),
+        streakCount: 3,
+        longestStreak: 3,
+      };
+      const prisma = buildPrisma({
+        task: {
+          findMany: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue(existingTask),
+          update: reflectingUpdate(existingTask),
+          create: jest.fn(),
+          delete: jest.fn(),
+        },
+      });
+      const service = new TasksService(prisma, buildLifeEngine());
+
+      await service.update("user-1", "task-1", { status: "DONE" } as any);
+
+      const updateData = prisma.task.update.mock.calls[0][0].data;
+      expect(updateData.streakCount).toBeUndefined();
+      expect(updateData.longestStreak).toBeUndefined();
+    });
+  });
 });

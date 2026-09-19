@@ -42,6 +42,16 @@
   object-fit: cover;
 }
 
+/* Sibling separado em vez de mix-blend-mode direto no <video>: o Safari/iOS
+   nao aplica blend-mode num elemento <video> (bug conhecido do WebKit) —
+   o efeito de mistura com o fundo precisa vir de um elemento comum por
+   cima, nao do proprio video. */
+.landing__bg-video-veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 .landing__grain {
   position: absolute;
   inset: -50%;
@@ -522,8 +532,12 @@
 
     &-video {
       opacity: 0.28;
-      mix-blend-mode: screen;
       filter: contrast(1.15) brightness(0.9);
+    }
+
+    &-video-veil {
+      background: var(--background);
+      mix-blend-mode: screen;
     }
 
     &::after {

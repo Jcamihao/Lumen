@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Task" ADD COLUMN     "streakCount" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "longestStreak" INTEGER NOT NULL DEFAULT 0;

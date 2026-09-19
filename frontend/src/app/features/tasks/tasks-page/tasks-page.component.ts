@@ -73,6 +73,9 @@ export class TasksPageComponent {
   protected readonly highPriorityCount = computed(
     () => this.activeTasks().filter((task) => task.priority === 'HIGH' || task.priority === 'CRITICAL').length,
   );
+  protected readonly bestActiveStreak = computed(
+    () => this.activeTasks().reduce((max, task) => Math.max(max, task.streakCount), 0),
+  );
 
   // --- Create form ---
   protected readonly form = this.fb.nonNullable.group({

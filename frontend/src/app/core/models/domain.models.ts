@@ -57,6 +57,8 @@ export type Task = {
   estimatedAmount?: number | null;
   isRecurring: boolean;
   recurrenceRule?: string | null;
+  streakCount: number;
+  longestStreak: number;
   category?: Category | null;
   subtasks: Array<{
     id: string;

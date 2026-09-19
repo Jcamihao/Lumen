@@ -96,12 +96,29 @@ export class TasksService {
   }
 
   async update(userId: string, id: string, dto: UpdateTaskDto) {
-    await this.findTask(userId, id);
+    const existingTask = await this.findTask(userId, id);
     await this.validateRelationships(
       userId,
       dto.categoryId === null ? undefined : dto.categoryId,
       dto.linkedGoalId === null ? undefined : dto.linkedGoalId,
     );
+
+    const isHabitCompletion =
+      dto.status === TaskStatus.DONE &&
+      existingTask.isRecurring &&
+      !!existingTask.recurrenceRule &&
+      existingTask.status !== TaskStatus.DONE;
+
+    let streakFields: { streakCount?: number; longestStreak?: number } = {};
+    if (isHabitCompletion) {
+      const completedAt = new Date();
+      const onTime = !existingTask.dueDate || completedAt <= existingTask.dueDate;
+      const streakCount = onTime ? existingTask.streakCount + 1 : 1;
+      streakFields = {
+        streakCount,
+        longestStreak: Math.max(existingTask.longestStreak, streakCount),
+      };
+    }
 
     const task = await this.prisma.task.update({
       where: { id },
@@ -120,6 +137,7 @@ export class TasksService {
         isRecurring: dto.isRecurring,
         recurrenceRule:
           dto.recurrenceRule === null ? null : dto.recurrenceRule,
+        ...streakFields,
         hasFinancialImpact: dto.hasFinancialImpact,
         estimatedAmount:
           dto.estimatedAmount === null
@@ -228,6 +246,8 @@ export class TasksService {
         categoryId: completedTask.categoryId,
         isRecurring: true,
         recurrenceRule: completedTask.recurrenceRule,
+        streakCount: completedTask.streakCount,
+        longestStreak: completedTask.longestStreak,
         hasFinancialImpact: completedTask.hasFinancialImpact,
         estimatedAmount: completedTask.estimatedAmount,
         linkedGoalId: completedTask.linkedGoalId,

@@ -31,9 +31,7 @@
     (function () {
       try {
         var stored = window.localStorage.getItem('lumen:theme');
-        var theme = stored === 'light' || stored === 'dark'
-          ? stored
-          : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        var theme = stored === 'light' || stored === 'dark' ? stored : 'light';
         document.documentElement.setAttribute('data-theme', theme);
       } catch (e) {
         // Sem acesso a localStorage (modo privado etc.) — fica no tema claro padrão.
