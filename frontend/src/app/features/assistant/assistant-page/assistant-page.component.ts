@@ -158,7 +158,12 @@ export class AssistantPageComponent {
   }
 
   protected usePrompt(prompt: string) {
+    if (this.loading()) {
+      return;
+    }
+
     this.form.controls.question.setValue(prompt);
+    this.ask();
   }
 
   private loadPulse() {

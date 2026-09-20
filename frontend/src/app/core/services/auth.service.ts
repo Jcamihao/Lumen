@@ -249,7 +249,7 @@ export class AuthService {
 
     if (!this.networkService.isOnline()) {
       this.clearSession();
-      void this.router.navigate(["/auth/login"]);
+      void this.router.navigate(["/"]);
       return;
     }
 
@@ -271,7 +271,7 @@ export class AuthService {
         catchError(() => of(null)),
         finalize(() => {
           this.clearSession();
-          void this.router.navigate(["/auth/login"]);
+          void this.router.navigate(["/"]);
         }),
       )
       .subscribe();
