@@ -3,6 +3,7 @@ import { registerAs } from '@nestjs/config';
 const DEFAULT_ACCESS_SECRET = 'lumen_access_secret';
 const DEFAULT_REFRESH_SECRET = 'lumen_refresh_secret';
 const DEFAULT_MFA_ENCRYPTION_SECRET = 'lumen_mfa_encryption_secret';
+const DEFAULT_EMAIL_LINK_SECRET = 'lumen_email_link_secret';
 
 function resolveSecret(
   envName: string,
@@ -92,6 +93,20 @@ export const authConfig = registerAs('auth', () => {
     mfaIssuer: process.env.AUTH_MFA_ISSUER ?? 'LUMEN',
     mfaChallengeExpiresInSeconds: parseInt(
       process.env.AUTH_MFA_CHALLENGE_EXPIRES_IN_SECONDS ?? '300',
+      10,
+    ),
+    // Assina os links de descadastro dos emails automaticos (HMAC).
+    emailLinkSecret: resolveSecret(
+      'AUTH_EMAIL_LINK_SECRET',
+      DEFAULT_EMAIL_LINK_SECRET,
+      isProduction,
+    ),
+    passwordResetTtlMinutes: parseInt(
+      process.env.AUTH_PASSWORD_RESET_TTL_MINUTES ?? '60',
+      10,
+    ),
+    emailVerificationTtlHours: parseInt(
+      process.env.AUTH_EMAIL_VERIFICATION_TTL_HOURS ?? '48',
       10,
     ),
   };

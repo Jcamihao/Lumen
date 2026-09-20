@@ -19,6 +19,7 @@ describe('AuthService', () => {
   const configureWith = (options: {
     isNativePlatform: boolean;
     isOnline: boolean;
+    storedUser?: Record<string, unknown>;
   }) => {
     networkServiceSpy = jasmine.createSpyObj('NetworkService', ['isOnline']);
     networkServiceSpy.isOnline.and.returnValue(options.isOnline);
@@ -34,7 +35,9 @@ describe('AuthService', () => {
     ]);
     storageSpy.isNativePlatform.and.returnValue(options.isNativePlatform);
     storageSpy.getSessionItem.and.returnValue(null);
-    storageSpy.getItem.and.returnValue(null);
+    storageSpy.getItem.and.returnValue(
+      options.storedUser ? JSON.stringify(options.storedUser) : null,
+    );
 
     routerSpy = jasmine.createSpyObj('Router', ['navigate']);
 
@@ -161,6 +164,90 @@ describe('AuthService', () => {
 
       const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/refresh`);
       req.flush('unauthorized', { status: 401, statusText: 'Unauthorized' });
+    });
+  });
+
+  describe('email flows', () => {
+    const unverifiedUser = {
+      id: 'user-1',
+      name: 'Marina',
+      email: 'marina@exemplo.com',
+      emailVerifiedAt: null,
+    };
+
+    it('posts the forgot-password request with only the email', () => {
+      const service = configureWith({ isNativePlatform: false, isOnline: true });
+
+      service.forgotPassword({ email: 'marina@exemplo.com' }).subscribe();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/forgot-password`);
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual({ email: 'marina@exemplo.com' });
+      req.flush({ success: true, message: 'ok' });
+    });
+
+    it('posts the reset-password payload with id, token and the new password', () => {
+      const service = configureWith({ isNativePlatform: false, isOnline: true });
+
+      service.resetPassword({ id: 'c-1', token: 't-1', password: 'NovaSenha123!' }).subscribe();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/auth/reset-password`);
+      expect(req.request.body).toEqual({ id: 'c-1', token: 't-1', password: 'NovaSenha123!' });
+      req.flush({ success: true });
+    });
+
+    it('marks the stored user as verified after a successful email verification', () => {
+      const service = configureWith({
+        isNativePlatform: false,
+        isOnline: true,
+        storedUser: unverifiedUser,
+      });
+      expect(service.currentUser()?.emailVerifiedAt).toBeNull();
+
+      service.verifyEmail({ id: 'c-1', token: 't-1' }).subscribe();
+      httpMock.expectOne(`${environment.apiBaseUrl}/auth/verify-email`).flush({ success: true });
+
+      expect(service.currentUser()?.emailVerifiedAt).toBeTruthy();
+    });
+
+    it('keeps the verification banner when a resend actually sends a new link', () => {
+      const service = configureWith({
+        isNativePlatform: false,
+        isOnline: true,
+        storedUser: unverifiedUser,
+      });
+
+      service.resendEmailVerification().subscribe();
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/auth/resend-verification`)
+        .flush({ success: true, alreadyVerified: false });
+
+      expect(service.currentUser()?.emailVerifiedAt).toBeNull();
+    });
+
+    it('clears the banner when the server says the email is already verified', () => {
+      const service = configureWith({
+        isNativePlatform: false,
+        isOnline: true,
+        storedUser: unverifiedUser,
+      });
+
+      service.resendEmailVerification().subscribe();
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/auth/resend-verification`)
+        .flush({ success: true, alreadyVerified: true });
+
+      expect(service.currentUser()?.emailVerifiedAt).toBeTruthy();
+    });
+
+    it('sends the unsubscribe token in the request body', () => {
+      const service = configureWith({ isNativePlatform: false, isOnline: true });
+
+      service.unsubscribeEmail({ token: 'abc.def' }).subscribe();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/email-preferences/unsubscribe`);
+      expect(req.request.body).toEqual({ token: 'abc.def' });
+      req.flush({ success: true, category: 'weekly_digest' });
     });
   });
 });

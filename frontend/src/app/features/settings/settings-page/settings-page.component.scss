@@ -269,3 +269,14 @@
     flex-basis: 100%;
   }
 }
+
+.settings-email-group {
+  display: grid;
+  gap: 0.75rem;
+
+  h4 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1rem;
+  }
+}

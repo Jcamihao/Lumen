@@ -1,0 +1,46 @@
+<div class="proto-auth">
+  <div class="proto-auth__layout auth-flow-layout">
+    <section class="proto-auth-card auth-card">
+      <img class="auth-flow-brand" src="assets/logo/lumen-mark.svg" alt="Logo do Lumen" />
+
+      <ng-container [ngSwitch]="state()">
+        <ng-container *ngSwitchCase="'loading'">
+          <div class="proto-auth-card__head">
+            <h1>Confirmando seu email</h1>
+            <p>Só um instante...</p>
+          </div>
+        </ng-container>
+
+        <ng-container *ngSwitchCase="'success'">
+          <div class="proto-auth-card__head">
+            <h1>Email confirmado</h1>
+            <p>
+              Pronto! A partir de agora você recebe os lembretes e o resumo semanal do Lumen por
+              email.
+            </p>
+          </div>
+          <div class="auth-flow-actions">
+            <a class="proto-button auth-actions__primary" [routerLink]="loggedIn() ? '/dashboard' : '/auth/login'">
+              {{ loggedIn() ? 'Ir para o Lumen' : 'Entrar' }}
+            </a>
+          </div>
+        </ng-container>
+
+        <ng-container *ngSwitchCase="'error'">
+          <div class="proto-auth-card__head">
+            <h1>Não foi possível confirmar</h1>
+            <p class="auth-error">{{ errorMessage() }}</p>
+          </div>
+          <div class="auth-flow-actions">
+            <p class="auth-flow-note">
+              Entre na sua conta e peça um novo link de confirmação pelo aviso no topo da tela.
+            </p>
+            <a class="proto-button proto-button--secondary auth-actions__primary" [routerLink]="loggedIn() ? '/dashboard' : '/auth/login'">
+              {{ loggedIn() ? 'Ir para o Lumen' : 'Entrar' }}
+            </a>
+          </div>
+        </ng-container>
+      </ng-container>
+    </section>
+  </div>
+</div>

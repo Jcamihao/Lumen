@@ -17,6 +17,10 @@ export type User = {
   aiAssistantEnabled?: boolean;
   aiAssistantConsentAt?: string | null;
   aiAssistantConsentVersion?: string | null;
+  emailVerifiedAt?: string | null;
+  emailWeeklyDigest?: boolean;
+  emailReminders?: boolean;
+  emailInsightAlerts?: boolean;
   mfaEnabled?: boolean;
   mfaSetupPending?: boolean;
   mfaEnabledAt?: string | null;

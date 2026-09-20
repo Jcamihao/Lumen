@@ -16,6 +16,8 @@ import {
 import { Worker } from "bullmq";
 import { CacheQueueService } from "../cache-queue/cache-queue.service";
 import { DashboardService } from "../dashboard/dashboard.service";
+import { canSendAutomatedEmail } from "../email-preferences/email-categories";
+import { EmailPreferencesService } from "../email-preferences/email-preferences.service";
 import { ForecastsService } from "../forecasts/forecasts.service";
 import { InsightsService } from "../insights/insights.service";
 import { MailService } from "../mail/mail.service";
@@ -44,6 +46,7 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
     private readonly lifeEngineService: LifeEngineService,
     private readonly configService: ConfigService,
     private readonly dashboardService: DashboardService,
+    private readonly emailPreferencesService: EmailPreferencesService,
   ) {}
 
   async onModuleInit() {
@@ -72,6 +75,8 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
                   email: true,
                   name: true,
                   timezone: true,
+                  emailVerifiedAt: true,
+                  emailReminders: true,
                 },
               },
               task: true,
@@ -106,14 +111,20 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
           );
 
           try {
-            await this.mailService.sendReminderEmail({
-              email: reminder.user.email,
-              name: reminder.user.name,
-              title: reminder.title,
-              contextTitle: relatedTitle,
-              remindAt: reminder.remindAt,
-              timezone: reminder.user.timezone,
-            });
+            if (canSendAutomatedEmail(reminder.user, "reminders")) {
+              await this.mailService.sendReminderEmail({
+                email: reminder.user.email,
+                name: reminder.user.name,
+                title: reminder.title,
+                contextTitle: relatedTitle,
+                remindAt: reminder.remindAt,
+                timezone: reminder.user.timezone,
+                unsubscribe: this.emailPreferencesService.buildUnsubscribeLinks(
+                  reminder.userId,
+                  "reminders",
+                ),
+              });
+            }
           } catch (error) {
             this.logger.warn(
               `reminder_email_failed reminderId=${reminder.id} userId=${reminder.userId} reason=${this.getErrorMessage(error)}`,
@@ -305,19 +316,34 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
    */
   private async sendWeeklyDigest(userId: string): Promise<boolean> {
     try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          email: true,
+          emailVerifiedAt: true,
+          emailWeeklyDigest: true,
+        },
+      });
+
+      if (!user) return false;
+
+      // Fora da elegibilidade (email nao confirmado ou categoria desligada)
+      // ainda avanca lastWeeklyDigestAt, senao o pulso horario reavaliaria
+      // esse usuario a cada rodada de segunda-feira.
+      if (!canSendAutomatedEmail(user, "weekly_digest")) {
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: { lastWeeklyDigestAt: new Date() },
+        });
+        return false;
+      }
+
       const summary = (await this.dashboardService.getSummary(userId)) as {
         user: { name: string; preferredCurrency: string };
         tasks: { overdueCount: number };
         finances: { balance: number; monthlyExpenses: number; monthlyIncome: number };
         goals: { title: string; currentAmount: number; targetAmount: number }[];
       };
-
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { email: true },
-      });
-
-      if (!user) return false;
 
       await this.mailService.sendWeeklyDigestEmail({
         email: user.email,
@@ -328,6 +354,10 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
         monthlyExpenses: summary.finances.monthlyExpenses,
         monthlyIncome: summary.finances.monthlyIncome,
         goals: summary.goals,
+        unsubscribe: this.emailPreferencesService.buildUnsubscribeLinks(
+          userId,
+          "weekly_digest",
+        ),
       });
 
       await this.prisma.user.update({
@@ -367,17 +397,32 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true, name: true },
+      select: {
+        email: true,
+        name: true,
+        emailVerifiedAt: true,
+        emailInsightAlerts: true,
+      },
     });
 
     if (!user) return;
 
+    // Sem elegibilidade o email nao sai, mas o insight ainda e marcado como
+    // escalado abaixo — senao ficaria "pendente de escalar" para sempre.
+    const canEmail = canSendAutomatedEmail(user, "insight_alerts");
+
     for (const insight of stale) {
+      if (!canEmail) break;
+
       try {
         await this.mailService.sendInsightEscalationEmail({
           email: user.email,
           name: user.name,
           message: insight.message,
+          unsubscribe: this.emailPreferencesService.buildUnsubscribeLinks(
+            userId,
+            "insight_alerts",
+          ),
         });
       } catch (error) {
         this.logger.warn(

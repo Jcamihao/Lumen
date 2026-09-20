@@ -69,4 +69,16 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   aiAssistantEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  emailWeeklyDigest?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  emailReminders?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  emailInsightAlerts?: boolean;
 }

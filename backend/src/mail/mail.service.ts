@@ -10,6 +10,14 @@ type SendEmailOptions = {
   html?: string;
   tags?: string[];
   replyTo?: string;
+  headers?: Record<string, string>;
+};
+
+export type UnsubscribeLinks = {
+  /** Pagina do frontend que confirma o descadastro (link visivel no rodape). */
+  pageUrl: string;
+  /** Endpoint POST da API para o one-click do cliente de email (RFC 8058). */
+  oneClickUrl: string;
 };
 
 type MailTransportResponse = {
@@ -43,6 +51,26 @@ type ResendEmailPayload = {
 type WelcomeEmailInput = {
   email: string;
   name: string;
+  verifyUrl?: string;
+};
+
+type EmailVerificationInput = {
+  email: string;
+  name?: string | null;
+  verifyUrl: string;
+  expiresInHours: number;
+};
+
+type PasswordResetEmailInput = {
+  email: string;
+  name?: string | null;
+  resetUrl: string;
+  expiresInMinutes: number;
+};
+
+type PasswordChangedEmailInput = {
+  email: string;
+  name?: string | null;
 };
 
 type ReminderEmailInput = {
@@ -52,12 +80,14 @@ type ReminderEmailInput = {
   contextTitle?: string | null;
   remindAt: Date;
   timezone?: string | null;
+  unsubscribe?: UnsubscribeLinks;
 };
 
 type InsightEscalationEmailInput = {
   email: string;
   name?: string | null;
   message: string;
+  unsubscribe?: UnsubscribeLinks;
 };
 
 type WeeklyDigestEmailInput = {
@@ -69,6 +99,7 @@ type WeeklyDigestEmailInput = {
   monthlyExpenses: number;
   monthlyIncome: number;
   goals: { title: string; currentAmount: number; targetAmount: number }[];
+  unsubscribe?: UnsubscribeLinks;
 };
 
 type MfaBypassEmailInput = {
@@ -90,23 +121,35 @@ export class MailService {
   }
 
   async sendWelcomeEmail(input: WelcomeEmailInput) {
-    const appUrl =
-      this.configService.get<string>("app.appUrl") ?? "http://localhost:3000";
+    const frontendUrl =
+      this.configService.get<string>("app.frontendUrl") ??
+      "http://localhost:4200";
     const greetingName = this.firstName(input.name);
     const subject = "Sua conta no LUMEN esta pronta";
-    const text =
-      `Oi ${greetingName},\n\n` +
-      "Sua conta no LUMEN foi criada com sucesso.\n" +
-      `Voce ja pode acessar sua area em ${appUrl}.\n\n` +
-      "Obrigado por construir sua clareza com a gente.\n" +
-      "Equipe LUMEN";
+    const text = [
+      `Oi ${greetingName},`,
+      "",
+      "Sua conta no LUMEN foi criada com sucesso.",
+      input.verifyUrl
+        ? `Confirme seu email para receber lembretes e resumos: ${input.verifyUrl}`
+        : null,
+      `Voce ja pode acessar sua area em ${frontendUrl}.`,
+      "",
+      "Obrigado por construir sua clareza com a gente.",
+      "Equipe LUMEN",
+    ]
+      .filter((line) => line !== null)
+      .join("\n");
     const html = [
       '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
       `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
       "<p>Sua conta no <strong>LUMEN</strong> foi criada com sucesso.</p>",
+      input.verifyUrl
+        ? `<p>Confirme seu email para receber lembretes e resumos:</p>${this.actionButton(input.verifyUrl, "Confirmar email")}`
+        : "",
       `<p>Voce ja pode acessar sua area em <a href="${this.escapeHtml(
-        appUrl,
-      )}">${this.escapeHtml(appUrl)}</a>.</p>`,
+        frontendUrl,
+      )}">${this.escapeHtml(frontendUrl)}</a>.</p>`,
       "<p>Obrigado por construir sua clareza com a gente.<br />Equipe LUMEN</p>",
       "</body></html>",
     ].join("");
@@ -117,6 +160,101 @@ export class MailService {
       text,
       html,
       tags: ["welcome", "auth"],
+    });
+  }
+
+  async sendEmailVerificationEmail(input: EmailVerificationInput) {
+    const greetingName = input.name ? this.firstName(input.name) : "voce";
+    const subject = "LUMEN: confirme seu email";
+    const text = [
+      `Oi ${greetingName},`,
+      "",
+      "Confirme seu email para receber lembretes e resumos do LUMEN:",
+      input.verifyUrl,
+      "",
+      `Este link expira em ${input.expiresInHours} horas.`,
+      "Se voce nao criou uma conta no LUMEN, ignore este email.",
+      "Equipe LUMEN",
+    ].join("\n");
+    const html = [
+      '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
+      `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
+      "<p>Confirme seu email para receber lembretes e resumos do <strong>LUMEN</strong>:</p>",
+      this.actionButton(input.verifyUrl, "Confirmar email"),
+      `<p>Este link expira em <strong>${input.expiresInHours} horas</strong>.</p>`,
+      "<p style='color:#6b7280;font-size:0.875rem;'>Se voce nao criou uma conta no LUMEN, ignore este email.</p>",
+      "<p>Equipe LUMEN</p>",
+      "</body></html>",
+    ].join("");
+
+    return this.sendEmail({
+      to: input.email,
+      subject,
+      text,
+      html,
+      tags: ["email_verification", "auth"],
+    });
+  }
+
+  async sendPasswordResetEmail(input: PasswordResetEmailInput) {
+    const greetingName = input.name ? this.firstName(input.name) : "voce";
+    const subject = "LUMEN: redefinir sua senha";
+    const text = [
+      `Oi ${greetingName},`,
+      "",
+      "Recebemos um pedido para redefinir a senha da sua conta no LUMEN.",
+      "Crie uma nova senha por este link:",
+      input.resetUrl,
+      "",
+      `Ele expira em ${input.expiresInMinutes} minutos e so pode ser usado uma vez.`,
+      "Se nao foi voce, ignore este email — sua senha continua a mesma.",
+      "Equipe LUMEN",
+    ].join("\n");
+    const html = [
+      '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
+      `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
+      "<p>Recebemos um pedido para redefinir a senha da sua conta no <strong>LUMEN</strong>.</p>",
+      this.actionButton(input.resetUrl, "Criar nova senha"),
+      `<p>Este link expira em <strong>${input.expiresInMinutes} minutos</strong> e so pode ser usado uma vez.</p>`,
+      "<p style='color:#6b7280;font-size:0.875rem;'>Se nao foi voce, ignore este email — sua senha continua a mesma.</p>",
+      "<p>Equipe LUMEN</p>",
+      "</body></html>",
+    ].join("");
+
+    return this.sendEmail({
+      to: input.email,
+      subject,
+      text,
+      html,
+      tags: ["password_reset", "auth"],
+    });
+  }
+
+  async sendPasswordChangedEmail(input: PasswordChangedEmailInput) {
+    const greetingName = input.name ? this.firstName(input.name) : "voce";
+    const subject = "LUMEN: sua senha foi alterada";
+    const text = [
+      `Oi ${greetingName},`,
+      "",
+      "A senha da sua conta no LUMEN acabou de ser alterada e todas as sessoes abertas foram encerradas.",
+      "Se nao foi voce, redefina a senha de novo e entre em contato com a gente.",
+      "Equipe LUMEN",
+    ].join("\n");
+    const html = [
+      '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
+      `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
+      "<p>A senha da sua conta no <strong>LUMEN</strong> acabou de ser alterada e todas as sessoes abertas foram encerradas.</p>",
+      "<p style='color:#6b7280;font-size:0.875rem;'>Se nao foi voce, redefina a senha de novo e entre em contato com a gente.</p>",
+      "<p>Equipe LUMEN</p>",
+      "</body></html>",
+    ].join("");
+
+    return this.sendEmail({
+      to: input.email,
+      subject,
+      text,
+      html,
+      tags: ["password_changed", "auth"],
     });
   }
 
@@ -137,7 +275,7 @@ export class MailService {
       "Equipe LUMEN",
     ]
       .filter(Boolean)
-      .join("\n");
+      .join("\n") + this.footerText(input.unsubscribe);
     const html = [
       '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
       `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
@@ -149,6 +287,7 @@ export class MailService {
         : "",
       "<p>Abra o LUMEN para revisar os proximos passos.</p>",
       "<p>Equipe LUMEN</p>",
+      this.footerHtml(input.unsubscribe),
       "</body></html>",
     ].join("");
 
@@ -158,6 +297,7 @@ export class MailService {
       text,
       html,
       tags: ["reminder"],
+      headers: this.unsubscribeHeaders(input.unsubscribe),
     });
   }
 
@@ -178,7 +318,7 @@ export class MailService {
       "Ja avisamos isso dentro do app ha alguns dias e continua sem resolucao.",
       "Abra o LUMEN quando puder dar uma olhada.",
       "Equipe LUMEN",
-    ].join("\n");
+    ].join("\n") + this.footerText(input.unsubscribe);
     const html = [
       '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
       `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
@@ -186,6 +326,7 @@ export class MailService {
       "<p>Ja avisamos isso dentro do app ha alguns dias e continua sem resolucao.</p>",
       "<p>Abra o LUMEN quando puder dar uma olhada.</p>",
       "<p>Equipe LUMEN</p>",
+      this.footerHtml(input.unsubscribe),
       "</body></html>",
     ].join("");
 
@@ -195,6 +336,7 @@ export class MailService {
       text,
       html,
       tags: ["insight_escalation"],
+      headers: this.unsubscribeHeaders(input.unsubscribe),
     });
   }
 
@@ -232,7 +374,7 @@ export class MailService {
       "",
       "Abra o LUMEN para o detalhe completo.",
       "Equipe LUMEN",
-    ].join("\n");
+    ].join("\n") + this.footerText(input.unsubscribe);
     const html = [
       '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
       `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
@@ -248,6 +390,7 @@ export class MailService {
         : "",
       "<p>Abra o LUMEN para o detalhe completo.</p>",
       "<p>Equipe LUMEN</p>",
+      this.footerHtml(input.unsubscribe),
       "</body></html>",
     ].join("");
 
@@ -257,6 +400,7 @@ export class MailService {
       text,
       html,
       tags: ["weekly_digest"],
+      headers: this.unsubscribeHeaders(input.unsubscribe),
     });
   }
 
@@ -377,10 +521,12 @@ export class MailService {
     }
 
     const replyTo = options.replyTo ?? this.getReplyTo();
-    if (replyTo) {
-      payload.headers = {
-        "Reply-To": replyTo,
-      };
+    const headers: Record<string, string> = {
+      ...(replyTo ? { "Reply-To": replyTo } : {}),
+      ...(options.headers ?? {}),
+    };
+    if (Object.keys(headers).length > 0) {
+      payload.headers = headers;
     }
 
     const tags = this.buildTags(options.tags ?? []);
@@ -389,6 +535,33 @@ export class MailService {
     }
 
     return payload;
+  }
+
+  private unsubscribeHeaders(links?: UnsubscribeLinks) {
+    if (!links) {
+      return undefined;
+    }
+
+    return {
+      "List-Unsubscribe": `<${links.oneClickUrl}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    };
+  }
+
+  private footerText(links?: UnsubscribeLinks) {
+    return links
+      ? `\n\nNao quer mais receber este tipo de email? Deixe de receber aqui: ${links.pageUrl}`
+      : "";
+  }
+
+  private footerHtml(links?: UnsubscribeLinks) {
+    return links
+      ? `<p style="color:#6b7280;font-size:0.8125rem;">Nao quer mais receber este tipo de email? <a href="${this.escapeHtml(links.pageUrl)}">Deixar de receber</a>.</p>`
+      : "";
+  }
+
+  private actionButton(url: string, label: string) {
+    return `<p><a href="${this.escapeHtml(url)}" style="display:inline-block;padding:12px 20px;background:#006cd2;color:#ffffff;text-decoration:none;font-weight:600;">${this.escapeHtml(label)}</a></p><p style="color:#6b7280;font-size:0.8125rem;">Se o botao nao funcionar, copie este endereco no navegador:<br />${this.escapeHtml(url)}</p>`;
   }
 
   private buildTags(tags: string[]) {

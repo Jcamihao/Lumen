@@ -1,0 +1,57 @@
+<div class="proto-auth">
+  <div class="proto-auth__layout auth-flow-layout">
+    <section class="proto-auth-card auth-card">
+      <img class="auth-flow-brand" src="assets/logo/lumen-mark.svg" alt="Logo do Lumen" />
+
+      <ng-container *ngIf="hasToken; else invalidLink">
+        <ng-container *ngIf="!categoryLabel(); else doneState">
+          <div class="proto-auth-card__head">
+            <h1>Deixar de receber esses emails?</h1>
+            <p>
+              Você vai parar de receber este tipo de email do Lumen. Os demais continuam
+              normalmente.
+            </p>
+          </div>
+
+          <p class="auth-error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
+
+          <div class="auth-flow-actions">
+            <button
+              type="button"
+              class="proto-button auth-actions__primary"
+              [disabled]="loading()"
+              (click)="confirm()"
+            >
+              {{ loading() ? 'Salvando...' : 'Sim, deixar de receber' }}
+            </button>
+            <a class="proto-button proto-button--secondary auth-actions__primary" routerLink="/">
+              Manter os emails
+            </a>
+          </div>
+        </ng-container>
+
+        <ng-template #doneState>
+          <div class="proto-auth-card__head">
+            <h1>Tudo certo</h1>
+            <p>Você não vai mais receber {{ categoryLabel() }} do Lumen.</p>
+          </div>
+          <div class="auth-flow-actions">
+            <p class="auth-flow-note">
+              Mudou de ideia? Reative em Configurações, na aba Privacidade, a qualquer momento.
+            </p>
+            <a class="proto-button proto-button--secondary auth-actions__primary" routerLink="/">
+              Voltar ao Lumen
+            </a>
+          </div>
+        </ng-template>
+      </ng-container>
+
+      <ng-template #invalidLink>
+        <div class="proto-auth-card__head">
+          <h1>Link inválido</h1>
+          <p>Esse link de descadastro está incompleto. Use o link que veio no email.</p>
+        </div>
+      </ng-template>
+    </section>
+  </div>
+</div>

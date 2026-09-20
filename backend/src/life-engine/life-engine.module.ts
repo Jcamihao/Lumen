@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { CacheQueueModule } from "../cache-queue/cache-queue.module";
 import { DashboardModule } from "../dashboard/dashboard.module";
+import { EmailPreferencesModule } from "../email-preferences/email-preferences.module";
 import { ForecastsModule } from "../forecasts/forecasts.module";
 import { InsightsModule } from "../insights/insights.module";
 import { MailModule } from "../mail/mail.module";
@@ -21,6 +22,7 @@ import { LifeWorkersService } from "./life-workers.service";
     ForecastsModule,
     NotificationsModule,
     MailModule,
+    EmailPreferencesModule,
     DashboardModule,
   ],
   providers: [LifeEngineService, LifeWorkersService],

@@ -2,6 +2,7 @@ import { CommonModule } from "@angular/common";
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   DestroyRef,
   inject,
   signal,
@@ -84,7 +85,13 @@ export class SettingsPageComponent {
     aiAssistantEnabled: [
       Boolean(this.authService.currentUser()?.aiAssistantEnabled),
     ],
+    emailWeeklyDigest: [this.authService.currentUser()?.emailWeeklyDigest ?? true],
+    emailReminders: [this.authService.currentUser()?.emailReminders ?? true],
+    emailInsightAlerts: [this.authService.currentUser()?.emailInsightAlerts ?? true],
   });
+  protected readonly emailUnverified = computed(
+    () => this.authService.currentUser()?.emailVerifiedAt === null,
+  );
   protected readonly mfaSetupForm = this.fb.nonNullable.group({
     code: ["", [Validators.required, Validators.minLength(6)]],
   });

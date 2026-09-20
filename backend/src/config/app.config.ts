@@ -36,6 +36,11 @@ export const appConfig = registerAs('app', () => ({
   port: parseInt(process.env.PORT ?? '3000', 10),
   host: process.env.HOST ?? '0.0.0.0',
   appUrl: process.env.APP_URL ?? 'http://localhost:3000',
+  // URL publica do frontend (links dos emails de confirmar/redefinir/descadastrar).
+  frontendUrl: (process.env.FRONTEND_URL ?? 'http://localhost:4200').replace(
+    /\/+$/,
+    '',
+  ),
   corsAllowedOrigins: parseCorsAllowedOrigins(),
   swaggerEnabled: parseBoolean(
     process.env.APP_SWAGGER_ENABLED,

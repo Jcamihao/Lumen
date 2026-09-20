@@ -208,6 +208,9 @@ export class UsersService {
             : undefined,
         monthClosingDay: dto.monthClosingDay,
         timezone: dto.timezone,
+        emailWeeklyDigest: dto.emailWeeklyDigest,
+        emailReminders: dto.emailReminders,
+        emailInsightAlerts: dto.emailInsightAlerts,
         ...(dto.privacyNoticeAccepted
           ? {
               privacyNoticeAcceptedAt:
@@ -232,6 +235,20 @@ export class UsersService {
     });
 
     return this.getMe(userId);
+  }
+
+  async updatePassword(userId: string, passwordHash: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+  }
+
+  async markEmailVerified(userId: string) {
+    await this.prisma.user.updateMany({
+      where: { id: userId, emailVerifiedAt: null },
+      data: { emailVerifiedAt: new Date() },
+    });
   }
 
   async updateLastLogin(userId: string) {

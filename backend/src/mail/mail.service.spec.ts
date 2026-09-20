@@ -6,6 +6,7 @@ describe("MailService", () => {
       get: jest.fn((key: string) => {
         const defaults: Record<string, unknown> = {
           "app.appUrl": "http://localhost:3000",
+          "app.frontendUrl": "http://localhost:4200",
           "mail.enabled": true,
           "mail.apiKey": "re_test_123",
           "mail.baseUrl": "https://api.resend.com",
@@ -82,26 +83,130 @@ describe("MailService", () => {
     expect(result.message).toBe("Email aceito pelo Resend.");
   });
 
-  it("creates a welcome email with the app link", async () => {
-    const service = new MailService(buildConfigService());
-    const sendSpy = jest.spyOn(service, "sendEmail").mockResolvedValue({
+  const stubSend = (service: MailService) =>
+    jest.spyOn(service, "sendEmail").mockResolvedValue({
       provider: "resend",
       skipped: false,
       message: "Email aceito pelo Resend.",
     });
 
+  it("creates a welcome email linking to the frontend and the verification link", async () => {
+    const service = new MailService(buildConfigService());
+    const sendSpy = stubSend(service);
+
     await service.sendWelcomeEmail({
       email: "marina@exemplo.com",
       name: "Marina Costa",
+      verifyUrl: "http://localhost:4200/auth/verify-email?id=abc&token=xyz",
     });
 
     expect(sendSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "marina@exemplo.com",
         subject: "Sua conta no LUMEN esta pronta",
-        text: expect.stringContaining("http://localhost:3000"),
-        html: expect.stringContaining("http://localhost:3000"),
+        text: expect.stringContaining("http://localhost:4200"),
+        html: expect.stringContaining("Confirmar email"),
       }),
     );
+    const [options] = sendSpy.mock.calls[0];
+    expect(options.text).toContain("/auth/verify-email?id=abc&token=xyz");
+    expect(options.text).not.toContain("http://localhost:3000");
+  });
+
+  it("sends the password reset link with its expiry and no unsubscribe headers", async () => {
+    const service = new MailService(buildConfigService());
+    const sendSpy = stubSend(service);
+
+    await service.sendPasswordResetEmail({
+      email: "marina@exemplo.com",
+      name: "Marina Costa",
+      resetUrl: "http://localhost:4200/auth/reset-password?id=abc&token=xyz",
+      expiresInMinutes: 60,
+    });
+
+    const [options] = sendSpy.mock.calls[0];
+    expect(options.subject).toBe("LUMEN: redefinir sua senha");
+    expect(options.text).toContain("/auth/reset-password?id=abc&token=xyz");
+    expect(options.text).toContain("60 minutos");
+    expect(options.headers).toBeUndefined();
+  });
+
+  describe("automated emails carry unsubscribe links", () => {
+    const unsubscribe = {
+      pageUrl: "http://localhost:4200/unsubscribe?token=t",
+      oneClickUrl: "http://localhost:3000/api/v1/email-preferences/unsubscribe?token=t",
+    };
+
+    it("adds the footer and the List-Unsubscribe headers to the weekly digest", async () => {
+      const service = new MailService(buildConfigService());
+      const sendSpy = stubSend(service);
+
+      await service.sendWeeklyDigestEmail({
+        email: "marina@exemplo.com",
+        name: "Marina",
+        preferredCurrency: "BRL",
+        overdueTasksCount: 0,
+        balance: 100,
+        monthlyExpenses: 50,
+        monthlyIncome: 200,
+        goals: [],
+        unsubscribe,
+      });
+
+      const [options] = sendSpy.mock.calls[0];
+      expect(options.headers).toEqual({
+        "List-Unsubscribe": `<${unsubscribe.oneClickUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      });
+      expect(options.text).toContain(unsubscribe.pageUrl);
+      expect(options.html).toContain("Deixar de receber");
+    });
+
+    it("adds them to reminders and insight escalations too", async () => {
+      const service = new MailService(buildConfigService());
+      const sendSpy = stubSend(service);
+
+      await service.sendReminderEmail({
+        email: "marina@exemplo.com",
+        title: "Pagar energia",
+        remindAt: new Date("2026-09-20T12:00:00.000Z"),
+        unsubscribe,
+      });
+      await service.sendInsightEscalationEmail({
+        email: "marina@exemplo.com",
+        message: "Meta travada.",
+        unsubscribe,
+      });
+
+      for (const [options] of sendSpy.mock.calls) {
+        expect(options.headers?.["List-Unsubscribe"]).toBe(
+          `<${unsubscribe.oneClickUrl}>`,
+        );
+        expect(options.html).toContain(unsubscribe.pageUrl);
+      }
+    });
+
+    it("keeps the Reply-To header alongside List-Unsubscribe", async () => {
+      const service = new MailService(
+        buildConfigService({ "mail.replyTo": "ajuda@lumen.local" }),
+      );
+      const postSpy = jest
+        .spyOn(service as any, "postJson")
+        .mockResolvedValue({ statusCode: 200, body: JSON.stringify({ id: "1" }) });
+
+      await service.sendReminderEmail({
+        email: "marina@exemplo.com",
+        title: "Pagar energia",
+        remindAt: new Date("2026-09-20T12:00:00.000Z"),
+        unsubscribe,
+      });
+
+      const payload = JSON.parse(String(postSpy.mock.calls[0][2]));
+      expect(payload.headers).toEqual({
+        "Reply-To": "ajuda@lumen.local",
+        "List-Unsubscribe": `<${unsubscribe.oneClickUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      });
+    });
   });
 });

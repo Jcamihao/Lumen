@@ -3,7 +3,7 @@ import {
   AuthSession,
   UserRole,
 } from "@prisma/client";
-import { randomInt } from "crypto";
+import { createHash, randomBytes, randomInt, timingSafeEqual } from "crypto";
 import {
   BadRequestException,
   Injectable,
@@ -20,11 +20,14 @@ import { RequestWithContext } from "../common/interfaces/request-with-context.in
 import { MailService } from "../mail/mail.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UsersService } from "../users/users.service";
+import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { LoginDto } from "./dto/login.dto";
 import { MfaCodeDto } from "./dto/mfa-code.dto";
 import { RefreshDto } from "./dto/refresh.dto";
 import { RegisterDto } from "./dto/register.dto";
+import { ResetPasswordDto } from "./dto/reset-password.dto";
 import { RequestEmailMfaBypassDto } from "./dto/request-email-mfa-bypass.dto";
+import { VerifyEmailDto } from "./dto/verify-email.dto";
 import { VerifyEmailMfaBypassDto } from "./dto/verify-email-mfa-bypass.dto";
 import { VerifyLoginMfaDto } from "./dto/verify-login-mfa.dto";
 import { MfaRecoveryCodeRecord, MfaService } from "./mfa.service";
@@ -95,11 +98,14 @@ export class AuthService {
     });
 
     this.logger.log(`register_success userId=${user.id} email=${user.email}`);
-    void this.mailService
-      .sendWelcomeEmail({
-        email: user.email,
-        name: user.name,
-      })
+    void this.issueEmailVerificationLink(user.id, request)
+      .then((verifyUrl) =>
+        this.mailService.sendWelcomeEmail({
+          email: user.email,
+          name: user.name,
+          verifyUrl,
+        }),
+      )
       .catch((error) => {
         this.logger.warn(
           `welcome_email_failed userId=${user.id} email=${user.email} reason=${this.getErrorMessage(error)}`,
@@ -532,9 +538,227 @@ export class AuthService {
     };
   }
 
+  /**
+   * Resposta identica exista o email ou nao (nao vaza quais emails tem
+   * conta). O trabalho de criar o desafio e enviar acontece so quando existe.
+   */
+  async forgotPassword(dto: ForgotPasswordDto, request?: RequestWithContext) {
+    const genericResponse = {
+      success: true,
+      message:
+        "Se existir uma conta com este email, enviamos um link para redefinir a senha.",
+    };
+    const user = await this.usersService.findByEmail(
+      dto.email.toLowerCase().trim(),
+    );
+
+    if (!user) {
+      return genericResponse;
+    }
+
+    const ttlMinutes = this.configService.get<number>(
+      "auth.passwordResetTtlMinutes",
+      60,
+    );
+    const link = await this.createLinkChallenge(
+      user.id,
+      AuthChallengeType.PASSWORD_RESET,
+      ttlMinutes * 60 * 1000,
+      this.extractSessionContext(request),
+    );
+
+    void this.mailService
+      .sendPasswordResetEmail({
+        email: user.email,
+        name: user.name,
+        resetUrl: this.buildFrontendLink("/auth/reset-password", link),
+        expiresInMinutes: ttlMinutes,
+      })
+      .catch((error) => {
+        this.logger.warn(
+          `password_reset_email_failed userId=${user.id} reason=${this.getErrorMessage(error)}`,
+        );
+      });
+
+    return genericResponse;
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const userId = await this.consumeLinkChallenge(
+      dto.id,
+      dto.token,
+      AuthChallengeType.PASSWORD_RESET,
+    );
+
+    await this.usersService.updatePassword(
+      userId,
+      await bcrypt.hash(dto.password, 10),
+    );
+    // Quem redefine a senha pelo link provou que controla a caixa de email.
+    await this.usersService.markEmailVerified(userId);
+    await this.prisma.authSession.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date(), revokeReason: "password_reset" },
+    });
+
+    const user = await this.usersService.findById(userId);
+    void this.mailService
+      .sendPasswordChangedEmail({ email: user.email, name: user.name })
+      .catch((error) => {
+        this.logger.warn(
+          `password_changed_email_failed userId=${userId} reason=${this.getErrorMessage(error)}`,
+        );
+      });
+
+    this.logger.log(`password_reset_success userId=${userId}`);
+    return { success: true };
+  }
+
+  async verifyEmail(dto: VerifyEmailDto) {
+    const userId = await this.consumeLinkChallenge(
+      dto.id,
+      dto.token,
+      AuthChallengeType.EMAIL_VERIFICATION,
+    );
+
+    await this.usersService.markEmailVerified(userId);
+    this.logger.log(`email_verified userId=${userId}`);
+    return { success: true };
+  }
+
+  async resendEmailVerification(userId: string, request?: RequestWithContext) {
+    const user = await this.usersService.findById(userId);
+
+    if (user.emailVerifiedAt) {
+      return { success: true, alreadyVerified: true };
+    }
+
+    const verifyUrl = await this.issueEmailVerificationLink(userId, request);
+    await this.mailService.sendEmailVerificationEmail({
+      email: user.email,
+      name: user.name,
+      verifyUrl,
+      expiresInHours: this.configService.get<number>(
+        "auth.emailVerificationTtlHours",
+        48,
+      ),
+    });
+
+    return { success: true, alreadyVerified: false };
+  }
+
   async me(userId: string) {
     const user = await this.usersService.findById(userId);
     return this.usersService.sanitizeUser(user);
+  }
+
+  private async issueEmailVerificationLink(
+    userId: string,
+    request?: RequestWithContext,
+  ) {
+    const ttlHours = this.configService.get<number>(
+      "auth.emailVerificationTtlHours",
+      48,
+    );
+    const link = await this.createLinkChallenge(
+      userId,
+      AuthChallengeType.EMAIL_VERIFICATION,
+      ttlHours * 60 * 60 * 1000,
+      this.extractSessionContext(request),
+    );
+
+    return this.buildFrontendLink("/auth/verify-email", link);
+  }
+
+  private buildFrontendLink(
+    path: string,
+    link: { challengeId: string; secret: string },
+  ) {
+    const frontendUrl =
+      this.configService.get<string>("app.frontendUrl") ??
+      "http://localhost:4200";
+
+    return `${frontendUrl}${path}?id=${link.challengeId}&token=${encodeURIComponent(link.secret)}`;
+  }
+
+  /**
+   * Desafio de link por email (reset de senha, confirmacao de email). O
+   * segredo tem 256 bits de entropia, entao basta um sha256 no banco (bcrypt
+   * nao agrega e trunca em 72 bytes). So um desafio pendente por
+   * usuario/tipo: pedir de novo invalida o link anterior.
+   */
+  private async createLinkChallenge(
+    userId: string,
+    type: AuthChallengeType,
+    ttlMs: number,
+    sessionContext: SessionContext,
+  ) {
+    const secret = randomBytes(32).toString("base64url");
+
+    await this.prisma.authChallenge.deleteMany({
+      where: { userId, type, completedAt: null },
+    });
+    const challenge = await this.prisma.authChallenge.create({
+      data: {
+        userId,
+        type,
+        token: this.hashLinkSecret(secret),
+        expiresAt: new Date(Date.now() + ttlMs),
+        ipAddress: sessionContext.ipAddress,
+        userAgent: sessionContext.userAgent,
+      },
+    });
+
+    return { challengeId: challenge.id, secret };
+  }
+
+  /** Valida e consome (uso unico) um desafio de link; devolve o userId. */
+  private async consumeLinkChallenge(
+    challengeId: string,
+    secret: string,
+    type: AuthChallengeType,
+  ) {
+    const invalid = new BadRequestException("Link invalido ou expirado.");
+    const challenge = await this.prisma.authChallenge.findUnique({
+      where: { id: challengeId },
+    });
+
+    if (
+      !challenge ||
+      challenge.type !== type ||
+      challenge.completedAt ||
+      challenge.expiresAt <= new Date() ||
+      !challenge.token
+    ) {
+      throw invalid;
+    }
+
+    const expected = Buffer.from(challenge.token);
+    const received = Buffer.from(this.hashLinkSecret(secret));
+
+    if (
+      expected.length !== received.length ||
+      !timingSafeEqual(expected, received)
+    ) {
+      throw invalid;
+    }
+
+    // updateMany com completedAt:null evita que dois cliques simultaneos
+    // consumam o mesmo link.
+    const consumed = await this.prisma.authChallenge.updateMany({
+      where: { id: challenge.id, completedAt: null },
+      data: { completedAt: new Date() },
+    });
+
+    if (consumed.count === 0) {
+      throw invalid;
+    }
+
+    return challenge.userId;
+  }
+
+  private hashLinkSecret(secret: string) {
+    return createHash("sha256").update(secret).digest("hex");
   }
 
   private getErrorMessage(error: unknown) {

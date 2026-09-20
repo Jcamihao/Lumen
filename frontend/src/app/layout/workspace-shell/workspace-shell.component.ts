@@ -7,11 +7,13 @@ import {
   transition,
   trigger,
 } from '@angular/animations';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter, startWith } from 'rxjs';
+import { AuthService } from '../../core/services/auth.service';
 import { LifeApiService } from '../../core/services/life-api.service';
+import { ToastService } from '../../core/services/toast.service';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
 import { ToastComponent } from '../toast/toast.component';
@@ -83,10 +85,50 @@ export class WorkspaceShellComponent {
   protected readonly routeAnimationFlip = signal(false);
   private readonly router = inject(Router);
   private readonly api = inject(LifeApiService);
+  private readonly authService = inject(AuthService);
+  private readonly toast = inject(ToastService);
+  private readonly destroyRef = inject(DestroyRef);
+  // `=== null` (e nao `!emailVerifiedAt`): um usuario em cache de antes desse
+  // campo existir tem `undefined` e nao deve ver o aviso por engano.
+  protected readonly showVerifyBanner = computed(
+    () => this.authService.currentUser()?.emailVerifiedAt === null,
+  );
+  protected readonly verifyBannerEmail = computed(
+    () => this.authService.currentUser()?.email ?? '',
+  );
+  protected readonly resendingVerification = signal(false);
   protected readonly offlineMode = this.api.offlineMode;
   protected readonly syncing = this.api.syncing;
   protected readonly pendingSyncCount = this.api.pendingSyncCount;
   protected readonly failedSyncCount = this.api.failedSyncCount;
+  protected resendVerification() {
+    if (this.resendingVerification()) {
+      return;
+    }
+
+    this.resendingVerification.set(true);
+    this.authService
+      .resendEmailVerification()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (response) => {
+          this.resendingVerification.set(false);
+          this.toast.success(
+            response.alreadyVerified
+              ? 'Seu email já está confirmado.'
+              : 'Enviamos um novo link de confirmação.',
+          );
+        },
+        error: (error) => {
+          this.resendingVerification.set(false);
+          const message = error?.error?.message;
+          this.toast.error(
+            typeof message === 'string' ? message : 'Não foi possível reenviar agora.',
+          );
+        },
+      });
+  }
+
   protected readonly showSyncBanner = computed(
     () =>
       this.offlineMode() ||

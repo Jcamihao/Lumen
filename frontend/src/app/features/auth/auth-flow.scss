@@ -1,0 +1,57 @@
+:host {
+  display: block;
+}
+
+.auth-flow-layout {
+  grid-template-columns: minmax(0, 32rem);
+  justify-content: center;
+}
+
+.auth-card {
+  display: grid;
+  gap: 1.75rem;
+  align-content: start;
+}
+
+.auth-flow-brand {
+  display: block;
+  width: clamp(5.5rem, 22vw, 7rem);
+  height: auto;
+}
+
+.auth-error,
+.auth-success {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.auth-error {
+  color: var(--danger);
+}
+
+.auth-success {
+  color: var(--success);
+}
+
+.auth-flow-note {
+  margin: 0;
+  color: var(--text-medium);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.auth-flow-actions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.auth-actions__primary {
+  width: 100%;
+}
+
+.auth-link {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+}

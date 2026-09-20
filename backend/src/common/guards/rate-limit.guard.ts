@@ -56,6 +56,41 @@ export class RateLimitGuard implements CanActivate {
       'Muitas tentativas de verificacao MFA. Aguarde alguns minutos antes de tentar novamente.',
   };
 
+  private readonly authForgotPasswordPolicy: RateLimitPolicy = {
+    keyPrefix: 'auth-forgot-password',
+    limit: 3,
+    windowMs: 15 * 60_000,
+    message:
+      'Muitos pedidos de redefinicao de senha. Aguarde alguns minutos antes de pedir de novo.',
+  };
+  private readonly authResetPasswordPolicy: RateLimitPolicy = {
+    keyPrefix: 'auth-reset-password',
+    limit: 10,
+    windowMs: 15 * 60_000,
+    message:
+      'Muitas tentativas de redefinir a senha. Aguarde alguns minutos e tente novamente.',
+  };
+  private readonly authVerifyEmailPolicy: RateLimitPolicy = {
+    keyPrefix: 'auth-verify-email',
+    limit: 20,
+    windowMs: 15 * 60_000,
+    message:
+      'Muitas tentativas de confirmar o email. Aguarde alguns minutos e tente novamente.',
+  };
+  private readonly authResendVerificationPolicy: RateLimitPolicy = {
+    keyPrefix: 'auth-resend-verification',
+    limit: 3,
+    windowMs: 60 * 60_000,
+    message:
+      'Voce ja pediu varios emails de confirmacao. Aguarde um pouco antes de pedir de novo.',
+  };
+  private readonly emailUnsubscribePolicy: RateLimitPolicy = {
+    keyPrefix: 'email-unsubscribe',
+    limit: 20,
+    windowMs: 15 * 60_000,
+    message: 'Muitas tentativas de descadastro. Tente novamente em instantes.',
+  };
+
   constructor(private readonly cacheQueueService: CacheQueueService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -118,6 +153,26 @@ export class RateLimitGuard implements CanActivate {
       return this.authMfaVerifyPolicy;
     }
 
+    if (method === 'POST' && path === '/api/v1/auth/forgot-password') {
+      return this.authForgotPasswordPolicy;
+    }
+
+    if (method === 'POST' && path === '/api/v1/auth/reset-password') {
+      return this.authResetPasswordPolicy;
+    }
+
+    if (method === 'POST' && path === '/api/v1/auth/verify-email') {
+      return this.authVerifyEmailPolicy;
+    }
+
+    if (method === 'POST' && path === '/api/v1/auth/resend-verification') {
+      return this.authResendVerificationPolicy;
+    }
+
+    if (method === 'POST' && path === '/api/v1/email-preferences/unsubscribe') {
+      return this.emailUnsubscribePolicy;
+    }
+
     return this.defaultPolicy;
   }
 
@@ -132,7 +187,10 @@ export class RateLimitGuard implements CanActivate {
     const userId = request.user?.sub?.trim();
     const ipAddress = request.ip?.trim() || 'anonymous';
 
-    if (policy.keyPrefix === 'auth-login') {
+    if (
+      policy.keyPrefix === 'auth-login' ||
+      policy.keyPrefix === 'auth-forgot-password'
+    ) {
       const email =
         typeof request.body?.email === 'string'
           ? request.body.email.trim().toLowerCase()
@@ -140,7 +198,12 @@ export class RateLimitGuard implements CanActivate {
       return `${ipAddress}:${email}`;
     }
 
-    if (policy.keyPrefix === 'auth-register') {
+    if (
+      policy.keyPrefix === 'auth-register' ||
+      policy.keyPrefix === 'auth-reset-password' ||
+      policy.keyPrefix === 'auth-verify-email' ||
+      policy.keyPrefix === 'email-unsubscribe'
+    ) {
       return ipAddress;
     }
 

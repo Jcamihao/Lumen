@@ -181,6 +181,38 @@
         <input type="checkbox" formControlName="aiAssistantEnabled" />
       </label>
 
+      <div class="settings-email-group">
+        <h4>Emails do Lumen</h4>
+        <p class="settings-field-hint" *ngIf="emailUnverified()">
+          Você só recebe esses emails depois de confirmar seu endereço. Use o aviso no topo da
+          tela para reenviar o link de confirmação.
+        </p>
+
+        <label class="settings-switch-card">
+          <div>
+            <strong>Resumo semanal</strong>
+            <p>Um panorama da semana toda segunda-feira.</p>
+          </div>
+          <input type="checkbox" formControlName="emailWeeklyDigest" />
+        </label>
+
+        <label class="settings-switch-card">
+          <div>
+            <strong>Lembretes por email</strong>
+            <p>Receba por email os lembretes que você criou.</p>
+          </div>
+          <input type="checkbox" formControlName="emailReminders" />
+        </label>
+
+        <label class="settings-switch-card">
+          <div>
+            <strong>Alertas críticos</strong>
+            <p>Aviso por email quando um alerta crítico fica dias sem resolução.</p>
+          </div>
+          <input type="checkbox" formControlName="emailInsightAlerts" />
+        </label>
+      </div>
+
       <div class="proto-note">
         <strong class="proto-inline-title">Status do aceite</strong>
         <p>{{ privacyAcceptedLabel() }}</p>

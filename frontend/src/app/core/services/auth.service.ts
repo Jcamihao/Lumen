@@ -113,6 +113,57 @@ export class AuthService {
       .pipe(tap((response) => this.setSession(response)));
   }
 
+  forgotPassword(payload: { email: string }) {
+    return this.http.post<{ success: boolean; message: string }>(
+      `${environment.apiBaseUrl}/auth/forgot-password`,
+      payload,
+    );
+  }
+
+  resetPassword(payload: { id: string; token: string; password: string }) {
+    return this.http.post<{ success: boolean }>(
+      `${environment.apiBaseUrl}/auth/reset-password`,
+      payload,
+    );
+  }
+
+  verifyEmail(payload: { id: string; token: string }) {
+    return this.http
+      .post<{ success: boolean }>(`${environment.apiBaseUrl}/auth/verify-email`, payload)
+      .pipe(
+        tap(() => {
+          // Quem clicou no link ja logado precisa ver o aviso sumir.
+          const user = this.userSignal();
+          if (user && !user.emailVerifiedAt) {
+            this.updateStoredUser({ ...user, emailVerifiedAt: new Date().toISOString() });
+          }
+        }),
+      );
+  }
+
+  resendEmailVerification() {
+    return this.http
+      .post<{ success: boolean; alreadyVerified: boolean }>(
+        `${environment.apiBaseUrl}/auth/resend-verification`,
+        {},
+      )
+      .pipe(
+        tap((response) => {
+          const user = this.userSignal();
+          if (response.alreadyVerified && user && !user.emailVerifiedAt) {
+            this.updateStoredUser({ ...user, emailVerifiedAt: new Date().toISOString() });
+          }
+        }),
+      );
+  }
+
+  unsubscribeEmail(payload: { token: string }) {
+    return this.http.post<{ success: boolean; category: string }>(
+      `${environment.apiBaseUrl}/email-preferences/unsubscribe`,
+      payload,
+    );
+  }
+
   startMfaSetup() {
     return this.http.post<MfaSetupResponse>(`${environment.apiBaseUrl}/auth/mfa/setup`, {});
   }

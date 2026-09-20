@@ -118,7 +118,7 @@
             <span>Lembrar de mim</span>
           </label>
 
-          <a class="auth-link" routerLink="/signup">Precisa de uma conta?</a>
+          <a class="auth-link" routerLink="/auth/forgot-password">Esqueci minha senha</a>
         </div>
 
         <div class="auth-mfa-card" *ngIf="mfaChallenge() && !emailBypassChallenge()" [formGroup]="mfaForm">

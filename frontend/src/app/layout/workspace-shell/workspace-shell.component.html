@@ -24,6 +24,28 @@
   <main class="workspace-shell__content">
     <div class="workspace-shell__content-inner ambient-shell">
       <section
+        *ngIf="showVerifyBanner()"
+        class="workspace-shell__sync-banner workspace-shell__sync-banner--warning"
+      >
+        <div class="workspace-shell__sync-copy">
+          <strong>Confirme seu email</strong>
+          <p>
+            Enviamos um link para {{ verifyBannerEmail() }}. Sem a confirmação, você não recebe
+            lembretes nem o resumo semanal por email.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          class="proto-button proto-button--secondary"
+          [disabled]="resendingVerification()"
+          (click)="resendVerification()"
+        >
+          {{ resendingVerification() ? 'Enviando...' : 'Reenviar email' }}
+        </button>
+      </section>
+
+      <section
         *ngIf="showSyncBanner()"
         class="workspace-shell__sync-banner"
         [class.workspace-shell__sync-banner--warning]="syncBannerTone() === 'warning'"

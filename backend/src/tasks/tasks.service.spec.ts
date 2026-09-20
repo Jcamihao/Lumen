@@ -151,6 +151,10 @@ describe("TasksService", () => {
   });
 
   describe("habit streaks", () => {
+    // Prazo sempre no futuro relativo a "agora" — uma data fixa vira "atrasada"
+    // com o passar do tempo e quebra o teste de conclusao no prazo.
+    const tomorrow = () => new Date(Date.now() + 24 * 60 * 60 * 1000);
+
     // Mimica o comportamento real do Prisma: uma chave com valor `undefined`
     // em `data` significa "nao alterar", nao "apagar o campo" — diferente de
     // um simples object spread, que sobrescreveria com `undefined`.
@@ -179,7 +183,7 @@ describe("TasksService", () => {
     it("starts the streak at 1 on the first completion", async () => {
       const existingTask = {
         ...baseHabit,
-        dueDate: new Date("2026-09-19T23:59:00.000Z"),
+        dueDate: tomorrow(),
         streakCount: 0,
         longestStreak: 0,
       };
@@ -208,7 +212,7 @@ describe("TasksService", () => {
     it("increments the streak when completed on time", async () => {
       const existingTask = {
         ...baseHabit,
-        dueDate: new Date("2026-09-19T23:59:00.000Z"),
+        dueDate: tomorrow(),
         streakCount: 5,
         longestStreak: 5,
       };
@@ -263,7 +267,7 @@ describe("TasksService", () => {
         status: "PENDING",
         isRecurring: false,
         recurrenceRule: null,
-        dueDate: new Date("2026-09-19T23:59:00.000Z"),
+        dueDate: tomorrow(),
         streakCount: 0,
         longestStreak: 0,
       };
@@ -289,7 +293,7 @@ describe("TasksService", () => {
       const existingTask = {
         ...baseHabit,
         status: "DONE",
-        dueDate: new Date("2026-09-19T23:59:00.000Z"),
+        dueDate: tomorrow(),
         streakCount: 3,
         longestStreak: 3,
       };

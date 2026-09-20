@@ -38,6 +38,37 @@ export const routes: Routes = [
       ),
   },
   {
+    path: 'auth/forgot-password',
+    canActivate: [guestGuard],
+    loadComponent: () =>
+      import('./features/auth/forgot-password-page/forgot-password-page.component').then(
+        (module) => module.ForgotPasswordPageComponent,
+      ),
+  },
+  // Sem guard de proposito: quem abre o link do email pode estar logado, e o
+  // guestGuard o mandaria pro dashboard sem mostrar a pagina.
+  {
+    path: 'auth/reset-password',
+    loadComponent: () =>
+      import('./features/auth/reset-password-page/reset-password-page.component').then(
+        (module) => module.ResetPasswordPageComponent,
+      ),
+  },
+  {
+    path: 'auth/verify-email',
+    loadComponent: () =>
+      import('./features/auth/verify-email-page/verify-email-page.component').then(
+        (module) => module.VerifyEmailPageComponent,
+      ),
+  },
+  {
+    path: 'unsubscribe',
+    loadComponent: () =>
+      import('./features/auth/unsubscribe-page/unsubscribe-page.component').then(
+        (module) => module.UnsubscribePageComponent,
+      ),
+  },
+  {
     path: '',
     canActivate: [authGuard],
     loadComponent: () =>

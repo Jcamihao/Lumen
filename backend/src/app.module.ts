@@ -15,6 +15,7 @@ import { authConfig } from "./config/auth.config";
 import { cacheConfig } from "./config/cache.config";
 import { mailConfig } from "./config/mail.config";
 import { DashboardModule } from "./dashboard/dashboard.module";
+import { EmailPreferencesModule } from "./email-preferences/email-preferences.module";
 import { FinanceCategoriesModule } from "./finance-categories/finance-categories.module";
 import { ForecastsModule } from "./forecasts/forecasts.module";
 import { GoalsModule } from "./goals/goals.module";
@@ -44,6 +45,7 @@ import { UsersModule } from "./users/users.module";
     PrismaModule,
     CacheQueueModule,
     UsersModule,
+    EmailPreferencesModule,
     AuthModule,
     TaskCategoriesModule,
     TagGroupsModule,
