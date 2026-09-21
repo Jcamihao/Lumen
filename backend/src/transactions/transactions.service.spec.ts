@@ -1,4 +1,4 @@
-import { NotFoundException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { TransactionsService } from "./transactions.service";
 
 describe("TransactionsService", () => {
@@ -36,6 +36,44 @@ describe("TransactionsService", () => {
     ({
       touchUserData: jest.fn().mockResolvedValue(undefined),
     }) as any;
+
+  describe('conflito de data em lancamento de conta fixa', () => {
+    it('devolve 400 quando o indice unico (conta fixa + data) recusa a edicao', async () => {
+      const prisma = buildPrisma({
+        transaction: {
+          findMany: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue({ id: 'tx-1', userId: 'user-1' }),
+          update: jest
+            .fn()
+            .mockRejectedValue(Object.assign(new Error('Unique'), { code: 'P2002' })),
+          create: jest.fn(),
+          delete: jest.fn(),
+        },
+      });
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+
+      await expect(
+        service.update('user-1', 'tx-1', { date: '2026-10-05' } as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('outros erros do banco continuam subindo', async () => {
+      const prisma = buildPrisma({
+        transaction: {
+          findMany: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue({ id: 'tx-1', userId: 'user-1' }),
+          update: jest.fn().mockRejectedValue(new Error('conexao caiu')),
+          create: jest.fn(),
+          delete: jest.fn(),
+        },
+      });
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+
+      await expect(service.update('user-1', 'tx-1', { description: 'x' } as any)).rejects.toThrow(
+        'conexao caiu',
+      );
+    });
+  });
 
   describe('contas fixas vencidas', () => {
     it('gera os lancamentos vencidos antes de listar e recalcula os insights', async () => {

@@ -37,7 +37,11 @@ const template = (overrides: Partial<Template> = {}): Template => ({
  * Prisma falso com estado em memoria: o updateMany honra o `where` (id +
  * nextDueDate + isActive), que e o que garante a idempotencia de verdade.
  */
-const buildPrisma = (templates: Template[], timezone = 'UTC') => {
+const buildPrisma = (
+  templates: Template[],
+  timezone = 'UTC',
+  existingDates: string[] = [],
+) => {
   const state = templates.map((item) => ({ ...item }));
   const created: any[] = [];
 
@@ -57,6 +61,10 @@ const buildPrisma = (templates: Template[], timezone = 'UTC') => {
     },
     transaction: {
       create: jest.fn(async ({ data }: any) => {
+        // Indice unico (conta fixa + data) do banco.
+        if (existingDates.includes(data.date.toISOString().slice(0, 10))) {
+          throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+        }
         created.push(data);
         return data;
       }),
@@ -74,7 +82,16 @@ const buildPrisma = (templates: Template[], timezone = 'UTC') => {
       updateMany: tx.recurringTransaction.updateMany,
     },
     user: { findUnique: jest.fn().mockResolvedValue({ timezone }) },
-    $transaction: jest.fn(async (callback: any) => callback(tx)),
+    // Como o banco: se algo dentro da transacao falha, a reivindicacao e desfeita.
+    $transaction: jest.fn(async (callback: any) => {
+      const snapshot = state.map((row) => ({ ...row }));
+      try {
+        return await callback(tx);
+      } catch (error) {
+        state.forEach((row, index) => Object.assign(row, snapshot[index]));
+        throw error;
+      }
+    }),
   };
 
   return { prisma, state, created };
@@ -211,5 +228,50 @@ describe('RecurringMaterializerService', () => {
     await service(prisma).materializeDue('user-1', now);
 
     expect(created[0]).toMatchObject({ type: TransactionType.INCOME, description: 'Salario' });
+  });
+
+  describe('trava de unicidade do banco (conta fixa + data)', () => {
+    it('data que ja tem lancamento: avanca o calendario sem gerar nem falhar', async () => {
+      const { prisma, created, state } = buildPrisma([template()], 'UTC', ['2026-09-05']);
+
+      const count = await service(prisma).materializeDue('user-1', now);
+
+      expect(count).toBe(0);
+      expect(created).toHaveLength(0);
+      expect(iso(state[0].nextDueDate)).toBe('2026-10-05');
+    });
+
+    it('nao repete a tentativa na chamada seguinte (nao trava a conta)', async () => {
+      const { prisma, created } = buildPrisma([template()], 'UTC', ['2026-09-05']);
+      const materializer = service(prisma);
+
+      await materializer.materializeDue('user-1', now);
+      const second = await materializer.materializeDue('user-1', now);
+
+      expect(second).toBe(0);
+      expect(created).toHaveLength(0);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('so pula a data duplicada: as demais do lote continuam sendo geradas', async () => {
+      const { prisma, created, state } = buildPrisma(
+        [template({ nextDueDate: utcDate(2026, 6, 5) })], // 05/07, 05/08, 05/09
+        'UTC',
+        ['2026-08-05'],
+      );
+
+      const count = await service(prisma).materializeDue('user-1', now);
+
+      expect(count).toBe(2);
+      expect(created.map((item) => iso(item.date))).toEqual(['2026-07-05', '2026-09-05']);
+      expect(iso(state[0].nextDueDate)).toBe('2026-10-05');
+    });
+
+    it('erro que nao e de unicidade continua subindo (nao e engolido)', async () => {
+      const { prisma } = buildPrisma([template()]);
+      prisma.$transaction.mockRejectedValueOnce(new Error('conexao caiu'));
+
+      await expect(service(prisma).materializeDue('user-1', now)).rejects.toThrow('conexao caiu');
+    });
   });
 });

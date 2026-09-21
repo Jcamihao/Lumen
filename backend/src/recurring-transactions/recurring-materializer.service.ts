@@ -9,6 +9,11 @@ import { addDaysUtc, localToday, nextOccurrence } from './recurrence.util';
  */
 export const MAX_CATCH_UP_PER_RUN = 24;
 
+/** Violacao do indice unico (conta fixa + data): o lancamento daquela data ja existe. */
+function isUniqueViolation(error: unknown) {
+  return (error as { code?: string } | null)?.code === 'P2002';
+}
+
 /**
  * Transforma contas fixas vencidas em lancamentos reais.
  *
@@ -70,41 +75,63 @@ export class RecurringMaterializerService {
         const next = nextOccurrence(due, template.frequency, template.anchorDay);
         const finished = Boolean(template.endDate && next > template.endDate);
 
-        const claimed = await this.prisma.$transaction(async (tx) => {
-          const claim = await tx.recurringTransaction.updateMany({
-            where: { id: template.id, nextDueDate: due, isActive: true },
-            data: {
-              nextDueDate: next,
-              lastGeneratedAt: now,
-              ...(finished ? { isActive: false } : {}),
-            },
-          });
+        const claimData = {
+          nextDueDate: next,
+          lastGeneratedAt: now,
+          ...(finished ? { isActive: false } : {}),
+        };
+        let alreadyExisted = false;
+        let claimed: boolean;
 
-          if (claim.count === 0) {
-            return false;
+        try {
+          claimed = await this.prisma.$transaction(async (tx) => {
+            const claim = await tx.recurringTransaction.updateMany({
+              where: { id: template.id, nextDueDate: due, isActive: true },
+              data: claimData,
+            });
+
+            if (claim.count === 0) {
+              return false;
+            }
+
+            await tx.transaction.create({
+              data: {
+                userId,
+                type: template.type,
+                description: template.description,
+                amount: template.amount,
+                date: due,
+                categoryId: template.categoryId,
+                recurringTransactionId: template.id,
+              },
+            });
+
+            return true;
+          });
+        } catch (error) {
+          if (!isUniqueViolation(error)) {
+            throw error;
           }
 
-          await tx.transaction.create({
-            data: {
-              userId,
-              type: template.type,
-              description: template.description,
-              amount: template.amount,
-              date: due,
-              categoryId: template.categoryId,
-              recurringTransactionId: template.id,
-            },
+          // O banco recusou por ja existir lancamento desta conta nesta data (a
+          // transacao desfez a reivindicacao). Nao ha o que gerar: so avanca o
+          // calendario, senao esta data seria tentada para sempre.
+          alreadyExisted = true;
+          const advanced = await this.prisma.recurringTransaction.updateMany({
+            where: { id: template.id, nextDueDate: due, isActive: true },
+            data: claimData,
           });
-
-          return true;
-        });
+          claimed = advanced.count === 1;
+        }
 
         // Outra chamada ja levou este vencimento: para de tentar esta conta.
         if (!claimed) {
           break;
         }
 
-        created += 1;
+        if (!alreadyExisted) {
+          created += 1;
+        }
         due = next;
 
         if (finished) {

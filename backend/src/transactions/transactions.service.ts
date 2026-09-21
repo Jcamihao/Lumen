@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, TransactionType } from '@prisma/client';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -100,22 +100,34 @@ export class TransactionsService {
       dto.type,
     );
 
-    const transaction = await this.prisma.transaction.update({
-      where: { id },
-      data: {
-        type: dto.type,
-        description: dto.description,
-        amount:
-          dto.amount !== undefined ? new Prisma.Decimal(Math.abs(dto.amount)) : undefined,
-        date: dto.date ? new Date(dto.date) : undefined,
-        categoryId: dto.categoryId === null ? null : dto.categoryId,
-        linkedTaskId: dto.linkedTaskId === null ? null : dto.linkedTaskId,
-        linkedGoalId: dto.linkedGoalId === null ? null : dto.linkedGoalId,
-      },
-      include: {
-        category: true,
-      },
-    });
+    const transaction = await this.prisma.transaction
+      .update({
+        where: { id },
+        data: {
+          type: dto.type,
+          description: dto.description,
+          amount:
+            dto.amount !== undefined ? new Prisma.Decimal(Math.abs(dto.amount)) : undefined,
+          date: dto.date ? new Date(dto.date) : undefined,
+          categoryId: dto.categoryId === null ? null : dto.categoryId,
+          linkedTaskId: dto.linkedTaskId === null ? null : dto.linkedTaskId,
+          linkedGoalId: dto.linkedGoalId === null ? null : dto.linkedGoalId,
+        },
+        include: {
+          category: true,
+        },
+      })
+      .catch((error) => {
+        // Indice unico (conta fixa + data): mover um lancamento gerado para a
+        // data de outro da mesma conta duplicaria aquele vencimento.
+        if (error?.code === 'P2002') {
+          throw new BadRequestException(
+            'Ja existe um lancamento desta conta fixa nessa data.',
+          );
+        }
+
+        throw error;
+      });
 
     await this.lifeEngineService.touchUserData(userId);
     return this.serializeTransaction(transaction);

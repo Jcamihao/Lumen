@@ -337,7 +337,8 @@ model Transaction {
   @@index([userId, type, date])
   @@index([linkedTaskId])
   @@index([linkedGoalId])
-  @@index([recurringTransactionId])
+  // Uma conta fixa gera no maximo um lancamento por data (NULL nao conflita).
+  @@unique([recurringTransactionId, date])
 }
 
 // Conta fixa ou recorrente (aluguel, assinatura, salario). O lancamento e
