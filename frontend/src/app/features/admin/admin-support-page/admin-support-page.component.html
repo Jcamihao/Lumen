@@ -2,9 +2,36 @@
   <header class="proto-header">
     <div class="proto-header__copy">
       <h2>Suporte — Admin</h2>
-      <p>Gerenciamento de solicitações de feedback, bugs e dúvidas dos usuários.</p>
+      <p>Feedback dos testadores, bugs e dúvidas dos usuários.</p>
     </div>
   </header>
+
+  <!-- Resumo do feedback dos testadores -->
+  <section class="admin-feedback-summary" *ngIf="summary() as sum" aria-label="Resumo do feedback">
+    <div class="proto-metric">
+      <strong>{{ sum.averageRating ?? '—' }}<small *ngIf="sum.averageRating !== null">/5</small></strong>
+      <span>Nota média</span>
+      <small>{{ sum.total }} feedback(s) com nota</small>
+    </div>
+
+    <div class="proto-surface admin-feedback-summary__card">
+      <span class="admin-feedback-summary__title">Distribuição das notas</span>
+      <div class="admin-rating-row" *ngFor="let option of ratingScale">
+        <span class="admin-rating-row__label">{{ option.value }}</span>
+        <div class="admin-rating-row__bar"><span [style.width.%]="distributionWidth(option.value)"></span></div>
+        <span class="admin-rating-row__count">{{ distributionCount(option.value) }}</span>
+      </div>
+    </div>
+
+    <div class="proto-surface admin-feedback-summary__card">
+      <span class="admin-feedback-summary__title">Partes mais citadas</span>
+      <p class="admin-feedback-summary__empty" *ngIf="!sum.byArea.length">Ainda sem feedback.</p>
+      <div class="admin-area-row" *ngFor="let row of sum.byArea | slice:0:5">
+        <span>{{ areaText(row.area) }}</span>
+        <span class="admin-area-row__meta">{{ row.count }} · nota {{ row.averageRating ?? '—' }}</span>
+      </div>
+    </div>
+  </section>
 
   <!-- Filtros de status -->
   <div class="admin-support-filters">
@@ -20,6 +47,23 @@
       class="proto-button proto-button--secondary admin-support-filter-btn"
       [class.active]="filterStatus() === opt.value"
       (click)="selectStatus($any(opt.value))"
+    >
+      {{ opt.label }}
+    </button>
+  </div>
+
+  <!-- Filtros de tipo -->
+  <div class="admin-support-filters">
+    <button
+      *ngFor="let opt of [
+        { value: '', label: 'Todos os tipos' },
+        { value: 'FEEDBACK', label: 'Feedback' },
+        { value: 'BUG_REPORT', label: 'Bugs' }
+      ]"
+      type="button"
+      class="proto-button proto-button--secondary admin-support-filter-btn"
+      [class.active]="filterType() === opt.value"
+      (click)="selectType($any(opt.value))"
     >
       {{ opt.label }}
     </button>
@@ -51,6 +95,9 @@
           </span>
           <span class="proto-chip">{{ typeLabel(req.type) }}</span>
           <span class="proto-chip" *ngIf="req.severity">{{ severityLabel(req.severity) }}</span>
+          <span class="proto-chip admin-chip--rating" *ngIf="req.rating">★ {{ req.rating }}/5</span>
+          <span class="proto-chip" *ngIf="req.area">{{ areaText(req.area) }}</span>
+          <span class="proto-tag" data-tone="success" *ngIf="req.canContact">Aceita contato</span>
         </div>
 
         <div class="admin-support-item__title-block">

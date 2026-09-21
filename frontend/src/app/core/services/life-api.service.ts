@@ -9,6 +9,7 @@ import {
   AssistantReply,
   DashboardSummary,
   FinanceCategory,
+  FeedbackSummary,
   ForecastAccuracy,
   Goal,
   GoalContribution,
@@ -455,10 +456,22 @@ export class LifeApiService {
     );
   }
 
-  listAdminSupportRequests(params?: { status?: string; page?: number }) {
+  listAdminSupportRequests(params?: { status?: string; type?: string; page?: number }) {
     return this.http.get<SupportRequest[]>(
       `${environment.apiBaseUrl}/support-requests/admin`,
-      { params: { ...(params?.status ? { status: params.status } : {}), page: String(params?.page ?? 1) } },
+      {
+        params: {
+          ...(params?.status ? { status: params.status } : {}),
+          ...(params?.type ? { type: params.type } : {}),
+          page: String(params?.page ?? 1),
+        },
+      },
+    );
+  }
+
+  getFeedbackSummary() {
+    return this.http.get<FeedbackSummary>(
+      `${environment.apiBaseUrl}/support-requests/admin/feedback-summary`,
     );
   }
 
@@ -661,6 +674,9 @@ export class LifeApiService {
     screenPath?: string;
     appVersion?: string;
     deviceInfo?: string;
+    rating?: number;
+    area?: string;
+    canContact?: boolean;
   }) {
     if (!this.networkService.isOnline()) {
       return of(this.offlineLifeService.queueSupportRequestCreate(payload));

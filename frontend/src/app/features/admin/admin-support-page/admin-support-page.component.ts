@@ -1,11 +1,13 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { SupportRequest } from '../../../core/models/domain.models';
+import { FeedbackSummary, SupportRequest } from '../../../core/models/domain.models';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { RATING_OPTIONS, areaLabel } from '../../../core/utils/feedback.utils';
 
 type StatusFilter = '' | 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'CLOSED';
+type TypeFilter = '' | 'FEEDBACK' | 'BUG_REPORT';
 
 @Component({
   selector: 'app-admin-support-page',
@@ -23,6 +25,9 @@ export class AdminSupportPageComponent {
   protected readonly requests = signal<SupportRequest[]>([]);
   protected readonly loading = signal(true);
   protected readonly filterStatus = signal<StatusFilter>('');
+  protected readonly filterType = signal<TypeFilter>('');
+  protected readonly summary = signal<FeedbackSummary | null>(null);
+  protected readonly ratingScale = [...RATING_OPTIONS].reverse();
   protected readonly page = signal(1);
   protected readonly updatingId = signal<string | null>(null);
   protected readonly expandedId = signal<string | null>(null);
@@ -36,6 +41,30 @@ export class AdminSupportPageComponent {
 
   constructor() {
     this.load();
+    this.loadSummary();
+  }
+
+  protected selectType(type: TypeFilter) {
+    this.filterType.set(type);
+    this.page.set(1);
+    this.load();
+  }
+
+  /** Largura da barra da distribuicao de notas (0-100), relativa a nota mais comum. */
+  protected distributionWidth(rating: number) {
+    const distribution = this.summary()?.distribution;
+    if (!distribution) return 0;
+
+    const max = Math.max(...Object.values(distribution), 1);
+    return Math.round((distribution[rating as 1 | 2 | 3 | 4 | 5] / max) * 100);
+  }
+
+  protected distributionCount(rating: number) {
+    return this.summary()?.distribution[rating as 1 | 2 | 3 | 4 | 5] ?? 0;
+  }
+
+  protected areaText(area: string | null | undefined) {
+    return areaLabel(area);
   }
 
   protected selectStatus(status: StatusFilter) {
@@ -97,7 +126,7 @@ export class AdminSupportPageComponent {
   }
 
   protected typeLabel(type: string) {
-    return ({ FEEDBACK: 'Feedback', BUG: 'Bug', FEATURE_REQUEST: 'Feature', QUESTION: 'Dúvida', OTHER: 'Outro' } as Record<string, string>)[type] ?? type;
+    return ({ FEEDBACK: 'Feedback', BUG_REPORT: 'Bug', BUG: 'Bug', FEATURE_REQUEST: 'Feature', QUESTION: 'Dúvida', OTHER: 'Outro' } as Record<string, string>)[type] ?? type;
   }
 
   protected dateLabel(dateStr: string) {
@@ -107,7 +136,11 @@ export class AdminSupportPageComponent {
   private load() {
     this.loading.set(true);
     this.api
-      .listAdminSupportRequests({ status: this.filterStatus() || undefined, page: this.page() })
+      .listAdminSupportRequests({
+        status: this.filterStatus() || undefined,
+        type: this.filterType() || undefined,
+        page: this.page(),
+      })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (data) => {
@@ -118,6 +151,17 @@ export class AdminSupportPageComponent {
           this.loading.set(false);
           this.toast.error('Não foi possível carregar as solicitações.');
         },
+      });
+  }
+
+  private loadSummary() {
+    this.api
+      .getFeedbackSummary()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (summary) => this.summary.set(summary),
+        // O resumo e um extra: se falhar, a lista continua funcionando.
+        error: () => this.summary.set(null),
       });
   }
 }

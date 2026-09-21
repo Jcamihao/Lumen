@@ -2,15 +2,17 @@ import { CommonModule } from "@angular/common";
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
-import { Router } from "@angular/router";
+import { Router, RouterLink } from "@angular/router";
 import { SupportRequest } from "../../../core/models/domain.models";
 import { AuthService } from "../../../core/services/auth.service";
 import { LifeApiService } from "../../../core/services/life-api.service";
+import { APP_VERSION } from "../../../core/app-version";
+import { buildDeviceInfo } from "../../../core/utils/device-info";
 
 @Component({
   selector: "app-support-page",
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, RouterLink],
   templateUrl: "./support-page.component.html",
   styleUrls: ["./support-page.component.scss"],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -67,14 +69,14 @@ export class SupportPageComponent {
     this.feedbackMessage.set("");
     this.errorMessage.set("");
 
-    const deviceInfo = this.buildDeviceInfo();
+    const deviceInfo = buildDeviceInfo();
     const payload = {
       type: this.form.controls.type.value,
       subject: this.form.controls.subject.value.trim(),
       message: this.form.controls.message.value.trim(),
       severity: this.bugMode() ? this.form.controls.severity.value : undefined,
       screenPath: this.router.url,
-      appVersion: "lumen-mobile",
+      appVersion: APP_VERSION,
       deviceInfo,
     };
 
@@ -200,16 +202,5 @@ export class SupportPageComponent {
           this.errorMessage.set("Não foi possível carregar o histórico de suporte.");
         },
       });
-  }
-
-  private buildDeviceInfo() {
-    const userAgent = typeof navigator !== "undefined" ? navigator.userAgent : "unknown";
-    const platform = typeof navigator !== "undefined" ? navigator.platform : "unknown";
-    const viewport =
-      typeof window !== "undefined"
-        ? `${window.innerWidth}x${window.innerHeight}`
-        : "unknown";
-
-    return `platform=${platform}; viewport=${viewport}; userAgent=${userAgent}`;
   }
 }

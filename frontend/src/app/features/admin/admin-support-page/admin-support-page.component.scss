@@ -146,3 +146,73 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+.admin-feedback-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.1fr) minmax(0, 1.1fr);
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+
+  &__card {
+    display: grid;
+    align-content: start;
+    gap: 0.5rem;
+    padding: 1rem;
+  }
+
+  &__title {
+    font-weight: 700;
+    color: var(--text-strong);
+  }
+
+  &__empty {
+    margin: 0;
+    color: var(--text-medium);
+  }
+}
+
+.admin-rating-row {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr) 2rem;
+  align-items: center;
+  gap: 0.5rem;
+  font-variant-numeric: tabular-nums;
+
+  &__bar {
+    height: 0.6rem;
+    border: 1px solid var(--border);
+    background: var(--surface-panel-alt);
+
+    > span {
+      display: block;
+      height: 100%;
+      background: var(--accent);
+    }
+  }
+
+  &__count {
+    text-align: right;
+    color: var(--text-medium);
+  }
+}
+
+.admin-area-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+
+  &__meta {
+    color: var(--text-medium);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.admin-chip--rating {
+  font-weight: 700;
+}
+
+@media (max-width: 960px) {
+  .admin-feedback-summary {
+    grid-template-columns: 1fr;
+  }
+}

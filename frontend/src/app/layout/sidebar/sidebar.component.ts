@@ -54,6 +54,7 @@ export class SidebarComponent {
     { label: 'Alertas', icon: 'notifications', route: '/notifications' },
     { label: 'Importar', icon: 'upload_file', route: '/imports' },
     { label: 'Configurações', icon: 'settings', route: '/settings' },
+    { label: 'Feedback', icon: 'rate_review', route: '/feedback' },
     { label: 'Ajuda', icon: 'help', route: '/support' },
   ];
 

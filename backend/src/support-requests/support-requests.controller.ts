@@ -41,8 +41,17 @@ export class SupportRequestsController {
   listAll(@Query() query: ListSupportRequestsDto) {
     return this.supportRequestsService.listAll({
       status: query.status,
+      type: query.type,
       page: query.page ?? 1,
     });
+  }
+
+  @Get('admin/feedback-summary')
+  @Roles(UserRole.ADMIN)
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: '[Admin] Resumo do feedback dos testadores (nota media, distribuicao, areas)' })
+  feedbackSummary() {
+    return this.supportRequestsService.feedbackSummary();
   }
 
   @Patch('admin/:id/status')

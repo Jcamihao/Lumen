@@ -472,7 +472,19 @@ export type SupportRequest = {
   emailSnapshot: string;
   screenPath: string | null;
   appVersion: string | null;
+  /** Nota 1-5 da pagina de feedback (ausente em bug report e suporte). */
+  rating?: number | null;
+  area?: string | null;
+  /** O usuario autorizou a equipe a chamar para conversar sobre este feedback. */
+  canContact?: boolean;
   createdAt: string;
   updatedAt: string;
   user: { id: string; name: string; email: string };
+};
+
+export type FeedbackSummary = {
+  total: number;
+  averageRating: number | null;
+  distribution: Record<1 | 2 | 3 | 4 | 5, number>;
+  byArea: Array<{ area: string; count: number; averageRating: number | null }>;
 };

@@ -172,6 +172,13 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'feedback',
+        loadComponent: () =>
+          import('./features/feedback/feedback-page/feedback-page.component').then(
+            (module) => module.FeedbackPageComponent,
+          ),
+      },
+      {
         path: 'ajuda',
         pathMatch: 'full',
         redirectTo: 'support',

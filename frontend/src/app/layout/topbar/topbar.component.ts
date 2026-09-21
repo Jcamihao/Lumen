@@ -32,6 +32,7 @@ const BREADCRUMB_ITEMS: BreadcrumbItem[] = [
   { label: 'Alertas', route: '/notifications' },
   { label: 'Importar', route: '/imports' },
   { label: 'Configurações', route: '/settings' },
+  { label: 'Feedback', route: '/feedback' },
   { label: 'Ajuda', route: '/support' },
   { label: 'Suporte administrativo', route: '/admin/support' },
 ];

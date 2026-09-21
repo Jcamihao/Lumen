@@ -93,6 +93,13 @@ export class RateLimitGuard implements CanActivate {
     message:
       'Muitas tentativas de exclusao de conta. Tente novamente em alguns minutos.',
   };
+  // Feedback/suporte e texto livre gravado no banco: limite por usuario contra spam.
+  private readonly supportCreatePolicy: RateLimitPolicy = {
+    keyPrefix: 'support-create',
+    limit: 10,
+    windowMs: 15 * 60_000,
+    message: 'Muitos envios em pouco tempo. Tente novamente em alguns minutos.',
+  };
   private readonly emailUnsubscribePolicy: RateLimitPolicy = {
     keyPrefix: 'email-unsubscribe',
     limit: 20,
@@ -180,6 +187,10 @@ export class RateLimitGuard implements CanActivate {
 
     if (method === 'POST' && path === '/api/v1/email-preferences/unsubscribe') {
       return this.emailUnsubscribePolicy;
+    }
+
+    if (method === 'POST' && path === '/api/v1/support-requests') {
+      return this.supportCreatePolicy;
     }
 
     if (method === 'DELETE' && path === '/api/v1/users/me') {

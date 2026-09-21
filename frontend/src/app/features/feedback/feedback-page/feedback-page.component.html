@@ -1,0 +1,108 @@
+<div class="proto-page feedback-page">
+  <header class="proto-header">
+    <div class="proto-header__copy">
+      <p class="section-kicker">Feedback</p>
+      <h2>Como está sendo testar o Lumen?</h2>
+      <p>Leva menos de um minuto. Cada resposta vira melhoria, então pode ser sincero.</p>
+    </div>
+  </header>
+
+  <article class="proto-surface feedback-thanks" *ngIf="sent(); else feedbackForm" role="status">
+    <span class="material-symbols-rounded feedback-thanks__icon">favorite</span>
+    <h3>Obrigado! Seu feedback chegou.</h3>
+    <p *ngIf="sent() === 'online'">A equipe lê cada resposta. Se você autorizou, podemos te chamar para conversar.</p>
+    <p *ngIf="sent() === 'offline'">
+      Você está sem conexão. O feedback ficou guardado e será enviado sozinho quando a internet voltar.
+    </p>
+    <div class="proto-actions-row">
+      <button type="button" class="proto-button proto-button--secondary" (click)="sendAnother()">
+        Enviar outro feedback
+      </button>
+      <a class="proto-button" routerLink="/dashboard">Voltar ao início</a>
+    </div>
+  </article>
+
+  <ng-template #feedbackForm>
+    <form class="proto-surface feedback-form" [formGroup]="form" (submit)="$event.preventDefault(); submit()" novalidate>
+      <fieldset class="feedback-block">
+        <legend>Como está sendo usar o Lumen?</legend>
+        <div class="feedback-rating" role="radiogroup" aria-label="Nota geral de 1 a 5">
+          <button
+            *ngFor="let option of ratings"
+            type="button"
+            role="radio"
+            class="feedback-rating__option"
+            [class.is-selected]="form.controls.rating.value === option.value"
+            [attr.aria-checked]="form.controls.rating.value === option.value"
+            (click)="selectRating(option.value)"
+          >
+            <strong>{{ option.value }}</strong>
+            <span>{{ option.label }}</span>
+          </button>
+        </div>
+        <p class="feedback-error" *ngIf="ratingMissing()">Escolha uma nota para continuar.</p>
+      </fieldset>
+
+      <fieldset class="feedback-block">
+        <legend>Sobre qual parte do app?</legend>
+        <div class="feedback-areas" role="radiogroup" aria-label="Parte do app">
+          <button
+            *ngFor="let option of areas"
+            type="button"
+            role="radio"
+            class="feedback-area"
+            [class.is-selected]="form.controls.area.value === option.value"
+            [attr.aria-checked]="form.controls.area.value === option.value"
+            (click)="selectArea(option.value)"
+          >
+            <span class="material-symbols-rounded" aria-hidden="true">{{ option.icon }}</span>
+            {{ option.label }}
+          </button>
+        </div>
+      </fieldset>
+
+      <div class="proto-field">
+        <label for="feedback-liked">O que funcionou bem?</label>
+        <textarea
+          id="feedback-liked"
+          rows="4"
+          formControlName="liked"
+          placeholder="Ex.: gostei de ver para onde vai meu dinheiro na rosca de gastos."
+        ></textarea>
+        <small class="feedback-count">{{ charsLeft('liked') }} caracteres restantes</small>
+      </div>
+
+      <div class="proto-field">
+        <label for="feedback-improve">O que atrapalhou ou faltou?</label>
+        <textarea
+          id="feedback-improve"
+          rows="4"
+          formControlName="improve"
+          placeholder="Ex.: não achei onde criar uma categoria nova."
+        ></textarea>
+        <small class="feedback-count">{{ charsLeft('improve') }} caracteres restantes</small>
+        <p class="feedback-error" *ngIf="textMissing()">
+          Escreva pelo menos uma frase em um dos dois campos.
+        </p>
+      </div>
+
+      <label class="feedback-consent">
+        <input type="checkbox" formControlName="canContact" />
+        <span>Pode entrar em contato comigo para conversar sobre este feedback.</span>
+      </label>
+
+      <p class="feedback-error" role="alert" *ngIf="errorMessage()">{{ errorMessage() }}</p>
+
+      <div class="proto-actions-row">
+        <button type="submit" class="proto-button" [disabled]="submitting()">
+          <span class="material-symbols-rounded">send</span>
+          {{ submitting() ? 'Enviando...' : 'Enviar feedback' }}
+        </button>
+      </div>
+
+      <p class="feedback-hint">
+        Encontrou um erro? Vá em <a routerLink="/support">Ajuda</a> e use "Reportar bug", para a equipe receber com mais detalhes.
+      </p>
+    </form>
+  </ng-template>
+</div>

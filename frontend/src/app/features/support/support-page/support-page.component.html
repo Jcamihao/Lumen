@@ -89,6 +89,10 @@
           </div>
         </div>
 
+        <p class="support-feedback-cta" *ngIf="!bugMode()">
+          Só quer dar sua opinião sobre o app? <a routerLink="/feedback">Abra a página de feedback</a>, é mais rápida.
+        </p>
+
         <div class="proto-note">
           <strong class="proto-inline-title">Tempo de resposta estimado</strong>
           <p>{{ responseTimeEstimate() }}</p>

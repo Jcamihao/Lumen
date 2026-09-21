@@ -557,12 +557,18 @@ model SupportRequest {
   screenPath    String?
   appVersion    String?
   deviceInfo    String?
+  // Preenchidos pela pagina de feedback dos testadores (nota 1-5 e area do app).
+  rating        Int?
+  area          String?
+  // O usuario autorizou a equipe a chamar para conversar sobre este feedback.
+  canContact    Boolean                 @default(false)
   createdAt     DateTime                @default(now())
   updatedAt     DateTime                @updatedAt
   user          User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, type, createdAt])
   @@index([status, createdAt])
+  @@index([type, createdAt])
 }
 
 model AssistantTurn {
