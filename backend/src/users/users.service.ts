@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Prisma, TransactionType, UserRole } from "@prisma/client";
+import * as bcrypt from "bcryptjs";
 import { PrismaService } from "../prisma/prisma.service";
 import { DEFAULT_TAG_GROUPS } from "../tag-groups/tag-groups.service";
 import { UpdateUserDto } from "./dto/update-user.dto";
@@ -325,6 +326,29 @@ export class UsersService {
         notifications: {
           orderBy: { createdAt: "desc" },
         },
+        forecastSnapshots: {
+          orderBy: { targetDate: "desc" },
+        },
+        assistantTurns: {
+          orderBy: { createdAt: "desc" },
+        },
+        supportRequests: {
+          orderBy: { createdAt: "desc" },
+        },
+        // So metadados do dispositivo; o hash do refresh token nunca sai daqui.
+        authSessions: {
+          select: {
+            id: true,
+            userAgent: true,
+            ipAddress: true,
+            lastUsedAt: true,
+            expiresAt: true,
+            revokedAt: true,
+            revokeReason: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+        },
       },
     });
 
@@ -332,11 +356,28 @@ export class UsersService {
       throw new NotFoundException("Usuario nao encontrado.");
     }
 
+    // As listas vao em `datasets`; o `profile` fica so com os dados da conta.
     const {
       passwordHash,
       mfaTotpSecretEncrypted,
       mfaPendingTotpSecretEncrypted,
       mfaRecoveryCodes,
+      taskCategories,
+      financeCategories,
+      tagGroups,
+      tasks,
+      transactions,
+      goals,
+      reminders,
+      insights,
+      forecasts,
+      forecastSnapshots,
+      importJobs,
+      receiptScans,
+      notifications,
+      assistantTurns,
+      supportRequests,
+      authSessions,
       ...safeUser
     } = user;
     const aiProcessingActive = Boolean(
@@ -399,32 +440,32 @@ export class UsersService {
           : 0,
       },
       datasets: {
-        taskCategories: safeUser.taskCategories,
-        financeCategories: safeUser.financeCategories,
-        tasks: safeUser.tasks.map((task) => ({
+        taskCategories: taskCategories,
+        financeCategories: financeCategories,
+        tasks: tasks.map((task) => ({
           ...task,
           estimatedAmount:
             task.estimatedAmount !== null && task.estimatedAmount !== undefined
               ? Number(task.estimatedAmount)
               : null,
         })),
-        transactions: safeUser.transactions.map((transaction) => ({
+        transactions: transactions.map((transaction) => ({
           ...transaction,
           amount: Number(transaction.amount),
         })),
-        goals: safeUser.goals.map((goal) => ({
+        goals: goals.map((goal) => ({
           ...goal,
           targetAmount: Number(goal.targetAmount),
           currentAmount: Number(goal.currentAmount),
         })),
-        reminders: safeUser.reminders,
-        insights: safeUser.insights,
-        forecasts: safeUser.forecasts.map((forecast) => ({
+        reminders: reminders,
+        insights: insights,
+        forecasts: forecasts.map((forecast) => ({
           ...forecast,
           predictedBalance: Number(forecast.predictedBalance),
         })),
-        importJobs: safeUser.importJobs,
-        receiptScans: safeUser.receiptScans.map((receiptScan) => ({
+        importJobs: importJobs,
+        receiptScans: receiptScans.map((receiptScan) => ({
           ...receiptScan,
           totalAmount: Number(receiptScan.totalAmount),
           subtotalAmount:
@@ -440,12 +481,44 @@ export class UsersService {
             totalPrice: Number(item.totalPrice),
           })),
         })),
-        notifications: safeUser.notifications,
+        notifications,
+        tagGroups,
+        forecastSnapshots: forecastSnapshots.map((snapshot) => ({
+          ...snapshot,
+          predictedBalance: Number(snapshot.predictedBalance),
+          actualBalance:
+            snapshot.actualBalance !== null && snapshot.actualBalance !== undefined
+              ? Number(snapshot.actualBalance)
+              : null,
+          errorPercent:
+            snapshot.errorPercent !== null && snapshot.errorPercent !== undefined
+              ? Number(snapshot.errorPercent)
+              : null,
+        })),
+        assistantTurns,
+        supportRequests,
+        authSessions,
       },
     };
   }
 
-  async deleteMe(userId: string) {
+  async deleteMe(userId: string, password: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { passwordHash: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException("Usuario nao encontrado.");
+    }
+
+    // 400, nunca 401: o interceptor do front desloga em 401 e o usuario
+    // perderia a sessao so por errar a senha.
+    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordMatches) {
+      throw new BadRequestException("Senha incorreta.");
+    }
+
     await this.prisma.user.delete({
       where: { id: userId },
     });

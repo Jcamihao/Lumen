@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Patch } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../common/decorators/current-user.decorator";
 import { AuthenticatedUser } from "../common/interfaces/authenticated-user.interface";
+import { DeleteAccountDto } from "./dto/delete-account.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { UsersService } from "./users.service";
 
@@ -36,9 +37,13 @@ export class UsersController {
 
   @Delete("me")
   @ApiOperation({
-    summary: "Exclui a conta autenticada e os dados associados ao usuario",
+    summary:
+      "Exclui a conta autenticada e os dados associados, mediante confirmacao da senha",
   })
-  deleteMe(@CurrentUser() user: AuthenticatedUser) {
-    return this.usersService.deleteMe(user.sub);
+  deleteMe(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: DeleteAccountDto,
+  ) {
+    return this.usersService.deleteMe(user.sub, dto.password);
   }
 }

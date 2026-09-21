@@ -588,9 +588,10 @@ export class LifeApiService {
     );
   }
 
-  deleteMyAccount() {
+  deleteMyAccount(password: string) {
     return this.http.delete<{ message: string; deletedAt: string }>(
       `${environment.apiBaseUrl}/users/me`,
+      { body: { password } },
     );
   }
 

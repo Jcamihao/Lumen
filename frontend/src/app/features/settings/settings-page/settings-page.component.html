@@ -427,11 +427,57 @@
       <div class="settings-danger-zone">
         <div>
           <strong>Zona de perigo</strong>
-          <p>Excluir a conta é uma ação permanente e remove os dados associados.</p>
+          <p>
+            Excluir a conta é permanente: apaga tarefas, finanças, metas, conversas com o Selah e tudo o
+            mais ligado a você. Se quiser guardar uma cópia, use <em>Exportar meus dados</em> antes.
+          </p>
         </div>
-        <button type="button" class="proto-button proto-button--ghost" [disabled]="deleting()" (click)="deleteAccount()">
-          {{ deleting() ? 'Excluindo...' : 'Excluir minha conta' }}
+
+        <button
+          *ngIf="!confirmingDelete()"
+          type="button"
+          class="proto-button proto-button--secondary settings-danger-button"
+          (click)="startDeleteAccount()"
+        >
+          Excluir minha conta
         </button>
+
+        <form
+          *ngIf="confirmingDelete()"
+          class="settings-danger-confirm"
+          (submit)="$event.preventDefault(); deleteAccount()"
+          novalidate
+        >
+          <div class="proto-field">
+            <label for="delete-account-password">Digite sua senha para confirmar</label>
+            <input
+              id="delete-account-password"
+              type="password"
+              autocomplete="current-password"
+              [formControl]="deletePassword"
+            />
+          </div>
+
+          <p class="settings-danger-confirm__error" *ngIf="deleteError()" role="alert">{{ deleteError() }}</p>
+
+          <div class="settings-danger-confirm__actions">
+            <button
+              type="submit"
+              class="proto-button proto-button--secondary settings-danger-button"
+              [disabled]="deleting() || deletePassword.invalid"
+            >
+              {{ deleting() ? 'Excluindo...' : 'Excluir definitivamente' }}
+            </button>
+            <button
+              type="button"
+              class="proto-button proto-button--secondary"
+              [disabled]="deleting()"
+              (click)="cancelDeleteAccount()"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </article>

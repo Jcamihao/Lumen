@@ -1,0 +1,150 @@
+import { BadRequestException, NotFoundException } from "@nestjs/common";
+import * as bcrypt from "bcryptjs";
+import { UsersService } from "./users.service";
+
+describe("UsersService — LGPD (excluir e exportar)", () => {
+  const buildService = (prisma: Record<string, unknown>) =>
+    new UsersService(prisma as any, { get: jest.fn() } as any);
+
+  describe("deleteMe", () => {
+    const passwordHash = bcrypt.hashSync("senha-correta", 4);
+
+    const buildPrisma = (user: unknown = { passwordHash }) => ({
+      user: {
+        findUnique: jest.fn().mockResolvedValue(user),
+        delete: jest.fn().mockResolvedValue({}),
+      },
+    });
+
+    it("recusa com 400 e nao apaga nada quando a senha esta errada", async () => {
+      const prisma = buildPrisma();
+      const service = buildService(prisma);
+
+      await expect(service.deleteMe("user-1", "senha-errada")).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.user.delete).not.toHaveBeenCalled();
+    });
+
+    it("apaga a conta do proprio usuario quando a senha confere", async () => {
+      const prisma = buildPrisma();
+      const service = buildService(prisma);
+
+      const result = await service.deleteMe("user-1", "senha-correta");
+
+      expect(prisma.user.delete).toHaveBeenCalledWith({
+        where: { id: "user-1" },
+      });
+      expect(result.message).toContain("excluidos");
+    });
+
+    it("responde 404 quando o usuario nao existe mais", async () => {
+      const prisma = buildPrisma(null);
+      const service = buildService(prisma);
+
+      await expect(service.deleteMe("user-1", "qualquer")).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.user.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("exportMe", () => {
+    const decimal = (value: number) => ({ toString: () => String(value), valueOf: () => value });
+    const baseUser = () => ({
+      id: "user-1",
+      name: "Marina",
+      email: "marina@example.com",
+      passwordHash: "hash-secreto",
+      mfaTotpSecretEncrypted: "mfa-secreto",
+      mfaPendingTotpSecretEncrypted: null,
+      mfaRecoveryCodes: null,
+      monthlyIncome: decimal(5000),
+      privacyNoticeAcceptedAt: new Date("2026-01-01"),
+      privacyNoticeVersion: "v1",
+      aiAssistantEnabled: true,
+      aiAssistantConsentAt: new Date("2026-01-01"),
+      aiAssistantConsentVersion: "v1",
+      taskCategories: [],
+      financeCategories: [],
+      tagGroups: [{ id: "tg-1", name: "Casa" }],
+      tasks: [{ id: "t-1", title: "Pagar luz", estimatedAmount: null }],
+      transactions: [{ id: "tx-1", description: "Mercado", amount: decimal(42.5) }],
+      goals: [],
+      reminders: [],
+      insights: [],
+      forecasts: [],
+      forecastSnapshots: [
+        {
+          id: "fs-1",
+          predictedBalance: decimal(1000),
+          actualBalance: decimal(900),
+          errorPercent: decimal(10),
+        },
+      ],
+      importJobs: [],
+      receiptScans: [],
+      notifications: [],
+      assistantTurns: [{ id: "at-1", question: "Como estou?", answer: "Bem." }],
+      supportRequests: [{ id: "sr-1", subject: "Ajuda", message: "Preciso de ajuda" }],
+      authSessions: [
+        { id: "s-1", userAgent: "Chrome", ipAddress: "10.0.0.1", createdAt: new Date() },
+      ],
+    });
+
+    const exportWith = (user: unknown) =>
+      buildService({
+        user: { findUnique: jest.fn().mockResolvedValue(user) },
+      }).exportMe("user-1");
+
+    it("inclui o historico do assistente, chamados, snapshots e sessoes", async () => {
+      const data = await exportWith(baseUser());
+
+      expect(data.datasets.assistantTurns).toHaveLength(1);
+      expect(data.datasets.supportRequests).toHaveLength(1);
+      expect(data.datasets.forecastSnapshots).toHaveLength(1);
+      expect(data.datasets.authSessions).toHaveLength(1);
+      expect(data.datasets.tagGroups).toHaveLength(1);
+    });
+
+    it("converte Decimals em numeros nos snapshots", async () => {
+      const data = await exportWith(baseUser());
+
+      expect(data.datasets.forecastSnapshots[0]).toMatchObject({
+        predictedBalance: 1000,
+        actualBalance: 900,
+        errorPercent: 10,
+      });
+    });
+
+    it("nunca vaza hash de senha nem segredo de MFA", async () => {
+      const data = await exportWith(baseUser());
+      const serialized = JSON.stringify(data);
+
+      expect(serialized).not.toContain("hash-secreto");
+      expect(serialized).not.toContain("mfa-secreto");
+      expect(serialized).not.toContain("passwordHash");
+      expect(serialized).not.toContain("refreshTokenHash");
+    });
+
+    it("mantem o profile so com dados da conta, sem repetir as listas", async () => {
+      const data = await exportWith(baseUser());
+      const profile = data.profile as Record<string, unknown>;
+
+      for (const key of [
+        "tasks",
+        "transactions",
+        "assistantTurns",
+        "supportRequests",
+        "authSessions",
+      ]) {
+        expect(profile).not.toHaveProperty(key);
+      }
+      expect(profile.email).toBe("marina@example.com");
+    });
+
+    it("responde 404 quando o usuario nao existe", async () => {
+      await expect(exportWith(null)).rejects.toThrow(NotFoundException);
+    });
+  });
+});

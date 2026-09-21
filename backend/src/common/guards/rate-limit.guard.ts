@@ -84,6 +84,15 @@ export class RateLimitGuard implements CanActivate {
     message:
       'Voce ja pediu varios emails de confirmacao. Aguarde um pouco antes de pedir de novo.',
   };
+  // Exclusao de conta confere a senha: sem limite viraria um oraculo de senha
+  // para quem roubou um access token.
+  private readonly deleteAccountPolicy: RateLimitPolicy = {
+    keyPrefix: 'users-delete-account',
+    limit: 5,
+    windowMs: 15 * 60_000,
+    message:
+      'Muitas tentativas de exclusao de conta. Tente novamente em alguns minutos.',
+  };
   private readonly emailUnsubscribePolicy: RateLimitPolicy = {
     keyPrefix: 'email-unsubscribe',
     limit: 20,
@@ -171,6 +180,10 @@ export class RateLimitGuard implements CanActivate {
 
     if (method === 'POST' && path === '/api/v1/email-preferences/unsubscribe') {
       return this.emailUnsubscribePolicy;
+    }
+
+    if (method === 'DELETE' && path === '/api/v1/users/me') {
+      return this.deleteAccountPolicy;
     }
 
     return this.defaultPolicy;

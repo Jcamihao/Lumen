@@ -8,7 +8,12 @@ import {
   signal,
 } from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
-import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
+import {
+  FormBuilder,
+  FormControl,
+  ReactiveFormsModule,
+  Validators,
+} from "@angular/forms";
 import { Router } from "@angular/router";
 import { environment } from "../../../../environments/environment";
 import {
@@ -38,6 +43,12 @@ export class SettingsPageComponent {
   protected readonly saving = signal(false);
   protected readonly exporting = signal(false);
   protected readonly deleting = signal(false);
+  protected readonly confirmingDelete = signal(false);
+  protected readonly deleteError = signal("");
+  protected readonly deletePassword = new FormControl("", {
+    nonNullable: true,
+    validators: [Validators.required],
+  });
   protected readonly loggingOutAllDevices = signal(false);
   protected readonly mfaSetupLoading = signal(false);
   protected readonly mfaActionLoading = signal(false);
@@ -201,30 +212,44 @@ export class SettingsPageComponent {
       });
   }
 
+  protected startDeleteAccount() {
+    this.deletePassword.reset("");
+    this.deleteError.set("");
+    this.confirmingDelete.set(true);
+  }
+
+  protected cancelDeleteAccount() {
+    this.deletePassword.reset("");
+    this.deleteError.set("");
+    this.confirmingDelete.set(false);
+  }
+
   protected deleteAccount() {
-    if (
-      !globalThis.confirm(
-        "Deseja realmente excluir sua conta e os dados associados? Essa ação não pode ser desfeita.",
-      )
-    ) {
+    if (this.deletePassword.invalid || this.deleting()) {
+      this.deletePassword.markAsTouched();
       return;
     }
 
     this.deleting.set(true);
-    this.feedbackMessage.set("");
-    this.errorMessage.set("");
+    this.deleteError.set("");
 
     this.api
-      .deleteMyAccount()
+      .deleteMyAccount(this.deletePassword.value)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
           this.deleting.set(false);
-          this.authService.logout();
+          // A sessao ja foi destruida junto com a conta: nao ha o que revogar.
+          this.authService.clearSession();
+          void this.router.navigate(["/"]);
         },
-        error: () => {
+        error: (error) => {
           this.deleting.set(false);
-          this.errorMessage.set("Não foi possível excluir a conta agora.");
+          this.deleteError.set(
+            error?.status === 400 && typeof error?.error?.message === "string"
+              ? error.error.message
+              : "Não foi possível excluir a conta agora.",
+          );
         },
       });
   }
