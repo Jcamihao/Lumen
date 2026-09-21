@@ -347,10 +347,27 @@
 </div>
 
 <ng-template #loadingState>
-  <div class="proto-page dashboard-page dashboard-page--loading">
-    <div class="proto-empty">
-      <strong>Carregando início</strong>
-      <p>O Lumen está montando a visão do seu dia.</p>
+  <div class="proto-page dashboard-page dashboard-page--loading" *ngIf="loadFailed(); else loadingSkeleton">
+    <div class="proto-empty" role="alert">
+      <strong>Não foi possível carregar o início</strong>
+      <p>O servidor demorou demais ou não respondeu. Seus dados não foram afetados.</p>
+      <button type="button" class="proto-button" (click)="retryLoad()">Tentar de novo</button>
     </div>
+  </div>
+</ng-template>
+
+<ng-template #loadingSkeleton>
+  <div class="proto-page dashboard-page dashboard-page--loading dashboard-skeleton" role="status" aria-live="polite" aria-busy="true">
+    <span class="dashboard-skeleton__label">Carregando início</span>
+    <p class="dashboard-skeleton__hint" *ngIf="loadingSlow()">Está demorando mais que o normal. Continuamos tentando...</p>
+    <div class="skeleton skeleton--title"></div>
+    <div class="skeleton skeleton--hero"></div>
+    <div class="dashboard-skeleton__metrics" aria-hidden="true">
+      <div class="skeleton skeleton--metric"></div>
+      <div class="skeleton skeleton--metric"></div>
+      <div class="skeleton skeleton--metric"></div>
+      <div class="skeleton skeleton--metric"></div>
+    </div>
+    <div class="skeleton skeleton--lane"></div>
   </div>
 </ng-template>

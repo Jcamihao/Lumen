@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
+import { Subscription, timeout } from 'rxjs';
 import {
   DashboardSummary,
   ForecastAccuracy,
@@ -14,6 +15,11 @@ import { LifeApiService } from '../../../core/services/life-api.service';
 import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
 import { buildSpendingBreakdown } from '../../../core/utils/spending.utils';
 import { SpendingBreakdownComponent } from '../../../shared/spending-breakdown/spending-breakdown.component';
+
+/** Sem resposta em 15 s o servidor provavelmente ja esta processando; o retry costuma pegar o cache pronto. */
+export const SUMMARY_TIMEOUT_MS = 15_000;
+/** Depois disso o esqueleto avisa que esta demorando, para o usuario nao achar que travou. */
+export const SLOW_HINT_AFTER_MS = 5_000;
 
 @Component({
   selector: 'app-dashboard-page',
@@ -32,6 +38,10 @@ export class DashboardPageComponent {
   private readonly spendingMonth = signal(new Date().getMonth() + 1);
   private readonly spendingYear = signal(new Date().getFullYear());
   private spendingRequestId = 0;
+  protected readonly loadFailed = signal(false);
+  protected readonly loadingSlow = signal(false);
+  private summarySubscription?: Subscription;
+  private slowHintTimer?: ReturnType<typeof setTimeout>;
   protected readonly spendingBreakdown = computed(() =>
     buildSpendingBreakdown(this.monthExpenses()),
   );
@@ -43,10 +53,11 @@ export class DashboardPageComponent {
   );
 
   constructor() {
-    this.api
-      .getDashboardSummary()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((summary) => this.summary.set(summary));
+    this.loadSummary();
+    this.destroyRef.onDestroy(() => {
+      this.summarySubscription?.unsubscribe();
+      clearTimeout(this.slowHintTimer);
+    });
 
     this.loadSpending();
 
@@ -54,6 +65,10 @@ export class DashboardPageComponent {
       .getForecastAccuracy()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((accuracy) => this.forecastAccuracy.set(accuracy));
+  }
+
+  protected retryLoad() {
+    this.loadSummary();
   }
 
   protected previousSpendingMonth() {
@@ -520,6 +535,31 @@ export class DashboardPageComponent {
       currency: currencyCode,
       maximumFractionDigits: 0,
     }).format(value);
+  }
+
+  private loadSummary() {
+    this.summarySubscription?.unsubscribe();
+    clearTimeout(this.slowHintTimer);
+    this.loadFailed.set(false);
+    this.loadingSlow.set(false);
+    this.slowHintTimer = setTimeout(() => this.loadingSlow.set(true), SLOW_HINT_AFTER_MS);
+
+    this.summarySubscription = this.api
+      .getDashboardSummary()
+      .pipe(timeout(SUMMARY_TIMEOUT_MS))
+      .subscribe({
+        next: (summary) => {
+          clearTimeout(this.slowHintTimer);
+          this.loadingSlow.set(false);
+          this.summary.set(summary);
+        },
+        // Timeout ou erro do servidor: sem isto a tela ficava em "Carregando" para sempre.
+        error: () => {
+          clearTimeout(this.slowHintTimer);
+          this.loadingSlow.set(false);
+          this.loadFailed.set(true);
+        },
+      });
   }
 
   private shiftSpendingMonth(delta: number) {

@@ -469,3 +469,87 @@
 .home-spending__month::first-letter {
   text-transform: uppercase;
 }
+
+/* Esqueleto de carregamento: mesmo desenho geral da home (titulo, destaque, 4 metricas, lista). */
+.dashboard-skeleton {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.dashboard-skeleton__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.skeleton {
+  border: 1px solid var(--border);
+  background: linear-gradient(
+    90deg,
+    var(--surface-panel) 25%,
+    var(--surface-panel-alt) 37%,
+    var(--surface-panel) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+}
+
+.skeleton--title {
+  width: min(22rem, 70%);
+  height: 3rem;
+}
+
+.skeleton--hero {
+  height: 11rem;
+}
+
+.dashboard-skeleton__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.skeleton--metric {
+  height: 6rem;
+}
+
+.skeleton--lane {
+  height: 12rem;
+}
+
+.dashboard-skeleton__hint {
+  margin: 0;
+  color: var(--text-medium);
+  font-weight: 600;
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+@media (max-width: 1180px) {
+  .dashboard-skeleton__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-skeleton__metrics {
+    grid-template-columns: 1fr;
+  }
+}

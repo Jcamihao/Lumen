@@ -70,7 +70,9 @@
       </ng-container>
 
       <ng-template #noMatches>
-        <p class="proto-topbar__search-empty">Sem resultados em tarefas, transações, metas ou leituras do Selah.</p>
+        <p class="proto-topbar__search-empty">
+          {{ searchDataLoading() ? 'Carregando dados para a busca...' : 'Sem resultados em tarefas, transações, metas ou leituras do Selah.' }}
+        </p>
       </ng-template>
 
       <button type="button" class="proto-topbar__search-item proto-topbar__search-item--selah" (click)="askSelahWithQuery()">

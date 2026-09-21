@@ -3,13 +3,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  WritableSignal,
   computed,
   inject,
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
-import { filter, map, startWith } from 'rxjs';
+import { Observable, filter, finalize, map, startWith } from 'rxjs';
 import { Goal, Insight, Task, Transaction } from '../../core/models/domain.models';
 import { AuthService } from '../../core/services/auth.service';
 import { LifeApiService } from '../../core/services/life-api.service';
@@ -135,30 +136,54 @@ export class TopbarComponent {
       this.insightResults().length > 0,
   );
 
-  constructor() {
-    this.api
-      .listTasks()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((tasks) => this.searchTasks.set(tasks));
+  /**
+   * Os dados da busca (tarefas, transacoes inteiras, metas, insights) so sao
+   * pedidos na primeira vez que o usuario foca o campo. Antes eram 4
+   * requisicoes a cada abertura do app, disputando conexao com o dashboard.
+   */
+  private searchDataRequested = false;
+  protected readonly searchDataLoading = signal(false);
 
-    this.api
-      .listTransactions()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((transactions) => this.searchTransactions.set(transactions));
+  private loadSearchData() {
+    if (this.searchDataRequested) {
+      return;
+    }
 
-    this.api
-      .listGoals()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((goals) => this.searchGoals.set(goals));
+    this.searchDataRequested = true;
+    this.searchDataLoading.set(true);
 
-    this.api
-      .listInsights()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((insights) => this.searchInsights.set(insights));
+    let pending = 4;
+    let failed = false;
+    const load = <T>(source: Observable<T>, target: WritableSignal<T>) => {
+      source
+        .pipe(
+          takeUntilDestroyed(this.destroyRef),
+          finalize(() => {
+            pending -= 1;
+            if (pending === 0) {
+              this.searchDataLoading.set(false);
+              // Falhou algo: deixa a proxima vez que o campo receber foco tentar de novo.
+              this.searchDataRequested = !failed;
+            }
+          }),
+        )
+        .subscribe({
+          next: (value) => target.set(value),
+          error: () => {
+            failed = true;
+          },
+        });
+    };
+
+    load(this.api.listTasks(), this.searchTasks);
+    load(this.api.listTransactions(), this.searchTransactions);
+    load(this.api.listGoals(), this.searchGoals);
+    load(this.api.listInsights(), this.searchInsights);
   }
 
   protected onSearchFocus() {
     this.searchOpen.set(true);
+    this.loadSearchData();
   }
 
   protected onSearchBlur() {
