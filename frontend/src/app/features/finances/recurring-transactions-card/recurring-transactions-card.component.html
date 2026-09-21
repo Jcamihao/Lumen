@@ -1,0 +1,118 @@
+<article class="proto-surface recurring-card">
+  <div class="proto-surface__head recurring-card__head">
+    <div>
+      <h3>Contas fixas e recorrentes</h3>
+      <p>Aluguel, assinaturas, salário: o lançamento entra sozinho no dia e o Selah avisa antes de vencer.</p>
+    </div>
+
+    <button *ngIf="!formOpen()" type="button" class="proto-button" (click)="openForm()">Nova conta fixa</button>
+  </div>
+
+  <div class="proto-surface__body recurring-card__body">
+    <form *ngIf="formOpen()" class="recurring-form" [formGroup]="form" (submit)="$event.preventDefault(); submit()" novalidate>
+      <div class="proto-field">
+        <label for="recurring-type">Tipo</label>
+        <select id="recurring-type" formControlName="type">
+          <option value="EXPENSE">Despesa</option>
+          <option value="INCOME">Receita</option>
+        </select>
+      </div>
+
+      <div class="proto-field recurring-form__wide">
+        <label for="recurring-description">Descrição</label>
+        <input id="recurring-description" type="text" placeholder="Ex.: Aluguel" formControlName="description" />
+      </div>
+
+      <div class="proto-field">
+        <label for="recurring-amount">Valor</label>
+        <input id="recurring-amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0,00" formControlName="amount" />
+      </div>
+
+      <div class="proto-field">
+        <label for="recurring-category">Categoria</label>
+        <select id="recurring-category" formControlName="categoryId">
+          <option value="">Sem categoria</option>
+          <option *ngFor="let category of categories()" [value]="category.id">{{ category.name }}</option>
+        </select>
+      </div>
+
+      <div class="proto-field">
+        <label for="recurring-frequency">Repete</label>
+        <select id="recurring-frequency" formControlName="frequency">
+          <option value="MONTHLY">Todo mês</option>
+          <option value="WEEKLY">Toda semana</option>
+          <option value="YEARLY">Todo ano</option>
+        </select>
+      </div>
+
+      <div class="proto-field">
+        <label for="recurring-first-due">Primeiro vencimento</label>
+        <input id="recurring-first-due" type="date" formControlName="firstDueDate" />
+      </div>
+
+      <div class="proto-field">
+        <label for="recurring-end">Termina em (opcional)</label>
+        <input id="recurring-end" type="date" formControlName="endDate" />
+      </div>
+
+      <div class="recurring-form__actions">
+        <button type="submit" class="proto-button" [disabled]="saving()">
+          {{ saving() ? 'Salvando...' : 'Criar conta fixa' }}
+        </button>
+        <button type="button" class="proto-button proto-button--secondary" [disabled]="saving()" (click)="closeForm()">
+          Cancelar
+        </button>
+      </div>
+    </form>
+
+    <p class="recurring-card__hint" *ngIf="loading()">Carregando contas fixas...</p>
+
+    <div class="proto-empty" *ngIf="loadFailed()">
+      <strong>Não foi possível carregar as contas fixas</strong>
+      <p>Confira sua conexão e tente de novo.</p>
+      <button type="button" class="proto-button proto-button--secondary" (click)="load()">Tentar de novo</button>
+    </div>
+
+    <ul class="recurring-list" *ngIf="items().length">
+      <li
+        class="recurring-row"
+        *ngFor="let item of items(); trackBy: trackItem"
+        [attr.data-status]="status(item)"
+        [attr.data-type]="item.type"
+      >
+        <div class="recurring-row__main">
+          <strong>{{ item.description }}</strong>
+          <span class="recurring-row__meta">{{ frequencyText(item) }} · {{ item.category?.name || 'Sem categoria' }}</span>
+          <span class="recurring-row__next">{{ nextText(item) }}</span>
+        </div>
+
+        <strong class="recurring-row__amount">{{ amountText(item) }}</strong>
+
+        <div class="recurring-row__actions">
+          <button
+            *ngIf="status(item) !== 'ended'"
+            type="button"
+            class="proto-button proto-button--secondary"
+            [disabled]="busyId() === item.id"
+            (click)="togglePause(item)"
+          >
+            {{ item.isActive ? 'Pausar' : 'Retomar' }}
+          </button>
+          <button
+            type="button"
+            class="proto-button proto-button--secondary"
+            [disabled]="busyId() === item.id"
+            (click)="remove(item)"
+          >
+            Excluir
+          </button>
+        </div>
+      </li>
+    </ul>
+
+    <div class="proto-empty" *ngIf="!loading() && !loadFailed() && !items().length && !formOpen()">
+      <strong>Nenhuma conta fixa ainda</strong>
+      <p>Cadastre o que se repete (aluguel, internet, salário) e pare de lançar todo mês.</p>
+    </div>
+  </div>
+</article>

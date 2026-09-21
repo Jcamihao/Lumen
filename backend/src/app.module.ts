@@ -24,6 +24,7 @@ import { InsightsModule } from "./insights/insights.module";
 import { LifeEngineModule } from "./life-engine/life-engine.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { PrismaModule } from "./prisma/prisma.module";
+import { RecurringTransactionsModule } from "./recurring-transactions/recurring-transactions.module";
 import { RemindersModule } from "./reminders/reminders.module";
 import { TaskCategoriesModule } from "./task-categories/task-categories.module";
 import { TagGroupsModule } from "./tag-groups/tag-groups.module";
@@ -52,6 +53,7 @@ import { UsersModule } from "./users/users.module";
     FinanceCategoriesModule,
     TasksModule,
     TransactionsModule,
+    RecurringTransactionsModule,
     GoalsModule,
     RemindersModule,
     InsightsModule,

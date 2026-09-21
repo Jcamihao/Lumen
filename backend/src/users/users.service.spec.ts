@@ -85,6 +85,9 @@ describe("UsersService — LGPD (excluir e exportar)", () => {
       importJobs: [],
       receiptScans: [],
       notifications: [],
+      recurringTransactions: [
+        { id: "rr-1", description: "Aluguel", amount: decimal(1200), frequency: "MONTHLY" },
+      ],
       assistantTurns: [{ id: "at-1", question: "Como estou?", answer: "Bem." }],
       supportRequests: [{ id: "sr-1", subject: "Ajuda", message: "Preciso de ajuda" }],
       authSessions: [
@@ -105,6 +108,15 @@ describe("UsersService — LGPD (excluir e exportar)", () => {
       expect(data.datasets.forecastSnapshots).toHaveLength(1);
       expect(data.datasets.authSessions).toHaveLength(1);
       expect(data.datasets.tagGroups).toHaveLength(1);
+    });
+
+    it("inclui as contas fixas, com o valor como numero", async () => {
+      const data = await exportWith(baseUser());
+
+      expect(data.datasets.recurringTransactions).toEqual([
+        expect.objectContaining({ id: "rr-1", description: "Aluguel", amount: 1200 }),
+      ]);
+      expect(data.profile).not.toHaveProperty("recurringTransactions");
     });
 
     it("converte Decimals em numeros nos snapshots", async () => {

@@ -10,6 +10,7 @@ import {
 } from 'date-fns';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { addDaysUtc, localToday } from '../recurring-transactions/recurrence.util';
 
 type GeneratedInsight = {
   type: InsightType;
@@ -87,6 +88,11 @@ const CATEGORY_SHIFT_WARNING_DELTA_PTS = 20;
 const BUDGET_NEAR_PCT = 80;
 const BUDGET_OVER_PCT = 100;
 const BUDGET_MAX_ALERTS = 3;
+
+// Conta fixa que vence nos proximos dias: avisa com antecedencia (amanha vira
+// WARNING). No dia do vencimento o lancamento ja foi gerado e o aviso some.
+const UPCOMING_BILL_WINDOW_DAYS = 3;
+const UPCOMING_BILL_MAX_LISTED = 3;
 
 type CategoryTotal = {
   categoryId: string | null;
@@ -233,6 +239,8 @@ export class InsightsService {
     ].filter((insight): insight is GeneratedInsight => insight !== null);
 
     insights.push(...this.detectCategoryBudgets(context));
+    const upcomingBills = this.detectUpcomingBills(context);
+    if (upcomingBills) insights.push(upcomingBills);
 
     if (insights.length === 0) {
       insights.push({
@@ -293,6 +301,7 @@ export class InsightsService {
       currentCategoryGroups,
       previousCategoryGroups,
       financeCategories,
+      recurringExpenseTemplates,
     ] = await Promise.all([
       this.prisma.user.findUniqueOrThrow({
         where: { id: userId },
@@ -354,6 +363,9 @@ export class InsightsService {
         where: {
           userId,
           type: 'EXPENSE',
+          // Lancamento gerado por conta fixa ja e conhecido pelo usuario: nao
+          // deve virar "identifiquei uma cobranca recorrente".
+          recurringTransactionId: null,
           date: {
             gte: subDays(todayStart, CHARGE_WINDOW_DAYS),
             lte: todayEnd,
@@ -420,7 +432,36 @@ export class InsightsService {
         where: { userId },
         select: { id: true, name: true, monthlyBudget: true },
       }),
+      // Janela larga em UTC; o corte exato usa o "hoje" do fuso do usuario abaixo.
+      this.prisma.recurringTransaction.findMany({
+        where: {
+          userId,
+          isActive: true,
+          type: 'EXPENSE',
+          nextDueDate: {
+            gte: addDaysUtc(now, -2),
+            lte: addDaysUtc(now, UPCOMING_BILL_WINDOW_DAYS + 2),
+          },
+        },
+        select: { id: true, description: true, amount: true, nextDueDate: true },
+        orderBy: { nextDueDate: 'asc' },
+      }),
     ]);
+
+    const userToday = localToday(now, user.timezone ?? 'UTC');
+    const windowEnd = addDaysUtc(userToday, UPCOMING_BILL_WINDOW_DAYS);
+    const upcomingBills = (recurringExpenseTemplates ?? [])
+      .map((bill) => ({
+        id: bill.id,
+        description: bill.description,
+        amount: Number(bill.amount),
+        dueDate: new Date(bill.nextDueDate),
+      }))
+      .filter((bill) => bill.dueDate > userToday && bill.dueDate <= windowEnd)
+      .map((bill) => ({
+        ...bill,
+        daysUntil: Math.round((bill.dueDate.getTime() - userToday.getTime()) / 86_400_000),
+      }));
 
     const categoryNames = new Map(
       (financeCategories ?? []).map((category) => [category.id, category.name]),
@@ -444,6 +485,7 @@ export class InsightsService {
       remindersToday,
       monthlyExpenses: Number(monthlyExpensesAggregate._sum.amount ?? 0),
       monthlyIncome: Number(user.monthlyIncome ?? 0),
+      upcomingBills,
       categoryBudgets: (financeCategories ?? [])
         .filter((category) => category.monthlyBudget !== null && category.monthlyBudget !== undefined)
         .map((category) => ({
@@ -593,6 +635,54 @@ export class InsightsService {
           },
         } satisfies GeneratedInsight;
       });
+  }
+
+  /**
+   * Contas fixas de despesa que vencem nos proximos dias. Um unico insight
+   * agrupa todas (mais proximas primeiro): varias contas na mesma semana e uma
+   * situacao so, e evita inundar o painel. Amanha vira WARNING; antes disso e
+   * so um aviso informativo.
+   */
+  private detectUpcomingBills(context: InsightContext): GeneratedInsight | null {
+    const bills = context.upcomingBills;
+
+    if (bills.length === 0) {
+      return null;
+    }
+
+    const currency = context.user.preferredCurrency;
+    const nearest = bills[0];
+    const total = bills.reduce((sum, bill) => sum + bill.amount, 0);
+    const label = (bill: (typeof bills)[number]) =>
+      `${bill.description} (${this.formatAmount(bill.amount, currency)})`;
+    const when = (days: number) => (days === 1 ? 'amanha' : `em ${days} dias`);
+
+    let message: string;
+
+    if (bills.length === 1) {
+      message = `${label(nearest)} vence ${when(nearest.daysUntil)}. O lancamento entra sozinho no dia; vale garantir o saldo.`;
+    } else {
+      const listed = bills.slice(0, UPCOMING_BILL_MAX_LISTED).map(label).join(', ');
+      const more = bills.length - UPCOMING_BILL_MAX_LISTED;
+      message = `${bills.length} contas fixas vencem nos proximos ${UPCOMING_BILL_WINDOW_DAYS} dias, somando ${this.formatAmount(total, currency)}: ${listed}${more > 0 ? ` e mais ${more}` : ''}. A primeira vence ${when(nearest.daysUntil)}.`;
+    }
+
+    return {
+      type: InsightType.FINANCE,
+      key: `upcoming_bills:${this.hashSubject(bills.map((bill) => `${bill.id}@${bill.dueDate.toISOString()}`))}`,
+      severity: nearest.daysUntil <= 1 ? InsightSeverity.WARNING : InsightSeverity.INFO,
+      message,
+      metadata: {
+        count: bills.length,
+        total,
+        nearestDays: nearest.daysUntil,
+        bills: bills.slice(0, UPCOMING_BILL_MAX_LISTED).map((bill) => ({
+          description: bill.description,
+          amount: bill.amount,
+          daysUntil: bill.daysUntil,
+        })),
+      },
+    };
   }
 
   private detectOverdueTasks(context: InsightContext): GeneratedInsight | null {

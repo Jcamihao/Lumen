@@ -80,6 +80,27 @@ export type Transaction = {
   amount: number;
   date: string;
   category?: FinanceCategory | null;
+  /** Preenchido quando o lancamento foi gerado por uma conta fixa. */
+  recurringTransactionId?: string | null;
+};
+
+export type RecurrenceFrequency = "WEEKLY" | "MONTHLY" | "YEARLY";
+
+/** Conta fixa ou recorrente: gera um lancamento sozinha a cada vencimento. */
+export type RecurringTransaction = {
+  id: string;
+  type: "INCOME" | "EXPENSE";
+  description: string;
+  amount: number;
+  categoryId?: string | null;
+  category?: FinanceCategory | null;
+  frequency: RecurrenceFrequency;
+  /** Dia do mes de referencia (mensal/anual). */
+  anchorDay: number;
+  /** Proximo vencimento (AAAA-MM-DDT00:00:00.000Z). */
+  nextDueDate: string;
+  endDate?: string | null;
+  isActive: boolean;
 };
 
 export type Goal = {

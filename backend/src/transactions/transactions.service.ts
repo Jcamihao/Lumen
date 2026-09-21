@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, TransactionType } from '@prisma/client';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RecurringMaterializerService } from '../recurring-transactions/recurring-materializer.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { ListTransactionsQueryDto } from './dto/list-transactions-query.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
@@ -11,9 +12,16 @@ export class TransactionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly lifeEngineService: LifeEngineService,
+    private readonly recurringMaterializer: RecurringMaterializerService,
   ) {}
 
   async list(userId: string, query: ListTransactionsQueryDto) {
+    // Contas fixas vencidas viram lancamento antes de listar, para a lista (e o
+    // saldo) nunca ficarem atras do calendario.
+    if ((await this.recurringMaterializer.materializeDue(userId)) > 0) {
+      await this.lifeEngineService.touchUserData(userId);
+    }
+
     // Transacao tem data sem hora, gravada a meia-noite UTC. Os limites do mes
     // precisam ser UTC tambem: com startOfMonth() (fuso do servidor), um
     // lancamento de 01/09 cairia em agosto quando o servidor nao esta em UTC.

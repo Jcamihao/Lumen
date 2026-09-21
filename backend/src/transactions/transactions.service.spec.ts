@@ -27,15 +27,47 @@ describe("TransactionsService", () => {
       ...overrides,
     }) as any;
 
+  const buildMaterializer = (created = 0) =>
+    ({
+      materializeDue: jest.fn().mockResolvedValue(created),
+    }) as any;
+
   const buildLifeEngine = () =>
     ({
       touchUserData: jest.fn().mockResolvedValue(undefined),
     }) as any;
 
+  describe('contas fixas vencidas', () => {
+    it('gera os lancamentos vencidos antes de listar e recalcula os insights', async () => {
+      const prisma = buildPrisma();
+      const materializer = buildMaterializer(2);
+      const lifeEngine = buildLifeEngine();
+      const service = new TransactionsService(prisma, lifeEngine, materializer);
+
+      await service.list('user-1', {} as any);
+
+      expect(materializer.materializeDue).toHaveBeenCalledWith('user-1');
+      expect(lifeEngine.touchUserData).toHaveBeenCalledWith('user-1');
+      // A geracao vem ANTES da consulta, senao a lista sairia sem elas.
+      expect(materializer.materializeDue.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.transaction.findMany.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('nao mexe nos insights quando nada venceu', async () => {
+      const lifeEngine = buildLifeEngine();
+      const service = new TransactionsService(buildPrisma(), lifeEngine, buildMaterializer(0));
+
+      await service.list('user-1', {} as any);
+
+      expect(lifeEngine.touchUserData).not.toHaveBeenCalled();
+    });
+  });
+
   describe("list", () => {
     it("always scopes the query by the requesting user's id", async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
 
       await service.list("user-1", {} as any);
 
@@ -50,7 +82,7 @@ describe("TransactionsService", () => {
   describe("create", () => {
     it("stores the amount as a positive value regardless of the sign received", async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
 
       await service.create("user-1", {
         type: "EXPENSE",
@@ -66,7 +98,7 @@ describe("TransactionsService", () => {
 
     it("rejects a category that does not belong to the requesting user", async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
 
       await expect(
         service.create("user-1", {
@@ -89,7 +121,7 @@ describe("TransactionsService", () => {
   describe("list — month filter", () => {
     it("uses UTC month boundaries so a 1st-of-month entry stays in its own month", async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
 
       await service.list("user-1", { month: 9, year: 2026 } as any);
 
@@ -100,7 +132,7 @@ describe("TransactionsService", () => {
 
     it("rolls December over to the end of the year correctly", async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
 
       await service.list("user-1", { month: 12, year: 2026 } as any);
 
@@ -113,7 +145,7 @@ describe("TransactionsService", () => {
   describe("update / remove — multi-tenancy", () => {
     it("update() never touches a transaction owned by another user", async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
 
       await expect(
         service.update("user-1", "tx-owned-by-someone-else", {
@@ -129,7 +161,7 @@ describe("TransactionsService", () => {
 
     it("remove() never deletes a transaction owned by another user", async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
 
       await expect(
         service.remove("user-1", "tx-owned-by-someone-else"),
@@ -153,7 +185,7 @@ describe("TransactionsService", () => {
           create: jest.fn(),
         },
       });
-      const service = new TransactionsService(prisma, buildLifeEngine());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
 
       const result = await service.update("user-1", "tx-1", {
         description: "Conta de luz atualizada",

@@ -194,6 +194,8 @@
     </div>
   </article>
 
+  <app-recurring-transactions-card (changed)="refreshAfterRecurringChange()"></app-recurring-transactions-card>
+
   <article class="proto-surface finance-highlight">
     <div class="proto-surface__body finance-highlight__body">
       <div class="finance-highlight__icon">
@@ -343,6 +345,7 @@
                     {{ typeLabel(transaction.type) }}
                   </span>
                   <span class="proto-chip">{{ transaction.category?.name || 'Sem categoria' }}</span>
+                  <span class="proto-chip" *ngIf="transaction.recurringTransactionId">Recorrente</span>
                   <span class="proto-chip">{{ transactionDateLabel(transaction) }}</span>
                 </div>
               </div>

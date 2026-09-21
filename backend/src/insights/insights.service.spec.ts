@@ -42,6 +42,7 @@ const buildPrisma = (
     previous: CategoryGroupSeed[];
     categories: Array<{ id: string; name: string; monthlyBudget?: number | null }>;
   } = { current: [], previous: [], categories: [] },
+  recurringBills: unknown[] = [],
 ) => {
   const prisma = {
     insight: {
@@ -78,6 +79,9 @@ const buildPrisma = (
     },
     financeCategory: {
       findMany: jest.fn().mockResolvedValue(categorySpending.categories),
+    },
+    recurringTransaction: {
+      findMany: jest.fn().mockResolvedValue(recurringBills),
     },
     goal: {
       findMany: jest.fn().mockResolvedValue(goals),
@@ -1095,6 +1099,106 @@ describe('InsightsService', () => {
         'Cat C',
         'Cat D',
       ]);
+    });
+  });
+
+  describe('detectUpcomingBills', () => {
+    const daysFromToday = (days: number) => {
+      const now = new Date();
+      return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + days));
+    };
+    const bill = (id: string, description: string, amount: number, days: number) => ({
+      id,
+      description,
+      amount,
+      nextDueDate: daysFromToday(days),
+    });
+
+    const run = async (bills: unknown[]) => {
+      const prisma = buildPrisma([], [], {}, [], undefined, bills);
+      await new InsightsService(prisma).refreshForUser('user-1');
+      return {
+        prisma,
+        insights: generatedInsights(prisma).filter((insight) =>
+          insight.fingerprint.includes(':upcoming_bills:'),
+        ),
+      };
+    };
+
+    it('stays quiet without bills', async () => {
+      const { insights } = await run([]);
+
+      expect(insights).toHaveLength(0);
+    });
+
+    it('is informational for a bill due in a few days', async () => {
+      const { insights } = await run([bill('r1', 'Aluguel', 1200, 3)]);
+
+      expect(insights).toHaveLength(1);
+      expect(insights[0].type).toBe(InsightType.FINANCE);
+      expect(insights[0].severity).toBe(InsightSeverity.INFO);
+      expect(insights[0].message).toContain('Aluguel');
+      expect(insights[0].message).toContain('vence em 3 dias');
+    });
+
+    it('warns when the bill is due tomorrow', async () => {
+      const { insights } = await run([bill('r1', 'Internet', 100, 1)]);
+
+      expect(insights[0].severity).toBe(InsightSeverity.WARNING);
+      expect(insights[0].message).toContain('vence amanha');
+    });
+
+    it('groups several bills in one insight, nearest first, with the total', async () => {
+      const { insights } = await run([
+        bill('r2', 'Internet', 100, 2),
+        bill('r1', 'Aluguel', 1200, 1),
+      ].sort((a, b) => a.nextDueDate.getTime() - b.nextDueDate.getTime()));
+
+      expect(insights).toHaveLength(1);
+      expect(insights[0].message).toContain('2 contas fixas');
+      expect(insights[0].message).toMatch(/1\.300,00/);
+      expect(insights[0].message.indexOf('Aluguel')).toBeLessThan(insights[0].message.indexOf('Internet'));
+      expect(insights[0].severity).toBe(InsightSeverity.WARNING);
+      expect(insights[0].metadata).toEqual(
+        expect.objectContaining({ count: 2, total: 1300, nearestDays: 1 }),
+      );
+    });
+
+    it('lists at most 3 bills and counts the rest', async () => {
+      const { insights } = await run([
+        bill('r1', 'A', 10, 1),
+        bill('r2', 'B', 10, 2),
+        bill('r3', 'C', 10, 2),
+        bill('r4', 'D', 10, 3),
+      ]);
+
+      expect(insights[0].message).toContain('4 contas fixas');
+      expect(insights[0].message).toContain('e mais 1');
+      expect(insights[0].message).not.toContain('D (');
+    });
+
+    it('ignores bills due today (already posted) and beyond the window', async () => {
+      const { insights } = await run([
+        bill('r1', 'Hoje', 10, 0),
+        bill('r2', 'Longe', 10, 4),
+        bill('r3', 'Passada', 10, -1),
+      ]);
+
+      expect(insights).toHaveLength(0);
+    });
+
+    it('changes identity when the set of upcoming bills changes (so it notifies again)', async () => {
+      const first = await run([bill('r1', 'Aluguel', 1200, 2)]);
+      const second = await run([bill('r1', 'Aluguel', 1200, 2), bill('r2', 'Internet', 100, 2)]);
+
+      expect(first.insights[0].fingerprint).not.toEqual(second.insights[0].fingerprint);
+    });
+
+    it('keeps bills generated from a template out of the recurring/duplicate charge detectors', async () => {
+      const { prisma } = await run([]);
+
+      const chargeQuery = prisma.transaction.findMany.mock.calls[0][0];
+      expect(chargeQuery.where.recurringTransactionId).toBeNull();
     });
   });
 });

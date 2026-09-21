@@ -11,11 +11,18 @@ import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/
 import { BudgetRow, buildBudgetRows } from '../../../core/utils/budget.utils';
 import { buildSpendingBreakdown } from '../../../core/utils/spending.utils';
 import { SpendingBreakdownComponent } from '../../../shared/spending-breakdown/spending-breakdown.component';
+import { RecurringTransactionsCardComponent } from '../recurring-transactions-card/recurring-transactions-card.component';
 
 @Component({
   selector: 'app-finances-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink, SpendingBreakdownComponent],
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    RouterLink,
+    SpendingBreakdownComponent,
+    RecurringTransactionsCardComponent,
+  ],
   templateUrl: './finances-page.component.html',
   styleUrls: ['./finances-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -39,6 +46,9 @@ export class FinancesPageComponent {
   // busca da lista, senao filtrar "Receitas" esvaziaria o grafico.
   private readonly spendingTransactions = signal<Transaction[]>([]);
   private spendingRequestId = 0;
+  // Sobe quando algo fora da pagina (contas fixas) gera ou apaga lancamentos:
+  // os dois effects abaixo leem este sinal e recarregam.
+  private readonly reloadTick = signal(0);
   protected readonly spendingBreakdown = computed(() =>
     buildSpendingBreakdown(this.spendingTransactions()),
   );
@@ -80,6 +90,7 @@ export class FinancesPageComponent {
 
   constructor() {
     effect(() => {
+      this.reloadTick();
       const month = this.filterMonth();
       const year = this.filterYear();
       const type = this.filterType();
@@ -93,6 +104,7 @@ export class FinancesPageComponent {
     });
 
     effect(() => {
+      this.reloadTick();
       this.loadSpending(this.filterMonth(), this.filterYear());
     });
 
@@ -126,6 +138,10 @@ export class FinancesPageComponent {
     } else {
       this.filterMonth.set(m + 1);
     }
+  }
+
+  protected refreshAfterRecurringChange() {
+    this.reloadTick.update((tick) => tick + 1);
   }
 
   protected startEditBudget(row: BudgetRow) {

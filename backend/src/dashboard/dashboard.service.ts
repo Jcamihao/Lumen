@@ -4,6 +4,7 @@ import { CacheQueueService } from '../cache-queue/cache-queue.service';
 import { ForecastsService } from '../forecasts/forecasts.service';
 import { InsightsService } from '../insights/insights.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RecurringMaterializerService } from '../recurring-transactions/recurring-materializer.service';
 
 @Injectable()
 export class DashboardService {
@@ -12,10 +13,18 @@ export class DashboardService {
     private readonly cacheQueueService: CacheQueueService,
     private readonly insightsService: InsightsService,
     private readonly forecastsService: ForecastsService,
+    private readonly recurringMaterializer: RecurringMaterializerService,
   ) {}
 
   async getSummary(userId: string) {
     const cacheKey = `dashboard:summary:${userId}`;
+
+    // Conta fixa que venceu desde a ultima leitura precisa entrar no saldo, e o
+    // resumo em cache ja nasceu sem ela.
+    if ((await this.recurringMaterializer.materializeDue(userId)) > 0) {
+      await this.cacheQueueService.del(cacheKey);
+    }
+
     const cachedSummary = await this.cacheQueueService.getJson(cacheKey);
 
     if (cachedSummary) {

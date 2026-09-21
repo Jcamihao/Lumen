@@ -23,6 +23,7 @@ import { InsightsService } from "../insights/insights.service";
 import { MailService } from "../mail/mail.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { RecurringMaterializerService } from "../recurring-transactions/recurring-materializer.service";
 import {
   FORECASTS_QUEUE,
   INSIGHTS_QUEUE,
@@ -47,6 +48,7 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
     private readonly configService: ConfigService,
     private readonly dashboardService: DashboardService,
     private readonly emailPreferencesService: EmailPreferencesService,
+    private readonly recurringMaterializer: RecurringMaterializerService,
   ) {}
 
   async onModuleInit() {
@@ -209,6 +211,18 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
     let forecastsResolved = 0;
 
     for (const user of users) {
+      // Contas fixas vencem no dia local de cada um, nao so na hora do pulso:
+      // gera o lancamento na virada do dia mesmo que ninguem abra o app.
+      try {
+        if ((await this.recurringMaterializer.materializeDue(user.id)) > 0) {
+          await this.lifeEngineService.touchUserData(user.id);
+        }
+      } catch (error) {
+        this.logger.warn(
+          `recurring_materialize_failed userId=${user.id} reason=${this.getErrorMessage(error)}`,
+        );
+      }
+
       if (this.localHourFor(user.timezone) !== targetHour) {
         continue;
       }

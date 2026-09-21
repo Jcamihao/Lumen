@@ -330,6 +330,9 @@ export class UsersService {
         forecastSnapshots: {
           orderBy: { targetDate: "desc" },
         },
+        recurringTransactions: {
+          orderBy: { createdAt: "desc" },
+        },
         assistantTurns: {
           orderBy: { createdAt: "desc" },
         },
@@ -373,6 +376,7 @@ export class UsersService {
       insights,
       forecasts,
       forecastSnapshots,
+      recurringTransactions,
       importJobs,
       receiptScans,
       notifications,
@@ -495,6 +499,10 @@ export class UsersService {
             snapshot.errorPercent !== null && snapshot.errorPercent !== undefined
               ? Number(snapshot.errorPercent)
               : null,
+        })),
+        recurringTransactions: recurringTransactions.map((item) => ({
+          ...item,
+          amount: Number(item.amount),
         })),
         assistantTurns,
         supportRequests,

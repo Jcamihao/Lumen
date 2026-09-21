@@ -20,6 +20,8 @@ import {
   ReceiptImportCommitResponse,
   ReceiptImportPreview,
   ReceiptScanHistoryEntry,
+  RecurrenceFrequency,
+  RecurringTransaction,
   Reminder,
   TagGroup,
   SupportRequest,
@@ -586,6 +588,40 @@ export class LifeApiService {
   exportMyData() {
     return this.http.get<PrivacyExportPayload>(
       `${environment.apiBaseUrl}/users/me/privacy-export`,
+    );
+  }
+
+  listRecurringTransactions() {
+    return this.http.get<RecurringTransaction[]>(
+      `${environment.apiBaseUrl}/recurring-transactions`,
+    );
+  }
+
+  createRecurringTransaction(payload: {
+    type: "INCOME" | "EXPENSE";
+    description: string;
+    amount: number;
+    categoryId?: string;
+    frequency: RecurrenceFrequency;
+    firstDueDate: string;
+    endDate?: string;
+  }) {
+    return this.http.post<RecurringTransaction>(
+      `${environment.apiBaseUrl}/recurring-transactions`,
+      payload,
+    );
+  }
+
+  updateRecurringTransaction(id: string, payload: { isActive?: boolean }) {
+    return this.http.patch<RecurringTransaction>(
+      `${environment.apiBaseUrl}/recurring-transactions/${id}`,
+      payload,
+    );
+  }
+
+  deleteRecurringTransaction(id: string) {
+    return this.http.delete<{ success: boolean }>(
+      `${environment.apiBaseUrl}/recurring-transactions/${id}`,
     );
   }
 

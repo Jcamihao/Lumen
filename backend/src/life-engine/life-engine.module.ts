@@ -6,6 +6,7 @@ import { ForecastsModule } from "../forecasts/forecasts.module";
 import { InsightsModule } from "../insights/insights.module";
 import { MailModule } from "../mail/mail.module";
 import { NotificationsModule } from "../notifications/notifications.module";
+import { RecurringMaterializerModule } from "../recurring-transactions/recurring-materializer.module";
 import { LifeEngineService } from "./life-engine.service";
 import { LifeWorkersService } from "./life-workers.service";
 
@@ -24,6 +25,7 @@ import { LifeWorkersService } from "./life-workers.service";
     MailModule,
     EmailPreferencesModule,
     DashboardModule,
+    RecurringMaterializerModule,
   ],
   providers: [LifeEngineService, LifeWorkersService],
   exports: [LifeEngineService],

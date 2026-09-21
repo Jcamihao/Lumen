@@ -1,0 +1,111 @@
+:host {
+  display: block;
+}
+
+.recurring-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.recurring-card__body {
+  display: grid;
+  gap: 1rem;
+}
+
+.recurring-card__hint {
+  margin: 0;
+  color: var(--text-medium);
+}
+
+.recurring-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  background: var(--surface-panel);
+}
+
+.recurring-form__wide {
+  grid-column: span 2;
+}
+
+.recurring-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  grid-column: 1 / -1;
+}
+
+.recurring-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recurring-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  background: var(--surface-panel);
+}
+
+.recurring-row[data-status='paused'],
+.recurring-row[data-status='ended'] {
+  opacity: 0.7;
+}
+
+.recurring-row__main {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.recurring-row__main strong {
+  overflow-wrap: anywhere;
+  color: var(--text-strong);
+}
+
+.recurring-row__meta,
+.recurring-row__next {
+  font-size: 0.85rem;
+  color: var(--text-medium);
+}
+
+.recurring-row__amount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--danger);
+}
+
+.recurring-row[data-type='INCOME'] .recurring-row__amount {
+  color: var(--success);
+}
+
+.recurring-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@media (max-width: 760px) {
+  .recurring-form__wide {
+    grid-column: auto;
+  }
+
+  .recurring-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .recurring-row__actions {
+    grid-column: 1 / -1;
+  }
+}
