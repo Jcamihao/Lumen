@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, TransactionType } from '@prisma/client';
-import { endOfMonth, startOfMonth } from 'date-fns';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
@@ -15,13 +14,16 @@ export class TransactionsService {
   ) {}
 
   async list(userId: string, query: ListTransactionsQueryDto) {
+    // Transacao tem data sem hora, gravada a meia-noite UTC. Os limites do mes
+    // precisam ser UTC tambem: com startOfMonth() (fuso do servidor), um
+    // lancamento de 01/09 cairia em agosto quando o servidor nao esta em UTC.
     const monthStart =
       query.month && query.year
-        ? startOfMonth(new Date(query.year, query.month - 1, 1))
+        ? new Date(Date.UTC(query.year, query.month - 1, 1))
         : undefined;
     const monthEnd =
       query.month && query.year
-        ? endOfMonth(new Date(query.year, query.month - 1, 1))
+        ? new Date(Date.UTC(query.year, query.month, 1) - 1)
         : undefined;
 
     const transactions = await this.prisma.transaction.findMany({

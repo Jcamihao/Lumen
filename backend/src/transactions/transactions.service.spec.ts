@@ -86,6 +86,30 @@ describe("TransactionsService", () => {
     });
   });
 
+  describe("list — month filter", () => {
+    it("uses UTC month boundaries so a 1st-of-month entry stays in its own month", async () => {
+      const prisma = buildPrisma();
+      const service = new TransactionsService(prisma, buildLifeEngine());
+
+      await service.list("user-1", { month: 9, year: 2026 } as any);
+
+      const { gte, lte } = prisma.transaction.findMany.mock.calls[0][0].where.date;
+      expect(gte.toISOString()).toBe("2026-09-01T00:00:00.000Z");
+      expect(lte.toISOString()).toBe("2026-09-30T23:59:59.999Z");
+    });
+
+    it("rolls December over to the end of the year correctly", async () => {
+      const prisma = buildPrisma();
+      const service = new TransactionsService(prisma, buildLifeEngine());
+
+      await service.list("user-1", { month: 12, year: 2026 } as any);
+
+      const { gte, lte } = prisma.transaction.findMany.mock.calls[0][0].where.date;
+      expect(gte.toISOString()).toBe("2026-12-01T00:00:00.000Z");
+      expect(lte.toISOString()).toBe("2026-12-31T23:59:59.999Z");
+    });
+  });
+
   describe("update / remove — multi-tenancy", () => {
     it("update() never touches a transaction owned by another user", async () => {
       const prisma = buildPrisma();
