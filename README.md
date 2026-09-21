@@ -122,6 +122,8 @@ npm --prefix frontend run build
 
 ## 🔐 Credenciais demo
 
+Criadas só pelo seed (`backend/prisma/seed.js`) em ambiente local; o formulário de login não vem mais preenchido. Não existem em produção.
+
 - Usuário: `demo@lumen.local`
 - Senha: `Demo123!`
 

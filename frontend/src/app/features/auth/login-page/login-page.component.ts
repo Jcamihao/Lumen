@@ -29,9 +29,9 @@ export class LoginPageComponent {
   protected readonly passwordMinLength = AUTH_PASSWORD_MIN_LENGTH;
 
   protected readonly form = this.fb.nonNullable.group({
-    email: ['demo@lumen.local', [Validators.required, Validators.email]],
+    email: ['', [Validators.required, Validators.email]],
     password: [
-      'Demo123!',
+      '',
       [Validators.required, Validators.minLength(AUTH_PASSWORD_MIN_LENGTH)],
     ],
   });
