@@ -8,11 +8,13 @@ import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
+import { buildSpendingBreakdown } from '../../../core/utils/spending.utils';
+import { SpendingBreakdownComponent } from '../../../shared/spending-breakdown/spending-breakdown.component';
 
 @Component({
   selector: 'app-finances-page',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink],
+  imports: [CommonModule, ReactiveFormsModule, RouterLink, SpendingBreakdownComponent],
   templateUrl: './finances-page.component.html',
   styleUrls: ['./finances-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -32,6 +34,13 @@ export class FinancesPageComponent {
   protected readonly filterSearch = signal('');
 
   protected readonly transactions = signal<Transaction[]>([]);
+  // Despesas do mes selecionado para a rosca: independe do filtro de tipo e da
+  // busca da lista, senao filtrar "Receitas" esvaziaria o grafico.
+  private readonly spendingTransactions = signal<Transaction[]>([]);
+  private spendingRequestId = 0;
+  protected readonly spendingBreakdown = computed(() =>
+    buildSpendingBreakdown(this.spendingTransactions()),
+  );
   protected readonly financeCategories = computed(
     () => this.authService.currentUser()?.financeCategories ?? [],
   );
@@ -73,6 +82,10 @@ export class FinancesPageComponent {
       } else {
         this.loadTransactions({ month, year, type: type || undefined });
       }
+    });
+
+    effect(() => {
+      this.loadSpending(this.filterMonth(), this.filterYear());
     });
 
     this.route.queryParamMap
@@ -127,6 +140,7 @@ export class FinancesPageComponent {
         next: (transaction) => {
           this.form.patchValue({ description: '', amount: 0, categoryId: '' });
           this.upsertTransaction(transaction);
+          this.loadSpending(this.filterMonth(), this.filterYear());
           this.toast.success('Transação registrada.');
         },
         error: () => this.toast.error('Não foi possível registrar a transação.'),
@@ -146,6 +160,7 @@ export class FinancesPageComponent {
           this.transactions.update((current) =>
             current.filter((transaction) => transaction.id !== id),
           );
+          this.loadSpending(this.filterMonth(), this.filterYear());
           this.toast.success('Transação removida.');
         },
         error: () => this.toast.error('Não foi possível remover a transação.'),
@@ -196,6 +211,20 @@ export class FinancesPageComponent {
       .listTransactions(params)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((transactions) => this.transactions.set(transactions));
+  }
+
+  private loadSpending(month: number, year: number) {
+    const requestId = ++this.spendingRequestId;
+
+    this.api
+      .listTransactions({ month, year, type: 'EXPENSE' })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((transactions) => {
+        // Ignora resposta atrasada de um mes que o usuario ja deixou pra tras.
+        if (requestId === this.spendingRequestId) {
+          this.spendingTransactions.set(transactions);
+        }
+      });
   }
 
   private upsertTransaction(transaction: Transaction | null) {

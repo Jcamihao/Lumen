@@ -415,3 +415,19 @@
 .home-insight__voice strong {
   color: var(--accent-cool);
 }
+
+.home-spending {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  background: var(--surface-panel);
+}
+
+.home-spending__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}

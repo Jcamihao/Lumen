@@ -1,0 +1,38 @@
+<div class="spending" [class.spending--compact]="compact">
+  <div class="spending__chart" role="img" [attr.aria-label]="'Gastos por categoria: ' + ariaLabel">
+    <svg class="spending__svg" viewBox="0 0 42 42" aria-hidden="true">
+      <circle class="spending__track" cx="21" cy="21" [attr.r]="radius" />
+      <circle
+        *ngFor="let arc of arcs; trackBy: trackArc"
+        class="spending__arc"
+        cx="21"
+        cy="21"
+        [attr.r]="radius"
+        [style.stroke]="arc.color"
+        [attr.stroke-dasharray]="arc.dash"
+        [attr.stroke-dashoffset]="arc.offset"
+      />
+    </svg>
+    <div class="spending__center">
+      <strong>{{ total | currency: currency : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
+      <span>{{ caption }}</span>
+    </div>
+  </div>
+
+  <ul class="spending__list">
+    <li class="spending__row" *ngFor="let slice of visibleSlices; trackBy: trackSlice">
+      <span
+        class="spending__icon"
+        [style.color]="slice.color"
+        [style.background]="'color-mix(in srgb, ' + slice.color + ' 16%, transparent)'"
+      >
+        <span class="material-symbols-rounded">{{ slice.icon }}</span>
+      </span>
+      <span class="spending__name">{{ slice.name }}</span>
+      <span class="spending__percent">{{ slice.percentLabel }}%</span>
+      <span class="spending__amount">
+        {{ slice.amount | currency: currency : 'symbol' : '1.0-0' : 'pt-BR' }}
+      </span>
+    </li>
+  </ul>
+</div>

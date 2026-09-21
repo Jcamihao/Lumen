@@ -47,6 +47,53 @@
     </article>
   </section>
 
+  <article class="proto-surface finance-breakdown">
+    <div class="proto-surface__head finance-breakdown__head">
+      <div>
+        <h3>Gastos por categoria</h3>
+        <p>Para onde foi o dinheiro em {{ monthLabel() }}.</p>
+      </div>
+
+      <div class="finance-breakdown__period">
+        <button
+          type="button"
+          class="proto-button proto-button--secondary finance-breakdown__nav"
+          (click)="previousMonth()"
+          aria-label="Mês anterior"
+        >
+          <span class="material-symbols-rounded">chevron_left</span>
+        </button>
+
+        <span class="finance-breakdown__month">{{ monthLabel() }}</span>
+
+        <button
+          type="button"
+          class="proto-button proto-button--secondary finance-breakdown__nav"
+          (click)="nextMonth()"
+          [disabled]="isCurrentMonth()"
+          aria-label="Próximo mês"
+        >
+          <span class="material-symbols-rounded">chevron_right</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="proto-surface__body">
+      <app-spending-breakdown
+        *ngIf="spendingBreakdown().total > 0; else noSpending"
+        [breakdown]="spendingBreakdown()"
+        [currency]="currencyCode()"
+      ></app-spending-breakdown>
+
+      <ng-template #noSpending>
+        <div class="proto-empty">
+          <strong>Sem despesas em {{ monthLabel() }}</strong>
+          <p>Quando você registrar gastos neste mês, a divisão por categoria aparece aqui.</p>
+        </div>
+      </ng-template>
+    </div>
+  </article>
+
   <article class="proto-surface finance-highlight">
     <div class="proto-surface__body finance-highlight__body">
       <div class="finance-highlight__icon">

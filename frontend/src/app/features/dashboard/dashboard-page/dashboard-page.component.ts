@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import {
@@ -12,11 +12,13 @@ import {
 } from '../../../core/models/domain.models';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
+import { buildSpendingBreakdown } from '../../../core/utils/spending.utils';
+import { SpendingBreakdownComponent } from '../../../shared/spending-breakdown/spending-breakdown.component';
 
 @Component({
   selector: 'app-dashboard-page',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, SpendingBreakdownComponent],
   templateUrl: './dashboard-page.component.html',
   styleUrls: ['./dashboard-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -26,12 +28,22 @@ export class DashboardPageComponent {
   private readonly destroyRef = inject(DestroyRef);
   protected readonly summary = signal<DashboardSummary | null>(null);
   protected readonly forecastAccuracy = signal<ForecastAccuracy | null>(null);
+  private readonly monthExpenses = signal<Transaction[]>([]);
+  protected readonly spendingBreakdown = computed(() =>
+    buildSpendingBreakdown(this.monthExpenses()),
+  );
 
   constructor() {
     this.api
       .getDashboardSummary()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((summary) => this.summary.set(summary));
+
+    const now = new Date();
+    this.api
+      .listTransactions({ month: now.getMonth() + 1, year: now.getFullYear(), type: 'EXPENSE' })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((transactions) => this.monthExpenses.set(transactions));
 
     this.api
       .getForecastAccuracy()

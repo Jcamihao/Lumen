@@ -73,6 +73,22 @@ const MIN_OCCURRENCES_FOR_SUBSCRIPTION = 3;
 /** Quantas notas fiscais importadas olhar pra tras ao procurar pares pra comparar. */
 const RECEIPT_SCAN_MAX_ROWS = 200;
 
+// Mudanca de peso de uma categoria nos gastos do mes vs. mes anterior. Compara
+// a PARTICIPACAO (% do total gasto), nao o valor: o mes corrente esta pela
+// metade e valor absoluto sempre pareceria "queda".
+const CATEGORY_SHIFT_MIN_TOTAL = 200;
+const CATEGORY_SHIFT_MIN_TRANSACTIONS = 5;
+const CATEGORY_SHIFT_MIN_SHARE_PCT = 20;
+const CATEGORY_SHIFT_MIN_DELTA_PTS = 10;
+const CATEGORY_SHIFT_WARNING_DELTA_PTS = 20;
+
+type CategoryTotal = {
+  categoryId: string | null;
+  name: string;
+  total: number;
+  count: number;
+};
+
 /** Alta o suficiente pra virar aviso, ou critica, de aumento de gasto no mesmo estabelecimento. */
 const RECEIPT_TOTAL_WARNING_PCT = 0.15;
 const RECEIPT_TOTAL_CRITICAL_PCT = 0.4;
@@ -207,6 +223,7 @@ export class InsightsService {
       this.detectReceiptComparison(context),
       this.detectUpcomingBirthday(context),
       this.detectPrimaryGoalWithoutTracking(context),
+      this.detectCategoryShift(context),
     ].filter((insight): insight is GeneratedInsight => insight !== null);
 
     if (insights.length === 0) {
@@ -251,6 +268,10 @@ export class InsightsService {
     const todayStart = startOfDay(now);
     const todayEnd = endOfDay(now);
     const monthStart = startOfMonth(now);
+    // Limites UTC (datas de transacao sao gravadas a meia-noite UTC).
+    const currentMonthStartUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const previousMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    const previousMonthEnd = new Date(currentMonthStartUtc.getTime() - 1);
 
     const [
       user,
@@ -261,6 +282,9 @@ export class InsightsService {
       remindersToday,
       recentExpenses,
       recentReceiptScans,
+      currentCategoryGroups,
+      previousCategoryGroups,
+      financeCategories,
     ] = await Promise.all([
       this.prisma.user.findUniqueOrThrow({
         where: { id: userId },
@@ -364,7 +388,44 @@ export class InsightsService {
         orderBy: { purchaseDate: 'desc' },
         take: RECEIPT_SCAN_MAX_ROWS,
       }),
+      this.prisma.transaction.groupBy({
+        by: ['categoryId'],
+        where: {
+          userId,
+          type: 'EXPENSE',
+          date: { gte: currentMonthStartUtc, lte: now },
+        },
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.transaction.groupBy({
+        by: ['categoryId'],
+        where: {
+          userId,
+          type: 'EXPENSE',
+          date: { gte: previousMonthStart, lte: previousMonthEnd },
+        },
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+      this.prisma.financeCategory.findMany({
+        where: { userId },
+        select: { id: true, name: true },
+      }),
     ]);
+
+    const categoryNames = new Map(
+      (financeCategories ?? []).map((category) => [category.id, category.name]),
+    );
+    const toCategoryTotals = (groups: any[] | undefined): CategoryTotal[] =>
+      (groups ?? []).map((group) => ({
+        categoryId: group.categoryId ?? null,
+        name: group.categoryId
+          ? (categoryNames.get(group.categoryId) ?? 'Categoria removida')
+          : 'Sem categoria',
+        total: Number(group._sum?.amount ?? 0),
+        count: Number(group._count?._all ?? 0),
+      }));
 
     return {
       now,
@@ -375,6 +436,14 @@ export class InsightsService {
       remindersToday,
       monthlyExpenses: Number(monthlyExpensesAggregate._sum.amount ?? 0),
       monthlyIncome: Number(user.monthlyIncome ?? 0),
+      categorySpending: {
+        current: toCategoryTotals(currentCategoryGroups),
+        previous: toCategoryTotals(previousCategoryGroups),
+        previousMonthLabel: new Intl.DateTimeFormat('pt-BR', {
+          month: 'long',
+          timeZone: 'UTC',
+        }).format(previousMonthStart),
+      },
       recentExpenses: (recentExpenses ?? []).map((expense) => ({
         id: expense.id,
         description: expense.description,
@@ -396,6 +465,73 @@ export class InsightsService {
             totalPrice: Number(item.totalPrice),
           })),
         })) as ReceiptScanSnapshot[],
+    };
+  }
+
+  /**
+   * Categoria que ganhou muito peso nos gastos do mes em relacao ao mes
+   * anterior. Compara participacao (%), exige volume minimo nos dois meses e
+   * ignora gasto sem categoria (nao ha o que apontar). Escolhe so a maior alta.
+   */
+  private detectCategoryShift(context: InsightContext): GeneratedInsight | null {
+    const { current, previous, previousMonthLabel } = context.categorySpending;
+    const sum = (rows: CategoryTotal[], field: 'total' | 'count') =>
+      rows.reduce((acc, row) => acc + row[field], 0);
+    const currentTotal = sum(current, 'total');
+    const previousTotal = sum(previous, 'total');
+
+    if (
+      currentTotal < CATEGORY_SHIFT_MIN_TOTAL ||
+      previousTotal < CATEGORY_SHIFT_MIN_TOTAL ||
+      sum(current, 'count') < CATEGORY_SHIFT_MIN_TRANSACTIONS
+    ) {
+      return null;
+    }
+
+    const previousShareById = new Map(
+      previous.map((row) => [row.categoryId, (row.total / previousTotal) * 100]),
+    );
+    let best: { row: CategoryTotal; share: number; previousShare: number; delta: number } | null =
+      null;
+
+    for (const row of current) {
+      if (!row.categoryId) continue;
+
+      const share = (row.total / currentTotal) * 100;
+      const previousShare = previousShareById.get(row.categoryId) ?? 0;
+      const delta = share - previousShare;
+
+      if (
+        share >= CATEGORY_SHIFT_MIN_SHARE_PCT &&
+        delta >= CATEGORY_SHIFT_MIN_DELTA_PTS &&
+        (!best || delta > best.delta)
+      ) {
+        best = { row, share, previousShare, delta };
+      }
+    }
+
+    if (!best) {
+      return null;
+    }
+
+    const shareLabel = Math.round(best.share);
+    const previousShareLabel = Math.round(best.previousShare);
+    const monthTag = `${context.now.getUTCFullYear()}-${context.now.getUTCMonth() + 1}`;
+
+    return {
+      type: InsightType.FINANCE,
+      key: `category_shift:${this.hashSubject([best.row.categoryId as string, monthTag])}`,
+      severity:
+        best.delta >= CATEGORY_SHIFT_WARNING_DELTA_PTS
+          ? InsightSeverity.WARNING
+          : InsightSeverity.INFO,
+      message: `${best.row.name} ja pesa ${shareLabel}% dos seus gastos deste mes, contra ${previousShareLabel}% em ${previousMonthLabel} — a maior alta entre as categorias. Vale olhar o que puxou isso.`,
+      metadata: {
+        category: best.row.name,
+        sharePct: shareLabel,
+        previousSharePct: previousShareLabel,
+        previousMonth: previousMonthLabel,
+      },
     };
   }
 

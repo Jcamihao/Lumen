@@ -192,6 +192,20 @@
         <a class="proto-button" routerLink="/finance">Abrir finanças</a>
       </div>
 
+      <div class="home-spending" *ngIf="spendingBreakdown().total > 0">
+        <div class="home-spending__head">
+          <strong>Gastos do mês</strong>
+          <a class="proto-button proto-button--secondary" routerLink="/finances">Ver por categoria</a>
+        </div>
+        <app-spending-breakdown
+          [breakdown]="spendingBreakdown()"
+          [currency]="data.user.preferredCurrency"
+          [compact]="true"
+          [maxRows]="4"
+          caption="este mês"
+        ></app-spending-breakdown>
+      </div>
+
       <div class="home-chart" aria-label="Projeção financeira da semana">
         <div class="home-chart__bars">
           <span

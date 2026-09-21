@@ -1,0 +1,154 @@
+:host {
+  display: block;
+}
+
+.spending {
+  display: grid;
+  grid-template-columns: minmax(0, 13rem) minmax(0, 1fr);
+  gap: 1.75rem;
+  align-items: center;
+}
+
+.spending--compact {
+  grid-template-columns: minmax(0, 7.5rem) minmax(0, 1fr);
+  gap: 0.9rem;
+}
+
+// Versao enxuta: sem icone e com colunas mais justas, para o nome da
+// categoria nao ser cortado em cartoes estreitos.
+.spending--compact .spending__row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.5rem;
+}
+
+.spending--compact .spending__icon {
+  display: none;
+}
+
+.spending--compact .spending__name {
+  font-size: 0.86rem;
+}
+
+.spending--compact .spending__percent,
+.spending--compact .spending__amount {
+  font-size: 0.82rem;
+}
+
+.spending--compact .spending__amount {
+  min-width: 0;
+}
+
+.spending__chart {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+}
+
+.spending__svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.spending__track,
+.spending__arc {
+  fill: none;
+  stroke-width: 5;
+}
+
+.spending__track {
+  stroke: var(--border);
+}
+
+.spending__center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.2rem;
+  padding: 22%;
+  text-align: center;
+}
+
+.spending__center strong {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.spending__center span {
+  font-size: 0.72rem;
+  color: var(--text-medium);
+}
+
+.spending--compact .spending__center strong {
+  font-size: 1rem;
+}
+
+.spending--compact .spending__center span {
+  font-size: 0.66rem;
+}
+
+.spending__list {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.spending__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.spending__icon {
+  width: 2rem;
+  height: 2rem;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 0;
+}
+
+.spending__icon .material-symbols-rounded {
+  font-size: 1.1rem;
+}
+
+.spending__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.spending__percent {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.spending__amount {
+  min-width: 5.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-medium);
+}
+
+@media (max-width: 720px) {
+  .spending {
+    grid-template-columns: 1fr;
+  }
+
+  .spending__chart {
+    max-width: 13rem;
+    margin: 0 auto;
+  }
+}

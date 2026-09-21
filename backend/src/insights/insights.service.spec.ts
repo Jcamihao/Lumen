@@ -20,11 +20,28 @@ type ReceiptScanSeed = {
   compareWithPrevious: boolean;
 };
 
+type CategoryGroupSeed = {
+  categoryId: string | null;
+  _sum: { amount: number };
+  _count: { _all: number };
+};
+
+const group = (categoryId: string | null, amount: number, count = 3): CategoryGroupSeed => ({
+  categoryId,
+  _sum: { amount },
+  _count: { _all: count },
+});
+
 const buildPrisma = (
   expenses: ExpenseSeed[] = [],
   receiptScans: ReceiptScanSeed[] = [],
   userOverrides: Record<string, unknown> = {},
   goals: unknown[] = [],
+  categorySpending: {
+    current: CategoryGroupSeed[];
+    previous: CategoryGroupSeed[];
+    categories: Array<{ id: string; name: string }>;
+  } = { current: [], previous: [], categories: [] },
 ) => {
   const prisma = {
     insight: {
@@ -53,6 +70,14 @@ const buildPrisma = (
         },
       }),
       findMany: jest.fn().mockResolvedValue(expenses),
+      // 1a chamada = mes corrente, 2a = mes anterior (mesma ordem do loadContext).
+      groupBy: jest
+        .fn()
+        .mockResolvedValueOnce(categorySpending.current)
+        .mockResolvedValueOnce(categorySpending.previous),
+    },
+    financeCategory: {
+      findMany: jest.fn().mockResolvedValue(categorySpending.categories),
     },
     goal: {
       findMany: jest.fn().mockResolvedValue(goals),
@@ -865,5 +890,121 @@ describe('InsightsService', () => {
         where: expect.objectContaining({ userId: 'user-1', type: 'EXPENSE' }),
       }),
     );
+  });
+
+  describe('detectCategoryShift', () => {
+    const categories = [
+      { id: 'cat-food', name: 'Alimentacao' },
+      { id: 'cat-leisure', name: 'Lazer' },
+      { id: 'cat-bills', name: 'Contas' },
+    ];
+    const run = async (current: CategoryGroupSeed[], previous: CategoryGroupSeed[]) => {
+      const prisma = buildPrisma([], [], {}, [], { current, previous, categories });
+      await new InsightsService(prisma).refreshForUser('user-1');
+      return generatedInsights(prisma).filter((insight) =>
+        insight.fingerprint.includes('category_shift'),
+      );
+    };
+
+    it('flags the category that gained the most share vs the previous month', async () => {
+      // Alimentacao: 30% -> 60%. Lazer: 20% -> 20%. Contas: 50% -> 20%.
+      const insights = await run(
+        [group('cat-food', 600), group('cat-leisure', 200), group('cat-bills', 200)],
+        [group('cat-food', 300), group('cat-leisure', 200), group('cat-bills', 500)],
+      );
+
+      expect(insights).toHaveLength(1);
+      expect(insights[0].type).toBe(InsightType.FINANCE);
+      expect(insights[0].severity).toBe(InsightSeverity.WARNING);
+      expect(insights[0].message).toContain('Alimentacao ja pesa 60%');
+      expect(insights[0].message).toContain('contra 30%');
+      expect(insights[0].metadata).toEqual(
+        expect.objectContaining({ category: 'Alimentacao', sharePct: 60, previousSharePct: 30 }),
+      );
+    });
+
+    it('is informational (not a warning) for a moderate jump', async () => {
+      // Lazer 25% -> 38% (+13 pontos).
+      const insights = await run(
+        [group('cat-leisure', 380), group('cat-food', 620)],
+        [group('cat-leisure', 250), group('cat-food', 750)],
+      );
+
+      expect(insights).toHaveLength(1);
+      expect(insights[0].severity).toBe(InsightSeverity.INFO);
+      expect(insights[0].message).toContain('Lazer ja pesa 38%');
+    });
+
+    it('stays quiet when nothing changed enough', async () => {
+      const insights = await run(
+        [group('cat-food', 500), group('cat-leisure', 500)],
+        [group('cat-food', 480), group('cat-leisure', 520)],
+      );
+
+      expect(insights).toHaveLength(0);
+    });
+
+    it('needs enough spending and enough transactions before comparing', async () => {
+      const tiny = await run(
+        [group('cat-food', 90, 6), group('cat-leisure', 10, 6)],
+        [group('cat-food', 10), group('cat-leisure', 90)],
+      );
+      const fewTransactions = await run(
+        [group('cat-food', 900, 2), group('cat-leisure', 100, 2)],
+        [group('cat-food', 100), group('cat-leisure', 900)],
+      );
+
+      expect(tiny).toHaveLength(0);
+      expect(fewTransactions).toHaveLength(0);
+    });
+
+    it('does not compare against a month with no spending', async () => {
+      const insights = await run([group('cat-food', 800), group('cat-leisure', 200)], []);
+
+      expect(insights).toHaveLength(0);
+    });
+
+    it('never points at uncategorized spending', async () => {
+      const insights = await run(
+        [group(null, 800), group('cat-food', 200)],
+        [group(null, 200), group('cat-food', 800)],
+      );
+
+      expect(insights).toHaveLength(0);
+    });
+
+    it('names the previous month and queries UTC month boundaries', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-09-15T12:00:00.000Z'));
+      try {
+        const prisma = buildPrisma([], [], {}, [], {
+          current: [group('cat-food', 600), group('cat-leisure', 400)],
+          previous: [group('cat-food', 300), group('cat-leisure', 700)],
+          categories,
+        });
+        await new InsightsService(prisma).refreshForUser('user-1');
+        const insight = generatedInsights(prisma).find((item) =>
+          item.fingerprint.includes('category_shift'),
+        );
+
+        expect(insight?.message).toContain('em agosto');
+        const [currentCall, previousCall] = prisma.transaction.groupBy.mock.calls;
+        expect(currentCall[0].where.date.gte.toISOString()).toBe('2026-09-01T00:00:00.000Z');
+        expect(previousCall[0].where.date.gte.toISOString()).toBe('2026-08-01T00:00:00.000Z');
+        expect(previousCall[0].where.date.lte.toISOString()).toBe('2026-08-31T23:59:59.999Z');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('treats a category absent last month as starting from 0%', async () => {
+      const insights = await run(
+        [group('cat-leisure', 400), group('cat-food', 600)],
+        [group('cat-food', 1000)],
+      );
+
+      expect(insights).toHaveLength(1);
+      expect(insights[0].message).toContain('Lazer ja pesa 40%');
+      expect(insights[0].message).toContain('contra 0%');
+    });
   });
 });
