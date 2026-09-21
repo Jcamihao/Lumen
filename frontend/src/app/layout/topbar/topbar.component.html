@@ -8,7 +8,6 @@
   <div class="proto-topbar__search">
     <span class="material-symbols-rounded proto-topbar__search-icon">search</span>
     <input
-      #searchInput
       type="search"
       class="proto-topbar__search-input"
       placeholder="Buscar em tudo ou perguntar ao Selah..."
@@ -19,7 +18,6 @@
       (keydown.enter)="askSelahWithQuery()"
       (keydown.escape)="closeSearch()"
     />
-    <kbd class="proto-topbar__search-kbd" *ngIf="!searchQuery()">⌘K</kbd>
 
     <div class="proto-topbar__search-results" *ngIf="searchOpen() && searchQuery().trim().length >= 2">
       <ng-container *ngIf="hasMatches(); else noMatches">

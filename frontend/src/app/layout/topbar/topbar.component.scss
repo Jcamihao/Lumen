@@ -90,19 +90,6 @@
   color: var(--text-secondary);
 }
 
-.proto-topbar__search-kbd {
-  position: absolute;
-  right: 0.55rem;
-  padding: 0.1rem 0.35rem;
-  border: 1px solid var(--border);
-  background: var(--card);
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: 0.68rem;
-  font-weight: 700;
-  pointer-events: none;
-}
-
 .proto-topbar__search-results {
   position: absolute;
   top: calc(100% + 0.4rem);

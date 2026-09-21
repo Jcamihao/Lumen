@@ -3,9 +3,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ElementRef,
-  HostListener,
-  ViewChild,
   computed,
   inject,
   signal,
@@ -137,17 +134,6 @@ export class TopbarComponent {
       this.goalResults().length > 0 ||
       this.insightResults().length > 0,
   );
-
-  @ViewChild('searchInput') private readonly searchInputRef?: ElementRef<HTMLInputElement>;
-
-  @HostListener('document:keydown', ['$event'])
-  protected handleGlobalShortcut(event: KeyboardEvent) {
-    const isShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k';
-    if (!isShortcut) return;
-
-    event.preventDefault();
-    this.searchInputRef?.nativeElement.focus();
-  }
 
   constructor() {
     this.api
