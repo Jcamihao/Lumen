@@ -68,6 +68,15 @@ export const routes: Routes = [
         (module) => module.UnsubscribePageComponent,
       ),
   },
+  // Publica, sem guard: e um material de divulgacao (cartaz com QR code) que o
+  // publicitario abre sem conta, logado ou nao.
+  {
+    path: 'qr',
+    loadComponent: () =>
+      import('./features/qr/qr-page/qr-page.component').then(
+        (module) => module.QrPageComponent,
+      ),
+  },
   {
     path: '',
     canActivate: [authGuard],

@@ -1,0 +1,207 @@
+:host {
+  display: block;
+  min-height: 100vh;
+  background: var(--bg, #f6f7fb);
+}
+
+.qr-page {
+  display: grid;
+  justify-items: center;
+  gap: 1.5rem;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+.qr-back {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-medium, #475569);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.qr-back:hover {
+  color: var(--accent, #006cd2);
+}
+
+/* O cartaz e sempre claro (tema escuro nao muda): e o que vai para o papel. */
+.qr-poster {
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 2.5rem 1.5rem;
+  background: #ffffff;
+  color: #0f172a;
+  text-align: center;
+  border: 1px solid #e2e8f0;
+}
+
+.qr-poster__mark {
+  display: block;
+}
+
+.qr-poster__brand {
+  margin: -0.25rem 0 0.75rem;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: #006cd2;
+}
+
+.qr-poster h1 {
+  margin: 0;
+  font-size: clamp(1.7rem, 5vw, 2.4rem);
+  line-height: 1.15;
+  color: #0f172a;
+  text-wrap: balance;
+}
+
+.qr-poster__lead {
+  margin: 0;
+  max-width: 28rem;
+  font-size: 1.05rem;
+  color: #475569;
+}
+
+.qr-poster__frame {
+  display: grid;
+  place-items: center;
+  width: min(100%, 22rem);
+  aspect-ratio: 1;
+  margin-top: 0.75rem;
+  background: #ffffff;
+}
+
+.qr-poster__code {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.qr-poster__loading,
+.qr-poster__error {
+  margin: 0;
+  color: #475569;
+}
+
+.qr-poster__error {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.qr-poster__cta {
+  margin: 0.5rem 0 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.qr-poster__host {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #006cd2;
+}
+
+.qr-tools {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+}
+
+.qr-tools__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.qr-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.75rem;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--border, #cbd5e1);
+  background: var(--card, #ffffff);
+  color: var(--text-strong, #0f172a);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.qr-button:hover:not(:disabled) {
+  border-color: var(--accent, #006cd2);
+}
+
+.qr-button:focus-visible {
+  outline: 2px solid var(--accent, #006cd2);
+  outline-offset: 2px;
+}
+
+.qr-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.qr-button--primary {
+  border-color: var(--accent, #006cd2);
+  background: var(--accent, #006cd2);
+  color: #ffffff;
+}
+
+.qr-tools__status {
+  margin: 0;
+  font-weight: 700;
+  color: var(--success, #15803d);
+}
+
+.qr-tools__status--error {
+  color: var(--danger, #b91c1c);
+}
+
+.qr-tools__tips {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--text-medium, #475569);
+  font-size: 0.9rem;
+}
+
+/* Impressao: so o cartaz, numa folha A4, sem o que e de tela. */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  :host {
+    background: #ffffff;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .qr-page {
+    max-width: none;
+    padding: 0;
+  }
+
+  .qr-poster {
+    border: 0;
+    padding: 8mm 0;
+    break-inside: avoid;
+  }
+
+  .qr-poster__frame {
+    width: 120mm;
+  }
+}

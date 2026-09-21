@@ -1,0 +1,62 @@
+<main class="qr-page">
+  <a class="qr-back no-print" routerLink="/">
+    <span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>
+    Voltar ao Lumen
+  </a>
+
+  <article class="qr-poster" aria-labelledby="qr-title">
+    <img class="qr-poster__mark" src="assets/logo/lumen-mark.svg" alt="" width="72" height="72" />
+    <p class="qr-poster__brand">Lumen</p>
+
+    <h1 id="qr-title">Organize sua vida com o Lumen</h1>
+    <p class="qr-poster__lead">Tarefas, finanças e metas num lugar só, com a ajuda do Selah.</p>
+
+    <div class="qr-poster__frame">
+      <img
+        *ngIf="pngUrl() as png"
+        class="qr-poster__code"
+        [src]="png"
+        alt="QR code para acessar o Lumen em financelumen.tech"
+      />
+      <p class="qr-poster__loading" *ngIf="!pngUrl() && !failed()" role="status">Gerando o QR code...</p>
+      <p class="qr-poster__error" *ngIf="failed()" role="alert">
+        Não foi possível gerar o QR code. Recarregue a página.
+      </p>
+    </div>
+
+    <p class="qr-poster__cta">Aponte a câmera do celular para o QR code</p>
+    <p class="qr-poster__host">{{ host }}</p>
+  </article>
+
+  <section class="qr-tools no-print" aria-label="Baixar ou imprimir">
+    <div class="qr-tools__actions">
+      <button type="button" class="qr-button qr-button--primary" [disabled]="!pngUrl()" (click)="downloadPng()">
+        <span class="material-symbols-rounded" aria-hidden="true">download</span>
+        Baixar PNG
+      </button>
+      <button type="button" class="qr-button" [disabled]="!pngUrl()" (click)="downloadSvg()">
+        <span class="material-symbols-rounded" aria-hidden="true">draw</span>
+        Baixar SVG
+      </button>
+      <button type="button" class="qr-button" [disabled]="!pngUrl()" (click)="print()">
+        <span class="material-symbols-rounded" aria-hidden="true">print</span>
+        Imprimir cartaz
+      </button>
+      <button type="button" class="qr-button" (click)="copyLink()">
+        <span class="material-symbols-rounded" aria-hidden="true">link</span>
+        Copiar link
+      </button>
+    </div>
+
+    <p class="qr-tools__status" role="status" *ngIf="copied() === 'ok'">Link copiado.</p>
+    <p class="qr-tools__status qr-tools__status--error" role="status" *ngIf="copied() === 'error'">
+      Não deu para copiar. O link é: {{ target }}
+    </p>
+
+    <ul class="qr-tools__tips">
+      <li>Para gráfica, use o <strong>SVG</strong>: é vetorial e não perde qualidade em nenhum tamanho.</li>
+      <li>Imprima o QR com pelo menos <strong>3 × 3 cm</strong>, em preto sobre branco, sem esticar.</li>
+      <li>O QR leva para <strong>{{ host }}</strong>. Teste com a câmera do celular antes de imprimir.</li>
+    </ul>
+  </section>
+</main>
