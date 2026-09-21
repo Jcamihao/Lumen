@@ -150,62 +150,17 @@
     </ng-template>
   </section>
 
-  <section class="home-workspace">
-    <article class="proto-surface home-lane home-lane--tasks">
-      <div class="home-section-head">
-        <div>
-          <span>02</span>
-          <h3>Próximas ações</h3>
-          <p>{{ data.tasks.todayCount }} tarefa(s) pedindo espaço hoje.</p>
-        </div>
-        <a class="proto-button" routerLink="/tasks">Abrir tarefas</a>
+  <section class="proto-surface home-lane home-pulse" aria-label="Pulso financeiro">
+    <div class="home-section-head">
+      <div>
+        <span>02</span>
+        <h3>Pulso financeiro</h3>
+        <p>{{ financeSummaryText(data) }}</p>
       </div>
+      <a class="proto-button" routerLink="/finance">Abrir finanças</a>
+    </div>
 
-      <div class="home-list" *ngIf="todayTasks(data).length; else noTodayTasks">
-        <a class="proto-list-item home-task" routerLink="/tasks" *ngFor="let task of todayTasks(data) | slice:0:4">
-          <span class="home-task__status" [attr.data-tone]="priorityTone(task.priority)"></span>
-          <span class="home-task__copy">
-            <strong>{{ task.title }}</strong>
-            <small>{{ taskMeta(task, data.user.preferredCurrency) }}</small>
-          </span>
-          <span class="proto-tag" [attr.data-tone]="priorityTone(task.priority)">
-            {{ priorityLabel(task.priority) }}
-          </span>
-        </a>
-      </div>
-
-      <ng-template #noTodayTasks>
-        <div class="proto-empty">
-          <strong>Agenda leve</strong>
-          <p>Nada urgente para hoje.</p>
-        </div>
-      </ng-template>
-    </article>
-
-    <article class="proto-surface home-lane home-lane--finance">
-      <div class="home-section-head">
-        <div>
-          <span>03</span>
-          <h3>Pulso financeiro</h3>
-          <p>{{ financeSummaryText(data) }}</p>
-        </div>
-        <a class="proto-button" routerLink="/finance">Abrir finanças</a>
-      </div>
-
-      <div class="home-spending" *ngIf="spendingBreakdown().total > 0">
-        <div class="home-spending__head">
-          <strong>Gastos do mês</strong>
-          <a class="proto-button proto-button--secondary" routerLink="/finances">Ver por categoria</a>
-        </div>
-        <app-spending-breakdown
-          [breakdown]="spendingBreakdown()"
-          [currency]="data.user.preferredCurrency"
-          [compact]="true"
-          [maxRows]="4"
-          caption="este mês"
-        ></app-spending-breakdown>
-      </div>
-
+    <div class="home-pulse__body">
       <div class="home-chart" aria-label="Projeção financeira da semana">
         <div class="home-chart__bars">
           <span
@@ -237,6 +192,87 @@
           <p>As últimas entradas e saídas vão aparecer aqui.</p>
         </div>
       </ng-template>
+    </div>
+  </section>
+
+  <section class="home-workspace">
+    <article class="proto-surface home-lane home-lane--tasks">
+      <div class="home-section-head">
+        <div>
+          <span>03</span>
+          <h3>Próximas ações</h3>
+          <p>{{ data.tasks.todayCount }} tarefa(s) pedindo espaço hoje.</p>
+        </div>
+        <a class="proto-button" routerLink="/tasks">Abrir tarefas</a>
+      </div>
+
+      <div class="home-list" *ngIf="todayTasks(data).length; else noTodayTasks">
+        <a class="proto-list-item home-task" routerLink="/tasks" *ngFor="let task of todayTasks(data) | slice:0:4">
+          <span class="home-task__status" [attr.data-tone]="priorityTone(task.priority)"></span>
+          <span class="home-task__copy">
+            <strong>{{ task.title }}</strong>
+            <small>{{ taskMeta(task, data.user.preferredCurrency) }}</small>
+          </span>
+          <span class="proto-tag" [attr.data-tone]="priorityTone(task.priority)">
+            {{ priorityLabel(task.priority) }}
+          </span>
+        </a>
+      </div>
+
+      <ng-template #noTodayTasks>
+        <div class="proto-empty">
+          <strong>Agenda leve</strong>
+          <p>Nada urgente para hoje.</p>
+        </div>
+      </ng-template>
+    </article>
+
+    <article class="proto-surface home-lane home-lane--spending">
+      <div class="home-section-head">
+        <div>
+          <span>04</span>
+          <h3>Gastos por categoria</h3>
+          <p>Para onde foi o dinheiro em {{ spendingMonthLabel() }}.</p>
+        </div>
+
+        <div class="home-spending__period">
+          <button
+            type="button"
+            class="proto-button proto-button--secondary home-spending__nav"
+            (click)="previousSpendingMonth()"
+            aria-label="Mês anterior"
+          >
+            <span class="material-symbols-rounded">chevron_left</span>
+          </button>
+
+          <span class="home-spending__month">{{ spendingMonthLabel() }}</span>
+
+          <button
+            type="button"
+            class="proto-button proto-button--secondary home-spending__nav"
+            (click)="nextSpendingMonth()"
+            [disabled]="isCurrentSpendingMonth()"
+            aria-label="Próximo mês"
+          >
+            <span class="material-symbols-rounded">chevron_right</span>
+          </button>
+        </div>
+      </div>
+
+      <app-spending-breakdown
+        *ngIf="spendingBreakdown().total > 0; else noSpending"
+        [breakdown]="spendingBreakdown()"
+        [currency]="data.user.preferredCurrency"
+      ></app-spending-breakdown>
+
+      <ng-template #noSpending>
+        <div class="proto-empty">
+          <strong>Sem despesas em {{ spendingMonthLabel() }}</strong>
+          <p>Quando você registrar gastos neste mês, a divisão por categoria aparece aqui.</p>
+        </div>
+      </ng-template>
+
+      <a class="proto-button proto-button--secondary" routerLink="/finances">Abrir gastos e transações</a>
     </article>
   </section>
 
@@ -244,7 +280,7 @@
     <article class="proto-surface home-lane">
       <div class="home-section-head">
         <div>
-          <span>04</span>
+          <span>05</span>
           <h3>Metas em movimento</h3>
           <p>{{ data.goals.length }} objetivo(s) em acompanhamento.</p>
         </div>
@@ -275,7 +311,7 @@
     <article class="proto-surface home-lane">
       <div class="home-section-head">
         <div>
-          <span>05</span>
+          <span>06</span>
           <h3>Radar</h3>
           <p>Alertas, lembretes e sinais do Lumen.</p>
         </div>

@@ -661,6 +661,16 @@ export class ImportsService {
       throw new BadRequestException(`Falha ao consultar o SelahIA: ${message}`);
     }
 
+    if (response.statusCode === 429) {
+      // O Selah limita por app (429 + Retry-After); o corpo traz o mesmo prazo.
+      const retryAfterSeconds = this.readRetryAfterSeconds(response.body);
+      throw new BadRequestException(
+        retryAfterSeconds
+          ? `O SelahIA esta com muitas leituras em andamento. Tente de novo em ${retryAfterSeconds}s.`
+          : 'O SelahIA esta com muitas leituras em andamento. Tente de novo em instantes.',
+      );
+    }
+
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw new BadRequestException(
         `Falha ao analisar a nota com SelahIA: ${response.body.slice(0, 240)}`,
@@ -696,6 +706,15 @@ export class ImportsService {
     }
 
     return null;
+  }
+
+  private readRetryAfterSeconds(body: string) {
+    try {
+      const seconds = Number(JSON.parse(body)?.retryAfterSeconds);
+      return Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : null;
+    } catch {
+      return null;
+    }
   }
 
   private readBooleanEnv(key: string) {

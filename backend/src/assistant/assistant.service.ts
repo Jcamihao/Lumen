@@ -448,7 +448,9 @@ export class AssistantService {
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         this.logger.warn(
-          `[${requestId}] SelahIA respondeu com erro ${response.statusCode}: ${response.body.slice(0, 240)}`,
+          response.statusCode === 429
+            ? `[${requestId}] SelahIA aplicou rate limit a este app (429); usando o modo local: ${response.body.slice(0, 240)}`
+            : `[${requestId}] SelahIA respondeu com erro ${response.statusCode}: ${response.body.slice(0, 240)}`,
         );
         return { reply: null, attempted: true, reason: "selah_unavailable" };
       }

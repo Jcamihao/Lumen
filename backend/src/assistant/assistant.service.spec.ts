@@ -176,6 +176,35 @@ describe("AssistantService", () => {
     expect(postJsonSpy).toHaveBeenCalled();
   });
 
+  it("falls back to the local mode when SelahIA rate-limits this app (429)", async () => {
+    const service = new AssistantService(
+      buildDashboardService(),
+      buildConfigService({
+        SELAH_ASSISTANT_ENABLED: "true",
+        SELAH_BASE_URL: "http://localhost:3010",
+        SELAH_SOURCE_APP: "LumenBack",
+      }),
+      buildPrismaService(),
+      { create: jest.fn() } as any,
+      { create: jest.fn() } as any,
+      { create: jest.fn() } as any,
+    );
+
+    jest.spyOn(service as any, "postJson").mockResolvedValue({
+      statusCode: 429,
+      body: JSON.stringify({
+        statusCode: 429,
+        message: "Rate limit exceeded for this application.",
+        retryAfterSeconds: 12,
+      }),
+    });
+
+    const response = await service.ask("user-1", "O que devo priorizar agora?");
+
+    expect(response.source).toBe("lumen_fallback");
+    expect(response.disclaimer).toContain("SelahIA indisponivel");
+  });
+
   it("feeds the user's personal profile (age, occupation, primary goal) into the SelahIA context", async () => {
     // 1o de janeiro, 30 anos atras, em UTC — o mesmo jeito que birthDate
     // chega do Postgres/Prisma (timestamp a meia-noite UTC). Construir a

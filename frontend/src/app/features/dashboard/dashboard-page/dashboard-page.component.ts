@@ -29,8 +29,17 @@ export class DashboardPageComponent {
   protected readonly summary = signal<DashboardSummary | null>(null);
   protected readonly forecastAccuracy = signal<ForecastAccuracy | null>(null);
   private readonly monthExpenses = signal<Transaction[]>([]);
+  private readonly spendingMonth = signal(new Date().getMonth() + 1);
+  private readonly spendingYear = signal(new Date().getFullYear());
+  private spendingRequestId = 0;
   protected readonly spendingBreakdown = computed(() =>
     buildSpendingBreakdown(this.monthExpenses()),
+  );
+  protected readonly spendingMonthLabel = computed(() =>
+    new Date(this.spendingYear(), this.spendingMonth() - 1, 1).toLocaleDateString('pt-BR', {
+      month: 'long',
+      year: 'numeric',
+    }),
   );
 
   constructor() {
@@ -39,16 +48,25 @@ export class DashboardPageComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((summary) => this.summary.set(summary));
 
-    const now = new Date();
-    this.api
-      .listTransactions({ month: now.getMonth() + 1, year: now.getFullYear(), type: 'EXPENSE' })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((transactions) => this.monthExpenses.set(transactions));
+    this.loadSpending();
 
     this.api
       .getForecastAccuracy()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((accuracy) => this.forecastAccuracy.set(accuracy));
+  }
+
+  protected previousSpendingMonth() {
+    this.shiftSpendingMonth(-1);
+  }
+
+  protected nextSpendingMonth() {
+    this.shiftSpendingMonth(1);
+  }
+
+  protected isCurrentSpendingMonth() {
+    const now = new Date();
+    return this.spendingMonth() === now.getMonth() + 1 && this.spendingYear() === now.getFullYear();
   }
 
   protected greeting(name: string) {
@@ -502,5 +520,31 @@ export class DashboardPageComponent {
       currency: currencyCode,
       maximumFractionDigits: 0,
     }).format(value);
+  }
+
+  private shiftSpendingMonth(delta: number) {
+    // Date normaliza a virada de ano (mes 0 / 13) sozinho.
+    const target = new Date(this.spendingYear(), this.spendingMonth() - 1 + delta, 1);
+    this.spendingMonth.set(target.getMonth() + 1);
+    this.spendingYear.set(target.getFullYear());
+    this.loadSpending();
+  }
+
+  private loadSpending() {
+    const requestId = ++this.spendingRequestId;
+
+    this.api
+      .listTransactions({
+        month: this.spendingMonth(),
+        year: this.spendingYear(),
+        type: 'EXPENSE',
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((transactions) => {
+        // Ignora resposta atrasada de um mes que o usuario ja deixou pra tras.
+        if (requestId === this.spendingRequestId) {
+          this.monthExpenses.set(transactions);
+        }
+      });
   }
 }
