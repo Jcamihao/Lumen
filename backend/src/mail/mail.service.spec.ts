@@ -209,4 +209,58 @@ describe("MailService", () => {
       });
     });
   });
+
+  describe("branded header", () => {
+    it("puts the LUMEN logo, from the public frontend URL, at the top of every email", async () => {
+      const frontendUrl = "https://financelumen.tech";
+      const service = new MailService(
+        buildConfigService({ "app.frontendUrl": frontendUrl }),
+      );
+      const sendSpy = stubSend(service);
+      const person = { email: "marina@exemplo.com", name: "Marina" };
+
+      await service.sendWelcomeEmail(person);
+      await service.sendEmailVerificationEmail({
+        ...person,
+        verifyUrl: `${frontendUrl}/auth/verify-email?id=a&token=b`,
+        expiresInHours: 48,
+      });
+      await service.sendPasswordResetEmail({
+        ...person,
+        resetUrl: `${frontendUrl}/auth/reset-password?id=a&token=b`,
+        expiresInMinutes: 60,
+      });
+      await service.sendPasswordChangedEmail(person);
+      await service.sendReminderEmail({
+        ...person,
+        title: "Pagar energia",
+        remindAt: new Date("2026-09-20T12:00:00.000Z"),
+      });
+      await service.sendInsightEscalationEmail({
+        ...person,
+        message: "Meta travada.",
+      });
+      await service.sendWeeklyDigestEmail({
+        ...person,
+        preferredCurrency: "BRL",
+        overdueTasksCount: 0,
+        balance: 100,
+        monthlyExpenses: 50,
+        monthlyIncome: 200,
+        goals: [],
+      });
+      await service.sendMfaBypassEmail({ ...person, otp: "123456" });
+
+      expect(sendSpy).toHaveBeenCalledTimes(8);
+      for (const [options] of sendSpy.mock.calls) {
+        const html = String(options.html);
+        expect(html).toContain(
+          `src="${frontendUrl}/assets/logo/logo_lumen_1024.png"`,
+        );
+        expect(html).toContain('alt="LUMEN"');
+        expect(html.indexOf("<img")).toBeLessThan(html.indexOf("<p>"));
+        expect(String(options.text)).not.toContain("<img");
+      }
+    });
+  });
 });

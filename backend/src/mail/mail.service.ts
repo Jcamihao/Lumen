@@ -141,7 +141,7 @@ export class MailService {
       .filter((line) => line !== null)
       .join("\n");
     const html = [
-      '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
+      this.emailOpen(),
       `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
       "<p>Sua conta no <strong>LUMEN</strong> foi criada com sucesso.</p>",
       input.verifyUrl
@@ -177,7 +177,7 @@ export class MailService {
       "Equipe LUMEN",
     ].join("\n");
     const html = [
-      '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
+      this.emailOpen(),
       `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
       "<p>Confirme seu email para receber lembretes e resumos do <strong>LUMEN</strong>:</p>",
       this.actionButton(input.verifyUrl, "Confirmar email"),
@@ -211,7 +211,7 @@ export class MailService {
       "Equipe LUMEN",
     ].join("\n");
     const html = [
-      '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
+      this.emailOpen(),
       `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
       "<p>Recebemos um pedido para redefinir a senha da sua conta no <strong>LUMEN</strong>.</p>",
       this.actionButton(input.resetUrl, "Criar nova senha"),
@@ -241,7 +241,7 @@ export class MailService {
       "Equipe LUMEN",
     ].join("\n");
     const html = [
-      '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
+      this.emailOpen(),
       `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
       "<p>A senha da sua conta no <strong>LUMEN</strong> acabou de ser alterada e todas as sessoes abertas foram encerradas.</p>",
       "<p style='color:#6b7280;font-size:0.875rem;'>Se nao foi voce, redefina a senha de novo e entre em contato com a gente.</p>",
@@ -277,7 +277,7 @@ export class MailService {
       .filter(Boolean)
       .join("\n") + this.footerText(input.unsubscribe);
     const html = [
-      '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
+      this.emailOpen(),
       `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
       `<p>Seu lembrete <strong>${this.escapeHtml(
         input.title,
@@ -320,7 +320,7 @@ export class MailService {
       "Equipe LUMEN",
     ].join("\n") + this.footerText(input.unsubscribe);
     const html = [
-      '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
+      this.emailOpen(),
       `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
       `<p>Isso ainda esta pendente: <strong>${this.escapeHtml(input.message)}</strong></p>`,
       "<p>Ja avisamos isso dentro do app ha alguns dias e continua sem resolucao.</p>",
@@ -376,7 +376,7 @@ export class MailService {
       "Equipe LUMEN",
     ].join("\n") + this.footerText(input.unsubscribe);
     const html = [
-      '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
+      this.emailOpen(),
       `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
       "<p>Seu resumo da semana:</p>",
       "<ul>",
@@ -420,7 +420,7 @@ export class MailService {
       "Equipe LUMEN",
     ].join("\n");
     const html = [
-      '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
+      this.emailOpen(),
       `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
       "<p>Recebemos uma solicitacao para acessar sua conta sem o autenticador.</p>",
       `<p>Seu codigo de acesso temporario e: <strong style="font-size: 1.4rem; letter-spacing: 0.15em;">${this.escapeHtml(input.otp)}</strong></p>`,
@@ -558,6 +558,24 @@ export class MailService {
     return links
       ? `<p style="color:#6b7280;font-size:0.8125rem;">Nao quer mais receber este tipo de email? <a href="${this.escapeHtml(links.pageUrl)}">Deixar de receber</a>.</p>`
       : "";
+  }
+
+  /** Abertura comum dos emails: corpo + cabecalho com o icone e o nome do LUMEN. */
+  private emailOpen() {
+    const frontendUrl =
+      this.configService.get<string>("app.frontendUrl") ??
+      "http://localhost:4200";
+    const logoUrl = this.escapeHtml(
+      `${frontendUrl}/assets/logo/logo_lumen_1024.png`,
+    );
+
+    return [
+      '<html><body style="font-family: Arial, sans-serif; color: #1f2937;">',
+      '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px 0;"><tr>',
+      `<td style="padding-right:10px;"><img src="${logoUrl}" width="40" height="40" alt="LUMEN" style="display:block;border:0;border-radius:8px;" /></td>`,
+      '<td style="font-size:20px;font-weight:700;letter-spacing:0.08em;color:#0f2229;">LUMEN</td>',
+      "</tr></table>",
+    ].join("");
   }
 
   private actionButton(url: string, label: string) {
