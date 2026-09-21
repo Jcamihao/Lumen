@@ -5,13 +5,19 @@ import { MailModule } from "../mail/mail.module";
 import { UsersModule } from "../users/users.module";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
+import { EmailVerificationBackfillService } from "./email-verification-backfill.service";
 import { MfaService } from "./mfa.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 
 @Module({
   imports: [UsersModule, MailModule, PassportModule, JwtModule.register({})],
   controllers: [AuthController],
-  providers: [AuthService, MfaService, JwtStrategy],
+  providers: [
+    AuthService,
+    EmailVerificationBackfillService,
+    MfaService,
+    JwtStrategy,
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}

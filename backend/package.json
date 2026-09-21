@@ -1,6 +1,6 @@
 {
   "name": "lumen-backend",
-  "version": "1.44.0",
+  "version": "1.44.1",
   "description": "LUMEN backend API",
   "author": "codeStage Solucoes",
   "private": true,
@@ -12,6 +12,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "users:send-verification": "node dist/scripts/send-verification-emails.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",

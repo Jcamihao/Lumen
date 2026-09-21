@@ -627,14 +627,28 @@ export class AuthService {
   }
 
   async resendEmailVerification(userId: string, request?: RequestWithContext) {
+    const { alreadyVerified } = await this.dispatchEmailVerification(
+      userId,
+      request,
+    );
+
+    return { success: true, alreadyVerified };
+  }
+
+  /**
+   * Gera um link novo (invalida o anterior) e envia o email de confirmacao.
+   * Devolve se o envio foi pulado pelo provedor (Resend desligado), coisa que
+   * o endpoint publico nao expoe mas a rotina de contas antigas precisa saber.
+   */
+  async dispatchEmailVerification(userId: string, request?: RequestWithContext) {
     const user = await this.usersService.findById(userId);
 
     if (user.emailVerifiedAt) {
-      return { success: true, alreadyVerified: true };
+      return { alreadyVerified: true, skipped: false };
     }
 
     const verifyUrl = await this.issueEmailVerificationLink(userId, request);
-    await this.mailService.sendEmailVerificationEmail({
+    const dispatch = await this.mailService.sendEmailVerificationEmail({
       email: user.email,
       name: user.name,
       verifyUrl,
@@ -644,7 +658,7 @@ export class AuthService {
       ),
     });
 
-    return { success: true, alreadyVerified: false };
+    return { alreadyVerified: false, skipped: Boolean(dispatch?.skipped) };
   }
 
   async me(userId: string) {
