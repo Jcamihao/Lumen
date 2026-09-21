@@ -6,6 +6,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { Prisma, TransactionType, UserRole } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
+import { toCategoryResponse } from "../finance-categories/finance-categories.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { DEFAULT_TAG_GROUPS } from "../tag-groups/tag-groups.service";
 import { UpdateUserDto } from "./dto/update-user.dto";
@@ -441,7 +442,7 @@ export class UsersService {
       },
       datasets: {
         taskCategories: taskCategories,
-        financeCategories: financeCategories,
+        financeCategories: financeCategories.map(toCategoryResponse),
         tasks: tasks.map((task) => ({
           ...task,
           estimatedAmount:
@@ -542,6 +543,7 @@ export class UsersService {
     return {
       ...safeUser,
       monthlyIncome: Number(safeUser.monthlyIncome ?? 0),
+      financeCategories: safeUser.financeCategories.map(toCategoryResponse),
       mfaEnabledAt: mfaFeatureEnabled ? safeUser.mfaEnabledAt : null,
       mfaLastVerifiedAt: mfaFeatureEnabled ? safeUser.mfaLastVerifiedAt : null,
       mfaEnabled: mfaFeatureEnabled && Boolean(safeUser.mfaEnabledAt),

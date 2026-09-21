@@ -203,3 +203,100 @@
     align-items: stretch;
   }
 }
+
+/* Orcamento por categoria */
+.budget-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.budget-row {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  background: var(--surface-panel);
+  --budget-color: var(--accent);
+}
+
+.budget-row[data-status='near'] {
+  --budget-color: var(--warning);
+}
+
+.budget-row[data-status='over'] {
+  --budget-color: var(--danger);
+  border-color: var(--danger-soft-border);
+}
+
+.budget-row__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+}
+
+.budget-row__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.budget-row__dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  flex-shrink: 0;
+}
+
+.budget-row__amounts {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-medium);
+}
+
+.budget-row__bar {
+  height: 0.6rem;
+  background: var(--surface-panel-alt);
+  border: 1px solid var(--border);
+}
+
+.budget-row__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--budget-color);
+  transition: width 0.3s ease;
+}
+
+.budget-row__status {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-medium);
+}
+
+.budget-row[data-status='near'] .budget-row__status,
+.budget-row[data-status='over'] .budget-row__status {
+  color: var(--budget-color);
+  font-weight: 700;
+}
+
+.budget-row__editor {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 24rem;
+}
+
+.budget-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .budget-row__bar > span {
+    transition: none;
+  }
+}

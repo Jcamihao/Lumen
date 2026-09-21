@@ -8,6 +8,7 @@ import {
   AssistantPulse,
   AssistantReply,
   DashboardSummary,
+  FinanceCategory,
   ForecastAccuracy,
   Goal,
   GoalContribution,
@@ -585,6 +586,13 @@ export class LifeApiService {
   exportMyData() {
     return this.http.get<PrivacyExportPayload>(
       `${environment.apiBaseUrl}/users/me/privacy-export`,
+    );
+  }
+
+  updateFinanceCategory(id: string, payload: { monthlyBudget: number | null }) {
+    return this.http.patch<FinanceCategory>(
+      `${environment.apiBaseUrl}/finance-categories/${id}`,
+      payload,
     );
   }
 

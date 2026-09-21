@@ -94,6 +94,106 @@
     </div>
   </article>
 
+  <article class="proto-surface finance-budgets">
+    <div class="proto-surface__head">
+      <div>
+        <h3>Orçamento por categoria</h3>
+        <p>Defina um teto mensal; o Selah avisa quando você chegar perto ou passar.</p>
+      </div>
+    </div>
+
+    <div class="proto-surface__body">
+      <ul class="budget-list" *ngIf="budgetRows().length; else noBudgetCategories">
+        <li
+          class="budget-row"
+          *ngFor="let row of budgetRows(); trackBy: trackBudgetRow"
+          [attr.data-status]="row.status"
+        >
+          <div class="budget-row__head">
+            <span class="budget-row__name">
+              <span class="budget-row__dot" [style.background]="row.color" aria-hidden="true"></span>
+              {{ row.name }}
+            </span>
+            <span class="budget-row__amounts">
+              {{ formatMoney(row.spent) }}<ng-container *ngIf="row.budget !== null"> de {{ formatMoney(row.budget) }}</ng-container>
+            </span>
+          </div>
+
+          <ng-container *ngIf="row.budget !== null">
+            <div
+              class="budget-row__bar"
+              role="progressbar"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              [attr.aria-valuenow]="row.barPercent"
+              [attr.aria-label]="row.name + ': ' + row.percentLabel + '% do orçamento'"
+            >
+              <span [style.width.%]="row.barPercent"></span>
+            </div>
+            <p class="budget-row__status">{{ budgetStatusText(row) }}</p>
+          </ng-container>
+
+          <form
+            *ngIf="editingBudgetId() === row.id; else budgetActions"
+            class="budget-row__editor"
+            (submit)="$event.preventDefault(); saveBudget(row)"
+            novalidate
+          >
+            <div class="proto-field">
+              <label [for]="'budget-' + row.id">Teto mensal de {{ row.name }}</label>
+              <input
+                [id]="'budget-' + row.id"
+                type="number"
+                inputmode="decimal"
+                min="0.01"
+                step="0.01"
+                placeholder="Ex.: 800"
+                [formControl]="budgetControl"
+              />
+            </div>
+            <div class="budget-row__actions">
+              <button type="submit" class="proto-button" [disabled]="savingBudget()">
+                {{ savingBudget() ? 'Salvando...' : 'Salvar' }}
+              </button>
+              <button
+                *ngIf="row.budget !== null"
+                type="button"
+                class="proto-button proto-button--secondary"
+                [disabled]="savingBudget()"
+                (click)="removeBudget(row)"
+              >
+                Remover orçamento
+              </button>
+              <button
+                type="button"
+                class="proto-button proto-button--secondary"
+                [disabled]="savingBudget()"
+                (click)="cancelEditBudget()"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+
+          <ng-template #budgetActions>
+            <div class="budget-row__actions">
+              <button type="button" class="proto-button proto-button--secondary" (click)="startEditBudget(row)">
+                {{ row.budget !== null ? 'Editar orçamento' : 'Definir orçamento' }}
+              </button>
+            </div>
+          </ng-template>
+        </li>
+      </ul>
+
+      <ng-template #noBudgetCategories>
+        <div class="proto-empty">
+          <strong>Nenhuma categoria de despesa</strong>
+          <p>Quando houver categorias de despesa, você define o teto de cada uma aqui.</p>
+        </div>
+      </ng-template>
+    </div>
+  </article>
+
   <article class="proto-surface finance-highlight">
     <div class="proto-surface__body finance-highlight__body">
       <div class="finance-highlight__icon">

@@ -40,7 +40,7 @@ const buildPrisma = (
   categorySpending: {
     current: CategoryGroupSeed[];
     previous: CategoryGroupSeed[];
-    categories: Array<{ id: string; name: string }>;
+    categories: Array<{ id: string; name: string; monthlyBudget?: number | null }>;
   } = { current: [], previous: [], categories: [] },
 ) => {
   const prisma = {
@@ -1005,6 +1005,96 @@ describe('InsightsService', () => {
       expect(insights).toHaveLength(1);
       expect(insights[0].message).toContain('Lazer ja pesa 40%');
       expect(insights[0].message).toContain('contra 0%');
+    });
+  });
+
+  describe('detectCategoryBudgets', () => {
+    type Cat = { id: string; name: string; monthlyBudget?: number | null };
+    const food: Cat = { id: 'cat-food', name: 'Alimentacao', monthlyBudget: 1000 };
+    const leisure: Cat = { id: 'cat-leisure', name: 'Lazer', monthlyBudget: 500 };
+
+    const run = async (current: CategoryGroupSeed[], categories: Cat[]) => {
+      const prisma = buildPrisma([], [], {}, [], { current, previous: [], categories });
+      await new InsightsService(prisma).refreshForUser('user-1');
+      return generatedInsights(prisma).filter((insight) =>
+        insight.fingerprint.includes(':budget:'),
+      );
+    };
+
+    it('stays quiet when no category has a budget', async () => {
+      const insights = await run([group('cat-food', 5000)], [
+        { id: 'cat-food', name: 'Alimentacao', monthlyBudget: null },
+      ]);
+
+      expect(insights).toHaveLength(0);
+    });
+
+    it('stays quiet while spending is below 80% of the budget', async () => {
+      const insights = await run([group('cat-food', 790)], [food]);
+
+      expect(insights).toHaveLength(0);
+    });
+
+    it('warns at 80% or more, with what is left', async () => {
+      const insights = await run([group('cat-food', 840)], [food]);
+
+      expect(insights).toHaveLength(1);
+      expect(insights[0].type).toBe(InsightType.FINANCE);
+      expect(insights[0].severity).toBe(InsightSeverity.WARNING);
+      expect(insights[0].message).toContain('Alimentacao ja usou 84%');
+      expect(insights[0].message).toContain('Faltam');
+      expect(insights[0].metadata).toEqual(
+        expect.objectContaining({ category: 'Alimentacao', budget: 1000, spent: 840, usedPct: 84 }),
+      );
+    });
+
+    it('is critical once the budget is exceeded', async () => {
+      const insights = await run([group('cat-food', 1120)], [food]);
+
+      expect(insights).toHaveLength(1);
+      expect(insights[0].severity).toBe(InsightSeverity.CRITICAL);
+      expect(insights[0].message).toContain('Alimentacao passou do orcamento');
+      expect(insights[0].message).toContain('112%');
+    });
+
+    it('treats exactly 100% as exceeded', async () => {
+      const insights = await run([group('cat-food', 1000)], [food]);
+
+      expect(insights[0].severity).toBe(InsightSeverity.CRITICAL);
+    });
+
+    it('changes identity when a warning escalates to critical (so it notifies again)', async () => {
+      const [warning] = await run([group('cat-food', 850)], [food]);
+      const [critical] = await run([group('cat-food', 1100)], [food]);
+
+      expect(warning.fingerprint).not.toEqual(critical.fingerprint);
+    });
+
+    it('ignores a budgeted category with no spending this month', async () => {
+      const insights = await run([group('cat-leisure', 400)], [food, leisure]);
+
+      // Lazer 80% avisa; Alimentacao (sem gasto) nao.
+      expect(insights).toHaveLength(1);
+      expect(insights[0].message).toContain('Lazer');
+    });
+
+    it('alerts at most the 3 heaviest categories, heaviest first', async () => {
+      const cats: Cat[] = ['a', 'b', 'c', 'd'].map((id) => ({
+        id: `cat-${id}`,
+        name: `Cat ${id.toUpperCase()}`,
+        monthlyBudget: 100,
+      }));
+      const insights = await run(
+        [group('cat-a', 90), group('cat-b', 150), group('cat-c', 120), group('cat-d', 100)],
+        cats,
+      );
+
+      expect(insights).toHaveLength(3);
+      expect(insights.map((insight) => insight.metadata?.category)).toEqual([
+        'Cat B',
+        'Cat C',
+        'Cat D',
+      ]);
     });
   });
 });

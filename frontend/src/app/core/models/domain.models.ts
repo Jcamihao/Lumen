@@ -40,6 +40,8 @@ export type Category = {
 
 export type FinanceCategory = Category & {
   type: "INCOME" | "EXPENSE" | "TRANSFER";
+  /** Teto mensal de gastos (so despesas); null/ausente = sem orcamento. */
+  monthlyBudget?: number | null;
 };
 
 export type TagGroup = {

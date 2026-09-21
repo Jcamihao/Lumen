@@ -1,13 +1,14 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Transaction } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
+import { BudgetRow, buildBudgetRows } from '../../../core/utils/budget.utils';
 import { buildSpendingBreakdown } from '../../../core/utils/spending.utils';
 import { SpendingBreakdownComponent } from '../../../shared/spending-breakdown/spending-breakdown.component';
 
@@ -44,6 +45,13 @@ export class FinancesPageComponent {
   protected readonly financeCategories = computed(
     () => this.authService.currentUser()?.financeCategories ?? [],
   );
+  protected readonly budgetRows = computed(() =>
+    buildBudgetRows(this.financeCategories(), this.spendingTransactions()),
+  );
+  protected readonly editingBudgetId = signal<string | null>(null);
+  protected readonly savingBudget = signal(false);
+  // type=number entrega number (ou null quando vazio), nao string.
+  protected readonly budgetControl = new FormControl<number | null>(null);
   protected readonly currencyCode = computed(
     () => this.authService.currentUser()?.preferredCurrency ?? 'BRL',
   );
@@ -118,6 +126,51 @@ export class FinancesPageComponent {
     } else {
       this.filterMonth.set(m + 1);
     }
+  }
+
+  protected startEditBudget(row: BudgetRow) {
+    this.budgetControl.setValue(row.budget);
+    this.editingBudgetId.set(row.id);
+  }
+
+  protected cancelEditBudget() {
+    this.editingBudgetId.set(null);
+  }
+
+  protected saveBudget(row: BudgetRow) {
+    const value = this.budgetControl.value;
+
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      this.toast.error('Informe um valor maior que zero.');
+      return;
+    }
+
+    this.persistBudget(row, Math.round(value * 100) / 100, 'Orçamento salvo.');
+  }
+
+  protected removeBudget(row: BudgetRow) {
+    this.persistBudget(row, null, 'Orçamento removido.');
+  }
+
+  protected budgetStatusText(row: BudgetRow) {
+    const remaining = row.remaining ?? 0;
+
+    if (row.status === 'over') {
+      return `Passou ${this.formatMoney(Math.abs(remaining))} do orçamento (${row.percentLabel}%)`;
+    }
+
+    return `${row.percentLabel}% usado · restam ${this.formatMoney(remaining)}`;
+  }
+
+  protected formatMoney(value: number) {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: this.currencyCode(),
+    }).format(value);
+  }
+
+  protected trackBudgetRow(_index: number, row: BudgetRow) {
+    return row.id;
   }
 
   protected isCurrentMonth() {
@@ -211,6 +264,27 @@ export class FinancesPageComponent {
       .listTransactions(params)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((transactions) => this.transactions.set(transactions));
+  }
+
+  private persistBudget(row: BudgetRow, monthlyBudget: number | null, successMessage: string) {
+    this.savingBudget.set(true);
+
+    this.api
+      .updateFinanceCategory(row.id, { monthlyBudget })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          // As categorias do usuario vem do perfil: recarrega para a barra atualizar.
+          this.authService.loadMe().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+          this.savingBudget.set(false);
+          this.editingBudgetId.set(null);
+          this.toast.success(successMessage);
+        },
+        error: () => {
+          this.savingBudget.set(false);
+          this.toast.error('Não foi possível salvar o orçamento agora.');
+        },
+      });
   }
 
   private loadSpending(month: number, year: number) {

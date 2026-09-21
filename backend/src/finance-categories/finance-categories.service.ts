@@ -1,37 +1,89 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { FinanceCategory, TransactionType } from '@prisma/client';
+import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateFinanceCategoryDto } from './dto/create-finance-category.dto';
 import { UpdateFinanceCategoryDto } from './dto/update-finance-category.dto';
 
+const BUDGET_ONLY_FOR_EXPENSE =
+  'Orcamento mensal so vale para categorias de despesa.';
+
+/** Decimal do Prisma serializa como string no JSON; o front espera numero. */
+export function toCategoryResponse(category: FinanceCategory) {
+  return {
+    ...category,
+    monthlyBudget:
+      category.monthlyBudget === null || category.monthlyBudget === undefined
+        ? null
+        : Number(category.monthlyBudget),
+  };
+}
+
 @Injectable()
 export class FinanceCategoriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly lifeEngineService: LifeEngineService,
+  ) {}
 
-  list(userId: string) {
-    return this.prisma.financeCategory.findMany({
+  async list(userId: string) {
+    const categories = await this.prisma.financeCategory.findMany({
       where: { userId },
       orderBy: [{ type: 'asc' }, { name: 'asc' }],
     });
+
+    return categories.map(toCategoryResponse);
   }
 
-  create(userId: string, dto: CreateFinanceCategoryDto) {
-    return this.prisma.financeCategory.create({
+  async create(userId: string, dto: CreateFinanceCategoryDto) {
+    if (typeof dto.monthlyBudget === 'number' && dto.type !== TransactionType.EXPENSE) {
+      throw new BadRequestException(BUDGET_ONLY_FOR_EXPENSE);
+    }
+
+    const category = await this.prisma.financeCategory.create({
       data: {
         userId,
         name: dto.name,
         color: dto.color,
         icon: dto.icon,
         type: dto.type,
+        monthlyBudget: dto.monthlyBudget ?? null,
       },
     });
+
+    if (dto.monthlyBudget !== undefined) {
+      await this.lifeEngineService.touchUserData(userId);
+    }
+
+    return toCategoryResponse(category);
   }
 
   async update(userId: string, id: string, dto: UpdateFinanceCategoryDto) {
-    await this.ensureOwnership(userId, id);
-    return this.prisma.financeCategory.update({
+    const existing = await this.ensureOwnership(userId, id);
+    const data: UpdateFinanceCategoryDto = { ...dto };
+
+    if ((dto.type ?? existing.type) !== TransactionType.EXPENSE) {
+      if (typeof dto.monthlyBudget === 'number') {
+        throw new BadRequestException(BUDGET_ONLY_FOR_EXPENSE);
+      }
+      // Categoria que deixa de ser despesa nao pode ficar com teto orfao.
+      if (existing.monthlyBudget !== null) {
+        data.monthlyBudget = null;
+      }
+    }
+
+    const category = await this.prisma.financeCategory.update({
       where: { id },
-      data: dto,
+      data,
     });
+
+    // Orcamento novo/alterado/removido muda os alertas: recalcula os insights
+    // agora em vez de esperar o proximo ciclo.
+    if (data.monthlyBudget !== undefined) {
+      await this.lifeEngineService.touchUserData(userId);
+    }
+
+    return toCategoryResponse(category);
   }
 
   async remove(userId: string, id: string) {

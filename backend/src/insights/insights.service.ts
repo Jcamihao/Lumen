@@ -82,6 +82,12 @@ const CATEGORY_SHIFT_MIN_SHARE_PCT = 20;
 const CATEGORY_SHIFT_MIN_DELTA_PTS = 10;
 const CATEGORY_SHIFT_WARNING_DELTA_PTS = 20;
 
+// Orcamento mensal por categoria: avisa ao chegar perto do teto e de novo ao
+// estourar. Limitado aos maiores consumos para nao inundar o painel.
+const BUDGET_NEAR_PCT = 80;
+const BUDGET_OVER_PCT = 100;
+const BUDGET_MAX_ALERTS = 3;
+
 type CategoryTotal = {
   categoryId: string | null;
   name: string;
@@ -225,6 +231,8 @@ export class InsightsService {
       this.detectPrimaryGoalWithoutTracking(context),
       this.detectCategoryShift(context),
     ].filter((insight): insight is GeneratedInsight => insight !== null);
+
+    insights.push(...this.detectCategoryBudgets(context));
 
     if (insights.length === 0) {
       insights.push({
@@ -410,7 +418,7 @@ export class InsightsService {
       }),
       this.prisma.financeCategory.findMany({
         where: { userId },
-        select: { id: true, name: true },
+        select: { id: true, name: true, monthlyBudget: true },
       }),
     ]);
 
@@ -436,6 +444,14 @@ export class InsightsService {
       remindersToday,
       monthlyExpenses: Number(monthlyExpensesAggregate._sum.amount ?? 0),
       monthlyIncome: Number(user.monthlyIncome ?? 0),
+      categoryBudgets: (financeCategories ?? [])
+        .filter((category) => category.monthlyBudget !== null && category.monthlyBudget !== undefined)
+        .map((category) => ({
+          categoryId: category.id,
+          name: category.name,
+          budget: Number(category.monthlyBudget),
+        }))
+        .filter((category) => category.budget > 0),
       categorySpending: {
         current: toCategoryTotals(currentCategoryGroups),
         previous: toCategoryTotals(previousCategoryGroups),
@@ -533,6 +549,50 @@ export class InsightsService {
         previousMonth: previousMonthLabel,
       },
     };
+  }
+
+  /**
+   * Categorias que consumiram >= 80% do orcamento mensal definido pelo usuario.
+   * Entre 80% e 99% e WARNING; a partir de 100% e CRITICAL (vira notificacao).
+   * Um alerta por categoria, dos maiores consumos, no maximo BUDGET_MAX_ALERTS.
+   * A chave inclui o mes: no mes seguinte o ciclo recomeca e avisa de novo.
+   */
+  private detectCategoryBudgets(context: InsightContext): GeneratedInsight[] {
+    const spentById = new Map(
+      context.categorySpending.current.map((row) => [row.categoryId, row.total]),
+    );
+    const currency = context.user.preferredCurrency;
+    const monthTag = `${context.now.getUTCFullYear()}-${context.now.getUTCMonth() + 1}`;
+
+    return context.categoryBudgets
+      .map((category) => {
+        const spent = spentById.get(category.categoryId) ?? 0;
+        return { ...category, spent, pct: (spent / category.budget) * 100 };
+      })
+      .filter((category) => category.pct >= BUDGET_NEAR_PCT)
+      .sort((a, b) => b.pct - a.pct)
+      .slice(0, BUDGET_MAX_ALERTS)
+      .map((category) => {
+        const over = category.pct >= BUDGET_OVER_PCT;
+        const pctLabel = Math.floor(category.pct);
+        const spentLabel = this.formatAmount(category.spent, currency);
+        const budgetLabel = this.formatAmount(category.budget, currency);
+
+        return {
+          type: InsightType.FINANCE,
+          key: `budget:${this.hashSubject([category.categoryId, monthTag])}`,
+          severity: over ? InsightSeverity.CRITICAL : InsightSeverity.WARNING,
+          message: over
+            ? `${category.name} passou do orcamento deste mes: ${spentLabel} de ${budgetLabel} (${pctLabel}%). Vale rever os proximos gastos ou ajustar o limite.`
+            : `${category.name} ja usou ${pctLabel}% do orcamento deste mes (${spentLabel} de ${budgetLabel}). Faltam ${this.formatAmount(category.budget - category.spent, currency)} — vale segurar o ritmo.`,
+          metadata: {
+            category: category.name,
+            budget: category.budget,
+            spent: category.spent,
+            usedPct: pctLabel,
+          },
+        } satisfies GeneratedInsight;
+      });
   }
 
   private detectOverdueTasks(context: InsightContext): GeneratedInsight | null {
