@@ -68,8 +68,9 @@ export const routes: Routes = [
         (module) => module.UnsubscribePageComponent,
       ),
   },
-  // Publica, sem guard: e um material de divulgacao (cartaz com QR code) que o
-  // publicitario abre sem conta, logado ou nao.
+  // Publica, sem guard: material de divulgacao (cartaz com QR code). Sem login
+  // para abrir em qualquer aparelho, por exemplo o celular na hora de mandar para
+  // a grafica. Nao tem nada sensivel: so o endereco publico do site.
   {
     path: 'qr',
     loadComponent: () =>
