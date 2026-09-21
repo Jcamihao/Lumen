@@ -13,6 +13,7 @@ import {
 } from '../../../core/models/domain.models';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
+import { buildOnboarding } from '../../../core/utils/onboarding.utils';
 import { buildSpendingBreakdown } from '../../../core/utils/spending.utils';
 import { SpendingBreakdownComponent } from '../../../shared/spending-breakdown/spending-breakdown.component';
 
@@ -20,6 +21,25 @@ import { SpendingBreakdownComponent } from '../../../shared/spending-breakdown/s
 export const SUMMARY_TIMEOUT_MS = 15_000;
 /** Depois disso o esqueleto avisa que esta demorando, para o usuario nao achar que travou. */
 export const SLOW_HINT_AFTER_MS = 5_000;
+
+const ONBOARDING_DISMISSED_KEY = 'lumen.onboarding.dismissed';
+
+// localStorage pode lancar (janela privada, dados bloqueados): o onboarding so volta a aparecer.
+function readOnboardingDismissed(userId: string) {
+  try {
+    return localStorage.getItem(`${ONBOARDING_DISMISSED_KEY}.${userId}`) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeOnboardingDismissed(userId: string) {
+  try {
+    localStorage.setItem(`${ONBOARDING_DISMISSED_KEY}.${userId}`, '1');
+  } catch {
+    // sem persistencia: vale so ate recarregar
+  }
+}
 
 @Component({
   selector: 'app-dashboard-page',
@@ -38,6 +58,13 @@ export class DashboardPageComponent {
   private readonly spendingMonth = signal(new Date().getMonth() + 1);
   private readonly spendingYear = signal(new Date().getFullYear());
   private spendingRequestId = 0;
+  protected readonly onboarding = computed(() => buildOnboarding(this.summary()?.onboarding));
+  private readonly onboardingDismissed = signal(false);
+  /** Mostra os "primeiros passos" enquanto faltar algum. Quem ja tem dados pode dispensar; conta vazia nao (e o unico conteudo). */
+  protected readonly showOnboarding = computed(() => {
+    const state = this.onboarding();
+    return !!state && !state.allDone && (!state.hasActivity || !this.onboardingDismissed());
+  });
   protected readonly loadFailed = signal(false);
   protected readonly loadingSlow = signal(false);
   private summarySubscription?: Subscription;
@@ -69,6 +96,24 @@ export class DashboardPageComponent {
 
   protected retryLoad() {
     this.loadSummary();
+  }
+
+  protected dismissOnboarding() {
+    const userId = this.summary()?.user.id;
+    if (userId) {
+      writeOnboardingDismissed(userId);
+    }
+    this.onboardingDismissed.set(true);
+  }
+
+  /** Conta sem nenhuma tarefa, movimentacao ou meta: ainda nao ha dado para pontuar nem "destaque do dia". */
+  protected isBrandNew(data: DashboardSummary) {
+    const state = buildOnboarding(data.onboarding);
+    return !!state && !state.hasActivity;
+  }
+
+  protected showScore(data: DashboardSummary) {
+    return !this.isBrandNew(data);
   }
 
   protected previousSpendingMonth() {
@@ -213,6 +258,10 @@ export class DashboardPageComponent {
   }
 
   protected primaryFocusTitle(data: DashboardSummary) {
+    if (this.isBrandNew(data)) {
+      return 'Vamos começar pelo básico';
+    }
+
     if (data.tasks.overdueCount > 0) {
       return `${data.tasks.overdueCount} pendência(s) atrasada(s)`;
     }
@@ -230,6 +279,10 @@ export class DashboardPageComponent {
   }
 
   protected primaryFocusText(data: DashboardSummary) {
+    if (this.isBrandNew(data)) {
+      return 'O Lumen aprende com o que você registra. Comece por uma tarefa ou um gasto: leva menos de um minuto.';
+    }
+
     if (data.tasks.overdueCount > 0) {
       return 'Resolva a mais urgente antes de abrir novas frentes. Isso reduz a sensação de bagunça mais rápido.';
     }
@@ -247,6 +300,10 @@ export class DashboardPageComponent {
   }
 
   protected primaryFocusAction(data: DashboardSummary) {
+    if (this.isBrandNew(data)) {
+      return 'Criar primeira tarefa';
+    }
+
     if (data.tasks.overdueCount > 0 || this.todayTasks(data)[0]) {
       return 'Abrir tarefas';
     }
@@ -259,6 +316,10 @@ export class DashboardPageComponent {
   }
 
   protected primaryFocusIcon(data: DashboardSummary) {
+    if (this.isBrandNew(data)) {
+      return 'add_task';
+    }
+
     if (data.tasks.overdueCount > 0 || this.todayTasks(data)[0]) {
       return 'task_alt';
     }
@@ -271,6 +332,10 @@ export class DashboardPageComponent {
   }
 
   protected primaryFocusRoute(data: DashboardSummary) {
+    if (this.isBrandNew(data)) {
+      return '/tasks';
+    }
+
     if (data.tasks.overdueCount > 0 || this.todayTasks(data)[0]) {
       return '/tasks';
     }
@@ -283,6 +348,10 @@ export class DashboardPageComponent {
   }
 
   protected primaryFocusTag(data: DashboardSummary) {
+    if (this.isBrandNew(data)) {
+      return 'Novo';
+    }
+
     if (data.tasks.overdueCount > 0) {
       return 'Urgente';
     }
@@ -299,6 +368,10 @@ export class DashboardPageComponent {
   }
 
   protected primaryFocusLabel(data: DashboardSummary) {
+    if (this.isBrandNew(data)) {
+      return 'Siga os primeiros passos abaixo.';
+    }
+
     if (data.tasks.overdueCount > 0) {
       return 'Primeiro, feche o que já atrasou.';
     }
@@ -315,6 +388,10 @@ export class DashboardPageComponent {
   }
 
   protected primaryFocusTone(data: DashboardSummary) {
+    if (this.isBrandNew(data)) {
+      return 'accent';
+    }
+
     if (data.tasks.overdueCount > 0) {
       return 'danger';
     }
@@ -331,6 +408,10 @@ export class DashboardPageComponent {
   }
 
   protected assistantPrompt(data: DashboardSummary) {
+    if (this.isBrandNew(data)) {
+      return 'Por onde eu começo no Lumen?';
+    }
+
     if (data.tasks.overdueCount > 0) {
       return 'Como eu destravo minhas tarefas atrasadas hoje?';
     }
@@ -551,6 +632,7 @@ export class DashboardPageComponent {
         next: (summary) => {
           clearTimeout(this.slowHintTimer);
           this.loadingSlow.set(false);
+          this.onboardingDismissed.set(readOnboardingDismissed(summary.user.id));
           this.summary.set(summary);
         },
         // Timeout ou erro do servidor: sem isto a tela ficava em "Carregando" para sempre.

@@ -5,6 +5,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Task } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
+import { focusField } from '../../../core/utils/focus.utils';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
 
@@ -115,6 +116,10 @@ export class TasksPageComponent {
           this.filterSearch.set(search);
         }
       });
+  }
+
+  protected focusNewTask() {
+    focusField('task-title');
   }
 
   protected clearFilters() {

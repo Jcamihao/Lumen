@@ -4,7 +4,7 @@ import { LOCALE_ID } from '@angular/core';
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { Subject, of } from 'rxjs';
-import { DashboardSummary } from '../../../core/models/domain.models';
+import { DashboardSummary, OnboardingProgress } from '../../../core/models/domain.models';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import {
   DashboardPageComponent,
@@ -165,4 +165,106 @@ describe('DashboardPageComponent — carregamento', () => {
 
     fixture.destroy();
   }));
+});
+
+describe('DashboardPageComponent — onboarding', () => {
+  let fixture: ComponentFixture<DashboardPageComponent>;
+
+  const none: OnboardingProgress = { tasks: false, transactions: false, goals: false, recurring: false, selah: false };
+  const text = () => (fixture.nativeElement as HTMLElement).textContent ?? '';
+  const query = (selector: string) => (fixture.nativeElement as HTMLElement).querySelector(selector);
+
+  const open = (onboarding?: OnboardingProgress) => {
+    const api = jasmine.createSpyObj('LifeApiService', [
+      'getDashboardSummary',
+      'listTransactions',
+      'getForecastAccuracy',
+    ]);
+    api.getDashboardSummary.and.returnValue(of({ ...summaryFixture(), onboarding }));
+    api.listTransactions.and.returnValue(of([]));
+    api.getForecastAccuracy.and.returnValue(of(null as never));
+
+    TestBed.configureTestingModule({
+      imports: [DashboardPageComponent],
+      providers: [
+        provideRouter([]),
+        { provide: LOCALE_ID, useValue: 'pt-BR' },
+        { provide: LifeApiService, useValue: api },
+      ],
+    });
+
+    fixture = TestBed.createComponent(DashboardPageComponent);
+    fixture.detectChanges();
+  };
+
+  beforeEach(() => localStorage.removeItem('lumen.onboarding.dismissed.u1'));
+  afterEach(() => localStorage.removeItem('lumen.onboarding.dismissed.u1'));
+
+  it('conta nova: destaque honesto, sem pontuacao inventada e com os primeiros passos', () => {
+    open(none);
+
+    expect(text()).toContain('Vamos começar pelo básico');
+    expect(text()).toContain('Criar primeira tarefa');
+    expect(text()).toContain('aparece depois das primeiras tarefas e gastos');
+    expect(query('.home-score')).toBeNull();
+    expect(text()).not.toContain('Seu dia esta sob controle');
+    expect(text()).toContain('0 de 5 concluídos');
+    expect(query('.home-onboarding')).not.toBeNull();
+  });
+
+  it('conta nova nao pode dispensar os primeiros passos (e o unico conteudo)', () => {
+    open(none);
+
+    expect(text()).not.toContain('Dispensar');
+  });
+
+  it('com atividade: volta a mostrar a pontuacao e o progresso parcial, com botao de dispensar', () => {
+    open({ ...none, tasks: true, goals: true });
+
+    expect(query('.home-score')).not.toBeNull();
+    expect(text()).not.toContain('Vamos começar pelo básico');
+    expect(text()).toContain('2 de 5 concluídos');
+    expect(text()).toContain('Dispensar');
+    expect(query('.home-onboarding__step.is-done')).not.toBeNull();
+  });
+
+  it('dispensar esconde o cartao e lembra a escolha para este usuario', () => {
+    open({ ...none, tasks: true });
+
+    const dismiss = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Dispensar'),
+    ) as HTMLButtonElement;
+    dismiss.click();
+    fixture.detectChanges();
+
+    expect(query('.home-onboarding')).toBeNull();
+    expect(localStorage.getItem('lumen.onboarding.dismissed.u1')).toBe('1');
+
+    // Nova abertura da home: continua dispensado.
+    TestBed.resetTestingModule();
+    open({ ...none, tasks: true });
+    expect(query('.home-onboarding')).toBeNull();
+  });
+
+  it('tudo concluido: o cartao some sozinho', () => {
+    open({ tasks: true, transactions: true, goals: true, recurring: true, selah: true });
+
+    expect(query('.home-onboarding')).toBeNull();
+    expect(query('.home-score')).not.toBeNull();
+  });
+
+  it('sem informacao de onboarding (offline / resumo antigo): comportamento de sempre', () => {
+    open(undefined);
+
+    expect(query('.home-onboarding')).toBeNull();
+    expect(query('.home-score')).not.toBeNull();
+    expect(text()).not.toContain('Vamos começar pelo básico');
+  });
+
+  it('oferece criar o primeiro item nas faixas vazias enquanto o passo nao foi feito', () => {
+    open(none);
+
+    expect(text()).toContain('Criar primeira meta');
+    expect(text()).toContain('Registrar movimentação');
+  });
 });

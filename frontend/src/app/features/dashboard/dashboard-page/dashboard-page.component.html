@@ -53,26 +53,68 @@
         <span>{{ primaryFocusLabel(data) }}</span>
       </div>
 
-      <div class="home-score">
-        <strong>{{ dailyScore(data) }}</strong>
-        <span>pontos de clareza</span>
-      </div>
+      <ng-container *ngIf="showScore(data); else noScoreYet">
+        <div class="home-score">
+          <strong>{{ dailyScore(data) }}</strong>
+          <span>pontos de clareza</span>
+        </div>
 
-      <div class="home-command__mini-grid">
-        <span>
-          <strong>{{ data.tasks.todayCount }}</strong>
-          hoje
-        </span>
-        <span>
-          <strong>{{ radarItemsCount(data) }}</strong>
-          radar
-        </span>
-        <span>
-          <strong>{{ riskLabel(data.forecast.riskLevel) }}</strong>
-          caixa
-        </span>
-      </div>
+        <div class="home-command__mini-grid">
+          <span>
+            <strong>{{ data.tasks.todayCount }}</strong>
+            hoje
+          </span>
+          <span>
+            <strong>{{ radarItemsCount(data) }}</strong>
+            radar
+          </span>
+          <span>
+            <strong>{{ riskLabel(data.forecast.riskLevel) }}</strong>
+            caixa
+          </span>
+        </div>
+      </ng-container>
+
+      <ng-template #noScoreYet>
+        <p class="home-score-pending">
+          Sua pontuação de clareza aparece depois das primeiras tarefas e gastos que você registrar.
+        </p>
+      </ng-template>
     </aside>
+  </section>
+
+  <section class="proto-surface home-onboarding" *ngIf="showOnboarding() && onboarding() as onboardingState" aria-label="Primeiros passos">
+    <div class="home-section-head">
+      <div>
+        <h3>Primeiros passos</h3>
+        <p>{{ onboardingState.doneCount }} de {{ onboardingState.total }} concluídos. Cada passo libera uma parte do Lumen.</p>
+      </div>
+      <button
+        *ngIf="onboardingState.hasActivity"
+        type="button"
+        class="proto-button proto-button--secondary"
+        (click)="dismissOnboarding()"
+      >
+        Dispensar
+      </button>
+    </div>
+
+    <div class="proto-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" [attr.aria-valuenow]="onboardingState.percent" aria-label="Progresso dos primeiros passos">
+      <span [style.width.%]="onboardingState.percent"></span>
+    </div>
+
+    <ol class="home-onboarding__steps">
+      <li class="home-onboarding__step" *ngFor="let step of onboardingState.steps" [class.is-done]="step.done">
+        <span class="material-symbols-rounded home-onboarding__mark" aria-hidden="true">
+          {{ step.done ? 'check_circle' : 'radio_button_unchecked' }}
+        </span>
+        <div class="home-onboarding__copy">
+          <strong>{{ step.title }}</strong>
+          <p>{{ step.done ? 'Feito.' : step.description }}</p>
+        </div>
+        <a *ngIf="!step.done" class="proto-button proto-button--secondary" [routerLink]="step.route">{{ step.cta }}</a>
+      </li>
+    </ol>
   </section>
 
   <section class="proto-grid proto-grid--metrics home-metrics" aria-label="Indicadores da home">
@@ -190,6 +232,7 @@
         <div class="proto-empty">
           <strong>Sem movimentações</strong>
           <p>As últimas entradas e saídas vão aparecer aqui.</p>
+          <a *ngIf="data.onboarding && !data.onboarding.transactions" class="proto-button proto-button--secondary" routerLink="/finances">Registrar movimentação</a>
         </div>
       </ng-template>
     </div>
@@ -223,6 +266,7 @@
         <div class="proto-empty">
           <strong>Agenda leve</strong>
           <p>Nada urgente para hoje.</p>
+          <a *ngIf="data.onboarding && !data.onboarding.tasks" class="proto-button proto-button--secondary" routerLink="/tasks">Criar primeira tarefa</a>
         </div>
       </ng-template>
     </article>
@@ -304,6 +348,7 @@
         <div class="proto-empty">
           <strong>Sem metas ativas</strong>
           <p>Crie uma meta quando quiser acompanhar progresso por aqui.</p>
+          <a *ngIf="data.onboarding && !data.onboarding.goals" class="proto-button proto-button--secondary" routerLink="/goals">Criar primeira meta</a>
         </div>
       </ng-template>
     </article>

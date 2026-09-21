@@ -553,3 +553,79 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Primeiros passos (conta nova ou com passos pendentes) */
+.home-onboarding {
+  display: grid;
+  gap: 1rem;
+}
+
+.home-onboarding__steps {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home-onboarding__step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  background: var(--surface-panel);
+}
+
+.home-onboarding__step.is-done {
+  opacity: 0.65;
+}
+
+.home-onboarding__mark {
+  color: var(--text-secondary);
+}
+
+.home-onboarding__step.is-done .home-onboarding__mark {
+  color: var(--success);
+}
+
+.home-onboarding__copy {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.home-onboarding__copy strong {
+  color: var(--text-strong);
+}
+
+.home-onboarding__copy p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-medium);
+}
+
+.home-score-pending {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  opacity: 0.9;
+}
+
+@media (max-width: 760px) {
+  .home-onboarding__step {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .home-onboarding__step .proto-button {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+/* O painel do destaque e escuro: a etiqueta "accent" (fundo translucido, texto azul) sumia nele. */
+.home-command__panel .proto-tag[data-tone='accent'] {
+  background: var(--card);
+  border-color: var(--card);
+}

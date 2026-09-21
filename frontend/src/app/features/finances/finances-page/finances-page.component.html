@@ -377,7 +377,11 @@
       <ng-template #noTransactions>
         <div class="proto-empty">
           <strong>Sem transações no período</strong>
-          <p>Nenhuma movimentação encontrada para o filtro selecionado.</p>
+          <p>Registre um gasto ou uma receita, ou importe um extrato: é isso que alimenta o saldo, a rosca de gastos e os alertas do Selah.</p>
+          <div class="proto-actions-row">
+            <button type="button" class="proto-button" (click)="focusNewTransaction()">Registrar movimentação</button>
+            <a class="proto-button proto-button--secondary" routerLink="/imports">Importar extrato</a>
+          </div>
         </div>
       </ng-template>
     </article>

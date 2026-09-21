@@ -190,6 +190,15 @@ export type OfflineSyncQueueItem = {
   lastError?: string | null;
 };
 
+/** O usuario ja fez cada primeiro passo? (calculado pelo backend no resumo do dashboard) */
+export type OnboardingProgress = {
+  tasks: boolean;
+  transactions: boolean;
+  goals: boolean;
+  recurring: boolean;
+  selah: boolean;
+};
+
 export type DashboardSummary = {
   user: {
     id: string;
@@ -213,6 +222,8 @@ export type DashboardSummary = {
   insights: Insight[];
   forecast: Forecast;
   notifications: Notification[];
+  /** Ausente no modo offline ou em resumo antigo em cache: nesse caso nao ha onboarding. */
+  onboarding?: OnboardingProgress;
 };
 
 export type AssistantModule =

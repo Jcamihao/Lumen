@@ -397,8 +397,11 @@
 
       <ng-template #noTasks>
         <div class="proto-empty">
-          <strong>{{ hasActiveFilters() ? 'Nenhuma tarefa encontrada' : 'Nenhuma tarefa cadastrada' }}</strong>
-          <p>{{ hasActiveFilters() ? 'Tente ajustar os filtros para ver mais resultados.' : 'Crie a primeira tarefa para organizar seu ritmo do dia.' }}</p>
+          <strong>{{ hasActiveFilters() ? 'Nenhuma tarefa encontrada' : 'Nenhuma tarefa ainda' }}</strong>
+          <p>{{ hasActiveFilters() ? 'Tente ajustar os filtros para ver mais resultados.' : 'Tarefas são o coração do Lumen: escreva o que precisa fazer e o prazo, e o Selah avisa quando algo atrasar.' }}</p>
+          <button *ngIf="!hasActiveFilters()" type="button" class="proto-button" (click)="focusNewTask()">
+            Criar primeira tarefa
+          </button>
           <button
             *ngIf="hasActiveFilters()"
             type="button"

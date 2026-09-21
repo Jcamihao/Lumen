@@ -9,6 +9,7 @@ import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
 import { BudgetRow, buildBudgetRows } from '../../../core/utils/budget.utils';
+import { focusField } from '../../../core/utils/focus.utils';
 import { buildSpendingBreakdown } from '../../../core/utils/spending.utils';
 import { SpendingBreakdownComponent } from '../../../shared/spending-breakdown/spending-breakdown.component';
 import { RecurringTransactionsCardComponent } from '../recurring-transactions-card/recurring-transactions-card.component';
@@ -138,6 +139,10 @@ export class FinancesPageComponent {
     } else {
       this.filterMonth.set(m + 1);
     }
+  }
+
+  protected focusNewTransaction() {
+    focusField('transaction-description');
   }
 
   protected refreshAfterRecurringChange() {

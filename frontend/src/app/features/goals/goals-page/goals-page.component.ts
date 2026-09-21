@@ -7,6 +7,7 @@ import { Goal, GoalContribution } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { focusField } from '../../../core/utils/focus.utils';
 
 @Component({
   selector: 'app-goals-page',
@@ -64,6 +65,10 @@ export class GoalsPageComponent {
   protected readonly recurringEditGoalId = signal<string | null>(null);
   protected readonly recurringDraftAmount = signal(200);
   protected readonly recurringDraftDay = signal(5);
+
+  protected focusNewGoal() {
+    focusField('goal-title');
+  }
 
   constructor() {
     this.reload();

@@ -52,6 +52,11 @@ export class DashboardService {
       notifications,
       insights,
       forecast,
+      firstTask,
+      firstManualTransaction,
+      firstGoal,
+      firstRecurring,
+      firstAssistantTurn,
     ] = await Promise.all([
       this.prisma.user.findUniqueOrThrow({
         where: { id: userId },
@@ -203,6 +208,17 @@ export class DashboardService {
       }),
       this.insightsService.list(userId),
       this.forecastsService.getCurrent(userId),
+      // Onboarding: so precisa saber se JA existe pelo menos um de cada (findFirst
+      // e barato e usa os indices de userId).
+      this.prisma.task.findFirst({ where: { userId }, select: { id: true } }),
+      // Lancamento gerado por conta fixa nao conta como "registrei um gasto".
+      this.prisma.transaction.findFirst({
+        where: { userId, recurringTransactionId: null },
+        select: { id: true },
+      }),
+      this.prisma.goal.findFirst({ where: { userId }, select: { id: true } }),
+      this.prisma.recurringTransaction.findFirst({ where: { userId }, select: { id: true } }),
+      this.prisma.assistantTurn.findFirst({ where: { userId }, select: { id: true } }),
     ]);
 
     const balance = balanceAggregate.reduce((total, item) => {
@@ -253,9 +269,21 @@ export class DashboardService {
       insights,
       forecast,
       notifications,
+      onboarding: {
+        tasks: Boolean(firstTask),
+        transactions: Boolean(firstManualTransaction),
+        goals: Boolean(firstGoal),
+        recurring: Boolean(firstRecurring),
+        selah: Boolean(firstAssistantTurn),
+      },
     };
 
     await this.cacheQueueService.setJson(cacheKey, summary);
     return summary;
+  }
+
+  /** Descarta o resumo em cache (ex.: apos uma conversa com o Selah, que nao passa pelo LifeEngine). */
+  async invalidateSummary(userId: string) {
+    await this.cacheQueueService.del(`dashboard:summary:${userId}`);
   }
 }

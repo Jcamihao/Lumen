@@ -337,6 +337,10 @@ export class AssistantService {
       },
     });
 
+    // A primeira conversa completa um passo do onboarding no dashboard; sem isto
+    // o resumo em cache so mostraria o passo feito depois de ate 5 minutos.
+    await this.dashboardService.invalidateSummary(userId);
+
     return turn;
   }
 
