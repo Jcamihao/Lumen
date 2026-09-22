@@ -278,7 +278,7 @@
           </div>
 
           <div class="proto-field" *ngIf="envelopes().length">
-            <label for="transaction-envelope">Envelope (opcional)</label>
+            <label for="transaction-envelope">Reserva (opcional)</label>
             <select id="transaction-envelope" formControlName="envelopeId">
               <option value="">Nenhum</option>
               <option *ngFor="let envelope of envelopes()" [value]="envelope.id">{{ envelope.name }}</option>
@@ -367,12 +367,12 @@
 
         <select
           class="finance-filters__type-select"
-          aria-label="Filtrar por envelope"
+          aria-label="Filtrar por reserva"
           *ngIf="envelopes().length"
           [value]="filterEnvelopeId()"
           (change)="filterEnvelopeId.set($any($event.target).value)"
         >
-          <option value="">Qualquer envelope</option>
+          <option value="">Qualquer reserva</option>
           <option *ngFor="let envelope of envelopes()" [value]="envelope.id">{{ envelope.name }}</option>
         </select>
       </div>

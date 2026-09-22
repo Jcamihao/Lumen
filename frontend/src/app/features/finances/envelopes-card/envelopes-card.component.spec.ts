@@ -81,7 +81,7 @@ describe('EnvelopesCardComponent', () => {
   it('sem envelopes ainda, mostra o convite pra criar o primeiro', () => {
     create();
 
-    expect(text()).toContain('Nenhum envelope ainda');
+    expect(text()).toContain('Nenhuma reserva ainda');
   });
 
   it('lista o envelope com quanto ja foi gasto, guardado e disponivel', () => {
@@ -122,12 +122,12 @@ describe('EnvelopesCardComponent', () => {
     create();
     api.createEnvelope.and.returnValue(of(envelope()));
 
-    clickCardButton('Novo envelope');
+    clickCardButton('Nova reserva');
     fixture.detectChanges();
     setVal('#envelope-name', 'Mercado');
     setVal('#envelope-amount', '500');
     fixture.detectChanges();
-    clickCardButton('Criar envelope');
+    clickCardButton('Criar reserva');
 
     expect(api.createEnvelope).toHaveBeenCalledWith(
       jasmine.objectContaining({ name: 'Mercado', monthlyAmount: 500 }),
@@ -136,17 +136,17 @@ describe('EnvelopesCardComponent', () => {
 
   it('criar sem nome ou valor nao envia nada', () => {
     create();
-    clickCardButton('Novo envelope');
+    clickCardButton('Nova reserva');
     fixture.detectChanges();
 
-    clickCardButton('Criar envelope');
+    clickCardButton('Criar reserva');
 
     expect(api.createEnvelope).not.toHaveBeenCalled();
   });
 
   it('cancelar fecha o formulario sem criar nada', () => {
     create();
-    clickCardButton('Novo envelope');
+    clickCardButton('Nova reserva');
     fixture.detectChanges();
 
     clickCardButton('Cancelar');
@@ -194,7 +194,7 @@ describe('EnvelopesCardComponent', () => {
     api.listEnvelopes.and.returnValue(throwError(() => new Error('falhou')));
     create();
 
-    expect(text()).toContain('Não foi possível carregar os envelopes');
+    expect(text()).toContain('Não foi possível carregar as reservas');
 
     api.listEnvelopes.and.returnValue(of([envelope()]));
     clickCardButton('Tentar de novo');
@@ -211,12 +211,12 @@ describe('EnvelopesCardComponent', () => {
     const toast = TestBed.inject(ToastService);
     const errorSpy = spyOn(toast, 'error');
 
-    clickCardButton('Novo envelope');
+    clickCardButton('Nova reserva');
     fixture.detectChanges();
     setVal('#envelope-name', 'Gasolina');
     setVal('#envelope-amount', '100');
     fixture.detectChanges();
-    clickCardButton('Criar envelope');
+    clickCardButton('Criar reserva');
 
     expect(errorSpy).toHaveBeenCalledWith('Você já tem um envelope com este nome.');
   });
@@ -227,13 +227,13 @@ describe('EnvelopesCardComponent', () => {
     const toast = TestBed.inject(ToastService);
     const errorSpy = spyOn(toast, 'error');
 
-    clickCardButton('Novo envelope');
+    clickCardButton('Nova reserva');
     fixture.detectChanges();
     setVal('#envelope-name', 'Gasolina');
     setVal('#envelope-amount', '100');
     fixture.detectChanges();
-    clickCardButton('Criar envelope');
+    clickCardButton('Criar reserva');
 
-    expect(errorSpy).toHaveBeenCalledWith('Não foi possível criar o envelope agora.');
+    expect(errorSpy).toHaveBeenCalledWith('Não foi possível criar a reserva agora.');
   });
 });

@@ -1,11 +1,11 @@
 <article class="proto-surface envelopes-card">
   <div class="proto-surface__head envelopes-card__head">
     <div>
-      <h3>Envelopes</h3>
-      <p>Um valor reservado por mês (ex.: gasolina) que não entra na sua conta livre. O que sobra acumula pro próximo mês.</p>
+      <h3>Reservas</h3>
+      <p>Uma reserva de valor por mês (ex.: gasolina) que não entra na sua conta livre. O que sobra acumula pro próximo mês.</p>
     </div>
 
-    <button *ngIf="!formOpen()" type="button" class="proto-button" (click)="openForm()">Novo envelope</button>
+    <button *ngIf="!formOpen()" type="button" class="proto-button" (click)="openForm()">Nova reserva</button>
   </div>
 
   <div class="proto-surface__body envelopes-card__body">
@@ -22,7 +22,7 @@
 
       <div class="envelope-form__actions">
         <button type="submit" class="proto-button" [disabled]="saving()">
-          {{ saving() ? 'Salvando...' : 'Criar envelope' }}
+          {{ saving() ? 'Salvando...' : 'Criar reserva' }}
         </button>
         <button type="button" class="proto-button proto-button--secondary" [disabled]="saving()" (click)="closeForm()">
           Cancelar
@@ -30,10 +30,10 @@
       </div>
     </form>
 
-    <p class="envelopes-card__hint" *ngIf="loading()">Carregando envelopes...</p>
+    <p class="envelopes-card__hint" *ngIf="loading()">Carregando reservas...</p>
 
     <div class="proto-empty" *ngIf="loadFailed()">
-      <strong>Não foi possível carregar os envelopes</strong>
+      <strong>Não foi possível carregar as reservas</strong>
       <p>Confira sua conexão e tente de novo.</p>
       <button type="button" class="proto-button proto-button--secondary" (click)="load()">Tentar de novo</button>
     </div>
@@ -90,7 +90,7 @@
     </ul>
 
     <div class="proto-empty" *ngIf="!loading() && !loadFailed() && !envelopes().length && !formOpen()">
-      <strong>Nenhum envelope ainda</strong>
+      <strong>Nenhuma reserva ainda</strong>
       <p>Reserve um valor fixo por mês para algo específico (gasolina, mercado) sem misturar com o resto do seu dinheiro.</p>
     </div>
   </div>

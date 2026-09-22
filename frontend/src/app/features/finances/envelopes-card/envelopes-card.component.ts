@@ -97,13 +97,13 @@ export class EnvelopesCardComponent {
         next: () => {
           this.saving.set(false);
           this.closeForm();
-          this.toast.success('Envelope criado.');
+          this.toast.success('Reserva criada.');
           this.load();
           this.changed.emit();
         },
         error: (error) => {
           this.saving.set(false);
-          this.toast.error(this.errorMessage(error, 'Não foi possível criar o envelope agora.'));
+          this.toast.error(this.errorMessage(error, 'Não foi possível criar a reserva agora.'));
         },
       });
   }
@@ -117,13 +117,13 @@ export class EnvelopesCardComponent {
       .subscribe({
         next: () => {
           this.busyId.set(null);
-          this.toast.success(envelope.isActive ? 'Envelope pausado.' : 'Envelope retomado.');
+          this.toast.success(envelope.isActive ? 'Reserva pausada.' : 'Reserva retomada.');
           this.load();
           this.changed.emit();
         },
         error: () => {
           this.busyId.set(null);
-          this.toast.error('Não foi possível atualizar o envelope.');
+          this.toast.error('Não foi possível atualizar a reserva.');
         },
       });
   }
@@ -131,7 +131,7 @@ export class EnvelopesCardComponent {
   protected remove(envelope: Envelope) {
     if (
       !globalThis.confirm(
-        `Excluir o envelope "${envelope.name}"? Os gastos já marcados com ele continuam na sua lista.`,
+        `Excluir a reserva "${envelope.name}"? Os gastos já marcados com ela continuam na sua lista.`,
       )
     ) {
       return;
@@ -145,13 +145,13 @@ export class EnvelopesCardComponent {
       .subscribe({
         next: () => {
           this.busyId.set(null);
-          this.toast.success('Envelope removido.');
+          this.toast.success('Reserva removida.');
           this.load();
           this.changed.emit();
         },
         error: () => {
           this.busyId.set(null);
-          this.toast.error('Não foi possível remover o envelope.');
+          this.toast.error('Não foi possível remover a reserva.');
         },
       });
   }
