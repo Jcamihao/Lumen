@@ -2137,8 +2137,8 @@ export class AssistantService {
   }
 
   private readTimeout() {
-    const value = Number(this.readEnv("SELAH_TIMEOUT_MS") || 20000);
-    return Number.isFinite(value) && value > 0 ? value : 20000;
+    const value = Number(this.readEnv("SELAH_TIMEOUT_MS") || 50000);
+    return Number.isFinite(value) && value > 0 ? value : 50000;
   }
 
   private readBooleanEnv(key: string) {
