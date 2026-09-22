@@ -75,6 +75,93 @@ describe("TransactionsService", () => {
     });
   });
 
+  describe('forma de pagamento', () => {
+    it('grava a forma de pagamento informada na criacao', async () => {
+      const prisma = buildPrisma();
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+
+      await service.create('user-1', {
+        type: 'EXPENSE',
+        description: 'Mercado',
+        amount: 50,
+        date: '2026-09-10',
+        paymentMethod: 'PIX',
+      } as any);
+
+      expect(prisma.transaction.create.mock.calls[0][0].data.paymentMethod).toBe('PIX');
+    });
+
+    it('sem informar, nao grava nada (fica "nao informado")', async () => {
+      const prisma = buildPrisma();
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+
+      await service.create('user-1', {
+        type: 'INCOME',
+        description: 'Salario',
+        amount: 5000,
+        date: '2026-09-05',
+      } as any);
+
+      expect(prisma.transaction.create.mock.calls[0][0].data.paymentMethod).toBeUndefined();
+    });
+
+    const buildForUpdate = () =>
+      buildPrisma({
+        transaction: {
+          findMany: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue({ id: 'tx-1', userId: 'user-1' }),
+          update: jest.fn().mockResolvedValue({ id: 'tx-1', amount: 10 }),
+          create: jest.fn(),
+          delete: jest.fn(),
+        },
+      });
+
+    it('altera a forma de pagamento numa edicao', async () => {
+      const prisma = buildForUpdate();
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+
+      await service.update('user-1', 'tx-1', { paymentMethod: 'CREDIT' } as any);
+
+      expect(prisma.transaction.update.mock.calls[0][0].data.paymentMethod).toBe('CREDIT');
+    });
+
+    it('null limpa a forma de pagamento; ausente nao mexe', async () => {
+      const cleared = buildForUpdate();
+      await new TransactionsService(cleared, buildLifeEngine(), buildMaterializer()).update(
+        'user-1',
+        'tx-1',
+        { paymentMethod: null } as any,
+      );
+      expect(cleared.transaction.update.mock.calls[0][0].data.paymentMethod).toBeNull();
+
+      const untouched = buildForUpdate();
+      await new TransactionsService(untouched, buildLifeEngine(), buildMaterializer()).update(
+        'user-1',
+        'tx-1',
+        { description: 'so a descricao' } as any,
+      );
+      expect(untouched.transaction.update.mock.calls[0][0].data.paymentMethod).toBeUndefined();
+    });
+
+    it('filtra a lista pela forma de pagamento', async () => {
+      const prisma = buildPrisma();
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+
+      await service.list('user-1', { paymentMethod: 'DEBIT' } as any);
+
+      expect(prisma.transaction.findMany.mock.calls[0][0].where.paymentMethod).toBe('DEBIT');
+    });
+
+    it('sem filtro, nao restringe (traz todas, inclusive as sem forma de pagamento)', async () => {
+      const prisma = buildPrisma();
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+
+      await service.list('user-1', {} as any);
+
+      expect(prisma.transaction.findMany.mock.calls[0][0].where.paymentMethod).toBeUndefined();
+    });
+  });
+
   describe('contas fixas vencidas', () => {
     it('gera os lancamentos vencidos antes de listar e recalcula os insights', async () => {
       const prisma = buildPrisma();

@@ -11,11 +11,13 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RecurrenceFrequency, RecurringTransaction } from '../../../core/models/domain.models';
+import { PaymentMethod, RecurrenceFrequency, RecurringTransaction } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { todayLocalInputValue } from '../../../core/utils/date.utils';
+import { paymentMethodLabel } from '../../../core/utils/payment-method.utils';
+import { PaymentMethodPickerComponent } from '../../../shared/payment-method-picker/payment-method-picker.component';
 import {
   daysUntilDue,
   dueDateLabel,
@@ -26,7 +28,7 @@ import {
 @Component({
   selector: 'app-recurring-transactions-card',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, PaymentMethodPickerComponent],
   templateUrl: './recurring-transactions-card.component.html',
   styleUrls: ['./recurring-transactions-card.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -54,6 +56,7 @@ export class RecurringTransactionsCardComponent {
     // type=number entrega number (ou null se o campo for limpo).
     amount: [null as number | null, [Validators.required, Validators.min(0.01)]],
     categoryId: [''],
+    paymentMethod: ['' as PaymentMethod | ''],
     frequency: ['MONTHLY' as RecurrenceFrequency],
     firstDueDate: [todayLocalInputValue(), Validators.required],
     endDate: [''],
@@ -92,6 +95,7 @@ export class RecurringTransactionsCardComponent {
       description: '',
       amount: null,
       categoryId: '',
+      paymentMethod: '',
       frequency: 'MONTHLY',
       firstDueDate: todayLocalInputValue(),
       endDate: '',
@@ -119,6 +123,7 @@ export class RecurringTransactionsCardComponent {
         description: raw.description.trim(),
         amount: Number(raw.amount),
         categoryId: raw.categoryId || undefined,
+        paymentMethod: raw.paymentMethod || undefined,
         frequency: raw.frequency,
         firstDueDate: raw.firstDueDate,
         endDate: raw.endDate || undefined,
@@ -210,6 +215,10 @@ export class RecurringTransactionsCardComponent {
 
   protected frequencyText(item: RecurringTransaction) {
     return recurrenceLabel(item);
+  }
+
+  protected paymentText(item: RecurringTransaction) {
+    return paymentMethodLabel(item.paymentMethod);
   }
 
   protected nextText(item: RecurringTransaction) {

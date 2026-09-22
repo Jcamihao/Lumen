@@ -17,6 +17,7 @@ import {
   ImportPreview,
   Insight,
   Notification,
+  PaymentMethod,
   PrivacyExportPayload,
   ReceiptImportCommitResponse,
   ReceiptImportPreview,
@@ -170,7 +171,13 @@ export class LifeApiService {
     );
   }
 
-  listTransactions(params?: { month?: number; year?: number; type?: string; search?: string }) {
+  listTransactions(params?: {
+    month?: number;
+    year?: number;
+    type?: string;
+    search?: string;
+    paymentMethod?: string;
+  }) {
     if (!this.networkService.isOnline() || this.offlineLifeService.hasPendingSync()) {
       void this.flushPendingSync();
       return of(this.offlineLifeService.readTransactions());
@@ -181,6 +188,7 @@ export class LifeApiService {
     if (params?.year) httpParams['year'] = String(params.year);
     if (params?.type) httpParams['type'] = params.type;
     if (params?.search) httpParams['search'] = params.search;
+    if (params?.paymentMethod) httpParams['paymentMethod'] = params.paymentMethod;
 
     return this.http
       .get<Transaction[]>(`${environment.apiBaseUrl}/transactions`, { params: httpParams })
@@ -615,6 +623,7 @@ export class LifeApiService {
     description: string;
     amount: number;
     categoryId?: string;
+    paymentMethod?: PaymentMethod;
     frequency: RecurrenceFrequency;
     firstDueDate: string;
     endDate?: string;

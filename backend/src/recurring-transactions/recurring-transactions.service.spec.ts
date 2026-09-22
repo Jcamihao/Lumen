@@ -99,6 +99,22 @@ describe('RecurringTransactionsService', () => {
       expect(materializer.materializeDue).toHaveBeenCalled();
     });
 
+    it('grava a forma de pagamento da conta fixa', async () => {
+      const { service, prisma } = build();
+
+      await service.create('user-1', validCreate({ paymentMethod: 'PIX' }) as any);
+
+      expect(prisma.recurringTransaction.create.mock.calls[0][0].data.paymentMethod).toBe('PIX');
+    });
+
+    it('sem informar, grava null', async () => {
+      const { service, prisma } = build();
+
+      await service.create('user-1', validCreate() as any);
+
+      expect(prisma.recurringTransaction.create.mock.calls[0][0].data.paymentMethod).toBeNull();
+    });
+
     it('aceita primeiro vencimento a partir do mes passado', async () => {
       const { service } = build();
       const lastMonth = utcDate(today().getUTCFullYear(), today().getUTCMonth() - 1, 1);
@@ -177,6 +193,16 @@ describe('RecurringTransactionsService', () => {
       expect(Number(data.amount)).toBe(1350);
       expect(data.description).toBe('Aluguel novo');
       expect(data.nextDueDate).toBeUndefined();
+    });
+
+    it('troca e limpa a forma de pagamento', async () => {
+      const changed = build();
+      await changed.service.update('user-1', 'rec-1', { paymentMethod: 'DEBIT' });
+      expect(changed.prisma.recurringTransaction.update.mock.calls[0][0].data.paymentMethod).toBe('DEBIT');
+
+      const cleared = build();
+      await cleared.service.update('user-1', 'rec-1', { paymentMethod: null });
+      expect(cleared.prisma.recurringTransaction.update.mock.calls[0][0].data.paymentMethod).toBeNull();
     });
 
     it('pausar so liga o interruptor', async () => {

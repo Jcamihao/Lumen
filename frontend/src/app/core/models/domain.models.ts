@@ -73,6 +73,9 @@ export type Task = {
   }>;
 };
 
+/** Como o dinheiro se moveu. Credito e so uma etiqueta: nao gera fatura nem parcela. */
+export type PaymentMethod = "PIX" | "CREDIT" | "DEBIT";
+
 export type Transaction = {
   id: string;
   type: "INCOME" | "EXPENSE" | "TRANSFER";
@@ -82,6 +85,8 @@ export type Transaction = {
   category?: FinanceCategory | null;
   /** Preenchido quando o lancamento foi gerado por uma conta fixa. */
   recurringTransactionId?: string | null;
+  /** PIX, credito ou debito; ausente/nulo = nao informado. */
+  paymentMethod?: PaymentMethod | null;
 };
 
 export type RecurrenceFrequency = "WEEKLY" | "MONTHLY" | "YEARLY";
@@ -94,6 +99,7 @@ export type RecurringTransaction = {
   amount: number;
   categoryId?: string | null;
   category?: FinanceCategory | null;
+  paymentMethod?: PaymentMethod | null;
   frequency: RecurrenceFrequency;
   /** Dia do mes de referencia (mensal/anual). */
   anchorDay: number;

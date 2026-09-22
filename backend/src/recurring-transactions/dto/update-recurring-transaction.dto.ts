@@ -1,7 +1,9 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { PaymentMethod } from '@prisma/client';
 import {
   IsBoolean,
   IsDateString,
+  IsEnum,
   IsNumber,
   IsOptional,
   IsString,
@@ -32,6 +34,11 @@ export class UpdateRecurringTransactionDto {
   @IsOptional()
   @IsString()
   categoryId?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'null remove a forma de pagamento.' })
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod | null;
 
   @IsOptional()
   @IsBoolean()

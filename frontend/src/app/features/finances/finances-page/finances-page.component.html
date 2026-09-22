@@ -263,6 +263,15 @@
             <label for="transaction-date">Data</label>
             <input id="transaction-date" type="date" formControlName="date" />
           </div>
+
+          <div class="proto-field proto-field--full">
+            <span class="proto-field__label" id="transaction-payment-label">Forma de pagamento (opcional)</span>
+            <app-payment-method-picker
+              ariaLabel="Forma de pagamento"
+              [value]="form.controls.paymentMethod.value"
+              (valueChange)="form.controls.paymentMethod.setValue($event)"
+            ></app-payment-method-picker>
+          </div>
         </div>
 
         <div class="proto-actions-row">
@@ -331,6 +340,18 @@
           <option value="EXPENSE">Despesas</option>
           <option value="TRANSFER">Transferências</option>
         </select>
+
+        <select
+          class="finance-filters__type-select"
+          aria-label="Filtrar por forma de pagamento"
+          [value]="filterPaymentMethod()"
+          (change)="filterPaymentMethod.set($any($event.target).value)"
+        >
+          <option value="">Qualquer forma</option>
+          <option value="PIX">PIX</option>
+          <option value="CREDIT">Crédito</option>
+          <option value="DEBIT">Débito</option>
+        </select>
       </div>
 
       <div class="proto-surface__body" *ngIf="transactions().length; else noTransactions">
@@ -345,6 +366,7 @@
                     {{ typeLabel(transaction.type) }}
                   </span>
                   <span class="proto-chip">{{ transaction.category?.name || 'Sem categoria' }}</span>
+                  <span class="proto-chip" *ngIf="paymentLabel(transaction) as payment">{{ payment }}</span>
                   <span class="proto-chip" *ngIf="transaction.recurringTransactionId">Recorrente</span>
                   <span class="proto-chip">{{ transactionDateLabel(transaction) }}</span>
                 </div>

@@ -102,6 +102,7 @@ export class RecurringMaterializerService {
                 amount: template.amount,
                 date: due,
                 categoryId: template.categoryId,
+                paymentMethod: template.paymentMethod,
                 recurringTransactionId: template.id,
               },
             });

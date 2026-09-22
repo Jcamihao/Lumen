@@ -1,4 +1,4 @@
-import { TransactionType } from '@prisma/client';
+import { PaymentMethod, TransactionType } from '@prisma/client';
 import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class UpdateTransactionDto {
@@ -30,4 +30,9 @@ export class UpdateTransactionDto {
   @IsOptional()
   @IsString()
   linkedGoalId?: string | null;
+
+  /** `null` limpa a forma de pagamento. */
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod | null;
 }

@@ -1,4 +1,4 @@
-import { TransactionType } from '@prisma/client';
+import { PaymentMethod, TransactionType } from '@prisma/client';
 import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class ListTransactionsQueryDto {
@@ -9,6 +9,10 @@ export class ListTransactionsQueryDto {
   @IsOptional()
   @IsString()
   categoryId?: string;
+
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod;
 
   @IsOptional()
   @IsDateString()

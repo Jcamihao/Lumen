@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { RecurrenceFrequency, TransactionType } from '@prisma/client';
+import { PaymentMethod, RecurrenceFrequency, TransactionType } from '@prisma/client';
 import {
   IsDateString,
   IsEnum,
@@ -31,6 +31,11 @@ export class CreateRecurringTransactionDto {
   @IsOptional()
   @IsString()
   categoryId?: string;
+
+  /** Os lancamentos gerados herdam esta forma de pagamento. */
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod;
 
   @ApiProperty({ enum: RecurrenceFrequency })
   @IsEnum(RecurrenceFrequency)

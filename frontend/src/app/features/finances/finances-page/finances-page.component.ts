@@ -3,14 +3,16 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, injec
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Transaction } from '../../../core/models/domain.models';
+import { PaymentMethod, Transaction } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
 import { BudgetRow, buildBudgetRows } from '../../../core/utils/budget.utils';
 import { focusField } from '../../../core/utils/focus.utils';
+import { paymentMethodLabel } from '../../../core/utils/payment-method.utils';
 import { buildSpendingBreakdown } from '../../../core/utils/spending.utils';
+import { PaymentMethodPickerComponent } from '../../../shared/payment-method-picker/payment-method-picker.component';
 import { SpendingBreakdownComponent } from '../../../shared/spending-breakdown/spending-breakdown.component';
 import { RecurringTransactionsCardComponent } from '../recurring-transactions-card/recurring-transactions-card.component';
 
@@ -22,6 +24,7 @@ import { RecurringTransactionsCardComponent } from '../recurring-transactions-ca
     ReactiveFormsModule,
     RouterLink,
     SpendingBreakdownComponent,
+    PaymentMethodPickerComponent,
     RecurringTransactionsCardComponent,
   ],
   templateUrl: './finances-page.component.html',
@@ -40,6 +43,7 @@ export class FinancesPageComponent {
   protected readonly filterMonth = signal(this.now.getMonth() + 1);
   protected readonly filterYear = signal(this.now.getFullYear());
   protected readonly filterType = signal<'' | 'INCOME' | 'EXPENSE' | 'TRANSFER'>('');
+  protected readonly filterPaymentMethod = signal<'' | PaymentMethod>('');
   protected readonly filterSearch = signal('');
 
   protected readonly transactions = signal<Transaction[]>([]);
@@ -87,6 +91,8 @@ export class FinancesPageComponent {
     amount: [0, [Validators.required, Validators.min(0.01)]],
     date: [todayLocalInputValue(), Validators.required],
     categoryId: [''],
+    // '' = nao informado.
+    paymentMethod: ['' as PaymentMethod | ''],
   });
 
   constructor() {
@@ -95,12 +101,22 @@ export class FinancesPageComponent {
       const month = this.filterMonth();
       const year = this.filterYear();
       const type = this.filterType();
+      const paymentMethod = this.filterPaymentMethod();
       const search = this.filterSearch().trim();
 
       if (search) {
-        this.loadTransactions({ type: type || undefined, search });
+        this.loadTransactions({
+          type: type || undefined,
+          paymentMethod: paymentMethod || undefined,
+          search,
+        });
       } else {
-        this.loadTransactions({ month, year, type: type || undefined });
+        this.loadTransactions({
+          month,
+          year,
+          type: type || undefined,
+          paymentMethod: paymentMethod || undefined,
+        });
       }
     });
 
@@ -139,6 +155,10 @@ export class FinancesPageComponent {
     } else {
       this.filterMonth.set(m + 1);
     }
+  }
+
+  protected paymentLabel(transaction: Transaction) {
+    return paymentMethodLabel(transaction.paymentMethod);
   }
 
   protected focusNewTransaction() {
@@ -208,11 +228,12 @@ export class FinancesPageComponent {
         amount: raw.amount,
         date: raw.date,
         categoryId: raw.categoryId || undefined,
+        paymentMethod: raw.paymentMethod || undefined,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (transaction) => {
-          this.form.patchValue({ description: '', amount: 0, categoryId: '' });
+          this.form.patchValue({ description: '', amount: 0, categoryId: '', paymentMethod: '' });
           this.upsertTransaction(transaction);
           this.loadSpending(this.filterMonth(), this.filterYear());
           this.toast.success('Transação registrada.');
@@ -280,7 +301,13 @@ export class FinancesPageComponent {
     return 'accent' as const;
   }
 
-  private loadTransactions(params: { month?: number; year?: number; type?: string; search?: string }) {
+  private loadTransactions(params: {
+    month?: number;
+    year?: number;
+    type?: string;
+    search?: string;
+    paymentMethod?: string;
+  }) {
     this.api
       .listTransactions(params)
       .pipe(takeUntilDestroyed(this.destroyRef))

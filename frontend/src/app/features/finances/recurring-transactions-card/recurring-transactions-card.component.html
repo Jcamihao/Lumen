@@ -36,6 +36,15 @@
         </select>
       </div>
 
+      <div class="proto-field recurring-form__wide">
+        <span class="proto-field__label">Forma de pagamento (opcional)</span>
+        <app-payment-method-picker
+          ariaLabel="Forma de pagamento da conta fixa"
+          [value]="form.controls.paymentMethod.value"
+          (valueChange)="form.controls.paymentMethod.setValue($event)"
+        ></app-payment-method-picker>
+      </div>
+
       <div class="proto-field">
         <label for="recurring-frequency">Repete</label>
         <select id="recurring-frequency" formControlName="frequency">
@@ -82,7 +91,7 @@
       >
         <div class="recurring-row__main">
           <strong>{{ item.description }}</strong>
-          <span class="recurring-row__meta">{{ frequencyText(item) }} · {{ item.category?.name || 'Sem categoria' }}</span>
+          <span class="recurring-row__meta">{{ frequencyText(item) }} · {{ item.category?.name || 'Sem categoria' }}<ng-container *ngIf="paymentText(item) as payment"> · {{ payment }}</ng-container></span>
           <span class="recurring-row__next">{{ nextText(item) }}</span>
         </div>
 

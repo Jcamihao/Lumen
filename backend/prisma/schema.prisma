@@ -39,6 +39,14 @@ enum TransactionType {
   TRANSFER
 }
 
+// Como o dinheiro se moveu (etiqueta opcional do lancamento). Credito NAO gera
+// fatura/parcela: hoje e so uma marcacao, o saldo nao muda.
+enum PaymentMethod {
+  PIX
+  CREDIT
+  DEBIT
+}
+
 enum RecurrenceFrequency {
   WEEKLY
   MONTHLY
@@ -324,6 +332,7 @@ model Transaction {
   linkedGoalId           String?
   // Preenchido nos lancamentos gerados por uma conta fixa/recorrente.
   recurringTransactionId String?
+  paymentMethod          PaymentMethod?
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
   user                   User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -334,11 +343,11 @@ model Transaction {
   receiptScan            ReceiptScan?
   reminders              Reminder[]
 
+  // Uma conta fixa gera no maximo um lancamento por data (NULL nao conflita).
+  @@unique([recurringTransactionId, date])
   @@index([userId, type, date])
   @@index([linkedTaskId])
   @@index([linkedGoalId])
-  // Uma conta fixa gera no maximo um lancamento por data (NULL nao conflita).
-  @@unique([recurringTransactionId, date])
 }
 
 // Conta fixa ou recorrente (aluguel, assinatura, salario). O lancamento e
@@ -350,6 +359,7 @@ model RecurringTransaction {
   description     String
   amount          Decimal             @db.Decimal(12, 2)
   categoryId      String?
+  paymentMethod   PaymentMethod?
   frequency       RecurrenceFrequency
   // Dia do mes de referencia (MONTHLY/YEARLY). Em mes mais curto usa o ultimo dia.
   anchorDay       Int

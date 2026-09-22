@@ -83,6 +83,7 @@ export class RecurringTransactionsService {
         description: dto.description.trim(),
         amount: new Prisma.Decimal(dto.amount),
         categoryId: dto.categoryId ?? null,
+        paymentMethod: dto.paymentMethod ?? null,
         frequency: dto.frequency,
         anchorDay: firstDue.getUTCDate(),
         nextDueDate: firstDue,
@@ -110,6 +111,7 @@ export class RecurringTransactionsService {
     if (dto.description !== undefined) data.description = dto.description.trim();
     if (dto.amount !== undefined) data.amount = new Prisma.Decimal(dto.amount);
     if (dto.categoryId !== undefined) data.categoryId = dto.categoryId;
+    if (dto.paymentMethod !== undefined) data.paymentMethod = dto.paymentMethod;
     if (dto.endDate !== undefined) {
       data.endDate = dto.endDate === null ? null : parseDateOnly(dto.endDate);
     }

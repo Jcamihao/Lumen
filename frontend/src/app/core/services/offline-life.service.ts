@@ -9,6 +9,7 @@ import {
   Goal,
   Insight,
   Notification,
+  PaymentMethod,
   OfflineSyncQueueItem,
   Reminder,
   SupportRequest,
@@ -913,6 +914,7 @@ export class OfflineLifeService {
       amount: Math.abs(Number(payload["amount"] || 0)),
       date: String(payload["date"] || todayLocalInputValue()),
       category: this.resolveFinanceCategory(this.optionalString(payload["categoryId"]), type),
+      paymentMethod: this.optionalPaymentMethod(payload["paymentMethod"]),
     };
   }
 
@@ -1021,7 +1023,16 @@ export class OfflineLifeService {
               nextType,
             )
           : transaction.category,
+      paymentMethod:
+        payload["paymentMethod"] !== undefined
+          ? this.optionalPaymentMethod(payload["paymentMethod"])
+          : transaction.paymentMethod,
     };
+  }
+
+  /** So aceita os tres valores conhecidos; qualquer outra coisa vira "nao informado". */
+  private optionalPaymentMethod(value: unknown): PaymentMethod | null {
+    return value === "PIX" || value === "CREDIT" || value === "DEBIT" ? value : null;
   }
 
   private applyGoalPatch(goal: Goal, payload: Record<string, unknown>): Goal {

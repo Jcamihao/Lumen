@@ -39,6 +39,7 @@ export class TransactionsService {
         userId,
         type: query.type,
         categoryId: query.categoryId,
+        paymentMethod: query.paymentMethod,
         description: query.search
           ? {
               contains: query.search,
@@ -78,6 +79,7 @@ export class TransactionsService {
         amount: new Prisma.Decimal(Math.abs(dto.amount)),
         date: new Date(dto.date),
         categoryId: dto.categoryId,
+        paymentMethod: dto.paymentMethod,
         linkedTaskId: dto.linkedTaskId,
         linkedGoalId: dto.linkedGoalId,
       },
@@ -110,6 +112,8 @@ export class TransactionsService {
             dto.amount !== undefined ? new Prisma.Decimal(Math.abs(dto.amount)) : undefined,
           date: dto.date ? new Date(dto.date) : undefined,
           categoryId: dto.categoryId === null ? null : dto.categoryId,
+          // undefined = nao mexe; null = limpa.
+          paymentMethod: dto.paymentMethod,
           linkedTaskId: dto.linkedTaskId === null ? null : dto.linkedTaskId,
           linkedGoalId: dto.linkedGoalId === null ? null : dto.linkedGoalId,
         },

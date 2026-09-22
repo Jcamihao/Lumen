@@ -11,6 +11,7 @@ type Template = {
   description: string;
   amount: number;
   categoryId: string | null;
+  paymentMethod: 'PIX' | 'CREDIT' | 'DEBIT' | null;
   frequency: RecurrenceFrequency;
   anchorDay: number;
   nextDueDate: Date;
@@ -25,6 +26,7 @@ const template = (overrides: Partial<Template> = {}): Template => ({
   description: 'Aluguel',
   amount: 1200,
   categoryId: 'cat-1',
+  paymentMethod: null,
   frequency: RecurrenceFrequency.MONTHLY,
   anchorDay: 5,
   nextDueDate: utcDate(2026, 8, 5),
@@ -218,6 +220,22 @@ describe('RecurringMaterializerService', () => {
 
     expect(await service(prisma).materializeDue('user-1', now)).toBe(0);
     expect(created).toHaveLength(0);
+  });
+
+  it('o lancamento gerado herda a forma de pagamento da conta fixa', async () => {
+    const { prisma, created } = buildPrisma([template({ paymentMethod: 'CREDIT' })]);
+
+    await service(prisma).materializeDue('user-1', now);
+
+    expect(created[0].paymentMethod).toBe('CREDIT');
+  });
+
+  it('conta fixa sem forma de pagamento gera lancamento sem forma de pagamento', async () => {
+    const { prisma, created } = buildPrisma([template()]);
+
+    await service(prisma).materializeDue('user-1', now);
+
+    expect(created[0].paymentMethod).toBeNull();
   });
 
   it('gera receita recorrente do tipo certo', async () => {

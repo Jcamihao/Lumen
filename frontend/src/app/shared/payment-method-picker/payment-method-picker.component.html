@@ -1,0 +1,14 @@
+<div class="payment-picker" role="radiogroup" [attr.aria-label]="ariaLabel">
+  <button
+    *ngFor="let option of options"
+    type="button"
+    role="radio"
+    class="payment-picker__option"
+    [class.is-selected]="value === option.value"
+    [attr.aria-checked]="value === option.value"
+    (click)="select(option.value)"
+  >
+    <span class="material-symbols-rounded" aria-hidden="true">{{ option.icon }}</span>
+    {{ option.label }}
+  </button>
+</div>

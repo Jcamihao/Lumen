@@ -1,4 +1,4 @@
-import { TransactionType } from '@prisma/client';
+import { PaymentMethod, TransactionType } from '@prisma/client';
 import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateTransactionDto {
@@ -26,4 +26,9 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsString()
   linkedGoalId?: string;
+
+  /** PIX, credito ou debito (opcional). */
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod;
 }
