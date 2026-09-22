@@ -50,6 +50,8 @@ export class GoalsPageComponent {
   // Custom contribute panel
   protected readonly contributeGoalId = signal<string | null>(null);
   protected readonly contributeAmount = signal(0);
+  protected readonly withdrawGoalId = signal<string | null>(null);
+  protected readonly withdrawAmount = signal(0);
 
   protected readonly form = this.fb.nonNullable.group({
     title: ['', [Validators.required, Validators.minLength(2)]],
@@ -114,6 +116,7 @@ export class GoalsPageComponent {
   protected openCustomContribute(goalId: string) {
     this.contributeGoalId.set(goalId);
     this.contributeAmount.set(0);
+    this.withdrawGoalId.set(null);
   }
 
   protected cancelCustomContribute() {
@@ -122,6 +125,20 @@ export class GoalsPageComponent {
 
   protected isContributing(goalId: string) {
     return this.contributeGoalId() === goalId;
+  }
+
+  protected openWithdraw(goalId: string) {
+    this.withdrawGoalId.set(goalId);
+    this.withdrawAmount.set(0);
+    this.contributeGoalId.set(null);
+  }
+
+  protected cancelWithdraw() {
+    this.withdrawGoalId.set(null);
+  }
+
+  protected isWithdrawing(goalId: string) {
+    return this.withdrawGoalId() === goalId;
   }
 
   protected createGoal() {
@@ -249,6 +266,39 @@ export class GoalsPageComponent {
     this.contribute(goal, amount);
   }
 
+  protected withdrawCustom(goal: Goal) {
+    this.withdraw(goal, this.withdrawAmount());
+  }
+
+  protected withdraw(goal: Goal, amount: number) {
+    if (!amount || amount <= 0) {
+      this.toast.error('Informe um valor válido para o saque.');
+      return;
+    }
+
+    if (amount > goal.currentAmount) {
+      this.toast.error('Esse valor é maior do que o saldo guardado nesta meta.');
+      return;
+    }
+
+    this.api
+      .withdrawGoal(goal.id, { amount })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (updatedGoal) => {
+          this.upsertGoal(updatedGoal);
+          this.goalContributions.update((map) => {
+            const { [goal.id]: _removed, ...rest } = map;
+            return rest;
+          });
+          this.withdrawGoalId.set(null);
+          this.toast.success('Saque registrado.');
+        },
+        error: (error) =>
+          this.toast.error(this.errorMessage(error, 'Não foi possível registrar o saque.')),
+      });
+  }
+
   protected removeGoal(id: string) {
     if (!globalThis.confirm('Deseja excluir esta meta? Essa ação não pode ser desfeita.')) return;
 
@@ -329,5 +379,15 @@ export class GoalsPageComponent {
       const rightDate = right.targetDate ? new Date(right.targetDate).getTime() : Number.MAX_SAFE_INTEGER;
       return leftDate - rightDate;
     });
+  }
+
+  private errorMessage(error: any, fallback: string) {
+    const message = error?.error?.message;
+
+    if (error?.status === 400 && typeof message === 'string') {
+      return message;
+    }
+
+    return fallback;
   }
 }

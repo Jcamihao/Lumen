@@ -5,6 +5,7 @@ import { AuthenticatedUser } from '../common/interfaces/authenticated-user.inter
 import { ContributeGoalDto } from './dto/contribute-goal.dto';
 import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
+import { WithdrawGoalDto } from './dto/withdraw-goal.dto';
 import { GoalsService } from './goals.service';
 
 @ApiTags('goals')
@@ -49,6 +50,16 @@ export class GoalsController {
     @Body() dto: ContributeGoalDto,
   ) {
     return this.goalsService.contribute(user.sub, id, dto);
+  }
+
+  @Patch(':id/withdraw')
+  @ApiOperation({ summary: 'Tira dinheiro de volta de uma meta (o saldo guardado volta pro livre)' })
+  withdraw(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: WithdrawGoalDto,
+  ) {
+    return this.goalsService.withdraw(user.sub, id, dto);
   }
 
   @Delete(':id')

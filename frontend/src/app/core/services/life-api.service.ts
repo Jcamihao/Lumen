@@ -283,6 +283,17 @@ export class LifeApiService {
     );
   }
 
+  /**
+   * So online de proposito: um saque enfileirado offline poderia entrar em
+   * corrida com um deposito tambem enfileirado e deixar o saldo local
+   * inconsistente. Falha e pede pra tentar de novo quando a rede voltar.
+   */
+  withdrawGoal(id: string, payload: Record<string, unknown>) {
+    return this.http
+      .patch<Goal>(`${environment.apiBaseUrl}/goals/${id}/withdraw`, payload)
+      .pipe(tap((goal) => this.offlineLifeService.reconcileGoal(goal)));
+  }
+
   contributeGoal(id: string, payload: Record<string, unknown>) {
     if (!this.networkService.isOnline()) {
       return of(this.offlineLifeService.queueGoalContribute(id, payload) as Goal);

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { GoalStatus, NotificationType, Prisma, TransactionType } from '@prisma/client';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ContributeGoalDto } from './dto/contribute-goal.dto';
 import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
+import { WithdrawGoalDto } from './dto/withdraw-goal.dto';
 
 @Injectable()
 export class GoalsService {
@@ -127,6 +128,51 @@ export class GoalsService {
     });
 
     return transactions.map((t) => ({ ...t, amount: Number(t.amount) }));
+  }
+
+  /**
+   * Tira dinheiro de volta da meta (o "cofrinho" nao fica so de mao unica).
+   * Gera uma transacao INCOME (o dinheiro volta pro saldo livre) — o espelho
+   * do TRANSFER que contribute() gera ao guardar.
+   */
+  async withdraw(userId: string, id: string, dto: WithdrawGoalDto) {
+    const goal = await this.findGoal(userId, id);
+    const currentAmount = Number(goal.currentAmount);
+
+    if (dto.amount > currentAmount) {
+      throw new BadRequestException('Saldo insuficiente nesta meta.');
+    }
+
+    const nextCurrentAmount = currentAmount - dto.amount;
+    // Um saque pode tirar a meta de "concluida" se ela cair abaixo do alvo de novo.
+    const nextStatus =
+      goal.status === GoalStatus.ACHIEVED && nextCurrentAmount < Number(goal.targetAmount)
+        ? GoalStatus.ACTIVE
+        : goal.status;
+
+    const updatedGoal = await this.prisma.goal.update({
+      where: { id },
+      data: {
+        currentAmount: new Prisma.Decimal(nextCurrentAmount),
+        status: nextStatus,
+      },
+    });
+
+    if (dto.createTransaction ?? true) {
+      await this.prisma.transaction.create({
+        data: {
+          userId,
+          type: TransactionType.INCOME,
+          description: dto.description ?? `Saque da meta ${goal.title}`,
+          amount: new Prisma.Decimal(dto.amount),
+          date: dto.date ? new Date(dto.date) : new Date(),
+          linkedGoalId: goal.id,
+        },
+      });
+    }
+
+    await this.lifeEngineService.touchUserData(userId);
+    return this.serializeGoal(updatedGoal);
   }
 
   async remove(userId: string, id: string) {

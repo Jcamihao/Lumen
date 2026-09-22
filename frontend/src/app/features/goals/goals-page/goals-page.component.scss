@@ -161,6 +161,10 @@
   white-space: nowrap;
 }
 
+.goal-contrib-item__amount--withdraw {
+  color: var(--danger);
+}
+
 .goal-contrib-item p {
   font-size: 0.78rem;
   color: var(--text-medium);
