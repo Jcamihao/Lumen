@@ -14,6 +14,7 @@ import { paymentMethodLabel } from '../../../core/utils/payment-method.utils';
 import { buildSpendingBreakdown } from '../../../core/utils/spending.utils';
 import { PaymentMethodPickerComponent } from '../../../shared/payment-method-picker/payment-method-picker.component';
 import { SpendingBreakdownComponent } from '../../../shared/spending-breakdown/spending-breakdown.component';
+import { CreditCycleCardComponent } from '../credit-cycle-card/credit-cycle-card.component';
 import { RecurringTransactionsCardComponent } from '../recurring-transactions-card/recurring-transactions-card.component';
 
 @Component({
@@ -25,6 +26,7 @@ import { RecurringTransactionsCardComponent } from '../recurring-transactions-ca
     RouterLink,
     SpendingBreakdownComponent,
     PaymentMethodPickerComponent,
+    CreditCycleCardComponent,
     RecurringTransactionsCardComponent,
   ],
   templateUrl: './finances-page.component.html',

@@ -1,0 +1,111 @@
+:host {
+  display: block;
+}
+
+.credit-cycle-card__hint {
+  margin: 0;
+  color: var(--text-medium);
+}
+
+.credit-cycle-card__body {
+  display: grid;
+  gap: 0.85rem;
+  --credit-color: var(--accent);
+}
+
+.credit-cycle-card__body[data-status='near'] {
+  --credit-color: var(--warning);
+}
+
+.credit-cycle-card__body[data-status='over'] {
+  --credit-color: var(--danger);
+}
+
+.credit-cycle-card__period {
+  margin: 0;
+  color: var(--text-medium);
+  font-size: 0.85rem;
+}
+
+.credit-cycle-card__amount {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.credit-cycle-card__amount strong {
+  font-size: 1.6rem;
+  color: var(--text-strong);
+}
+
+.credit-cycle-card__amount span {
+  color: var(--text-medium);
+}
+
+.credit-cycle-card__bar {
+  height: 0.6rem;
+  background: var(--surface-panel-alt);
+  border: 1px solid var(--border);
+}
+
+.credit-cycle-card__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--credit-color);
+  transition: width 0.3s ease;
+}
+
+.credit-cycle-card__status {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--credit-color);
+}
+
+.credit-cycle-card__editor {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 20rem;
+}
+
+.credit-cycle-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.credit-cycle-card__due {
+  margin: 0;
+  color: var(--text-medium);
+  font-size: 0.9rem;
+}
+
+.credit-cycle-card__link {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-left: 0.35rem;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.credit-cycle-card__link:hover {
+  text-decoration: underline;
+}
+
+.credit-cycle-card__footer {
+  margin: 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .credit-cycle-card__bar > span {
+    transition: none;
+  }
+}

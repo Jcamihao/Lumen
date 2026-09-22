@@ -499,6 +499,23 @@ export type SupportRequest = {
   user: { id: string; name: string; email: string };
 };
 
+export type CreditCycleStatus = 'none' | 'ok' | 'near' | 'over';
+
+/** Ciclo de credito aberto agora: teto editavel, gasto e quanto falta. */
+export type CreditCycle = {
+  closingDay: number;
+  dueDay: number | null;
+  cycleStart: string;
+  cycleEnd: string;
+  ceiling: number | null;
+  spent: number;
+  remaining: number | null;
+  percentUsed: number | null;
+  status: CreditCycleStatus;
+  /** Teto do ciclo anterior, sugerido no formulario quando o atual ainda nao tem um. */
+  previousCeiling: number | null;
+};
+
 export type FeedbackSummary = {
   total: number;
   averageRating: number | null;

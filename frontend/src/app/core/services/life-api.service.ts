@@ -10,6 +10,7 @@ import {
   DashboardSummary,
   FinanceCategory,
   FeedbackSummary,
+  CreditCycle,
   ForecastAccuracy,
   Goal,
   GoalContribution,
@@ -475,6 +476,18 @@ export class LifeApiService {
         },
       },
     );
+  }
+
+  getCurrentCreditCycle() {
+    return this.http.get<CreditCycle>(`${environment.apiBaseUrl}/credit-cycle/current`);
+  }
+
+  updateCreditCycleSettings(payload: { dueDay: number | null }) {
+    return this.http.patch<CreditCycle>(`${environment.apiBaseUrl}/credit-cycle/settings`, payload);
+  }
+
+  setCreditCycleCeiling(payload: { ceiling: number }) {
+    return this.http.put<CreditCycle>(`${environment.apiBaseUrl}/credit-cycle/ceiling`, payload);
   }
 
   getFeedbackSummary() {

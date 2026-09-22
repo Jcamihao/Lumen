@@ -52,6 +52,9 @@ const buildPrisma = (
       upsert: jest.fn((args: any) => args),
     },
     $transaction: jest.fn().mockResolvedValue([]),
+    creditCycleCeiling: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
     user: {
       findUniqueOrThrow: jest.fn().mockResolvedValue({
         id: 'user-1',
@@ -1199,6 +1202,77 @@ describe('InsightsService', () => {
 
       const chargeQuery = prisma.transaction.findMany.mock.calls[0][0];
       expect(chargeQuery.where.recurringTransactionId).toBeNull();
+    });
+  });
+
+  describe('detectCreditCycle', () => {
+    const run = async (options: {
+      ceiling?: number | null;
+      spent?: number | null;
+      dueDay?: number | null;
+      monthClosingDay?: number;
+    } = {}) => {
+      const prisma = buildPrisma([], [], {
+        monthClosingDay: options.monthClosingDay ?? 30,
+        creditDueDay: options.dueDay ?? null,
+      });
+      if (options.ceiling !== undefined && options.ceiling !== null) {
+        prisma.creditCycleCeiling.findUnique.mockResolvedValue({ ceiling: options.ceiling });
+      }
+      prisma.transaction.aggregate = jest.fn().mockResolvedValue({
+        _sum: { amount: options.spent ?? null },
+      });
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      return generatedInsights(prisma).filter((insight) =>
+        insight.fingerprint.includes(':credit_cycle:'),
+      );
+    };
+
+    it('sem teto definido, fica em silencio', async () => {
+      const insights = await run({ ceiling: null, spent: 5000 });
+
+      expect(insights).toHaveLength(0);
+    });
+
+    it('abaixo de 80%, fica em silencio', async () => {
+      const insights = await run({ ceiling: 1000, spent: 700 });
+
+      expect(insights).toHaveLength(0);
+    });
+
+    it('80% ou mais vira WARNING, com o quanto falta', async () => {
+      const insights = await run({ ceiling: 1000, spent: 840 });
+
+      expect(insights).toHaveLength(1);
+      expect(insights[0].type).toBe(InsightType.FINANCE);
+      expect(insights[0].severity).toBe(InsightSeverity.WARNING);
+      expect(insights[0].message).toContain('ja usou 84%');
+      expect(insights[0].message).toContain('Faltam');
+    });
+
+    it('100% ou mais vira CRITICAL', async () => {
+      const insights = await run({ ceiling: 1000, spent: 1120 });
+
+      expect(insights[0].severity).toBe(InsightSeverity.CRITICAL);
+      expect(insights[0].message).toContain('passou do teto');
+      expect(insights[0].message).toContain('112%');
+    });
+
+    it('menciona o vencimento quando definido, e omite quando nao ha', async () => {
+      const withDueDay = await run({ ceiling: 1000, spent: 900, dueDay: 15 });
+      expect(withDueDay[0].message).toContain('vence dia 15');
+
+      const withoutDueDay = await run({ ceiling: 1000, spent: 900, dueDay: null });
+      expect(withoutDueDay[0].message).not.toContain('vence');
+    });
+
+    it('muda de identidade quando escala de aviso para critico (reavisa)', async () => {
+      const [warning] = await run({ ceiling: 1000, spent: 850 });
+      const [critical] = await run({ ceiling: 1000, spent: 1100 });
+
+      expect(warning.fingerprint).not.toEqual(critical.fingerprint);
     });
   });
 });

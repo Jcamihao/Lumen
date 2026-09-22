@@ -10,6 +10,7 @@ import {
 } from 'date-fns';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { creditCycleBounds } from '../credit-cycle/credit-cycle.util';
 import { addDaysUtc, localToday } from '../recurring-transactions/recurrence.util';
 
 type GeneratedInsight = {
@@ -93,6 +94,12 @@ const BUDGET_MAX_ALERTS = 3;
 // WARNING). No dia do vencimento o lancamento ja foi gerado e o aviso some.
 const UPCOMING_BILL_WINDOW_DAYS = 3;
 const UPCOMING_BILL_MAX_LISTED = 3;
+
+// Mesmos limiares do orcamento por categoria e do CreditCycleService: 80%
+// avisa, 100% estourou. Duplicado de proposito (mesmo padrao do resto do
+// arquivo) — se um mudar, o outro precisa acompanhar.
+const CREDIT_CYCLE_NEAR_PCT = 80;
+const CREDIT_CYCLE_OVER_PCT = 100;
 
 type CategoryTotal = {
   categoryId: string | null;
@@ -239,6 +246,8 @@ export class InsightsService {
     ].filter((insight): insight is GeneratedInsight => insight !== null);
 
     insights.push(...this.detectCategoryBudgets(context));
+    const creditCycleInsight = this.detectCreditCycle(context);
+    if (creditCycleInsight) insights.push(creditCycleInsight);
     const upcomingBills = this.detectUpcomingBills(context);
     if (upcomingBills) insights.push(upcomingBills);
 
@@ -449,6 +458,21 @@ export class InsightsService {
     ]);
 
     const userToday = localToday(now, user.timezone ?? 'UTC');
+    const creditCycle = creditCycleBounds(userToday, user.monthClosingDay ?? 30);
+    const [creditCeilingRow, creditSpentAggregate] = await Promise.all([
+      this.prisma.creditCycleCeiling.findUnique({
+        where: { userId_closingDate: { userId, closingDate: creditCycle.end } },
+      }),
+      this.prisma.transaction.aggregate({
+        where: {
+          userId,
+          type: 'EXPENSE',
+          paymentMethod: 'CREDIT',
+          date: { gte: creditCycle.start, lte: creditCycle.end },
+        },
+        _sum: { amount: true },
+      }),
+    ]);
     const windowEnd = addDaysUtc(userToday, UPCOMING_BILL_WINDOW_DAYS);
     const upcomingBills = (recurringExpenseTemplates ?? [])
       .map((bill) => ({
@@ -486,6 +510,12 @@ export class InsightsService {
       monthlyExpenses: Number(monthlyExpensesAggregate._sum.amount ?? 0),
       monthlyIncome: Number(user.monthlyIncome ?? 0),
       upcomingBills,
+      creditCycle: {
+        closingDate: creditCycle.end,
+        dueDay: user.creditDueDay ?? null,
+        ceiling: creditCeilingRow ? Number(creditCeilingRow.ceiling) : null,
+        spent: Number(creditSpentAggregate._sum.amount ?? 0),
+      },
       categoryBudgets: (financeCategories ?? [])
         .filter((category) => category.monthlyBudget !== null && category.monthlyBudget !== undefined)
         .map((category) => ({
@@ -681,6 +711,49 @@ export class InsightsService {
           amount: bill.amount,
           daysUntil: bill.daysUntil,
         })),
+      },
+    };
+  }
+
+  /**
+   * Teto de credito do ciclo aberto agora (v. CreditCycleService): mesmos
+   * limiares do orcamento por categoria. So dispara com teto definido; um
+   * ciclo sem teto (usuario nunca configurou) fica em silencio.
+   */
+  private detectCreditCycle(context: InsightContext): GeneratedInsight | null {
+    const { ceiling, spent, dueDay, closingDate } = context.creditCycle;
+
+    if (ceiling === null || ceiling <= 0) {
+      return null;
+    }
+
+    const percent = (spent / ceiling) * 100;
+
+    if (percent < CREDIT_CYCLE_NEAR_PCT) {
+      return null;
+    }
+
+    const over = percent >= CREDIT_CYCLE_OVER_PCT;
+    const currency = context.user.preferredCurrency;
+    const pctLabel = Math.floor(percent);
+    const spentLabel = this.formatAmount(spent, currency);
+    const ceilingLabel = this.formatAmount(ceiling, currency);
+    const dueLabel = dueDay ? ` A fatura vence dia ${dueDay}.` : '';
+
+    return {
+      type: InsightType.FINANCE,
+      // Muda a cada ciclo (chave = data de fechamento): o proximo ciclo
+      // recomeca do zero e avisa de novo se chegar perto/estourar de novo.
+      key: `credit_cycle:${closingDate.toISOString().slice(0, 10)}`,
+      severity: over ? InsightSeverity.CRITICAL : InsightSeverity.WARNING,
+      message: over
+        ? `Seu credito passou do teto deste ciclo: ${spentLabel} de ${ceilingLabel} (${pctLabel}%).${dueLabel} Vale rever os proximos gastos ou ajustar o teto.`
+        : `Seu credito ja usou ${pctLabel}% do teto deste ciclo (${spentLabel} de ${ceilingLabel}). Faltam ${this.formatAmount(ceiling - spent, currency)}.${dueLabel}`,
+      metadata: {
+        ceiling,
+        spent,
+        usedPct: pctLabel,
+        dueDay,
       },
     };
   }
