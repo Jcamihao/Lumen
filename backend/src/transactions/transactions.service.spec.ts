@@ -162,6 +162,66 @@ describe("TransactionsService", () => {
     });
   });
 
+  describe('envelope (marcar transacao como parte de um envelope)', () => {
+    it('grava o envelope informado na criacao', async () => {
+      const prisma = buildPrisma();
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+
+      await service.create('user-1', {
+        type: 'EXPENSE',
+        description: 'Posto Ipiranga',
+        amount: 150,
+        date: '2026-09-10',
+        envelopeId: 'env-1',
+      } as any);
+
+      expect(prisma.transaction.create.mock.calls[0][0].data.envelopeId).toBe('env-1');
+    });
+
+    it('null limpa o envelope numa edicao; ausente nao mexe', async () => {
+      const cleared = buildPrisma({
+        transaction: {
+          findMany: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue({ id: 'tx-1', userId: 'user-1' }),
+          update: jest.fn().mockResolvedValue({ id: 'tx-1' }),
+          create: jest.fn(),
+          delete: jest.fn(),
+        },
+      });
+      await new TransactionsService(cleared, buildLifeEngine(), buildMaterializer()).update(
+        'user-1',
+        'tx-1',
+        { envelopeId: null } as any,
+      );
+      expect(cleared.transaction.update.mock.calls[0][0].data.envelopeId).toBeNull();
+
+      const untouched = buildPrisma({
+        transaction: {
+          findMany: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue({ id: 'tx-1', userId: 'user-1' }),
+          update: jest.fn().mockResolvedValue({ id: 'tx-1' }),
+          create: jest.fn(),
+          delete: jest.fn(),
+        },
+      });
+      await new TransactionsService(untouched, buildLifeEngine(), buildMaterializer()).update(
+        'user-1',
+        'tx-1',
+        { description: 'so a descricao' } as any,
+      );
+      expect(untouched.transaction.update.mock.calls[0][0].data.envelopeId).toBeUndefined();
+    });
+
+    it('filtra a lista pelo envelope', async () => {
+      const prisma = buildPrisma();
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+
+      await service.list('user-1', { envelopeId: 'env-1' } as any);
+
+      expect(prisma.transaction.findMany.mock.calls[0][0].where.envelopeId).toBe('env-1');
+    });
+  });
+
   describe('contas fixas vencidas', () => {
     it('gera os lancamentos vencidos antes de listar e recalcula os insights', async () => {
       const prisma = buildPrisma();

@@ -87,6 +87,10 @@ export type Transaction = {
   recurringTransactionId?: string | null;
   /** PIX, credito ou debito; ausente/nulo = nao informado. */
   paymentMethod?: PaymentMethod | null;
+  /** Preenchido quando a transacao foi marcada como parte de um envelope (ex.: gasolina). */
+  envelopeId?: string | null;
+  /** So name/color/icon confiaveis aqui; para o valor mensal use a lista de /envelopes. */
+  envelope?: { id: string; name: string; color: string; icon: string | null } | null;
 };
 
 export type RecurrenceFrequency = "WEEKLY" | "MONTHLY" | "YEARLY";
@@ -497,6 +501,20 @@ export type SupportRequest = {
   createdAt: string;
   updatedAt: string;
   user: { id: string; name: string; email: string };
+};
+
+/** Valor reservado que recarrega todo mes e nao desconta de nenhum teto geral. */
+export type Envelope = {
+  id: string;
+  name: string;
+  color: string;
+  icon: string | null;
+  monthlyAmount: number;
+  isActive: boolean;
+  deposited: number;
+  spent: number;
+  /** Pode ficar negativo se o usuario gastou mais do que tinha guardado. */
+  available: number;
 };
 
 export type CreditCycleStatus = 'none' | 'ok' | 'near' | 'over';

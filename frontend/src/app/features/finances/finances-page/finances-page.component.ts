@@ -1,9 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { PaymentMethod, Transaction } from '../../../core/models/domain.models';
+import { Envelope, PaymentMethod, Transaction } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
@@ -15,6 +15,7 @@ import { buildSpendingBreakdown } from '../../../core/utils/spending.utils';
 import { PaymentMethodPickerComponent } from '../../../shared/payment-method-picker/payment-method-picker.component';
 import { SpendingBreakdownComponent } from '../../../shared/spending-breakdown/spending-breakdown.component';
 import { CreditCycleCardComponent } from '../credit-cycle-card/credit-cycle-card.component';
+import { EnvelopesCardComponent } from '../envelopes-card/envelopes-card.component';
 import { RecurringTransactionsCardComponent } from '../recurring-transactions-card/recurring-transactions-card.component';
 
 @Component({
@@ -27,6 +28,7 @@ import { RecurringTransactionsCardComponent } from '../recurring-transactions-ca
     SpendingBreakdownComponent,
     PaymentMethodPickerComponent,
     CreditCycleCardComponent,
+    EnvelopesCardComponent,
     RecurringTransactionsCardComponent,
   ],
   templateUrl: './finances-page.component.html',
@@ -34,6 +36,8 @@ import { RecurringTransactionsCardComponent } from '../recurring-transactions-ca
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FinancesPageComponent {
+  @ViewChild(EnvelopesCardComponent) private envelopesCardRef?: EnvelopesCardComponent;
+
   private readonly api = inject(LifeApiService);
   private readonly authService = inject(AuthService);
   private readonly fb = inject(FormBuilder);
@@ -46,6 +50,8 @@ export class FinancesPageComponent {
   protected readonly filterYear = signal(this.now.getFullYear());
   protected readonly filterType = signal<'' | 'INCOME' | 'EXPENSE' | 'TRANSFER'>('');
   protected readonly filterPaymentMethod = signal<'' | PaymentMethod>('');
+  protected readonly filterEnvelopeId = signal('');
+  protected readonly envelopes = signal<Envelope[]>([]);
   protected readonly filterSearch = signal('');
 
   protected readonly transactions = signal<Transaction[]>([]);
@@ -95,21 +101,25 @@ export class FinancesPageComponent {
     categoryId: [''],
     // '' = nao informado.
     paymentMethod: ['' as PaymentMethod | ''],
+    envelopeId: [''],
   });
 
   constructor() {
+    this.refreshEnvelopes();
     effect(() => {
       this.reloadTick();
       const month = this.filterMonth();
       const year = this.filterYear();
       const type = this.filterType();
       const paymentMethod = this.filterPaymentMethod();
+      const envelopeId = this.filterEnvelopeId();
       const search = this.filterSearch().trim();
 
       if (search) {
         this.loadTransactions({
           type: type || undefined,
           paymentMethod: paymentMethod || undefined,
+          envelopeId: envelopeId || undefined,
           search,
         });
       } else {
@@ -118,6 +128,7 @@ export class FinancesPageComponent {
           year,
           type: type || undefined,
           paymentMethod: paymentMethod || undefined,
+          envelopeId: envelopeId || undefined,
         });
       }
     });
@@ -161,6 +172,13 @@ export class FinancesPageComponent {
 
   protected paymentLabel(transaction: Transaction) {
     return paymentMethodLabel(transaction.paymentMethod);
+  }
+
+  protected refreshEnvelopes() {
+    this.api
+      .listEnvelopes()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((envelopes) => this.envelopes.set(envelopes));
   }
 
   protected focusNewTransaction() {
@@ -231,13 +249,16 @@ export class FinancesPageComponent {
         date: raw.date,
         categoryId: raw.categoryId || undefined,
         paymentMethod: raw.paymentMethod || undefined,
+        envelopeId: raw.envelopeId || undefined,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (transaction) => {
-          this.form.patchValue({ description: '', amount: 0, categoryId: '', paymentMethod: '' });
+          this.form.patchValue({ description: '', amount: 0, categoryId: '', paymentMethod: '', envelopeId: '' });
           this.upsertTransaction(transaction);
           this.loadSpending(this.filterMonth(), this.filterYear());
+          // A transacao pode ter sido marcada com um envelope: atualiza o saldo dele.
+          this.envelopesCardRef?.refresh();
           this.toast.success('Transação registrada.');
         },
         error: () => this.toast.error('Não foi possível registrar a transação.'),
@@ -258,6 +279,8 @@ export class FinancesPageComponent {
             current.filter((transaction) => transaction.id !== id),
           );
           this.loadSpending(this.filterMonth(), this.filterYear());
+          // A transacao removida podia estar marcada com um envelope.
+          this.envelopesCardRef?.refresh();
           this.toast.success('Transação removida.');
         },
         error: () => this.toast.error('Não foi possível remover a transação.'),
@@ -309,6 +332,7 @@ export class FinancesPageComponent {
     type?: string;
     search?: string;
     paymentMethod?: string;
+    envelopeId?: string;
   }) {
     this.api
       .listTransactions(params)

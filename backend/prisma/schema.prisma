@@ -182,6 +182,7 @@ model User {
   assistantTurns                AssistantTurn[]
   recurringTransactions         RecurringTransaction[]
   creditCycleCeilings           CreditCycleCeiling[]
+  envelopes                     Envelope[]
   authSessions                  AuthSession[]
   authChallenges                AuthChallenge[]
   tagGroups                     TagGroup[]
@@ -338,11 +339,15 @@ model Transaction {
   // Preenchido nos lancamentos gerados por uma conta fixa/recorrente.
   recurringTransactionId String?
   paymentMethod          PaymentMethod?
+  // Marca o gasto como "de dentro" de um envelope (ex.: gasolina): nao
+  // desconta de nenhum teto geral, so do saldo do proprio envelope.
+  envelopeId             String?
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
   user                   User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   recurringTransaction   RecurringTransaction? @relation(fields: [recurringTransactionId], references: [id], onDelete: SetNull)
   category               FinanceCategory?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  envelope               Envelope?             @relation(fields: [envelopeId], references: [id], onDelete: SetNull)
   task                   Task?                 @relation(fields: [linkedTaskId], references: [id], onDelete: SetNull)
   goal                   Goal?                 @relation(fields: [linkedGoalId], references: [id], onDelete: SetNull)
   receiptScan            ReceiptScan?
@@ -371,6 +376,43 @@ model CreditCycleCeiling {
 
   @@unique([userId, closingDate])
   @@index([userId, closingDate])
+}
+
+// Valor reservado que se recarrega todo mes e NAO desconta de nenhum teto
+// geral (ex.: "Gasolina"). O que sobra vira saldo acumulado pro mes seguinte
+// (mesmo espirito de um envelope de dinheiro de verdade).
+model Envelope {
+  id            String          @id @default(uuid())
+  userId        String
+  name          String
+  color         String
+  icon          String?
+  monthlyAmount Decimal         @db.Decimal(12, 2)
+  isActive      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topUps        EnvelopeTopUp[]
+  transactions  Transaction[]
+
+  @@unique([userId, name])
+  @@index([userId, isActive])
+}
+
+// Um "deposito" mensal no envelope. O valor fica congelado no mes em que foi
+// criado (se o usuario mudar monthlyAmount depois, so os meses seguintes
+// mudam) — mesmo padrao do CreditCycleCeiling, so que automatico em vez de
+// digitado pelo usuario.
+model EnvelopeTopUp {
+  id         String   @id @default(uuid())
+  envelopeId String
+  // Primeiro dia do mes a que este deposito se refere (meia-noite UTC).
+  month      DateTime
+  amount     Decimal  @db.Decimal(12, 2)
+  createdAt  DateTime @default(now())
+  envelope   Envelope @relation(fields: [envelopeId], references: [id], onDelete: Cascade)
+
+  @@unique([envelopeId, month])
 }
 
 model RecurringTransaction {

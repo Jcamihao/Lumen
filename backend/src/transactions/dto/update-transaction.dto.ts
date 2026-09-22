@@ -35,4 +35,9 @@ export class UpdateTransactionDto {
   @IsOptional()
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod | null;
+
+  /** `null` remove o envelope. */
+  @IsOptional()
+  @IsString()
+  envelopeId?: string | null;
 }

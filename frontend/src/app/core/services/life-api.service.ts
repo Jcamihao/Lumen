@@ -11,6 +11,7 @@ import {
   FinanceCategory,
   FeedbackSummary,
   CreditCycle,
+  Envelope,
   ForecastAccuracy,
   Goal,
   GoalContribution,
@@ -178,6 +179,7 @@ export class LifeApiService {
     type?: string;
     search?: string;
     paymentMethod?: string;
+    envelopeId?: string;
   }) {
     if (!this.networkService.isOnline() || this.offlineLifeService.hasPendingSync()) {
       void this.flushPendingSync();
@@ -190,6 +192,7 @@ export class LifeApiService {
     if (params?.type) httpParams['type'] = params.type;
     if (params?.search) httpParams['search'] = params.search;
     if (params?.paymentMethod) httpParams['paymentMethod'] = params.paymentMethod;
+    if (params?.envelopeId) httpParams['envelopeId'] = params.envelopeId;
 
     return this.http
       .get<Transaction[]>(`${environment.apiBaseUrl}/transactions`, { params: httpParams })
@@ -476,6 +479,25 @@ export class LifeApiService {
         },
       },
     );
+  }
+
+  listEnvelopes() {
+    return this.http.get<Envelope[]>(`${environment.apiBaseUrl}/envelopes`);
+  }
+
+  createEnvelope(payload: { name: string; color: string; icon?: string; monthlyAmount: number }) {
+    return this.http.post<Envelope>(`${environment.apiBaseUrl}/envelopes`, payload);
+  }
+
+  updateEnvelope(
+    id: string,
+    payload: { name?: string; monthlyAmount?: number; isActive?: boolean },
+  ) {
+    return this.http.patch<Envelope>(`${environment.apiBaseUrl}/envelopes/${id}`, payload);
+  }
+
+  deleteEnvelope(id: string) {
+    return this.http.delete<{ success: boolean }>(`${environment.apiBaseUrl}/envelopes/${id}`);
   }
 
   getCurrentCreditCycle() {

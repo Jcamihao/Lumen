@@ -194,6 +194,8 @@
     </div>
   </article>
 
+  <app-envelopes-card (changed)="refreshEnvelopes()"></app-envelopes-card>
+
   <app-credit-cycle-card></app-credit-cycle-card>
 
   <app-recurring-transactions-card (changed)="refreshAfterRecurringChange()"></app-recurring-transactions-card>
@@ -273,6 +275,14 @@
               [value]="form.controls.paymentMethod.value"
               (valueChange)="form.controls.paymentMethod.setValue($event)"
             ></app-payment-method-picker>
+          </div>
+
+          <div class="proto-field" *ngIf="envelopes().length">
+            <label for="transaction-envelope">Envelope (opcional)</label>
+            <select id="transaction-envelope" formControlName="envelopeId">
+              <option value="">Nenhum</option>
+              <option *ngFor="let envelope of envelopes()" [value]="envelope.id">{{ envelope.name }}</option>
+            </select>
           </div>
         </div>
 
@@ -354,6 +364,17 @@
           <option value="CREDIT">Crédito</option>
           <option value="DEBIT">Débito</option>
         </select>
+
+        <select
+          class="finance-filters__type-select"
+          aria-label="Filtrar por envelope"
+          *ngIf="envelopes().length"
+          [value]="filterEnvelopeId()"
+          (change)="filterEnvelopeId.set($any($event.target).value)"
+        >
+          <option value="">Qualquer envelope</option>
+          <option *ngFor="let envelope of envelopes()" [value]="envelope.id">{{ envelope.name }}</option>
+        </select>
       </div>
 
       <div class="proto-surface__body" *ngIf="transactions().length; else noTransactions">
@@ -369,6 +390,7 @@
                   </span>
                   <span class="proto-chip">{{ transaction.category?.name || 'Sem categoria' }}</span>
                   <span class="proto-chip" *ngIf="paymentLabel(transaction) as payment">{{ payment }}</span>
+                  <span class="proto-chip" *ngIf="transaction.envelope as env">{{ env.name }}</span>
                   <span class="proto-chip" *ngIf="transaction.recurringTransactionId">Recorrente</span>
                   <span class="proto-chip">{{ transactionDateLabel(transaction) }}</span>
                 </div>

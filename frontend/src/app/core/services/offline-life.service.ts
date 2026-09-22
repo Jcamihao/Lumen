@@ -915,6 +915,9 @@ export class OfflineLifeService {
       date: String(payload["date"] || todayLocalInputValue()),
       category: this.resolveFinanceCategory(this.optionalString(payload["categoryId"]), type),
       paymentMethod: this.optionalPaymentMethod(payload["paymentMethod"]),
+      // So o id: sem o envelope embutido no User, nao ha nome/cor pra mostrar
+      // ate sincronizar (a lista de Financas so exibe o chip quando ha o objeto).
+      envelopeId: this.optionalString(payload["envelopeId"]),
     };
   }
 
@@ -1027,6 +1030,10 @@ export class OfflineLifeService {
         payload["paymentMethod"] !== undefined
           ? this.optionalPaymentMethod(payload["paymentMethod"])
           : transaction.paymentMethod,
+      envelopeId:
+        payload["envelopeId"] !== undefined
+          ? this.optionalString(payload["envelopeId"])
+          : transaction.envelopeId,
     };
   }
 

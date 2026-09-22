@@ -31,4 +31,9 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod;
+
+  /** Marca o gasto como parte de um envelope (ex.: gasolina). */
+  @IsOptional()
+  @IsString()
+  envelopeId?: string;
 }

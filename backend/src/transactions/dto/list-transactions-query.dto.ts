@@ -15,6 +15,10 @@ export class ListTransactionsQueryDto {
   paymentMethod?: PaymentMethod;
 
   @IsOptional()
+  @IsString()
+  envelopeId?: string;
+
+  @IsOptional()
   @IsDateString()
   dateFrom?: string;
 

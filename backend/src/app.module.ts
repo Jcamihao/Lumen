@@ -8,6 +8,7 @@ import { AssistantModule } from "./assistant/assistant.module";
 import { AuthModule } from "./auth/auth.module";
 import { CacheQueueModule } from "./cache-queue/cache-queue.module";
 import { CreditCycleModule } from "./credit-cycle/credit-cycle.module";
+import { EnvelopesModule } from "./envelopes/envelopes.module";
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
 import { RateLimitGuard } from "./common/guards/rate-limit.guard";
 import { RolesGuard } from "./common/guards/roles.guard";
@@ -56,6 +57,7 @@ import { UsersModule } from "./users/users.module";
     TransactionsModule,
     RecurringTransactionsModule,
     CreditCycleModule,
+    EnvelopesModule,
     GoalsModule,
     RemindersModule,
     InsightsModule,

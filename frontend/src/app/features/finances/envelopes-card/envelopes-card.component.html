@@ -1,0 +1,97 @@
+<article class="proto-surface envelopes-card">
+  <div class="proto-surface__head envelopes-card__head">
+    <div>
+      <h3>Envelopes</h3>
+      <p>Um valor reservado por mês (ex.: gasolina) que não entra na sua conta livre. O que sobra acumula pro próximo mês.</p>
+    </div>
+
+    <button *ngIf="!formOpen()" type="button" class="proto-button" (click)="openForm()">Novo envelope</button>
+  </div>
+
+  <div class="proto-surface__body envelopes-card__body">
+    <form *ngIf="formOpen()" class="envelope-form" [formGroup]="form" (submit)="$event.preventDefault(); submit()" novalidate>
+      <div class="proto-field envelope-form__wide">
+        <label for="envelope-name">Nome</label>
+        <input id="envelope-name" type="text" placeholder="Ex.: Gasolina" formControlName="name" />
+      </div>
+
+      <div class="proto-field">
+        <label for="envelope-amount">Valor por mês</label>
+        <input id="envelope-amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="Ex.: 700" formControlName="monthlyAmount" />
+      </div>
+
+      <div class="envelope-form__actions">
+        <button type="submit" class="proto-button" [disabled]="saving()">
+          {{ saving() ? 'Salvando...' : 'Criar envelope' }}
+        </button>
+        <button type="button" class="proto-button proto-button--secondary" [disabled]="saving()" (click)="closeForm()">
+          Cancelar
+        </button>
+      </div>
+    </form>
+
+    <p class="envelopes-card__hint" *ngIf="loading()">Carregando envelopes...</p>
+
+    <div class="proto-empty" *ngIf="loadFailed()">
+      <strong>Não foi possível carregar os envelopes</strong>
+      <p>Confira sua conexão e tente de novo.</p>
+      <button type="button" class="proto-button proto-button--secondary" (click)="load()">Tentar de novo</button>
+    </div>
+
+    <ul class="envelope-list" *ngIf="envelopes().length">
+      <li
+        class="envelope-row"
+        *ngFor="let envelope of envelopes(); trackBy: trackEnvelope"
+        [class.envelope-row--paused]="!envelope.isActive"
+      >
+        <div class="envelope-row__head">
+          <span class="envelope-row__name">
+            <span class="envelope-row__dot" [style.background]="envelope.color" aria-hidden="true"></span>
+            {{ envelope.name }}
+            <span class="proto-chip" *ngIf="!envelope.isActive">Pausado</span>
+          </span>
+          <strong [class.envelope-row__negative]="envelope.available < 0">{{ formatMoney(envelope.available) }}</strong>
+        </div>
+
+        <div
+          class="envelope-row__bar"
+          role="progressbar"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          [attr.aria-valuenow]="barPercent(envelope)"
+          [attr.aria-label]="envelope.name + ': disponivel ' + formatMoney(envelope.available)"
+        >
+          <span [style.width.%]="barPercent(envelope)"></span>
+        </div>
+
+        <p class="envelope-row__meta">
+          {{ formatMoney(envelope.spent) }} gastos de {{ formatMoney(envelope.deposited) }} guardados · R$/mês: {{ formatMoney(envelope.monthlyAmount) }}
+        </p>
+
+        <div class="envelope-row__actions">
+          <button
+            type="button"
+            class="proto-button proto-button--secondary"
+            [disabled]="busyId() === envelope.id"
+            (click)="togglePause(envelope)"
+          >
+            {{ envelope.isActive ? 'Pausar' : 'Retomar' }}
+          </button>
+          <button
+            type="button"
+            class="proto-button proto-button--secondary"
+            [disabled]="busyId() === envelope.id"
+            (click)="remove(envelope)"
+          >
+            Excluir
+          </button>
+        </div>
+      </li>
+    </ul>
+
+    <div class="proto-empty" *ngIf="!loading() && !loadFailed() && !envelopes().length && !formOpen()">
+      <strong>Nenhum envelope ainda</strong>
+      <p>Reserve um valor fixo por mês para algo específico (gasolina, mercado) sem misturar com o resto do seu dinheiro.</p>
+    </div>
+  </div>
+</article>

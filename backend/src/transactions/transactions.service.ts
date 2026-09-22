@@ -40,6 +40,7 @@ export class TransactionsService {
         type: query.type,
         categoryId: query.categoryId,
         paymentMethod: query.paymentMethod,
+        envelopeId: query.envelopeId,
         description: query.search
           ? {
               contains: query.search,
@@ -55,6 +56,7 @@ export class TransactionsService {
       },
       include: {
         category: true,
+        envelope: true,
       },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     });
@@ -80,11 +82,13 @@ export class TransactionsService {
         date: new Date(dto.date),
         categoryId: dto.categoryId,
         paymentMethod: dto.paymentMethod,
+        envelopeId: dto.envelopeId,
         linkedTaskId: dto.linkedTaskId,
         linkedGoalId: dto.linkedGoalId,
       },
       include: {
         category: true,
+        envelope: true,
       },
     });
 
@@ -114,11 +118,13 @@ export class TransactionsService {
           categoryId: dto.categoryId === null ? null : dto.categoryId,
           // undefined = nao mexe; null = limpa.
           paymentMethod: dto.paymentMethod,
+          envelopeId: dto.envelopeId === null ? null : dto.envelopeId,
           linkedTaskId: dto.linkedTaskId === null ? null : dto.linkedTaskId,
           linkedGoalId: dto.linkedGoalId === null ? null : dto.linkedGoalId,
         },
         include: {
           category: true,
+          envelope: true,
         },
       })
       .catch((error) => {
