@@ -12,7 +12,7 @@ import {
   Transaction,
 } from '../../../core/models/domain.models';
 import { LifeApiService } from '../../../core/services/life-api.service';
-import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
+import { formatDayLabel, formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
 import { buildOnboarding } from '../../../core/utils/onboarding.utils';
 import { buildSpendingBreakdown } from '../../../core/utils/spending.utils';
 import { SpendingBreakdownComponent } from '../../../shared/spending-breakdown/spending-breakdown.component';
@@ -92,6 +92,11 @@ export class DashboardPageComponent {
       .getForecastAccuracy()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((accuracy) => this.forecastAccuracy.set(accuracy));
+  }
+
+  /** Prazo de meta (so dia), sem deslocar pelo fuso. */
+  protected goalDateLabel(value: string) {
+    return formatDayLabel(value);
   }
 
   protected retryLoad() {
@@ -480,10 +485,7 @@ export class DashboardPageComponent {
 
   protected taskMeta(task: Task, currencyCode: string) {
     const dueLabel = task.dueDate
-      ? new Date(task.dueDate).toLocaleDateString('pt-BR', {
-          day: '2-digit',
-          month: 'short',
-        })
+      ? formatDayLabel(task.dueDate, { day: '2-digit', month: 'short' })
       : 'Sem prazo';
 
     if (!task.hasFinancialImpact || !task.estimatedAmount) {

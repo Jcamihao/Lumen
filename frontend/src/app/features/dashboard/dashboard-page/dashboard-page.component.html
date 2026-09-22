@@ -340,7 +340,7 @@
           <div class="proto-progress">
             <span [style.width.%]="progress(goal)"></span>
           </div>
-          <small>{{ goal.targetDate ? (goal.targetDate | date: 'dd/MM/yyyy') : 'Sem prazo alvo' }}</small>
+          <small>{{ goal.targetDate ? goalDateLabel(goal.targetDate) : 'Sem prazo alvo' }}</small>
         </article>
       </div>
 

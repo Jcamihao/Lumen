@@ -7,6 +7,7 @@ import { Task } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { focusField } from '../../../core/utils/focus.utils';
 import { LifeApiService } from '../../../core/services/life-api.service';
+import { formatDayLabel } from '../../../core/utils/date.utils';
 import { ToastService } from '../../../core/services/toast.service';
 
 type TaskStatus = Task['status'];
@@ -325,7 +326,7 @@ export class TasksPageComponent {
 
   protected taskDeadlineLabel(task: Task) {
     if (!task.dueDate) return 'Sem prazo';
-    return new Date(task.dueDate).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+    return formatDayLabel(task.dueDate, { day: '2-digit', month: 'short' });
   }
 
   private reload() {

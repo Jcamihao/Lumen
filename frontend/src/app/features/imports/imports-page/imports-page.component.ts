@@ -12,6 +12,7 @@ import {
 } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
+import { formatDayLabel } from '../../../core/utils/date.utils';
 import { ToastService } from '../../../core/services/toast.service';
 
 @Component({
@@ -298,6 +299,11 @@ export class ImportsPageComponent {
     return status === 'IMPORTED' ? 'success' : 'warning';
   }
 
+  /** Data de compra da nota (so dia), sem deslocar pelo fuso. */
+  protected purchaseDateLabel(value: string) {
+    return formatDayLabel(value);
+  }
+
   protected historyDateLabel(dateStr: string) {
     return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(dateStr));
   }
@@ -314,7 +320,7 @@ export class ImportsPageComponent {
   protected comparisonSummary(comparison: ReceiptImportItemPriceComparison) {
     const merchantName = comparison.cheapestMerchantName || 'estabelecimento anterior';
     const purchaseDate = comparison.cheapestPurchaseDate
-      ? new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(comparison.cheapestPurchaseDate))
+      ? formatDayLabel(comparison.cheapestPurchaseDate)
       : null;
     const bestPrice = this.previewAmount(comparison.lowestUnitPrice);
     const delta = comparison.currentVsLowestAmount;

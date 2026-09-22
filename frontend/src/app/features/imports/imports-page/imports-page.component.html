@@ -260,7 +260,7 @@
                   <span>
                     {{ previewAmount(entry.unitPrice) }}
                     <ng-container *ngIf="entry.purchaseDate">
-                      · {{ entry.purchaseDate | date: 'dd/MM/yyyy' }}
+                      · {{ purchaseDateLabel(entry.purchaseDate) }}
                     </ng-container>
                   </span>
                 </article>

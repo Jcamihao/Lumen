@@ -7,6 +7,7 @@ import { Goal, GoalContribution } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { formatDayLabel } from '../../../core/utils/date.utils';
 import { focusField } from '../../../core/utils/focus.utils';
 
 @Component({
@@ -292,11 +293,11 @@ export class GoalsPageComponent {
 
   protected goalDeadlineLabel(goal: Goal) {
     if (!goal.targetDate) return 'Sem prazo definido';
-    return `Prazo ${new Intl.DateTimeFormat('pt-BR').format(new Date(goal.targetDate))}`;
+    return `Prazo ${formatDayLabel(goal.targetDate)}`;
   }
 
   protected contributionDateLabel(date: string) {
-    return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(date));
+    return formatDayLabel(date, { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
   private reload() {
