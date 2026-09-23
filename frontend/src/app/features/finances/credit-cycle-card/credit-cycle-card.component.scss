@@ -63,62 +63,6 @@
   color: var(--credit-color);
 }
 
-.credit-cycle-card__editor {
-  display: grid;
-  gap: 0.75rem;
-  max-width: 20rem;
-}
-
-.credit-cycle-card__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.credit-cycle-card__due {
-  margin: 0;
-  color: var(--text-medium);
-  font-size: 0.9rem;
-}
-
-.credit-cycle-card__link {
-  border: 0;
-  background: none;
-  padding: 0;
-  margin-left: 0.35rem;
-  color: var(--accent);
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.credit-cycle-card__link:hover {
-  text-decoration: underline;
-}
-
-.credit-cycle-card__scope-toggle label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  font-size: 0.88rem;
-  color: var(--text-medium);
-}
-
-.credit-cycle-card__scope-toggle input[type='checkbox'] {
-  width: 1.1rem;
-  height: 1.1rem;
-  accent-color: var(--accent);
-}
-
-.credit-cycle-card__footer {
-  margin: 0;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .credit-cycle-card__bar > span {
     transition: none;

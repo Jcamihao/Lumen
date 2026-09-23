@@ -1,10 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { Subject, of, throwError } from 'rxjs';
+import { Subject, throwError } from 'rxjs';
 import { CreditCycle } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
-import { ToastService } from '../../../core/services/toast.service';
 import { CreditCycleCardComponent } from './credit-cycle-card.component';
 
 const cycle = (overrides: Partial<CreditCycle> = {}): CreditCycle => ({
@@ -44,11 +43,7 @@ describe('CreditCycleCardComponent', () => {
 
   beforeEach(() => {
     current$ = new Subject<CreditCycle>();
-    api = jasmine.createSpyObj('LifeApiService', [
-      'getCurrentCreditCycle',
-      'setCreditCycleCeiling',
-      'updateCreditCycleSettings',
-    ]);
+    api = jasmine.createSpyObj('LifeApiService', ['getCurrentCreditCycle']);
     api.getCurrentCreditCycle.and.returnValue(current$.asObservable());
 
     TestBed.configureTestingModule({
@@ -57,7 +52,6 @@ describe('CreditCycleCardComponent', () => {
         provideRouter([]),
         { provide: LifeApiService, useValue: api },
         { provide: AuthService, useValue: { currentUser: () => ({ preferredCurrency: 'BRL' }) } },
-        { provide: ToastService, useValue: { success: () => {}, error: () => {} } },
       ],
     });
   });
@@ -68,13 +62,14 @@ describe('CreditCycleCardComponent', () => {
     expect(text()).toContain('Carregando');
   });
 
-  it('sem teto definido, mostra o convite pra definir', () => {
+  it('sem teto definido, mostra o convite pra configurar no Cartão', () => {
     create();
     current$.next(cycle());
     fixture.detectChanges();
 
-    expect(text()).toContain('Defina um teto para este ciclo');
+    expect(text()).toContain('Nenhum teto definido pra este ciclo');
     expect(text()).toContain('06 de set. a 05 de out.');
+    expect(root().querySelector('a[href="/card"]')).not.toBeNull();
   });
 
   it('sugere o teto do ciclo anterior no convite', () => {
@@ -117,114 +112,12 @@ describe('CreditCycleCardComponent', () => {
     expect(bar?.style.width).toBe('100%');
   });
 
-  it('definir o teto envia o valor e atualiza a tela', () => {
-    create();
-    current$.next(cycle());
-    fixture.detectChanges();
-    api.setCreditCycleCeiling.and.returnValue(of(cycle({ ceiling: 1600, remaining: 1600, percentUsed: 0, status: 'ok' })));
-
-    clickText('Definir teto');
-    fixture.detectChanges();
-    const input = root().querySelector<HTMLInputElement>('#credit-ceiling')!;
-    input.value = '1600';
-    input.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
-    clickText('Salvar');
-
-    expect(api.setCreditCycleCeiling).toHaveBeenCalledWith({ ceiling: 1600 });
-    fixture.detectChanges();
-    expect(text()).toContain(money(1600));
-    expect(root().querySelector('#credit-ceiling')).toBeNull();
-  });
-
-  it('editar preenche o campo com o teto atual, nao com o vazio', () => {
-    create();
-    current$.next(cycle({ ceiling: 1600 }));
-    fixture.detectChanges();
-
-    clickText('Editar teto');
-    fixture.detectChanges();
-
-    expect(root().querySelector<HTMLInputElement>('#credit-ceiling')?.value).toBe('1600');
-  });
-
-  it('cancelar fecha o formulario sem enviar nada', () => {
+  it('mostra o link "Configurar cartão" no cabeçalho', () => {
     create();
     current$.next(cycle());
     fixture.detectChanges();
 
-    clickText('Definir teto');
-    fixture.detectChanges();
-    clickText('Cancelar');
-    fixture.detectChanges();
-
-    expect(root().querySelector('#credit-ceiling')).toBeNull();
-    expect(api.setCreditCycleCeiling).not.toHaveBeenCalled();
-  });
-
-  it('teto invalido (0 ou vazio) nao envia', () => {
-    create();
-    current$.next(cycle());
-    fixture.detectChanges();
-    clickText('Definir teto');
-    fixture.detectChanges();
-
-    clickText('Salvar');
-
-    expect(api.setCreditCycleCeiling).not.toHaveBeenCalled();
-  });
-
-  it('dia de vencimento: sem informar mostra o convite; informado mostra o dia', () => {
-    create();
-    current$.next(cycle());
-    fixture.detectChanges();
-    expect(text()).toContain('Vencimento não informado');
-
-    current$.next(cycle({ dueDay: 15 }));
-    fixture.detectChanges();
-    expect(text()).toContain('Vence dia 15');
-  });
-
-  it('salvar o vencimento chama a API certa', () => {
-    create();
-    current$.next(cycle());
-    fixture.detectChanges();
-    api.updateCreditCycleSettings.and.returnValue(of(cycle({ dueDay: 20 })));
-
-    clickText('Informar');
-    fixture.detectChanges();
-    const input = root().querySelector<HTMLInputElement>('#credit-due-day')!;
-    input.value = '20';
-    input.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
-    clickText('Salvar vencimento');
-
-    expect(api.updateCreditCycleSettings).toHaveBeenCalledWith({ dueDay: 20 });
-  });
-
-  it('checkbox de escopo reflete countAllPayments e o clique chama a API certa', () => {
-    create();
-    current$.next(cycle({ countAllPayments: false }));
-    fixture.detectChanges();
-
-    const checkbox = root().querySelector<HTMLInputElement>('.credit-cycle-card__scope-toggle input')!;
-    expect(checkbox.checked).toBeFalse();
-
-    api.updateCreditCycleSettings.and.returnValue(of(cycle({ countAllPayments: true })));
-    checkbox.dispatchEvent(new Event('change'));
-    fixture.detectChanges();
-
-    expect(api.updateCreditCycleSettings).toHaveBeenCalledWith({ countAllPayments: true });
-    expect(root().querySelector<HTMLInputElement>('.credit-cycle-card__scope-toggle input')?.checked).toBeTrue();
-  });
-
-  it('mostra o dia de fechamento e o link para Configurações', () => {
-    create();
-    current$.next(cycle({ closingDay: 5 }));
-    fixture.detectChanges();
-
-    expect(text()).toContain('Fechamento dia 5');
-    expect(root().querySelector('a[href="/settings"]')).not.toBeNull();
+    expect(root().querySelector('a[href="/card"]')?.textContent).toContain('Configurar cartão');
   });
 
   it('erro ao carregar mostra "tentar de novo" e refaz a chamada', () => {
@@ -241,26 +134,5 @@ describe('CreditCycleCardComponent', () => {
     fixture.detectChanges();
 
     expect(text()).toContain(money(500));
-  });
-
-  it('erro ao salvar o teto mostra mensagem e mantem o formulario aberto', () => {
-    create();
-    current$.next(cycle());
-    fixture.detectChanges();
-    api.setCreditCycleCeiling.and.returnValue(throwError(() => new Error('falhou')));
-    const toast = TestBed.inject(ToastService);
-    const errorSpy = spyOn(toast, 'error');
-
-    clickText('Definir teto');
-    fixture.detectChanges();
-    const input = root().querySelector<HTMLInputElement>('#credit-ceiling')!;
-    input.value = '1600';
-    input.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
-    clickText('Salvar');
-    fixture.detectChanges();
-
-    expect(errorSpy).toHaveBeenCalled();
-    expect(root().querySelector('#credit-ceiling')).not.toBeNull();
   });
 });

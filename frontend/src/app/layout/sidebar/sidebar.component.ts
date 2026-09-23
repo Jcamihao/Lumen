@@ -46,6 +46,7 @@ export class SidebarComponent {
     { label: 'Início', icon: 'space_dashboard', route: '/dashboard', exact: true },
     { label: 'Tarefas', icon: 'checklist', route: '/tasks' },
     { label: 'Finanças', icon: 'account_balance_wallet', route: '/finance' },
+    { label: 'Cartão', icon: 'credit_card', route: '/card' },
     { label: 'Metas', icon: 'flag', route: '/goals' },
     { label: 'Selah', icon: 'auto_awesome', route: '/assistant' },
   ];

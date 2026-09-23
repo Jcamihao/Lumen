@@ -1,0 +1,149 @@
+<div class="proto-page">
+  <header class="proto-header">
+    <div class="proto-header__copy">
+      <h2>Cartão</h2>
+      <p>Fechamento, vencimento e teto do ciclo de crédito, tudo num lugar só.</p>
+    </div>
+  </header>
+
+  <!--
+    O fechamento e' do usuario (User.monthClosingDay), nao do ciclo de credito:
+    fica fora do loading/erro do ciclo de proposito, senao uma falha so no
+    /credit-cycle/current travaria a edicao de algo que nao depende dele.
+  -->
+  <article class="proto-surface">
+    <div class="proto-surface__head">
+      <div>
+        <h3>Fechamento</h3>
+        <p>Define o início e o fim do ciclo de crédito, contado pela fatura.</p>
+      </div>
+    </div>
+
+    <form
+      class="proto-surface__body card-page__form"
+      (submit)="$event.preventDefault(); saveClosingDay()"
+      novalidate
+    >
+      <div class="proto-field">
+        <label for="card-closing-day">Dia de fechamento</label>
+        <input id="card-closing-day" type="number" min="1" max="31" [formControl]="closingDayControl" />
+      </div>
+      <div class="card-page__actions">
+        <button type="submit" class="proto-button" [disabled]="savingClosingDay()">
+          {{ savingClosingDay() ? 'Salvando...' : 'Salvar fechamento' }}
+        </button>
+      </div>
+    </form>
+  </article>
+
+  <p class="card-page__hint" *ngIf="loading()">Carregando o ciclo atual...</p>
+
+  <div class="proto-empty" *ngIf="loadFailed()">
+    <strong>Não foi possível carregar o ciclo atual</strong>
+    <p>Confira sua conexão e tente de novo.</p>
+    <button type="button" class="proto-button proto-button--secondary" (click)="load()">Tentar de novo</button>
+  </div>
+
+  <ng-container *ngIf="!loading() && !loadFailed() && cycle() as data">
+    <article class="proto-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Ciclo atual</h3>
+          <p>Ciclo de {{ cycleRangeLabel(data) }}</p>
+        </div>
+      </div>
+
+      <div class="proto-surface__body">
+        <div class="card-page__amount" *ngIf="data.ceiling !== null">
+          <strong>{{ formatMoney(data.remaining ?? 0) }}</strong>
+          <span>ainda disponível no crédito</span>
+        </div>
+        <p class="card-page__status">{{ statusText(data) }}</p>
+      </div>
+    </article>
+
+    <article class="proto-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Vencimento</h3>
+          <p>Só informativo por enquanto; não gera lembrete.</p>
+        </div>
+      </div>
+
+      <form
+        class="proto-surface__body card-page__form"
+        (submit)="$event.preventDefault(); saveDueDay()"
+        novalidate
+      >
+        <div class="proto-field">
+          <label for="card-due-day">Dia do vencimento (opcional)</label>
+          <input id="card-due-day" type="number" min="1" max="31" placeholder="Ex.: 15" [formControl]="dueDayControl" />
+        </div>
+        <div class="card-page__actions">
+          <button type="submit" class="proto-button" [disabled]="saving()">
+            {{ saving() ? 'Salvando...' : 'Salvar vencimento' }}
+          </button>
+        </div>
+      </form>
+    </article>
+
+    <article class="proto-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Teto do ciclo</h3>
+          <p>Quanto você pode gastar no crédito até {{ cycleRangeLabel(data) }} fechar.</p>
+        </div>
+      </div>
+
+      <form
+        class="proto-surface__body card-page__form"
+        (submit)="$event.preventDefault(); saveCeiling()"
+        novalidate
+      >
+        <div class="proto-field">
+          <label for="card-ceiling">Teto deste ciclo</label>
+          <input
+            id="card-ceiling"
+            type="number"
+            inputmode="decimal"
+            min="0.01"
+            step="0.01"
+            placeholder="Ex.: 1600"
+            [formControl]="ceilingControl"
+          />
+          <small class="proto-field__hint" *ngIf="data.previousCeiling !== null">
+            No ciclo passado era {{ formatMoney(data.previousCeiling) }}.
+          </small>
+        </div>
+        <div class="card-page__actions">
+          <button type="submit" class="proto-button" [disabled]="saving()">
+            {{ saving() ? 'Salvando...' : 'Salvar teto' }}
+          </button>
+        </div>
+      </form>
+    </article>
+
+    <article class="proto-surface">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Escopo do teto</h3>
+          <p>Decide se o teto conta só o crédito, ou também débito e PIX.</p>
+        </div>
+      </div>
+
+      <div class="proto-surface__body">
+        <div class="proto-field proto-field--full card-page__scope-toggle">
+          <label>
+            <input
+              type="checkbox"
+              [checked]="data.countAllPayments"
+              [disabled]="saving()"
+              (change)="toggleCountAllPayments()"
+            />
+            Considerar débito e PIX também (não só crédito)
+          </label>
+        </div>
+      </div>
+    </article>
+  </ng-container>
+</div>

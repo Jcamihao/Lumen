@@ -127,6 +127,13 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'card',
+        loadComponent: () =>
+          import('./features/card/card-page/card-page.component').then(
+            (module) => module.CardPageComponent,
+          ),
+      },
+      {
         path: 'assistant',
         loadComponent: () =>
           import('./features/assistant/assistant-page/assistant-page.component').then(

@@ -4,6 +4,8 @@
       <h3>Teto de crédito</h3>
       <p>Quanto você ainda pode gastar no crédito neste ciclo, contado pelo fechamento da fatura.</p>
     </div>
+
+    <a class="proto-button proto-button--secondary" routerLink="/card">Configurar cartão</a>
   </div>
 
   <div class="proto-surface__body">
@@ -40,96 +42,15 @@
 
       <ng-template #noCeiling>
         <div class="proto-empty">
-          <strong>Defina um teto para este ciclo</strong>
+          <strong>Nenhum teto definido pra este ciclo</strong>
           <p>
-            Quanto você pode gastar no crédito até {{ cycleRangeLabel(data) }} fechar.
+            Defina em <a routerLink="/card">Configurar cartão</a>.
             <ng-container *ngIf="data.previousCeiling as previous">
               No ciclo passado era {{ formatMoney(previous) }}.
             </ng-container>
           </p>
         </div>
       </ng-template>
-
-      <form
-        *ngIf="editingCeiling(); else ceilingActions"
-        class="credit-cycle-card__editor"
-        (submit)="$event.preventDefault(); saveCeiling()"
-        novalidate
-      >
-        <div class="proto-field">
-          <label for="credit-ceiling">Teto deste ciclo</label>
-          <input
-            id="credit-ceiling"
-            type="number"
-            inputmode="decimal"
-            min="0.01"
-            step="0.01"
-            placeholder="Ex.: 1600"
-            [formControl]="ceilingControl"
-          />
-        </div>
-        <div class="credit-cycle-card__actions">
-          <button type="submit" class="proto-button" [disabled]="saving()">
-            {{ saving() ? 'Salvando...' : 'Salvar' }}
-          </button>
-          <button type="button" class="proto-button proto-button--secondary" [disabled]="saving()" (click)="cancelEditCeiling()">
-            Cancelar
-          </button>
-        </div>
-      </form>
-
-      <ng-template #ceilingActions>
-        <div class="credit-cycle-card__actions">
-          <button type="button" class="proto-button proto-button--secondary" (click)="startEditCeiling()">
-            {{ data.ceiling !== null ? 'Editar teto' : 'Definir teto' }}
-          </button>
-        </div>
-      </ng-template>
-
-      <form
-        *ngIf="editingDueDay(); else dueDayActions"
-        class="credit-cycle-card__editor"
-        (submit)="$event.preventDefault(); saveDueDay()"
-        novalidate
-      >
-        <div class="proto-field">
-          <label for="credit-due-day">Dia do vencimento (opcional)</label>
-          <input id="credit-due-day" type="number" min="1" max="31" placeholder="Ex.: 15" [formControl]="dueDayControl" />
-        </div>
-        <div class="credit-cycle-card__actions">
-          <button type="submit" class="proto-button proto-button--secondary" [disabled]="saving()">
-            {{ saving() ? 'Salvando...' : 'Salvar vencimento' }}
-          </button>
-          <button type="button" class="proto-button proto-button--secondary" [disabled]="saving()" (click)="cancelEditDueDay()">
-            Cancelar
-          </button>
-        </div>
-      </form>
-
-      <ng-template #dueDayActions>
-        <p class="credit-cycle-card__due">
-          {{ data.dueDay ? 'Vence dia ' + data.dueDay + '.' : 'Vencimento não informado.' }}
-          <button type="button" class="credit-cycle-card__link" (click)="startEditDueDay()">
-            {{ data.dueDay ? 'Editar' : 'Informar' }}
-          </button>
-        </p>
-      </ng-template>
-
-      <div class="proto-field proto-field--full credit-cycle-card__scope-toggle">
-        <label>
-          <input
-            type="checkbox"
-            [checked]="data.countAllPayments"
-            [disabled]="saving()"
-            (change)="toggleCountAllPayments()"
-          />
-          Considerar débito e PIX também (não só crédito)
-        </label>
-      </div>
-
-      <p class="credit-cycle-card__footer">
-        Fechamento dia {{ data.closingDay }} · <a routerLink="/settings">alterar em Configurações</a>
-      </p>
     </div>
   </div>
 </article>

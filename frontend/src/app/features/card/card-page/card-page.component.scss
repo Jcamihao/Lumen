@@ -1,0 +1,62 @@
+:host {
+  display: block;
+}
+
+.proto-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.card-page__hint {
+  margin: 0;
+  color: var(--text-medium);
+}
+
+.card-page__amount {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.card-page__amount strong {
+  font-size: 1.6rem;
+  color: var(--text-strong);
+}
+
+.card-page__amount span {
+  color: var(--text-medium);
+}
+
+.card-page__status {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  color: var(--text-medium);
+}
+
+.card-page__form {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 20rem;
+}
+
+.card-page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.card-page__scope-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-medium);
+}
+
+.card-page__scope-toggle input[type='checkbox'] {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--accent);
+}
