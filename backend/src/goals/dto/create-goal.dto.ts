@@ -20,8 +20,11 @@ export class CreateGoalDto {
   @IsString()
   description?: string;
 
+  /** Ausente/null = meta sem valor-alvo (cofrinho sem proposito, ex.: reserva de emergencia). */
+  @IsOptional()
   @IsNumber()
-  targetAmount!: number;
+  @Min(0.01)
+  targetAmount?: number | null;
 
   @IsOptional()
   @IsNumber()

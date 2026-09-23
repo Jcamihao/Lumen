@@ -290,8 +290,11 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
     for (const goal of dueGoals) {
       const amount = Number(goal.recurringAmount);
       const nextCurrentAmount = Number(goal.currentAmount) + amount;
+      // Meta sem alvo (cofrinho sem proposito) nunca vira ACHIEVED sozinha.
       const nextStatus =
-        nextCurrentAmount >= Number(goal.targetAmount) ? GoalStatus.ACHIEVED : goal.status;
+        goal.targetAmount !== null && nextCurrentAmount >= Number(goal.targetAmount)
+          ? GoalStatus.ACHIEVED
+          : goal.status;
 
       await this.prisma.goal.update({
         where: { id: goal.id },
@@ -368,7 +371,7 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
         user: { name: string; preferredCurrency: string };
         tasks: { overdueCount: number };
         finances: { balance: number; monthlyExpenses: number; monthlyIncome: number };
-        goals: { title: string; currentAmount: number; targetAmount: number }[];
+        goals: { title: string; currentAmount: number; targetAmount: number | null }[];
       };
 
       await this.mailService.sendWeeklyDigestEmail({

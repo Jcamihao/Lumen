@@ -807,6 +807,9 @@ export class InsightsService {
     const { goals, now } = context;
 
     const stalledGoals = goals.filter((goal) => {
+      // Meta sem alvo nao tem "progresso" pra ficar atras: nunca conta como estagnada.
+      if (goal.targetAmount === null) return false;
+
       const targetAmount = Number(goal.targetAmount);
       const currentAmount = Number(goal.currentAmount);
       const progress = targetAmount > 0 ? currentAmount / targetAmount : 0;

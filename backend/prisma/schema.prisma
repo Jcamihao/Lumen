@@ -270,7 +270,9 @@ model Goal {
   userId          String
   title           String
   description     String?
-  targetAmount    Decimal       @db.Decimal(12, 2)
+  /// Null = "cofrinho" sem proposito definido (ex.: reserva de emergencia).
+  /// Uma meta sem alvo nunca vira ACHIEVED sozinha (nao ha linha de chegada).
+  targetAmount    Decimal?      @db.Decimal(12, 2)
   currentAmount   Decimal       @default(0) @db.Decimal(12, 2)
   targetDate      DateTime?
   status          GoalStatus    @default(ACTIVE)

@@ -238,7 +238,9 @@ export class DashboardPageComponent {
     return 'baixo';
   }
 
+  /** Meta sem alvo (cofrinho sem propósito) não tem "%": a tela esconde a barra nesse caso. */
   protected progress(goal: Goal) {
+    if (goal.targetAmount === null) return 0;
     return Math.min(Math.round((goal.currentAmount / goal.targetAmount) * 100), 100);
   }
 
@@ -441,21 +443,15 @@ export class DashboardPageComponent {
     }).format(data.finances.balance)}. A projeção do mês aponta ${delta}.`;
   }
 
-  protected totalGoalCurrent(goals: Goal[]) {
-    return goals.reduce((total, goal) => total + goal.currentAmount, 0);
-  }
-
-  protected totalGoalTarget(goals: Goal[]) {
-    return goals.reduce((total, goal) => total + goal.targetAmount, 0);
-  }
-
+  // Meta sem alvo nao tem "%": fica fora da media (senao puxaria pra baixo injustamente).
   protected averageGoalProgress(goals: Goal[]) {
-    if (!goals.length) {
+    const withTarget = goals.filter((goal) => goal.targetAmount !== null);
+    if (!withTarget.length) {
       return 0;
     }
 
-    const total = goals.reduce((sum, goal) => sum + this.progress(goal), 0);
-    return Math.round(total / goals.length);
+    const total = withTarget.reduce((sum, goal) => sum + this.progress(goal), 0);
+    return Math.round(total / withTarget.length);
   }
 
   protected dailyScore(data: DashboardSummary) {

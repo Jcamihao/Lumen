@@ -19,6 +19,10 @@ describe('GoalsService', () => {
     const prisma = {
       goal: {
         findFirst: jest.fn().mockResolvedValue(existing),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockImplementation(({ data }: any) =>
+          Promise.resolve({ id: 'goal-new', ...data }),
+        ),
         update: jest.fn().mockImplementation(({ data }: any) =>
           Promise.resolve({ ...(existing as object), ...data }),
         ),
@@ -31,6 +35,87 @@ describe('GoalsService', () => {
 
     return { service, prisma, lifeEngine };
   };
+
+  describe('create', () => {
+    it('sem targetAmount, cria a meta como "cofrinho" sem valor-alvo (nao vira 0)', async () => {
+      const { service, prisma } = build();
+
+      await service.create('user-1', { title: 'Reserva de emergência' } as any);
+
+      expect(prisma.goal.create.mock.calls[0][0].data.targetAmount).toBeUndefined();
+    });
+
+    it('targetAmount null explicito (nao so ausente) tambem cria sem valor-alvo, sem quebrar', async () => {
+      const { service, prisma } = build();
+
+      await service.create('user-1', { title: 'Reserva', targetAmount: null } as any);
+
+      expect(prisma.goal.create.mock.calls[0][0].data.targetAmount).toBeUndefined();
+    });
+
+    it('com targetAmount, grava o Decimal normalmente', async () => {
+      const { service, prisma } = build();
+
+      await service.create('user-1', { title: 'Viagem', targetAmount: 5000 } as any);
+
+      expect(Number(prisma.goal.create.mock.calls[0][0].data.targetAmount)).toBe(5000);
+    });
+
+    it('meta sem alvo criada volta com targetAmount null na resposta (nao 0)', async () => {
+      const { service } = build();
+
+      const result = await service.create('user-1', { title: 'Reserva' } as any);
+
+      expect(result.targetAmount).toBeNull();
+    });
+  });
+
+  describe('update', () => {
+    it('null limpa o valor-alvo (meta vira cofrinho sem proposito)', async () => {
+      const { service, prisma } = build();
+
+      await service.update('user-1', 'goal-1', { targetAmount: null } as any);
+
+      expect(prisma.goal.update.mock.calls[0][0].data.targetAmount).toBeNull();
+    });
+
+    it('nao informado, nao mexe no valor-alvo existente', async () => {
+      const { service, prisma } = build();
+
+      await service.update('user-1', 'goal-1', { title: 'Viagem 2' } as any);
+
+      expect(prisma.goal.update.mock.calls[0][0].data.targetAmount).toBeUndefined();
+    });
+  });
+
+  describe('contribute', () => {
+    it('meta com alvo: aporte que atinge o valor marca ACHIEVED', async () => {
+      const { service, prisma } = build(stored({ currentAmount: decimal(2900) }));
+
+      await service.contribute('user-1', 'goal-1', { amount: 200 } as any);
+
+      expect(prisma.goal.update.mock.calls[0][0].data.status).toBe(GoalStatus.ACHIEVED);
+    });
+
+    it('meta SEM alvo: aporte grande nao marca ACHIEVED sozinho', async () => {
+      const { service, prisma } = build(stored({ targetAmount: null, currentAmount: decimal(0) }));
+
+      await service.contribute('user-1', 'goal-1', { amount: 999999 } as any);
+
+      expect(prisma.goal.update.mock.calls[0][0].data.status).toBe(GoalStatus.ACTIVE);
+    });
+  });
+
+  describe('list', () => {
+    it('meta sem alvo lista com targetAmount null (nao 0)', async () => {
+      const { service, prisma } = build();
+      prisma.goal.findMany.mockResolvedValue([stored({ targetAmount: null })]);
+
+      const [result] = await service.list('user-1');
+
+      expect(result.targetAmount).toBeNull();
+    });
+  });
 
   describe('withdraw', () => {
     it('diminui o saldo guardado e gera uma transacao INCOME (o dinheiro volta pro livre)', async () => {
@@ -119,6 +204,17 @@ describe('GoalsService', () => {
         NotFoundException,
       );
       expect(prisma.goal.update).not.toHaveBeenCalled();
+    });
+
+    it('sacar de meta sem alvo funciona normalmente (sem crashar no calculo do status)', async () => {
+      const { service, prisma } = build(
+        stored({ targetAmount: null, currentAmount: decimal(500) }),
+      );
+
+      await service.withdraw('user-1', 'goal-1', { amount: 200 } as any);
+
+      expect(Number(prisma.goal.update.mock.calls[0][0].data.currentAmount)).toBe(300);
+      expect(prisma.goal.update.mock.calls[0][0].data.status).toBe(GoalStatus.ACTIVE);
     });
   });
 });

@@ -460,7 +460,10 @@ export class UsersService {
         })),
         goals: goals.map((goal) => ({
           ...goal,
-          targetAmount: Number(goal.targetAmount),
+          targetAmount:
+            goal.targetAmount === null || goal.targetAmount === undefined
+              ? null
+              : Number(goal.targetAmount),
           currentAmount: Number(goal.currentAmount),
         })),
         reminders: reminders,

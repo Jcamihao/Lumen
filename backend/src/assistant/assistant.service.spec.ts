@@ -338,6 +338,140 @@ describe("AssistantService", () => {
       expect(response.simulations.map((sim) => sim.id)).toContain("expense-trim-10");
       expect(response.simulations.map((sim) => sim.id)).toContain("debt-8x");
     });
+
+    it("meta com alvo definido: sugere aporte tatico", async () => {
+      const service = new AssistantService(
+        buildDashboardService(),
+        buildConfigService(),
+        buildPrismaService({
+          privacyNoticeAcceptedAt: null,
+          aiAssistantEnabled: false,
+          aiAssistantConsentAt: null,
+          transactions: [],
+        }),
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+      );
+
+      const response = await service.ask("user-1", "O que eu faço com minha grana esse mês?");
+
+      expect(response.simulations.map((sim) => sim.id)).toContain("goal-contribution");
+    });
+
+    it("meta SEM alvo definido (cofrinho sem propósito): nunca sugere aporte tático (não há 'quanto falta')", async () => {
+      const service = new AssistantService(
+        buildDashboardService({
+          goals: [
+            {
+              title: "Reserva de emergência",
+              currentAmount: 500,
+              targetAmount: null,
+              status: "ACTIVE",
+              targetDate: null,
+            },
+          ],
+        }),
+        buildConfigService(),
+        buildPrismaService({
+          privacyNoticeAcceptedAt: null,
+          aiAssistantEnabled: false,
+          aiAssistantConsentAt: null,
+          transactions: [],
+        }),
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+      );
+
+      const response = await service.ask("user-1", "O que eu faço com minha grana esse mês?");
+
+      expect(response.simulations.map((sim) => sim.id)).not.toContain("goal-contribution");
+    });
+  });
+
+  describe("applyAction — create_goal", () => {
+    it("sem targetAmount no payload, cria a meta sem valor-alvo (cofrinho sem propósito)", async () => {
+      const goalsService = { create: jest.fn().mockResolvedValue({ id: "goal-1" }) };
+      const service = new AssistantService(
+        buildDashboardService(),
+        buildConfigService(),
+        buildPrismaService({
+          privacyNoticeAcceptedAt: null,
+          aiAssistantEnabled: false,
+          aiAssistantConsentAt: null,
+          transactions: [],
+        }),
+        { create: jest.fn() } as any,
+        goalsService as any,
+        { create: jest.fn() } as any,
+      );
+
+      await service.applyAction("user-1", {
+        kind: "create_goal",
+        title: "Reserva de emergência",
+        payload: {},
+      } as any);
+
+      expect(goalsService.create).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({ title: "Reserva de emergência", targetAmount: undefined }),
+      );
+    });
+
+    it("com targetAmount valido no payload, continua criando com o valor", async () => {
+      const goalsService = { create: jest.fn().mockResolvedValue({ id: "goal-1" }) };
+      const service = new AssistantService(
+        buildDashboardService(),
+        buildConfigService(),
+        buildPrismaService({
+          privacyNoticeAcceptedAt: null,
+          aiAssistantEnabled: false,
+          aiAssistantConsentAt: null,
+          transactions: [],
+        }),
+        { create: jest.fn() } as any,
+        goalsService as any,
+        { create: jest.fn() } as any,
+      );
+
+      await service.applyAction("user-1", {
+        kind: "create_goal",
+        title: "Viagem",
+        payload: { targetAmount: 5000 },
+      } as any);
+
+      expect(goalsService.create).toHaveBeenCalledWith(
+        "user-1",
+        expect.objectContaining({ targetAmount: 5000 }),
+      );
+    });
+
+    it("com targetAmount invalido (negativo ou zero) no payload, recusa", async () => {
+      const goalsService = { create: jest.fn() };
+      const service = new AssistantService(
+        buildDashboardService(),
+        buildConfigService(),
+        buildPrismaService({
+          privacyNoticeAcceptedAt: null,
+          aiAssistantEnabled: false,
+          aiAssistantConsentAt: null,
+          transactions: [],
+        }),
+        { create: jest.fn() } as any,
+        goalsService as any,
+        { create: jest.fn() } as any,
+      );
+
+      await expect(
+        service.applyAction("user-1", {
+          kind: "create_goal",
+          title: "Viagem",
+          payload: { targetAmount: -10 },
+        } as any),
+      ).rejects.toThrow();
+      expect(goalsService.create).not.toHaveBeenCalled();
+    });
   });
 
   describe("proactive signals", () => {

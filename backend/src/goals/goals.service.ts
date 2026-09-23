@@ -31,7 +31,10 @@ export class GoalsService {
         userId,
         title: dto.title,
         description: dto.description,
-        targetAmount: new Prisma.Decimal(dto.targetAmount),
+        targetAmount:
+          dto.targetAmount === null || dto.targetAmount === undefined
+            ? undefined
+            : new Prisma.Decimal(dto.targetAmount),
         currentAmount: new Prisma.Decimal(dto.currentAmount ?? 0),
         targetDate: dto.targetDate ? new Date(dto.targetDate) : undefined,
         status: dto.status ?? GoalStatus.ACTIVE,
@@ -54,7 +57,11 @@ export class GoalsService {
         title: dto.title,
         description: dto.description,
         targetAmount:
-          dto.targetAmount !== undefined ? new Prisma.Decimal(dto.targetAmount) : undefined,
+          dto.targetAmount === null
+            ? null
+            : dto.targetAmount !== undefined
+              ? new Prisma.Decimal(dto.targetAmount)
+              : undefined,
         currentAmount:
           dto.currentAmount !== undefined ? new Prisma.Decimal(dto.currentAmount) : undefined,
         targetDate:
@@ -81,8 +88,11 @@ export class GoalsService {
   async contribute(userId: string, id: string, dto: ContributeGoalDto) {
     const goal = await this.findGoal(userId, id);
     const nextCurrentAmount = Number(goal.currentAmount) + dto.amount;
+    // Meta sem alvo (cofrinho sem proposito) nunca vira ACHIEVED sozinha: nao ha linha de chegada.
     const nextStatus =
-      nextCurrentAmount >= Number(goal.targetAmount) ? GoalStatus.ACHIEVED : goal.status;
+      goal.targetAmount !== null && nextCurrentAmount >= Number(goal.targetAmount)
+        ? GoalStatus.ACHIEVED
+        : goal.status;
 
     const updatedGoal = await this.prisma.goal.update({
       where: { id },
@@ -145,8 +155,12 @@ export class GoalsService {
 
     const nextCurrentAmount = currentAmount - dto.amount;
     // Um saque pode tirar a meta de "concluida" se ela cair abaixo do alvo de novo.
+    // (Meta sem alvo nunca chega em ACHIEVED por contribute(), entao esse ramo nao
+    // dispara pra ela, mas o guard fica explicito por seguranca/tipos.)
     const nextStatus =
-      goal.status === GoalStatus.ACHIEVED && nextCurrentAmount < Number(goal.targetAmount)
+      goal.status === GoalStatus.ACHIEVED &&
+      goal.targetAmount !== null &&
+      nextCurrentAmount < Number(goal.targetAmount)
         ? GoalStatus.ACTIVE
         : goal.status;
 
@@ -208,7 +222,7 @@ export class GoalsService {
   private serializeGoal(goal: any) {
     return {
       ...goal,
-      targetAmount: Number(goal.targetAmount),
+      targetAmount: goal.targetAmount === null || goal.targetAmount === undefined ? null : Number(goal.targetAmount),
       currentAmount: Number(goal.currentAmount),
       recurringAmount: goal.recurringAmount === null ? null : Number(goal.recurringAmount),
     };

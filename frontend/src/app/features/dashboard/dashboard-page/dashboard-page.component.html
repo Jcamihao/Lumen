@@ -335,9 +335,10 @@
         <article class="proto-list-item home-goal" *ngFor="let goal of data.goals | slice:0:3">
           <div class="home-goal__top">
             <strong>{{ goal.title }}</strong>
-            <span>{{ progress(goal) }}%</span>
+            <span *ngIf="goal.targetAmount !== null; else homeGoalNoTarget">{{ progress(goal) }}%</span>
+            <ng-template #homeGoalNoTarget><span>Sem alvo</span></ng-template>
           </div>
-          <div class="proto-progress">
+          <div class="proto-progress" *ngIf="goal.targetAmount !== null">
             <span [style.width.%]="progress(goal)"></span>
           </div>
           <small>{{ goal.targetDate ? goalDateLabel(goal.targetDate) : 'Sem prazo alvo' }}</small>

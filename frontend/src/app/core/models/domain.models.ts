@@ -143,7 +143,8 @@ export type Goal = {
   id: string;
   title: string;
   description?: string | null;
-  targetAmount: number;
+  /** null = "cofrinho" sem propósito definido (ex.: reserva de emergência). */
+  targetAmount: number | null;
   currentAmount: number;
   targetDate?: string | null;
   status: "PLANNED" | "ACTIVE" | "ACHIEVED" | "PAUSED";

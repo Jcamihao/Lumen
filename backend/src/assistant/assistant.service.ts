@@ -59,7 +59,8 @@ type DashboardSummary = {
   goals: Array<{
     title: string;
     currentAmount: number;
-    targetAmount: number;
+    /** null = cofrinho sem valor-alvo definido. */
+    targetAmount: number | null;
     status: string;
     targetDate?: Date | string | null;
   }>;
@@ -687,9 +688,10 @@ export class AssistantService {
       answer,
       highlights: this.ensureHighlights([
         ...criticalInsights.map((insight) => insight.message),
-        ...goals.map(
-          (goal) =>
-            `Meta ${goal.title}: ${this.goalProgress(goal)}% concluida.`,
+        ...goals.map((goal) =>
+          goal.targetAmount === null
+            ? `Meta ${goal.title}: ${this.formatCurrency(goal.currentAmount, currency)} guardados (sem valor-alvo).`
+            : `Meta ${goal.title}: ${this.goalProgress(goal)}% concluida.`,
         ),
       ]),
       suggestedActions: this.ensureActions([
@@ -1193,7 +1195,8 @@ export class AssistantService {
       });
     }
 
-    if (topGoal) {
+    // Meta sem alvo nao tem "quanto falta": sem simulacao de aporte tatico pra ela.
+    if (topGoal && topGoal.targetAmount !== null) {
       const remaining = Math.max(topGoal.targetAmount - topGoal.currentAmount, 0);
       const contribution = Math.min(Math.max(Math.round(forecastBalance * 0.15), 0), remaining);
 
@@ -1301,7 +1304,9 @@ export class AssistantService {
         : "Nao ha alerta critico aberto neste momento.",
       `Saldo atual em ${this.formatCurrency(summary.finances.balance, currency)} com previsao de ${this.formatCurrency(Number(summary.forecast.predictedBalance ?? 0), currency)} e risco ${String(summary.forecast.riskLevel).toLowerCase()}.`,
       nextGoal
-        ? `Meta em foco: ${this.sanitizeExternalText(nextGoal.title)}, ${this.goalProgress(nextGoal)}% concluida.`
+        ? nextGoal.targetAmount === null
+          ? `Meta em foco: ${this.sanitizeExternalText(nextGoal.title)}, ${this.formatCurrency(nextGoal.currentAmount, currency)} guardados (sem valor-alvo).`
+          : `Meta em foco: ${this.sanitizeExternalText(nextGoal.title)}, ${this.goalProgress(nextGoal)}% concluida.`
         : "Nenhuma meta ativa precisa de destaque imediato agora.",
     ].join(" ");
   }
@@ -1333,7 +1338,7 @@ export class AssistantService {
       this.describeDecisionAnchors(openTasks, recentTransactions, goals, summary.insights, currency),
       this.describeTasks(openTasks, currency),
       this.describeTransactions(recentTransactions, currency),
-      this.describeGoals(goals),
+      this.describeGoals(goals, currency),
       this.describeInsights(summary.insights),
       this.describeReminders(reminders),
       this.describeNotifications(notifications),
@@ -1412,16 +1417,19 @@ export class AssistantService {
     title: string | undefined,
     payload: Record<string, unknown>,
   ): CreateGoalDto {
-    const targetAmount = Number(payload.targetAmount);
+    // Ausente/null = cofrinho sem proposito definido (ex.: reserva de emergencia),
+    // permitido de proposito. Quando o Selah manda um valor, ele precisa ser valido.
+    const hasTargetAmount = payload.targetAmount !== undefined && payload.targetAmount !== null;
+    const targetAmount = hasTargetAmount ? this.optionalNumber(payload.targetAmount) : null;
 
-    if (!Number.isFinite(targetAmount) || targetAmount <= 0) {
-      throw new BadRequestException("A meta sugerida pelo assistente nao tem valor-alvo valido.");
+    if (hasTargetAmount && (targetAmount === null || targetAmount <= 0)) {
+      throw new BadRequestException("O valor-alvo da meta sugerida pelo assistente e invalido.");
     }
 
     return {
       title: String(payload.title || title || "Nova meta do Selah").trim(),
       description: this.optionalString(payload.description),
-      targetAmount,
+      targetAmount: targetAmount ?? undefined,
       currentAmount: this.optionalNumber(payload.currentAmount) ?? 0,
       targetDate: this.optionalString(payload.targetDate),
       status: undefined,
@@ -1575,7 +1583,7 @@ export class AssistantService {
     return summary.user.preferredCurrency || "BRL";
   }
 
-  private goalProgress(goal: { currentAmount: number; targetAmount: number }) {
+  private goalProgress(goal: { currentAmount: number; targetAmount: number | null }) {
     const target = Number(goal.targetAmount || 0);
     const current = Number(goal.currentAmount || 0);
 
@@ -1951,7 +1959,7 @@ export class AssistantService {
     return age >= 0 ? age : null;
   }
 
-  private describeGoals(goals: DashboardSummary["goals"]) {
+  private describeGoals(goals: DashboardSummary["goals"], currency: string) {
     if (!goals.length) {
       return "Metas em andamento: nenhuma meta ativa foi enviada.";
     }
@@ -1961,7 +1969,12 @@ export class AssistantService {
         const targetDate = goal.targetDate
           ? `data alvo ${this.formatDate(goal.targetDate)}`
           : "sem data alvo";
-        return `${this.sanitizeExternalText(goal.title)} | status ${this.formatEnumLabel(goal.status)} | progresso ${this.goalProgress(goal)}% | ${targetDate}`;
+        // Meta sem valor-alvo (cofrinho sem proposito): nao ha "progresso %" real.
+        const progress =
+          goal.targetAmount === null
+            ? `guardado ${this.formatCurrency(goal.currentAmount, currency)} (sem valor-alvo)`
+            : `progresso ${this.goalProgress(goal)}%`;
+        return `${this.sanitizeExternalText(goal.title)} | status ${this.formatEnumLabel(goal.status)} | ${progress} | ${targetDate}`;
       })
       .join("\n- ")}`;
   }
@@ -2018,7 +2031,9 @@ export class AssistantService {
         ? `Entrada concreta disponível: ${this.sanitizeExternalText(latestIncome.description)}, ${this.formatCurrency(Number(latestIncome.amount), currency)} em ${this.formatDate(latestIncome.date)}.`
         : null,
       primaryGoal
-        ? `Meta concreta para conectar na resposta: ${this.sanitizeExternalText(primaryGoal.title)}, ${this.goalProgress(primaryGoal)}% concluida.`
+        ? primaryGoal.targetAmount === null
+          ? `Meta concreta para conectar na resposta: ${this.sanitizeExternalText(primaryGoal.title)}, ${this.formatCurrency(primaryGoal.currentAmount, currency)} guardados (sem valor-alvo).`
+          : `Meta concreta para conectar na resposta: ${this.sanitizeExternalText(primaryGoal.title)}, ${this.goalProgress(primaryGoal)}% concluida.`
         : null,
       priorityInsight
         ? `Insight mais acionável no momento: ${this.sanitizeExternalText(priorityInsight.message)}.`

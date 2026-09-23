@@ -98,7 +98,7 @@ type WeeklyDigestEmailInput = {
   balance: number;
   monthlyExpenses: number;
   monthlyIncome: number;
-  goals: { title: string; currentAmount: number; targetAmount: number }[];
+  goals: { title: string; currentAmount: number; targetAmount: number | null }[];
   unsubscribe?: UnsubscribeLinks;
 };
 
@@ -355,6 +355,9 @@ export class MailService {
         : "Nenhuma tarefa atrasada.";
 
     const goalLines = input.goals.slice(0, 3).map((goal) => {
+      if (goal.targetAmount === null) {
+        return `${goal.title}: ${money(goal.currentAmount)} guardados (sem alvo definido)`;
+      }
       const pct = goal.targetAmount > 0
         ? Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100))
         : 0;

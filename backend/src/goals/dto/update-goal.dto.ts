@@ -21,9 +21,11 @@ export class UpdateGoalDto {
   @IsString()
   description?: string;
 
+  /** null remove o valor-alvo (meta vira cofrinho sem proposito definido). */
   @IsOptional()
   @IsNumber()
-  targetAmount?: number;
+  @Min(0.01)
+  targetAmount?: number | null;
 
   @IsOptional()
   @IsNumber()

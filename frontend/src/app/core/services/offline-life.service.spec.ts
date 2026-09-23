@@ -202,4 +202,44 @@ describe('OfflineLifeService', () => {
       expect(service.getQueueSnapshot().length).toBe(0);
     });
   });
+
+  describe('queueGoalCreate', () => {
+    it('sem targetAmount, cria localmente como cofrinho sem alvo (nao vira 0)', () => {
+      const offlineGoal = service.queueGoalCreate({ title: 'Reserva de emergência' });
+
+      expect(offlineGoal.targetAmount).toBeNull();
+    });
+  });
+
+  describe('queueGoalContribute', () => {
+    it('meta SEM alvo: aporte grande nao marca ACHIEVED sozinho', () => {
+      const offlineGoal = service.queueGoalCreate({ title: 'Reserva de emergência', currentAmount: 0 });
+
+      const updated = service.queueGoalContribute(offlineGoal.id, { amount: 999999 });
+
+      expect(updated?.status).not.toBe('ACHIEVED');
+    });
+
+    it('meta com alvo: aporte que atinge o valor marca ACHIEVED (comportamento existente)', () => {
+      const offlineGoal = service.queueGoalCreate({
+        title: 'Viagem',
+        targetAmount: 1000,
+        currentAmount: 900,
+      });
+
+      const updated = service.queueGoalContribute(offlineGoal.id, { amount: 200 });
+
+      expect(updated?.status).toBe('ACHIEVED');
+    });
+  });
+
+  describe('queueGoalUpdate (patch)', () => {
+    it('targetAmount: null limpa o valor-alvo local (meta vira cofrinho sem proposito)', () => {
+      const offlineGoal = service.queueGoalCreate({ title: 'Viagem', targetAmount: 1000 });
+
+      const updated = service.queueGoalUpdate(offlineGoal.id, { targetAmount: null });
+
+      expect(updated?.targetAmount).toBeNull();
+    });
+  });
 });

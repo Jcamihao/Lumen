@@ -85,8 +85,8 @@
           </div>
 
           <div class="proto-field">
-            <label for="goal-target">Valor alvo</label>
-            <input id="goal-target" type="number" min="1" formControlName="targetAmount" />
+            <label for="goal-target">Valor alvo (opcional)</label>
+            <input id="goal-target" type="number" min="1" placeholder="Deixe em branco pra um cofrinho sem alvo" formControlName="targetAmount" />
           </div>
 
           <div class="proto-field">
@@ -156,22 +156,30 @@
               </span>
             </div>
 
-            <div class="proto-progress">
+            <div class="proto-progress" *ngIf="goal.targetAmount !== null">
               <span [style.width.%]="progress(goal)"></span>
             </div>
 
             <div class="goal-card__badges">
-              <span class="proto-chip" [attr.data-tone]="goalProgressTone(goal)">
-                {{ progress(goal) }}%
-              </span>
-              <span class="proto-chip">
-                {{ goal.currentAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
-                de
-                {{ goal.targetAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
-              </span>
-              <span class="proto-chip" [attr.data-tone]="remainingAmount(goal) === 0 ? 'success' : 'accent'">
-                Faltam {{ remainingAmount(goal) | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
-              </span>
+              <ng-container *ngIf="goal.targetAmount !== null; else goalNoTargetBadges">
+                <span class="proto-chip" [attr.data-tone]="goalProgressTone(goal)">
+                  {{ progress(goal) }}%
+                </span>
+                <span class="proto-chip">
+                  {{ goal.currentAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+                  de
+                  {{ goal.targetAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+                </span>
+                <span class="proto-chip" [attr.data-tone]="remainingAmount(goal) === 0 ? 'success' : 'accent'">
+                  Faltam {{ remainingAmount(goal) | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+                </span>
+              </ng-container>
+              <ng-template #goalNoTargetBadges>
+                <span class="proto-chip">
+                  {{ goal.currentAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }} guardados
+                </span>
+                <span class="proto-chip">Sem valor-alvo</span>
+              </ng-template>
               <span class="proto-tag">{{ goalDeadlineLabel(goal) }}</span>
             </div>
 

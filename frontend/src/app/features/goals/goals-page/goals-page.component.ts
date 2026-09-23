@@ -35,10 +35,12 @@ export class GoalsPageComponent {
   protected readonly completedGoals = computed(
     () => this.goals().filter((goal) => this.progress(goal) >= 100).length,
   );
+  // Meta sem alvo nao tem "%": fica fora da media (senao puxaria pra baixo injustamente).
   protected readonly averageProgress = computed(() => {
-    if (!this.goals().length) return 0;
+    const withTarget = this.goals().filter((goal) => goal.targetAmount !== null);
+    if (!withTarget.length) return 0;
     return Math.round(
-      this.goals().reduce((total, goal) => total + this.progress(goal), 0) / this.goals().length,
+      withTarget.reduce((total, goal) => total + this.progress(goal), 0) / withTarget.length,
     );
   });
 
@@ -56,7 +58,8 @@ export class GoalsPageComponent {
   protected readonly form = this.fb.nonNullable.group({
     title: ['', [Validators.required, Validators.minLength(2)]],
     description: [''],
-    targetAmount: [12000, [Validators.required, Validators.min(1)]],
+    /** Vazio = meta sem valor-alvo (cofrinho sem propósito, ex.: reserva de emergência). */
+    targetAmount: [null as number | null, [Validators.min(1)]],
     currentAmount: [0],
     targetDate: [''],
     recurringEnabled: [false],
@@ -147,7 +150,7 @@ export class GoalsPageComponent {
       .createGoal({
         title: raw.title,
         description: raw.description || undefined,
-        targetAmount: raw.targetAmount,
+        targetAmount: raw.targetAmount ?? undefined,
         currentAmount: raw.currentAmount || 0,
         targetDate: raw.targetDate || undefined,
         recurringAmount: raw.recurringEnabled ? raw.recurringAmount : undefined,
@@ -159,7 +162,7 @@ export class GoalsPageComponent {
           this.form.reset({
             title: '',
             description: '',
-            targetAmount: 12000,
+            targetAmount: null,
             currentAmount: 0,
             targetDate: '',
             recurringEnabled: false,
@@ -314,11 +317,14 @@ export class GoalsPageComponent {
       });
   }
 
+  /** Meta sem alvo (cofrinho sem propósito) não tem "%": a tela esconde a barra nesse caso. */
   protected progress(goal: Goal) {
+    if (goal.targetAmount === null) return 0;
     return Math.min(Math.round((goal.currentAmount / goal.targetAmount) * 100), 100);
   }
 
   protected remainingAmount(goal: Goal) {
+    if (goal.targetAmount === null) return 0;
     return Math.max(goal.targetAmount - goal.currentAmount, 0);
   }
 

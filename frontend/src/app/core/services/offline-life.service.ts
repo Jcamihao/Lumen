@@ -398,8 +398,9 @@ export class OfflineLifeService {
         ? {
             ...goal,
             currentAmount: goal.currentAmount + amount,
+            // Meta sem alvo (cofrinho sem proposito) nunca vira ACHIEVED sozinha.
             status:
-              goal.currentAmount + amount >= goal.targetAmount
+              goal.targetAmount !== null && goal.currentAmount + amount >= goal.targetAmount
                 ? "ACHIEVED"
                 : goal.status,
           }
@@ -926,7 +927,7 @@ export class OfflineLifeService {
       id: this.tempId("goal"),
       title: String(payload["title"] || "Nova meta"),
       description: this.optionalString(payload["description"]),
-      targetAmount: Number(payload["targetAmount"] || 0),
+      targetAmount: this.optionalNumber(payload["targetAmount"]),
       currentAmount: Number(payload["currentAmount"] || 0),
       targetDate: this.optionalString(payload["targetDate"]),
       status: "ACTIVE",
@@ -1053,7 +1054,7 @@ export class OfflineLifeService {
           : goal.description,
       targetAmount:
         payload["targetAmount"] !== undefined
-          ? Number(payload["targetAmount"] || 0)
+          ? this.optionalNumber(payload["targetAmount"])
           : goal.targetAmount,
       currentAmount:
         payload["currentAmount"] !== undefined

@@ -167,6 +167,92 @@ describe('DashboardPageComponent — carregamento', () => {
   }));
 });
 
+describe('DashboardPageComponent — metas em movimento', () => {
+  let api: jasmine.SpyObj<LifeApiService>;
+  let summary$: Subject<DashboardSummary>;
+  let fixture: ComponentFixture<DashboardPageComponent>;
+
+  const text = () => (fixture.nativeElement as HTMLElement).textContent ?? '';
+  const query = (selector: string) => (fixture.nativeElement as HTMLElement).querySelector(selector);
+
+  const create = () => {
+    fixture = TestBed.createComponent(DashboardPageComponent);
+    fixture.detectChanges();
+  };
+
+  beforeEach(() => {
+    summary$ = new Subject<DashboardSummary>();
+    api = jasmine.createSpyObj('LifeApiService', [
+      'getDashboardSummary',
+      'listTransactions',
+      'getForecastAccuracy',
+    ]);
+    api.getDashboardSummary.and.callFake(() => summary$.asObservable());
+    api.listTransactions.and.returnValue(of([]));
+    api.getForecastAccuracy.and.returnValue(of(null as never));
+
+    TestBed.configureTestingModule({
+      imports: [DashboardPageComponent],
+      providers: [
+        provideRouter([]),
+        { provide: LOCALE_ID, useValue: 'pt-BR' },
+        { provide: LifeApiService, useValue: api },
+      ],
+    });
+  });
+
+  it('meta sem alvo (cofrinho sem propósito) mostra "Sem alvo", nunca "0%" nem barra quebrada', fakeAsync(() => {
+    create();
+
+    summary$.next({
+      ...summaryFixture(),
+      goals: [
+        {
+          id: 'g1',
+          title: 'Reserva de emergência',
+          currentAmount: 500,
+          targetAmount: null,
+          status: 'ACTIVE',
+          targetDate: null,
+        },
+      ],
+    });
+    fixture.detectChanges();
+
+    const goalCardText = query('.home-goal')?.textContent ?? '';
+    expect(goalCardText).toContain('Sem alvo');
+    expect(goalCardText).not.toContain('0%');
+    expect(query('.home-goal .proto-progress')).toBeNull();
+
+    fixture.destroy();
+  }));
+
+  it('meta com alvo continua mostrando o percentual e a barra normalmente', fakeAsync(() => {
+    create();
+
+    summary$.next({
+      ...summaryFixture(),
+      goals: [
+        {
+          id: 'g1',
+          title: 'Viagem',
+          currentAmount: 300,
+          targetAmount: 1000,
+          status: 'ACTIVE',
+          targetDate: null,
+        },
+      ],
+    });
+    fixture.detectChanges();
+
+    const goalCardText = query('.home-goal')?.textContent ?? '';
+    expect(goalCardText).toContain('30%');
+    expect(query('.home-goal .proto-progress')).not.toBeNull();
+
+    fixture.destroy();
+  }));
+});
+
 describe('DashboardPageComponent — onboarding', () => {
   let fixture: ComponentFixture<DashboardPageComponent>;
 

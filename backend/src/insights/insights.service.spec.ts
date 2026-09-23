@@ -1,5 +1,5 @@
 import { InsightSeverity, InsightType } from '@prisma/client';
-import { subDays } from 'date-fns';
+import { addDays, subDays } from 'date-fns';
 import { InsightsService } from './insights.service';
 
 type ExpenseSeed = {
@@ -493,6 +493,46 @@ describe('InsightsService', () => {
         generatedInsights(prisma).find((item) =>
           item.fingerprint.startsWith('GOAL:primary_goal_untracked:'),
         ),
+      ).toBeUndefined();
+    });
+  });
+
+  describe('detectStalledGoals', () => {
+    it('meta com alvo, progresso baixo e prazo proximo: fica sinalizada', async () => {
+      const prisma = buildPrisma([], [], {}, [
+        {
+          id: 'goal-1',
+          title: 'Viagem',
+          targetAmount: 10000,
+          currentAmount: 500,
+          status: 'ACTIVE',
+          targetDate: addDays(new Date(), 30),
+        },
+      ]);
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      expect(
+        generatedInsights(prisma).find((item) => item.fingerprint.startsWith('GOAL:stalled_goals:')),
+      ).toBeDefined();
+    });
+
+    it('meta SEM alvo, mesmo com prazo proximo, nunca e sinalizada como estagnada', async () => {
+      const prisma = buildPrisma([], [], {}, [
+        {
+          id: 'goal-1',
+          title: 'Reserva de emergência',
+          targetAmount: null,
+          currentAmount: 500,
+          status: 'ACTIVE',
+          targetDate: addDays(new Date(), 30),
+        },
+      ]);
+
+      await new InsightsService(prisma).refreshForUser('user-1');
+
+      expect(
+        generatedInsights(prisma).find((item) => item.fingerprint.startsWith('GOAL:stalled_goals:')),
       ).toBeUndefined();
     });
   });
