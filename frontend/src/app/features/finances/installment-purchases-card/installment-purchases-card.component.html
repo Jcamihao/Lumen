@@ -1,0 +1,100 @@
+<article class="proto-surface installments-card">
+  <div class="proto-surface__head installments-card__head">
+    <div>
+      <h3>Compras parceladas</h3>
+      <p>Marque uma compra em Nx e as próximas parcelas entram sozinhas, uma por mês.</p>
+    </div>
+
+    <button *ngIf="!formOpen()" type="button" class="proto-button" (click)="openForm()">Nova compra parcelada</button>
+  </div>
+
+  <div class="proto-surface__body installments-card__body">
+    <form *ngIf="formOpen()" class="installments-form" [formGroup]="form" (submit)="$event.preventDefault(); submit()" novalidate>
+      <div class="proto-field installments-form__wide">
+        <label for="installment-description">Descrição</label>
+        <input id="installment-description" type="text" placeholder="Ex.: iPhone" formControlName="description" />
+      </div>
+
+      <div class="proto-field">
+        <label for="installment-total">Valor total</label>
+        <input id="installment-total" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0,00" formControlName="totalAmount" />
+      </div>
+
+      <div class="proto-field">
+        <label for="installment-count">Nº de parcelas</label>
+        <input id="installment-count" type="number" min="2" max="60" step="1" formControlName="installmentsTotal" />
+      </div>
+
+      <div class="proto-field">
+        <label for="installment-category">Categoria</label>
+        <select id="installment-category" formControlName="categoryId">
+          <option value="">Sem categoria</option>
+          <option *ngFor="let category of categories()" [value]="category.id">{{ category.name }}</option>
+        </select>
+      </div>
+
+      <div class="proto-field">
+        <label for="installment-first-due">Vencimento da 1ª parcela</label>
+        <input id="installment-first-due" type="date" formControlName="firstDueDate" />
+      </div>
+
+      <div class="proto-field installments-form__wide">
+        <span class="proto-field__label">Forma de pagamento (opcional)</span>
+        <app-payment-method-picker
+          ariaLabel="Forma de pagamento da compra parcelada"
+          [value]="form.controls.paymentMethod.value"
+          (valueChange)="form.controls.paymentMethod.setValue($event)"
+        ></app-payment-method-picker>
+      </div>
+
+      <div class="installments-form__actions">
+        <button type="submit" class="proto-button" [disabled]="saving()">
+          {{ saving() ? 'Salvando...' : 'Registrar compra' }}
+        </button>
+        <button type="button" class="proto-button proto-button--secondary" [disabled]="saving()" (click)="closeForm()">
+          Cancelar
+        </button>
+      </div>
+    </form>
+
+    <p class="installments-card__hint" *ngIf="loading()">Carregando compras parceladas...</p>
+
+    <div class="proto-empty" *ngIf="loadFailed()">
+      <strong>Não foi possível carregar as compras parceladas</strong>
+      <p>Confira sua conexão e tente de novo.</p>
+      <button type="button" class="proto-button proto-button--secondary" (click)="load()">Tentar de novo</button>
+    </div>
+
+    <ul class="installments-list" *ngIf="items().length">
+      <li
+        class="installment-row"
+        *ngFor="let item of items(); trackBy: trackItem"
+        [attr.data-status]="item.remainingInstallments === 0 ? 'ended' : 'active'"
+      >
+        <div class="installment-row__main">
+          <strong>{{ item.description }}</strong>
+          <span class="installment-row__meta">{{ money(item.totalAmount) }} total · {{ item.category?.name || 'Sem categoria' }}<ng-container *ngIf="paymentText(item) as payment"> · {{ payment }}</ng-container></span>
+          <span class="installment-row__next">{{ nextText(item) }}</span>
+        </div>
+
+        <strong class="installment-row__progress">{{ progressText(item) }}</strong>
+
+        <div class="installment-row__actions">
+          <button
+            type="button"
+            class="proto-button proto-button--secondary"
+            [disabled]="busyId() === item.id"
+            (click)="remove(item)"
+          >
+            Excluir
+          </button>
+        </div>
+      </li>
+    </ul>
+
+    <div class="proto-empty" *ngIf="!loading() && !loadFailed() && !items().length && !formOpen()">
+      <strong>Nenhuma compra parcelada ainda</strong>
+      <p>Registre uma compra em Nx e o Lumen gera as próximas parcelas sozinho, uma por mês.</p>
+    </div>
+  </div>
+</article>

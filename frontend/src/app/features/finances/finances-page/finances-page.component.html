@@ -200,6 +200,8 @@
 
   <app-recurring-transactions-card (changed)="refreshAfterRecurringChange()"></app-recurring-transactions-card>
 
+  <app-installment-purchases-card (changed)="refreshAfterRecurringChange()"></app-installment-purchases-card>
+
   <article class="proto-surface finance-highlight">
     <div class="proto-surface__body finance-highlight__body">
       <div class="finance-highlight__icon">
@@ -392,6 +394,7 @@
                   <span class="proto-chip" *ngIf="paymentLabel(transaction) as payment">{{ payment }}</span>
                   <span class="proto-chip" *ngIf="transaction.envelope as env">{{ env.name }}</span>
                   <span class="proto-chip" *ngIf="transaction.recurringTransactionId">Recorrente</span>
+                  <span class="proto-chip" *ngIf="transaction.installmentNumber as n">{{ n }}/{{ transaction.installmentsTotal }}</span>
                   <span class="proto-chip">{{ transactionDateLabel(transaction) }}</span>
                 </div>
               </div>

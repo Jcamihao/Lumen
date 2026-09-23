@@ -91,6 +91,10 @@ export type Transaction = {
   envelopeId?: string | null;
   /** So name/color/icon confiaveis aqui; para o valor mensal use a lista de /envelopes. */
   envelope?: { id: string; name: string; color: string; icon: string | null } | null;
+  /** Preenchidos quando o lancamento e uma parcela de uma compra parcelada. */
+  installmentPurchaseId?: string | null;
+  installmentNumber?: number | null;
+  installmentsTotal?: number | null;
 };
 
 export type RecurrenceFrequency = "WEEKLY" | "MONTHLY" | "YEARLY";
@@ -111,6 +115,28 @@ export type RecurringTransaction = {
   nextDueDate: string;
   endDate?: string | null;
   isActive: boolean;
+};
+
+/** Compra parcelada no credito: gera 1 parcela por mes ate installmentsTotal. */
+export type InstallmentPurchase = {
+  id: string;
+  description: string;
+  totalAmount: number;
+  /** Valor de cada parcela, exceto a ultima (que absorve a sobra do arredondamento). */
+  installmentAmount: number;
+  installmentsTotal: number;
+  installmentsGenerated: number;
+  categoryId?: string | null;
+  category?: FinanceCategory | null;
+  paymentMethod?: PaymentMethod | null;
+  anchorDay: number;
+  /** Proxima parcela a gerar (AAAA-MM-DDT00:00:00.000Z); null quando ja gerou todas. */
+  nextDueDate: string | null;
+  isActive: boolean;
+  /** Calculados pelo backend a partir de installmentsGenerated. */
+  paidAmount: number;
+  remainingAmount: number;
+  remainingInstallments: number;
 };
 
 export type Goal = {

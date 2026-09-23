@@ -48,6 +48,7 @@ const buildService = (
     getCurrent: jest.fn().mockResolvedValue({ id: 'f1', predictedBalance: 0, riskLevel: 'LOW' }),
   };
   const materializer = { materializeDue: jest.fn().mockResolvedValue(0) };
+  const installmentMaterializer = { materializeDue: jest.fn().mockResolvedValue(0) };
 
   const service = new DashboardService(
     prisma as any,
@@ -55,6 +56,7 @@ const buildService = (
     insights as any,
     forecasts as any,
     materializer as any,
+    installmentMaterializer as any,
   );
 
   return { service, prisma, cache };

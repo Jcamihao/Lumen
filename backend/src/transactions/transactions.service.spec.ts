@@ -50,7 +50,7 @@ describe("TransactionsService", () => {
           delete: jest.fn(),
         },
       });
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await expect(
         service.update('user-1', 'tx-1', { date: '2026-10-05' } as any),
@@ -67,7 +67,7 @@ describe("TransactionsService", () => {
           delete: jest.fn(),
         },
       });
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await expect(service.update('user-1', 'tx-1', { description: 'x' } as any)).rejects.toThrow(
         'conexao caiu',
@@ -78,7 +78,7 @@ describe("TransactionsService", () => {
   describe('forma de pagamento', () => {
     it('grava a forma de pagamento informada na criacao', async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await service.create('user-1', {
         type: 'EXPENSE',
@@ -93,7 +93,7 @@ describe("TransactionsService", () => {
 
     it('sem informar, nao grava nada (fica "nao informado")', async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await service.create('user-1', {
         type: 'INCOME',
@@ -118,7 +118,7 @@ describe("TransactionsService", () => {
 
     it('altera a forma de pagamento numa edicao', async () => {
       const prisma = buildForUpdate();
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await service.update('user-1', 'tx-1', { paymentMethod: 'CREDIT' } as any);
 
@@ -127,7 +127,7 @@ describe("TransactionsService", () => {
 
     it('null limpa a forma de pagamento; ausente nao mexe', async () => {
       const cleared = buildForUpdate();
-      await new TransactionsService(cleared, buildLifeEngine(), buildMaterializer()).update(
+      await new TransactionsService(cleared, buildLifeEngine(), buildMaterializer(), buildMaterializer()).update(
         'user-1',
         'tx-1',
         { paymentMethod: null } as any,
@@ -135,7 +135,7 @@ describe("TransactionsService", () => {
       expect(cleared.transaction.update.mock.calls[0][0].data.paymentMethod).toBeNull();
 
       const untouched = buildForUpdate();
-      await new TransactionsService(untouched, buildLifeEngine(), buildMaterializer()).update(
+      await new TransactionsService(untouched, buildLifeEngine(), buildMaterializer(), buildMaterializer()).update(
         'user-1',
         'tx-1',
         { description: 'so a descricao' } as any,
@@ -145,7 +145,7 @@ describe("TransactionsService", () => {
 
     it('filtra a lista pela forma de pagamento', async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await service.list('user-1', { paymentMethod: 'DEBIT' } as any);
 
@@ -154,7 +154,7 @@ describe("TransactionsService", () => {
 
     it('sem filtro, nao restringe (traz todas, inclusive as sem forma de pagamento)', async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await service.list('user-1', {} as any);
 
@@ -165,7 +165,7 @@ describe("TransactionsService", () => {
   describe('envelope (marcar transacao como parte de um envelope)', () => {
     it('grava o envelope informado na criacao', async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await service.create('user-1', {
         type: 'EXPENSE',
@@ -188,7 +188,7 @@ describe("TransactionsService", () => {
           delete: jest.fn(),
         },
       });
-      await new TransactionsService(cleared, buildLifeEngine(), buildMaterializer()).update(
+      await new TransactionsService(cleared, buildLifeEngine(), buildMaterializer(), buildMaterializer()).update(
         'user-1',
         'tx-1',
         { envelopeId: null } as any,
@@ -204,7 +204,7 @@ describe("TransactionsService", () => {
           delete: jest.fn(),
         },
       });
-      await new TransactionsService(untouched, buildLifeEngine(), buildMaterializer()).update(
+      await new TransactionsService(untouched, buildLifeEngine(), buildMaterializer(), buildMaterializer()).update(
         'user-1',
         'tx-1',
         { description: 'so a descricao' } as any,
@@ -214,7 +214,7 @@ describe("TransactionsService", () => {
 
     it('filtra a lista pelo envelope', async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await service.list('user-1', { envelopeId: 'env-1' } as any);
 
@@ -227,7 +227,7 @@ describe("TransactionsService", () => {
       const prisma = buildPrisma();
       const materializer = buildMaterializer(2);
       const lifeEngine = buildLifeEngine();
-      const service = new TransactionsService(prisma, lifeEngine, materializer);
+      const service = new TransactionsService(prisma, lifeEngine, materializer, buildMaterializer(0));
 
       await service.list('user-1', {} as any);
 
@@ -241,7 +241,12 @@ describe("TransactionsService", () => {
 
     it('nao mexe nos insights quando nada venceu', async () => {
       const lifeEngine = buildLifeEngine();
-      const service = new TransactionsService(buildPrisma(), lifeEngine, buildMaterializer(0));
+      const service = new TransactionsService(
+        buildPrisma(),
+        lifeEngine,
+        buildMaterializer(0),
+        buildMaterializer(0),
+      );
 
       await service.list('user-1', {} as any);
 
@@ -249,10 +254,29 @@ describe("TransactionsService", () => {
     });
   });
 
+  describe('parcelas vencidas', () => {
+    it('gerar parcelas tambem recalcula os insights (independente das contas fixas)', async () => {
+      const prisma = buildPrisma();
+      const installmentMaterializer = buildMaterializer(1);
+      const lifeEngine = buildLifeEngine();
+      const service = new TransactionsService(
+        prisma,
+        lifeEngine,
+        buildMaterializer(0),
+        installmentMaterializer,
+      );
+
+      await service.list('user-1', {} as any);
+
+      expect(installmentMaterializer.materializeDue).toHaveBeenCalledWith('user-1');
+      expect(lifeEngine.touchUserData).toHaveBeenCalledWith('user-1');
+    });
+  });
+
   describe("list", () => {
     it("always scopes the query by the requesting user's id", async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await service.list("user-1", {} as any);
 
@@ -267,7 +291,7 @@ describe("TransactionsService", () => {
   describe("create", () => {
     it("stores the amount as a positive value regardless of the sign received", async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await service.create("user-1", {
         type: "EXPENSE",
@@ -283,7 +307,7 @@ describe("TransactionsService", () => {
 
     it("rejects a category that does not belong to the requesting user", async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await expect(
         service.create("user-1", {
@@ -306,7 +330,7 @@ describe("TransactionsService", () => {
   describe("list — month filter", () => {
     it("uses UTC month boundaries so a 1st-of-month entry stays in its own month", async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await service.list("user-1", { month: 9, year: 2026 } as any);
 
@@ -317,7 +341,7 @@ describe("TransactionsService", () => {
 
     it("rolls December over to the end of the year correctly", async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await service.list("user-1", { month: 12, year: 2026 } as any);
 
@@ -330,7 +354,7 @@ describe("TransactionsService", () => {
   describe("update / remove — multi-tenancy", () => {
     it("update() never touches a transaction owned by another user", async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await expect(
         service.update("user-1", "tx-owned-by-someone-else", {
@@ -346,7 +370,7 @@ describe("TransactionsService", () => {
 
     it("remove() never deletes a transaction owned by another user", async () => {
       const prisma = buildPrisma();
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       await expect(
         service.remove("user-1", "tx-owned-by-someone-else"),
@@ -370,7 +394,7 @@ describe("TransactionsService", () => {
           create: jest.fn(),
         },
       });
-      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer());
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
 
       const result = await service.update("user-1", "tx-1", {
         description: "Conta de luz atualizada",

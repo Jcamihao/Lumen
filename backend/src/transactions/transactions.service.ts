@@ -3,6 +3,7 @@ import { Prisma, TransactionType } from '@prisma/client';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RecurringMaterializerService } from '../recurring-transactions/recurring-materializer.service';
+import { InstallmentMaterializerService } from '../installments/installment-materializer.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { ListTransactionsQueryDto } from './dto/list-transactions-query.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
@@ -13,12 +14,15 @@ export class TransactionsService {
     private readonly prisma: PrismaService,
     private readonly lifeEngineService: LifeEngineService,
     private readonly recurringMaterializer: RecurringMaterializerService,
+    private readonly installmentMaterializer: InstallmentMaterializerService,
   ) {}
 
   async list(userId: string, query: ListTransactionsQueryDto) {
-    // Contas fixas vencidas viram lancamento antes de listar, para a lista (e o
-    // saldo) nunca ficarem atras do calendario.
-    if ((await this.recurringMaterializer.materializeDue(userId)) > 0) {
+    // Contas fixas e parcelas vencidas viram lancamento antes de listar, para a
+    // lista (e o saldo) nunca ficarem atras do calendario.
+    const recurringCreated = await this.recurringMaterializer.materializeDue(userId);
+    const installmentsCreated = await this.installmentMaterializer.materializeDue(userId);
+    if (recurringCreated > 0 || installmentsCreated > 0) {
       await this.lifeEngineService.touchUserData(userId);
     }
 

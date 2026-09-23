@@ -16,6 +16,7 @@ import { PaymentMethodPickerComponent } from '../../../shared/payment-method-pic
 import { SpendingBreakdownComponent } from '../../../shared/spending-breakdown/spending-breakdown.component';
 import { CreditCycleCardComponent } from '../credit-cycle-card/credit-cycle-card.component';
 import { EnvelopesCardComponent } from '../envelopes-card/envelopes-card.component';
+import { InstallmentPurchasesCardComponent } from '../installment-purchases-card/installment-purchases-card.component';
 import { RecurringTransactionsCardComponent } from '../recurring-transactions-card/recurring-transactions-card.component';
 
 @Component({
@@ -30,6 +31,7 @@ import { RecurringTransactionsCardComponent } from '../recurring-transactions-ca
     CreditCycleCardComponent,
     EnvelopesCardComponent,
     RecurringTransactionsCardComponent,
+    InstallmentPurchasesCardComponent,
   ],
   templateUrl: './finances-page.component.html',
   styleUrls: ['./finances-page.component.scss'],

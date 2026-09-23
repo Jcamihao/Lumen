@@ -5,6 +5,7 @@ import { ForecastsService } from '../forecasts/forecasts.service';
 import { InsightsService } from '../insights/insights.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RecurringMaterializerService } from '../recurring-transactions/recurring-materializer.service';
+import { InstallmentMaterializerService } from '../installments/installment-materializer.service';
 
 @Injectable()
 export class DashboardService {
@@ -14,14 +15,17 @@ export class DashboardService {
     private readonly insightsService: InsightsService,
     private readonly forecastsService: ForecastsService,
     private readonly recurringMaterializer: RecurringMaterializerService,
+    private readonly installmentMaterializer: InstallmentMaterializerService,
   ) {}
 
   async getSummary(userId: string) {
     const cacheKey = `dashboard:summary:${userId}`;
 
-    // Conta fixa que venceu desde a ultima leitura precisa entrar no saldo, e o
-    // resumo em cache ja nasceu sem ela.
-    if ((await this.recurringMaterializer.materializeDue(userId)) > 0) {
+    // Conta fixa ou parcela que venceu desde a ultima leitura precisa entrar no
+    // saldo, e o resumo em cache ja nasceu sem ela.
+    const recurringCreated = await this.recurringMaterializer.materializeDue(userId);
+    const installmentsCreated = await this.installmentMaterializer.materializeDue(userId);
+    if (recurringCreated > 0 || installmentsCreated > 0) {
       await this.cacheQueueService.del(cacheKey);
     }
 

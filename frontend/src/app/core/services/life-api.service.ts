@@ -18,6 +18,7 @@ import {
   ImportJobHistoryEntry,
   ImportPreview,
   Insight,
+  InstallmentPurchase,
   Notification,
   PaymentMethod,
   PrivacyExportPayload,
@@ -691,6 +692,25 @@ export class LifeApiService {
     return this.http.delete<{ success: boolean }>(
       `${environment.apiBaseUrl}/recurring-transactions/${id}`,
     );
+  }
+
+  listInstallmentPurchases() {
+    return this.http.get<InstallmentPurchase[]>(`${environment.apiBaseUrl}/installments`);
+  }
+
+  createInstallmentPurchase(payload: {
+    description: string;
+    totalAmount: number;
+    installmentsTotal: number;
+    categoryId?: string;
+    paymentMethod?: PaymentMethod;
+    firstDueDate?: string;
+  }) {
+    return this.http.post<InstallmentPurchase>(`${environment.apiBaseUrl}/installments`, payload);
+  }
+
+  deleteInstallmentPurchase(id: string) {
+    return this.http.delete<{ success: boolean }>(`${environment.apiBaseUrl}/installments/${id}`);
   }
 
   updateFinanceCategory(id: string, payload: { monthlyBudget: number | null }) {

@@ -1,0 +1,117 @@
+:host {
+  display: block;
+}
+
+.installments-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.installments-card__body {
+  display: grid;
+  gap: 1rem;
+}
+
+.installments-card__hint {
+  margin: 0;
+  color: var(--text-medium);
+}
+
+.installments-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  background: var(--surface-panel);
+}
+
+.installments-form__wide {
+  grid-column: span 2;
+}
+
+.installments-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  grid-column: 1 / -1;
+}
+
+.installments-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.installment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  background: var(--surface-panel);
+}
+
+.installment-row[data-status='ended'] {
+  opacity: 0.7;
+}
+
+.installment-row__main {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.installment-row__main strong {
+  overflow-wrap: anywhere;
+  color: var(--text-strong);
+}
+
+.installment-row__meta,
+.installment-row__next {
+  font-size: 0.85rem;
+  color: var(--text-medium);
+}
+
+.installment-row__progress {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--danger);
+  text-align: right;
+}
+
+.installment-row[data-status='ended'] .installment-row__progress {
+  color: var(--success);
+}
+
+.installment-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@media (max-width: 760px) {
+  .installments-form__wide {
+    grid-column: auto;
+  }
+
+  // Coluna unica: com "auto" ao lado do texto (que ja quebra em 3 linhas), o
+  // progresso ficava centralizado ao lado da linha do meio, meio espremido.
+  .installment-row {
+    grid-template-columns: 1fr;
+  }
+
+  .installment-row__progress {
+    text-align: left;
+  }
+
+  .installment-row__actions {
+    grid-column: 1 / -1;
+  }
+}

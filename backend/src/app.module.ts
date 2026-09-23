@@ -23,6 +23,7 @@ import { ForecastsModule } from "./forecasts/forecasts.module";
 import { GoalsModule } from "./goals/goals.module";
 import { ImportsModule } from "./imports/imports.module";
 import { InsightsModule } from "./insights/insights.module";
+import { InstallmentsModule } from "./installments/installments.module";
 import { LifeEngineModule } from "./life-engine/life-engine.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { PrismaModule } from "./prisma/prisma.module";
@@ -56,6 +57,7 @@ import { UsersModule } from "./users/users.module";
     TasksModule,
     TransactionsModule,
     RecurringTransactionsModule,
+    InstallmentsModule,
     CreditCycleModule,
     EnvelopesModule,
     GoalsModule,
