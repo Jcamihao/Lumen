@@ -7,6 +7,7 @@ describe('CreditCycleService', () => {
   const build = (options: {
     monthClosingDay?: number;
     creditDueDay?: number | null;
+    countAllPayments?: boolean;
     ceilingRow?: { ceiling: any } | null;
     previousCeilingRow?: { ceiling: any } | null;
     spentSum?: number | null;
@@ -18,6 +19,7 @@ describe('CreditCycleService', () => {
           timezone: options.timezone ?? 'America/Sao_Paulo',
           monthClosingDay: options.monthClosingDay ?? 5,
           creditDueDay: options.creditDueDay ?? null,
+          creditCycleCountAllPayments: options.countAllPayments ?? false,
         }),
         update: jest.fn().mockResolvedValue({}),
       },
@@ -48,7 +50,7 @@ describe('CreditCycleService', () => {
       expect(result.remaining).toBeNull();
     });
 
-    it('so busca transacoes EXPENSE + CREDIT dentro do ciclo', async () => {
+    it('por padrao (countAllPayments=false) so busca EXPENSE + CREDIT dentro do ciclo', async () => {
       const { service, prisma } = build();
 
       await service.getCurrent('user-1');
@@ -58,6 +60,22 @@ describe('CreditCycleService', () => {
         type: 'EXPENSE',
         paymentMethod: 'CREDIT',
       });
+    });
+
+    it('com countAllPayments=true, busca toda EXPENSE do ciclo sem filtrar forma de pagamento', async () => {
+      const { service, prisma } = build({ countAllPayments: true });
+
+      await service.getCurrent('user-1');
+
+      const where = prisma.transaction.aggregate.mock.calls[0][0].where;
+      expect(where).toMatchObject({ userId: 'user-1', type: 'EXPENSE' });
+      expect(where.paymentMethod).toBeUndefined();
+    });
+
+    it('devolve countAllPayments junto (reflete a config do usuario)', async () => {
+      const { service } = build({ countAllPayments: true });
+
+      expect((await service.getCurrent('user-1')).countAllPayments).toBe(true);
     });
 
     it('abaixo de 80%: status "ok"', async () => {
@@ -123,7 +141,7 @@ describe('CreditCycleService', () => {
 
       await service.updateSettings('user-1', { dueDay: 12 });
 
-      expect(prisma.user.update).toHaveBeenCalledWith({
+      expect(prisma.user.update.mock.calls[0][0]).toMatchObject({
         where: { id: 'user-1' },
         data: { creditDueDay: 12 },
       });
@@ -143,6 +161,22 @@ describe('CreditCycleService', () => {
       await service.updateSettings('user-1', { dueDay: 10 });
 
       expect(lifeEngine.touchUserData).toHaveBeenCalledWith('user-1');
+    });
+
+    it('grava countAllPayments quando enviado', async () => {
+      const { service, prisma } = build();
+
+      await service.updateSettings('user-1', { countAllPayments: true });
+
+      expect(prisma.user.update.mock.calls[0][0].data.creditCycleCountAllPayments).toBe(true);
+    });
+
+    it('nao mexe em countAllPayments quando nao enviado (so o dueDay)', async () => {
+      const { service, prisma } = build();
+
+      await service.updateSettings('user-1', { dueDay: 5 });
+
+      expect(prisma.user.update.mock.calls[0][0].data.creditCycleCountAllPayments).toBeUndefined();
     });
   });
 

@@ -115,6 +115,18 @@
         </p>
       </ng-template>
 
+      <div class="proto-field proto-field--full credit-cycle-card__scope-toggle">
+        <label>
+          <input
+            type="checkbox"
+            [checked]="data.countAllPayments"
+            [disabled]="saving()"
+            (change)="toggleCountAllPayments()"
+          />
+          Considerar débito e PIX também (não só crédito)
+        </label>
+      </div>
+
       <p class="credit-cycle-card__footer">
         Fechamento dia {{ data.closingDay }} · <a routerLink="/settings">alterar em Configurações</a>
       </p>

@@ -139,6 +139,31 @@ export class CreditCycleCardComponent {
       });
   }
 
+  protected toggleCountAllPayments() {
+    const current = this.cycle();
+    if (!current || this.saving()) return;
+
+    const next = !current.countAllPayments;
+    this.saving.set(true);
+
+    this.api
+      .updateCreditCycleSettings({ countAllPayments: next })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (cycle) => {
+          this.cycle.set(cycle);
+          this.saving.set(false);
+          this.toast.success(
+            next ? 'Agora o teto soma crédito, débito e PIX.' : 'Agora o teto soma só o crédito.',
+          );
+        },
+        error: () => {
+          this.saving.set(false);
+          this.toast.error('Não foi possível salvar agora.');
+        },
+      });
+  }
+
   protected cycleRangeLabel(cycle: CreditCycle) {
     return `${formatDayLabel(cycle.cycleStart, { day: '2-digit', month: 'short' })} a ${formatDayLabel(cycle.cycleEnd, { day: '2-digit', month: 'short' })}`;
   }

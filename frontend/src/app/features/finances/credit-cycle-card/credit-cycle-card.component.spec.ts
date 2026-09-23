@@ -10,6 +10,7 @@ import { CreditCycleCardComponent } from './credit-cycle-card.component';
 const cycle = (overrides: Partial<CreditCycle> = {}): CreditCycle => ({
   closingDay: 5,
   dueDay: null,
+  countAllPayments: false,
   cycleStart: '2026-09-06T00:00:00.000Z',
   cycleEnd: '2026-10-05T00:00:00.000Z',
   ceiling: null,
@@ -199,6 +200,22 @@ describe('CreditCycleCardComponent', () => {
     clickText('Salvar vencimento');
 
     expect(api.updateCreditCycleSettings).toHaveBeenCalledWith({ dueDay: 20 });
+  });
+
+  it('checkbox de escopo reflete countAllPayments e o clique chama a API certa', () => {
+    create();
+    current$.next(cycle({ countAllPayments: false }));
+    fixture.detectChanges();
+
+    const checkbox = root().querySelector<HTMLInputElement>('.credit-cycle-card__scope-toggle input')!;
+    expect(checkbox.checked).toBeFalse();
+
+    api.updateCreditCycleSettings.and.returnValue(of(cycle({ countAllPayments: true })));
+    checkbox.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    expect(api.updateCreditCycleSettings).toHaveBeenCalledWith({ countAllPayments: true });
+    expect(root().querySelector<HTMLInputElement>('.credit-cycle-card__scope-toggle input')?.checked).toBeTrue();
   });
 
   it('mostra o dia de fechamento e o link para Configurações', () => {

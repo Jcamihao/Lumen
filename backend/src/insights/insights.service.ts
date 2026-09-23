@@ -467,8 +467,8 @@ export class InsightsService {
         where: {
           userId,
           type: 'EXPENSE',
-          paymentMethod: 'CREDIT',
           date: { gte: creditCycle.start, lte: creditCycle.end },
+          ...(user.creditCycleCountAllPayments ? {} : { paymentMethod: 'CREDIT' }),
         },
         _sum: { amount: true },
       }),

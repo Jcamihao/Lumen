@@ -515,7 +515,7 @@ export class LifeApiService {
     return this.http.get<CreditCycle>(`${environment.apiBaseUrl}/credit-cycle/current`);
   }
 
-  updateCreditCycleSettings(payload: { dueDay: number | null }) {
+  updateCreditCycleSettings(payload: { dueDay?: number | null; countAllPayments?: boolean }) {
     return this.http.patch<CreditCycle>(`${environment.apiBaseUrl}/credit-cycle/settings`, payload);
   }
 

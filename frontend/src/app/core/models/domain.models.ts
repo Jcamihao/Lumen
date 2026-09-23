@@ -523,6 +523,8 @@ export type CreditCycleStatus = 'none' | 'ok' | 'near' | 'over';
 export type CreditCycle = {
   closingDay: number;
   dueDay: number | null;
+  /** true: o teto soma toda despesa do ciclo (credito+debito+PIX+boleto), nao so credito. */
+  countAllPayments: boolean;
   cycleStart: string;
   cycleEnd: string;
   ceiling: number | null;

@@ -23,7 +23,12 @@ export class CreditCycleService {
   async getCurrent(userId: string) {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
-      select: { timezone: true, monthClosingDay: true, creditDueDay: true },
+      select: {
+        timezone: true,
+        monthClosingDay: true,
+        creditDueDay: true,
+        creditCycleCountAllPayments: true,
+      },
     });
 
     const closingDay = user.monthClosingDay;
@@ -34,7 +39,12 @@ export class CreditCycleService {
         where: { userId_closingDate: { userId, closingDate: end } },
       }),
       this.prisma.transaction.aggregate({
-        where: { userId, type: TransactionType.EXPENSE, paymentMethod: 'CREDIT', date: { gte: start, lte: end } },
+        where: {
+          userId,
+          type: TransactionType.EXPENSE,
+          date: { gte: start, lte: end },
+          ...(user.creditCycleCountAllPayments ? {} : { paymentMethod: 'CREDIT' }),
+        },
         _sum: { amount: true },
       }),
       // Sugestao para o formulario quando ainda nao ha teto definido neste ciclo.
@@ -50,6 +60,7 @@ export class CreditCycleService {
     return this.buildResponse({
       closingDay,
       dueDay: user.creditDueDay,
+      countAllPayments: user.creditCycleCountAllPayments,
       start,
       end,
       ceiling,
@@ -61,7 +72,10 @@ export class CreditCycleService {
   async updateSettings(userId: string, dto: UpdateCreditCycleSettingsDto) {
     await this.prisma.user.update({
       where: { id: userId },
-      data: { creditDueDay: dto.dueDay === undefined ? undefined : dto.dueDay },
+      data: {
+        creditDueDay: dto.dueDay === undefined ? undefined : dto.dueDay,
+        creditCycleCountAllPayments: dto.countAllPayments,
+      },
     });
 
     await this.lifeEngineService.touchUserData(userId);
@@ -90,13 +104,14 @@ export class CreditCycleService {
   private buildResponse(input: {
     closingDay: number;
     dueDay: number | null;
+    countAllPayments: boolean;
     start: Date;
     end: Date;
     ceiling: number | null;
     spent: number;
     previousCeiling: number | null;
   }) {
-    const { closingDay, dueDay, start, end, ceiling, spent, previousCeiling } = input;
+    const { closingDay, dueDay, countAllPayments, start, end, ceiling, spent, previousCeiling } = input;
     const percentUsed = ceiling ? Math.floor((spent / ceiling) * 100) : null;
     const remaining = ceiling !== null ? ceiling - spent : null;
 
@@ -113,6 +128,7 @@ export class CreditCycleService {
     return {
       closingDay,
       dueDay,
+      countAllPayments,
       cycleStart: start.toISOString(),
       cycleEnd: end.toISOString(),
       ceiling,
