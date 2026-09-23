@@ -331,7 +331,6 @@
 }
 
 @media (max-width: 1180px) {
-  .home-pulse__body,
   .home-command,
   .home-workspace,
   .home-secondary {
@@ -431,6 +430,14 @@
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   gap: 1rem;
   align-items: start;
+}
+
+/* Empilha em telas estreitas: lado a lado deixava o grafico com metade da
+   largura, espremendo os 7 rotulos de dia (SegTerQua... colados, ilegivel). */
+@media (max-width: 1180px) {
+  .home-pulse__body {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Gastos por categoria: mesmo seletor de mes da pagina de Financas. */
