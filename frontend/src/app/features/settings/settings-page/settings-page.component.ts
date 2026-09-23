@@ -14,7 +14,7 @@ import {
   ReactiveFormsModule,
   Validators,
 } from "@angular/forms";
-import { Router } from "@angular/router";
+import { Router, RouterLink } from "@angular/router";
 import { environment } from "../../../../environments/environment";
 import {
   CURRENT_AI_CONSENT_VERSION,
@@ -26,7 +26,7 @@ import { LifeApiService } from "../../../core/services/life-api.service";
 @Component({
   selector: "app-settings-page",
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, RouterLink],
   templateUrl: "./settings-page.component.html",
   styleUrls: ["./settings-page.component.scss"],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -84,7 +84,6 @@ export class SettingsPageComponent {
     occupation: [this.authService.currentUser()?.occupation ?? ""],
     primaryGoal: [this.authService.currentUser()?.primaryGoal ?? ""],
     monthlyIncome: [this.authService.currentUser()?.monthlyIncome ?? 0],
-    monthClosingDay: [this.authService.currentUser()?.monthClosingDay ?? 30],
     preferredCurrency: [
       this.authService.currentUser()?.preferredCurrency ?? "BRL",
     ],

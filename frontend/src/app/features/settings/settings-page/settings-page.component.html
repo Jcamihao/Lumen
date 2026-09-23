@@ -112,7 +112,10 @@
     <div class="proto-surface__head">
       <div>
         <h3>Base financeira</h3>
-        <p>Defina renda mensal, fechamento do mês, moeda e fuso do workspace.</p>
+        <p>
+          Defina renda mensal, moeda e fuso do workspace. Fechamento e vencimento do cartão agora
+          ficam em <a routerLink="/card">Cartão</a>.
+        </p>
       </div>
     </div>
 
@@ -121,14 +124,6 @@
         <div class="proto-field">
           <label for="settings-income">Renda mensal estimada</label>
           <input id="settings-income" type="number" min="0" formControlName="monthlyIncome" />
-        </div>
-
-        <div class="proto-field">
-          <label for="settings-closing-day">Dia de fechamento</label>
-          <input id="settings-closing-day" type="number" min="1" max="31" formControlName="monthClosingDay" />
-          <small class="proto-field__hint">
-            Também define o fechamento do ciclo do teto de crédito, em Finanças.
-          </small>
         </div>
 
         <div class="proto-field">
