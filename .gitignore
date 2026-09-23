@@ -4,6 +4,7 @@ coverage
 .angular
 .env
 .env.production
+*.xlsx
 frontend/.angular
 frontend/dist
 backend/dist
