@@ -137,4 +137,38 @@ describe('FinanceCategoriesService — orcamento mensal', () => {
     await service.update('user-1', 'cat-1', { monthlyBudget: 900 });
     expect(engine.touchUserData).toHaveBeenCalledWith('user-1');
   });
+
+  it('nome duplicado (indice unico userId+name+type) vira 400 legivel, nao o 500 cru do banco', async () => {
+    const prisma = buildPrisma();
+    prisma.financeCategory.create.mockRejectedValue(
+      Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }),
+    );
+    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any);
+
+    await expect(
+      service.create('user-1', { name: 'Alimentacao', color: '#f00', type: TransactionType.EXPENSE }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('renomear pra um nome que ja existe tambem vira 400 legivel', async () => {
+    const prisma = buildPrisma();
+    prisma.financeCategory.update.mockRejectedValue(
+      Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }),
+    );
+    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any);
+
+    await expect(service.update('user-1', 'cat-1', { name: 'Alimentacao' })).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('erro que nao e de unicidade continua subindo (nao e engolido)', async () => {
+    const prisma = buildPrisma();
+    prisma.financeCategory.create.mockRejectedValue(new Error('conexao caiu'));
+    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any);
+
+    await expect(
+      service.create('user-1', { name: 'Mercado', color: '#0f0', type: TransactionType.EXPENSE }),
+    ).rejects.toThrow('conexao caiu');
+  });
 });

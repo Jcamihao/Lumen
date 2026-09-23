@@ -100,9 +100,38 @@
         <h3>Orçamento por categoria</h3>
         <p>Defina um teto mensal; o Selah avisa quando você chegar perto ou passar.</p>
       </div>
+
+      <button *ngIf="!categoryFormOpen()" type="button" class="proto-button" (click)="openCategoryForm()">
+        Nova categoria
+      </button>
     </div>
 
     <div class="proto-surface__body">
+      <form
+        *ngIf="categoryFormOpen()"
+        class="category-form"
+        (submit)="$event.preventDefault(); createCategory()"
+        novalidate
+      >
+        <div class="proto-field">
+          <label for="new-category-name">Nome da categoria</label>
+          <input id="new-category-name" type="text" placeholder="Ex.: Educação, Pet" [formControl]="categoryNameControl" />
+        </div>
+        <div class="category-form__actions">
+          <button type="submit" class="proto-button" [disabled]="savingCategory()">
+            {{ savingCategory() ? 'Criando...' : 'Criar categoria' }}
+          </button>
+          <button
+            type="button"
+            class="proto-button proto-button--secondary"
+            [disabled]="savingCategory()"
+            (click)="cancelCategoryForm()"
+          >
+            Cancelar
+          </button>
+        </div>
+      </form>
+
       <ul class="budget-list" *ngIf="budgetRows().length; else noBudgetCategories">
         <li
           class="budget-row"
@@ -179,6 +208,14 @@
             <div class="budget-row__actions">
               <button type="button" class="proto-button proto-button--secondary" (click)="startEditBudget(row)">
                 {{ row.budget !== null ? 'Editar orçamento' : 'Definir orçamento' }}
+              </button>
+              <button
+                type="button"
+                class="proto-button proto-button--secondary"
+                [disabled]="busyCategoryId() === row.id"
+                (click)="removeCategory(row)"
+              >
+                Excluir
               </button>
             </div>
           </ng-template>

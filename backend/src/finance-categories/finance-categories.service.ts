@@ -40,16 +40,20 @@ export class FinanceCategoriesService {
       throw new BadRequestException(BUDGET_ONLY_FOR_EXPENSE);
     }
 
-    const category = await this.prisma.financeCategory.create({
-      data: {
-        userId,
-        name: dto.name,
-        color: dto.color,
-        icon: dto.icon,
-        type: dto.type,
-        monthlyBudget: dto.monthlyBudget ?? null,
-      },
-    });
+    const category = await this.prisma.financeCategory
+      .create({
+        data: {
+          userId,
+          name: dto.name,
+          color: dto.color,
+          icon: dto.icon,
+          type: dto.type,
+          monthlyBudget: dto.monthlyBudget ?? null,
+        },
+      })
+      .catch((error) => {
+        throw this.friendlyDuplicateNameError(error);
+      });
 
     if (dto.monthlyBudget !== undefined) {
       await this.lifeEngineService.touchUserData(userId);
@@ -72,10 +76,14 @@ export class FinanceCategoriesService {
       }
     }
 
-    const category = await this.prisma.financeCategory.update({
-      where: { id },
-      data,
-    });
+    const category = await this.prisma.financeCategory
+      .update({
+        where: { id },
+        data,
+      })
+      .catch((error) => {
+        throw this.friendlyDuplicateNameError(error);
+      });
 
     // Orcamento novo/alterado/removido muda os alertas: recalcula os insights
     // agora em vez de esperar o proximo ciclo.
@@ -97,6 +105,15 @@ export class FinanceCategoriesService {
     });
 
     return { success: true };
+  }
+
+  /** Indice unico (userId, name, type): mensagem legivel em vez do 500 cru do Prisma. */
+  private friendlyDuplicateNameError(error: unknown) {
+    if ((error as { code?: string } | null)?.code === 'P2002') {
+      return new BadRequestException('Você já tem uma categoria com este nome.');
+    }
+
+    return error;
   }
 
   private async ensureOwnership(userId: string, id: string) {

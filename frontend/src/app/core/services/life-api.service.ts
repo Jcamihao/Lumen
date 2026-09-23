@@ -720,6 +720,14 @@ export class LifeApiService {
     );
   }
 
+  createFinanceCategory(payload: { name: string; color: string; type: 'INCOME' | 'EXPENSE'; icon?: string }) {
+    return this.http.post<FinanceCategory>(`${environment.apiBaseUrl}/finance-categories`, payload);
+  }
+
+  deleteFinanceCategory(id: string) {
+    return this.http.delete<{ success: boolean }>(`${environment.apiBaseUrl}/finance-categories/${id}`);
+  }
+
   deleteMyAccount(password: string) {
     return this.http.delete<{ message: string; deletedAt: string }>(
       `${environment.apiBaseUrl}/users/me`,

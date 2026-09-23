@@ -19,6 +19,9 @@ import { EnvelopesCardComponent } from '../envelopes-card/envelopes-card.compone
 import { InstallmentPurchasesCardComponent } from '../installment-purchases-card/installment-purchases-card.component';
 import { RecurringTransactionsCardComponent } from '../recurring-transactions-card/recurring-transactions-card.component';
 
+/** Mesma logica de rotacao de cor das Reservas: uma cor por posicao, sem seletor manual. */
+const CATEGORY_COLORS = ['#f18f01', '#006cd2', '#0f9d7a', '#7c5cff', '#ef4444', '#0ea5e9'];
+
 @Component({
   selector: 'app-finances-page',
   standalone: true,
@@ -77,6 +80,13 @@ export class FinancesPageComponent {
   protected readonly savingBudget = signal(false);
   // type=number entrega number (ou null quando vazio), nao string.
   protected readonly budgetControl = new FormControl<number | null>(null);
+  protected readonly categoryFormOpen = signal(false);
+  protected readonly savingCategory = signal(false);
+  protected readonly busyCategoryId = signal<string | null>(null);
+  protected readonly categoryNameControl = new FormControl('', {
+    nonNullable: true,
+    validators: [Validators.required, Validators.minLength(2)],
+  });
   protected readonly currencyCode = computed(
     () => this.authService.currentUser()?.preferredCurrency ?? 'BRL',
   );
@@ -361,6 +371,90 @@ export class FinancesPageComponent {
           this.toast.error('Não foi possível salvar o orçamento agora.');
         },
       });
+  }
+
+  protected openCategoryForm() {
+    this.categoryFormOpen.set(true);
+  }
+
+  protected cancelCategoryForm() {
+    this.categoryFormOpen.set(false);
+    this.categoryNameControl.reset('');
+  }
+
+  protected createCategory() {
+    if (this.categoryNameControl.invalid || this.savingCategory()) {
+      this.categoryNameControl.markAsTouched();
+      return;
+    }
+
+    // So categorias de despesa aparecem neste card (orcamento so vale pra despesa);
+    // a cor gira pela mesma paleta das Reservas, sem seletor manual.
+    const expenseCount = this.financeCategories().filter((c) => c.type === 'EXPENSE').length;
+    const color = CATEGORY_COLORS[expenseCount % CATEGORY_COLORS.length];
+
+    this.savingCategory.set(true);
+
+    this.api
+      .createFinanceCategory({
+        name: this.categoryNameControl.value.trim(),
+        color,
+        type: 'EXPENSE',
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.authService.loadMe().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+          this.savingCategory.set(false);
+          this.cancelCategoryForm();
+          this.toast.success('Categoria criada.');
+        },
+        error: (error) => {
+          this.savingCategory.set(false);
+          this.toast.error(this.categoryErrorMessage(error, 'Não foi possível criar a categoria agora.'));
+        },
+      });
+  }
+
+  protected removeCategory(row: BudgetRow) {
+    if (
+      !globalThis.confirm(
+        `Excluir a categoria "${row.name}"? Os lançamentos já feitos com ela ficam sem categoria.`,
+      )
+    ) {
+      return;
+    }
+
+    this.busyCategoryId.set(row.id);
+
+    this.api
+      .deleteFinanceCategory(row.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.authService.loadMe().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+          this.busyCategoryId.set(null);
+          this.toast.success('Categoria excluída.');
+        },
+        error: () => {
+          this.busyCategoryId.set(null);
+          this.toast.error('Não foi possível excluir a categoria agora.');
+        },
+      });
+  }
+
+  private categoryErrorMessage(error: any, fallback: string) {
+    const message = error?.error?.message;
+
+    if (error?.status === 400 && typeof message === 'string') {
+      return message;
+    }
+
+    if (error?.status === 400 && Array.isArray(message) && message.length) {
+      return String(message[0]);
+    }
+
+    return fallback;
   }
 
   private loadSpending(month: number, year: number) {
