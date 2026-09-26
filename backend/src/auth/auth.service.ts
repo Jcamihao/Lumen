@@ -52,6 +52,10 @@ type LoginMfaChallengeResponse = {
   availableMethods: Array<"totp" | "recovery_code">;
 };
 
+// Login com email inexistente tambem gasta um bcrypt.compare (mesmo custo dos hashes
+// reais), senao o tempo de resposta revela quais emails tem conta.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync("lumen-timing-equalizer", 10);
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -129,6 +133,7 @@ export class AuthService {
     const user = await this.usersService.findByEmail(normalizedEmail);
 
     if (!user) {
+      await bcrypt.compare(dto.password, DUMMY_PASSWORD_HASH);
       throw new UnauthorizedException("Credenciais invalidas.");
     }
 

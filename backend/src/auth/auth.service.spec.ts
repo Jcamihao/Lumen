@@ -182,6 +182,46 @@ describe("AuthService", () => {
     });
   });
 
+  describe("login (nao revela por tempo quais emails tem conta)", () => {
+    const buildLoginService = (foundUser: any) =>
+      new AuthService(
+        { findByEmail: jest.fn().mockResolvedValue(foundUser) } as any,
+        {} as any,
+        buildConfigService(),
+        {} as any,
+        buildPrismaService(null),
+        {} as any,
+      );
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it("email inexistente: ainda roda um bcrypt.compare (contra hash descartavel) e responde 401 generico", async () => {
+      const compareSpy = jest.spyOn(bcrypt as any, "compare");
+      const service = buildLoginService(null);
+
+      await expect(
+        service.login({ email: "ninguem@exemplo.com", password: "qualquer-senha" } as any),
+      ).rejects.toThrow("Credenciais invalidas.");
+
+      expect(compareSpy).toHaveBeenCalledTimes(1);
+      expect(compareSpy.mock.calls[0][0]).toBe("qualquer-senha");
+      expect(String(compareSpy.mock.calls[0][1])).toMatch(/^\$2[aby]\$10\$/);
+    });
+
+    it("email existente com senha errada: mesma mensagem, um unico compare", async () => {
+      const compareSpy = jest.spyOn(bcrypt as any, "compare");
+      const passwordHash = await bcrypt.hash("senha-certa", 10);
+      compareSpy.mockClear();
+      const service = buildLoginService({ id: "user-1", email: "marina@exemplo.com", passwordHash });
+
+      await expect(
+        service.login({ email: "marina@exemplo.com", password: "senha-errada" } as any),
+      ).rejects.toThrow("Credenciais invalidas.");
+
+      expect(compareSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("logout", () => {
     it("revokes only the session that matches both sessionId and userId", async () => {
       const { service, prisma } = buildService({ session: null });
