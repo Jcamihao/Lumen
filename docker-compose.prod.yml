@@ -34,6 +34,9 @@ services:
         condition: service_healthy
     environment:
       PORT: 3000
+      # Liga as travas de producao do backend (recusa subir sem segredo forte / com segredo padrao).
+      # Precisa estar aqui: so o que este bloco lista chega ao container, o .env.production nao basta.
+      NODE_ENV: production
       APP_URL: ${APP_URL}
       DATABASE_URL: postgresql://${POSTGRES_USER:-lumen}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-lumen}?schema=public
       REDIS_URL: redis://redis:6379
