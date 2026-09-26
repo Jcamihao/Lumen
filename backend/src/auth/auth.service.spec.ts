@@ -1,4 +1,5 @@
 import * as bcrypt from "bcryptjs";
+import { createHash } from "crypto";
 import { UnauthorizedException } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { MfaService } from "./mfa.service";
@@ -85,6 +86,121 @@ describe("AuthService", () => {
 
     return { service, jwtService, prisma };
   };
+
+  describe("refresh: rotacao real (sha256 + janela de tolerancia)", () => {
+    // JWTs do mesmo usuario compartilham os primeiros 72 bytes (cabecalho + inicio do
+    // payload): e onde o bcrypt parava de ler e nao distinguia um token do outro.
+    const prefix = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLTEiLCJzZXNzaW9uSWQiOiJzLTEi";
+    const tokenA = `${prefix}.antigo-A`;
+    const tokenB = `${prefix}.vigente-B`;
+    const sha = (value: string) => createHash("sha256").update(value).digest("hex");
+    const baseSession = (over: Record<string, unknown> = {}) => ({
+      id: "session-1",
+      userId: "user-1",
+      refreshTokenHash: sha(tokenB),
+      recentRefreshTokenHashes: [{ hash: sha(tokenA), retiredAt: Date.now() - 120_000 }],
+      revokedAt: null,
+      expiresAt: futureDate,
+      ...over,
+    });
+
+    it("premissa do bug: bcrypt aceitava o token antigo no lugar do vigente", () => {
+      expect(bcrypt.compareSync(tokenA, bcrypt.hashSync(tokenB, 4))).toBe(true);
+    });
+
+    it("token vigente: rotaciona com troca atomica e guarda o anterior", async () => {
+      const { service, prisma } = buildService({ session: baseSession(), jwtPayload: undefined });
+
+      await service.refresh({ refreshToken: tokenB });
+
+      const call = prisma.authSession.updateMany.mock.calls[0][0];
+      expect(call.where.refreshTokenHash).toBe(sha(tokenB));
+      expect(call.data.refreshTokenHash).toBe(sha("new-refresh-token"));
+      // A (aposentado ha 120s, fora da janela) some; B (recem-substituido) entra na lista.
+      expect(call.data.recentRefreshTokenHashes).toEqual([{ hash: sha(tokenB), retiredAt: expect.any(Number) }]);
+    });
+
+    it("token antigo depois da janela: recusa e revoga a sessao (com bcrypt passava)", async () => {
+      const { service, prisma } = buildService({ session: baseSession() });
+
+      await expect(service.refresh({ refreshToken: tokenA })).rejects.toThrow(UnauthorizedException);
+      expect(prisma.authSession.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ revokeReason: "refresh_token_reuse_detected" }),
+        }),
+      );
+    });
+
+    it("token antigo DENTRO da janela (abas juntas, retry): aceita e rotaciona de novo", async () => {
+      const { service, prisma } = buildService({
+        session: baseSession({ recentRefreshTokenHashes: [{ hash: sha(tokenA), retiredAt: Date.now() - 5_000 }] }),
+      });
+
+      const result = await service.refresh({ refreshToken: tokenA });
+
+      expect(result.refreshToken).toBe("new-refresh-token");
+      // Nenhum token emitido na janela e invalidado: A continua na lista e B entra junto.
+      expect(prisma.authSession.updateMany.mock.calls[0][0].data.recentRefreshTokenHashes.map((e: any) => e.hash)).toEqual([
+        sha(tokenA),
+        sha(tokenB),
+      ]);
+    });
+
+    it("token que nao e nem o vigente nem o anterior: revoga mesmo dentro da janela", async () => {
+      const { service, prisma } = buildService({
+        session: baseSession({ recentRefreshTokenHashes: [{ hash: sha(tokenA), retiredAt: Date.now() - 1_000 }] }),
+      });
+
+      await expect(service.refresh({ refreshToken: `${prefix}.roubado-C` })).rejects.toThrow(UnauthorizedException);
+      expect(prisma.authSession.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ revokeReason: "refresh_token_reuse_detected" }),
+        }),
+      );
+    });
+
+    it("sessao antiga (hash bcrypt): ainda entra e ja sai regravada em sha256", async () => {
+      const legacyHash = await bcrypt.hash(tokenB, 4);
+      const { service, prisma } = buildService({
+        session: baseSession({ refreshTokenHash: legacyHash, recentRefreshTokenHashes: null }),
+      });
+
+      await service.refresh({ refreshToken: tokenB });
+
+      const data = prisma.authSession.updateMany.mock.calls[0][0].data;
+      expect(data.refreshTokenHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(data.recentRefreshTokenHashes).toEqual([{ hash: legacyHash, retiredAt: expect.any(Number) }]);
+    });
+
+    it("duas renovacoes simultaneas: quem perde a troca atomica refaz a leitura e passa pela janela", async () => {
+      let signed = 0;
+      const jwtService = {
+        verifyAsync: jest.fn().mockResolvedValue({ sub: "user-1", email: "marina@exemplo.com", role: "USER", sessionId: "session-1" }),
+        signAsync: jest.fn().mockImplementation(async () => `token-${(signed += 1)}`),
+      } as any;
+      const prisma = {
+        authSession: {
+          // 1a leitura (vigente=B) -> conflito -> 'ainda ativa' -> 2a leitura (outra aba ja rotacionou B->C)
+          findFirst: jest
+            .fn()
+            .mockResolvedValueOnce(baseSession({ recentRefreshTokenHashes: [] }))
+            .mockResolvedValueOnce({ id: "session-1" })
+            .mockResolvedValueOnce(
+              baseSession({ refreshTokenHash: sha("C"), recentRefreshTokenHashes: [{ hash: sha(tokenB), retiredAt: Date.now() }] }),
+            ),
+          updateMany: jest.fn().mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 1 }),
+          create: jest.fn(),
+        },
+      } as any;
+      const service = new AuthService(buildUsersService(), jwtService, buildConfigService(), {} as any, prisma, {} as any);
+
+      const result = await service.refresh({ refreshToken: tokenB });
+
+      expect(result.accessToken).toBeDefined();
+      expect(prisma.authSession.updateMany).toHaveBeenCalledTimes(2);
+      expect(prisma.authSession.updateMany.mock.calls[1][0].where.refreshTokenHash).toBe(sha("C"));
+    });
+  });
 
   describe("refresh", () => {
     it("rotates tokens and keeps the same session id on the happy path", async () => {

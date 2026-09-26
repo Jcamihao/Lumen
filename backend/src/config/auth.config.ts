@@ -70,6 +70,12 @@ export const authConfig = registerAs('auth', () => {
       isProduction,
     ),
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
+    // Apos rotacionar, o refresh token ANTERIOR ainda vale por N segundos (abas abrindo
+    // juntas, retry depois de timeout). Fora da janela, reuso revoga a sessao.
+    refreshReuseGraceSeconds: parseInt(
+      process.env.AUTH_REFRESH_REUSE_GRACE_SECONDS ?? '30',
+      10,
+    ),
     refreshCookieName:
       process.env.AUTH_REFRESH_COOKIE_NAME ?? 'lumen.refreshToken',
     refreshCookieDomain: process.env.AUTH_REFRESH_COOKIE_DOMAIN || undefined,

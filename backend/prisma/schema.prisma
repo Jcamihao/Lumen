@@ -200,6 +200,9 @@ model AuthSession {
   id               String    @id @default(uuid())
   userId           String
   refreshTokenHash String
+  // Tokens ja substituidos ({hash, retiredAt}), aceitos por uma janela curta apos a rotacao
+  // (abas abrindo juntas, retry de rede). Fora da janela, reuso revoga a sessao.
+  recentRefreshTokenHashes Json?
   userAgent        String?
   ipAddress        String?
   lastUsedAt       DateTime?

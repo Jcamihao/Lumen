@@ -52,6 +52,14 @@ type LoginMfaChallengeResponse = {
   availableMethods: Array<"totp" | "recovery_code">;
 };
 
+type RetiredRefreshToken = { hash: string; retiredAt: number };
+
+const REFRESH_ROTATION_MAX_ATTEMPTS = 6;
+const REFRESH_RETIRED_KEEP = 10;
+
+/** Outra requisicao rotacionou o refresh token no meio desta: refazer a leitura. */
+class RefreshRotationConflictError extends Error {}
+
 // Login com email inexistente tambem gasta um bcrypt.compare (mesmo custo dos hashes
 // reais), senao o tempo de resposta revela quais emails tem conta.
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync("lumen-timing-equalizer", 10);
@@ -487,35 +495,63 @@ export class AuthService {
       throw new UnauthorizedException("Refresh token invalido.");
     }
 
-    const session = await this.prisma.authSession.findFirst({
-      where: {
-        id: payload.sessionId,
-        userId: payload.sub,
-      },
-    });
+    // Varias tentativas: se outra requisicao rotacionou entre a leitura e a escrita (abas
+    // abrindo juntas), na releitura o token apresentado ja esta entre os aposentados
+    // recentes. Uma tentativa por requisicao concorrente no pior caso.
+    for (let attempt = 0; attempt < REFRESH_ROTATION_MAX_ATTEMPTS; attempt += 1) {
+      const session = await this.prisma.authSession.findFirst({
+        where: {
+          id: payload.sessionId,
+          userId: payload.sub,
+        },
+      });
 
-    this.assertSessionIsUsable(session);
+      this.assertSessionIsUsable(session);
 
-    const isValidRefreshToken = await bcrypt.compare(
-      refreshToken,
-      session.refreshTokenHash,
-    );
+      const recent = this.recentRetiredRefreshTokens(session.recentRefreshTokenHashes);
+      let accepted = await this.refreshTokenMatches(
+        refreshToken,
+        session.refreshTokenHash,
+      );
 
-    if (!isValidRefreshToken) {
-      await this.revokeSession(session.id, "refresh_token_reuse_detected");
-      throw new UnauthorizedException("Refresh token invalido.");
+      for (const entry of recent) {
+        if (accepted) {
+          break;
+        }
+        accepted = await this.refreshTokenMatches(refreshToken, entry.hash);
+      }
+
+      if (!accepted) {
+        await this.revokeSession(session.id, "refresh_token_reuse_detected");
+        throw new UnauthorizedException("Refresh token invalido.");
+      }
+
+      const user = await this.usersService.findById(payload.sub);
+
+      try {
+        return await this.issueTokens({
+          userId: user.id,
+          email: user.email,
+          role: user.role,
+          user,
+          sessionContext: this.extractSessionContext(request),
+          existingSessionId: session.id,
+          rotation: {
+            expectedRefreshTokenHash: session.refreshTokenHash,
+            retired: [
+              ...recent,
+              { hash: session.refreshTokenHash, retiredAt: Date.now() },
+            ].slice(-REFRESH_RETIRED_KEEP),
+          },
+        });
+      } catch (error) {
+        if (!(error instanceof RefreshRotationConflictError)) {
+          throw error;
+        }
+      }
     }
 
-    const user = await this.usersService.findById(payload.sub);
-
-    return this.issueTokens({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-      user,
-      sessionContext: this.extractSessionContext(request),
-      existingSessionId: session.id,
-    });
+    throw new UnauthorizedException("Refresh token invalido.");
   }
 
   async logout(userId: string, sessionId: string) {
@@ -780,6 +816,49 @@ export class AuthService {
     return challenge.userId;
   }
 
+  /**
+   * Compara o refresh token com o hash guardado. Sessoes antigas guardam bcrypt (que so
+   * le os 72 primeiros bytes do JWT, entao nao distingue tokens do mesmo usuario): valem
+   * ate a proxima rotacao, que regrava o hash em sha256.
+   */
+  private async refreshTokenMatches(
+    token: string,
+    stored: string | null | undefined,
+  ): Promise<boolean> {
+    if (!stored) {
+      return false;
+    }
+
+    if (stored.startsWith("$2")) {
+      return bcrypt.compare(token, stored);
+    }
+
+    const expected = Buffer.from(stored);
+    const received = Buffer.from(this.hashLinkSecret(token));
+
+    return expected.length === received.length && timingSafeEqual(expected, received);
+  }
+
+  /** Tokens aposentados que ainda estao dentro da janela de tolerancia. */
+  private recentRetiredRefreshTokens(value: unknown): RetiredRefreshToken[] {
+    const graceSeconds =
+      this.configService.get<number>("auth.refreshReuseGraceSeconds") ?? 30;
+    const limit = Date.now() - graceSeconds * 1000;
+
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.filter(
+      (item): item is RetiredRefreshToken =>
+        !!item &&
+        typeof item === "object" &&
+        typeof (item as RetiredRefreshToken).hash === "string" &&
+        typeof (item as RetiredRefreshToken).retiredAt === "number" &&
+        (item as RetiredRefreshToken).retiredAt >= limit,
+    );
+  }
+
   private hashLinkSecret(secret: string) {
     return createHash("sha256").update(secret).digest("hex");
   }
@@ -1030,6 +1109,8 @@ export class AuthService {
     user: UserRecord;
     sessionContext: SessionContext;
     existingSessionId?: string;
+    /** Rotacao de refresh token: a troca so acontece se o hash vigente ainda for o lido (atomico). */
+    rotation?: { expectedRefreshTokenHash: string; retired: RetiredRefreshToken[] };
   }): Promise<AuthTokensResponse> {
     const accessSecret = this.configService.getOrThrow<string>(
       "auth.accessSecret",
@@ -1057,10 +1138,13 @@ export class AuthService {
       this.jwtService.signAsync(payload, {
         secret: refreshSecret,
         expiresIn: refreshExpiresIn,
+        // Sem isso, dois refresh no mesmo segundo geram o MESMO token (payload e iat
+        // iguais) e a rotacao deixa de distinguir o novo do antigo.
+        jwtid: randomUUID(),
       }),
     ]);
 
-    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+    const refreshTokenHash = this.hashLinkSecret(refreshToken);
     const now = new Date();
     const expiresAt = new Date(
       now.getTime() + this.parseDurationToMs(refreshExpiresIn),
@@ -1072,9 +1156,13 @@ export class AuthService {
           id: input.existingSessionId,
           userId: input.userId,
           revokedAt: null,
+          ...(input.rotation
+            ? { refreshTokenHash: input.rotation.expectedRefreshTokenHash }
+            : {}),
         },
         data: {
           refreshTokenHash,
+          recentRefreshTokenHashes: input.rotation?.retired ?? [],
           expiresAt,
           ipAddress: input.sessionContext.ipAddress,
           userAgent: input.sessionContext.userAgent,
@@ -1084,6 +1172,17 @@ export class AuthService {
       });
 
       if (result.count === 0) {
+        const stillActive = input.rotation
+          ? await this.prisma.authSession.findFirst({
+              where: { id: input.existingSessionId, userId: input.userId, revokedAt: null },
+              select: { id: true },
+            })
+          : null;
+
+        if (stillActive) {
+          throw new RefreshRotationConflictError();
+        }
+
         throw new UnauthorizedException("Sessao autenticada invalida.");
       }
     } else {
