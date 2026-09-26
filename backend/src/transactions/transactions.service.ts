@@ -75,6 +75,7 @@ export class TransactionsService {
       dto.linkedTaskId,
       dto.linkedGoalId,
       dto.type,
+      dto.envelopeId,
     );
 
     const transaction = await this.prisma.transaction.create({
@@ -108,6 +109,7 @@ export class TransactionsService {
       dto.linkedTaskId === null ? undefined : dto.linkedTaskId,
       dto.linkedGoalId === null ? undefined : dto.linkedGoalId,
       dto.type,
+      dto.envelopeId === null ? undefined : dto.envelopeId,
     );
 
     const transaction = await this.prisma.transaction
@@ -175,6 +177,7 @@ export class TransactionsService {
     taskId?: string,
     goalId?: string,
     type?: TransactionType,
+    envelopeId?: string,
   ) {
     if (categoryId) {
       const category = await this.prisma.financeCategory.findFirst({
@@ -209,6 +212,17 @@ export class TransactionsService {
 
       if (!goal) {
         throw new NotFoundException('Meta vinculada nao encontrada.');
+      }
+    }
+
+    if (envelopeId) {
+      const envelope = await this.prisma.envelope.findFirst({
+        where: { id: envelopeId, userId },
+        select: { id: true },
+      });
+
+      if (!envelope) {
+        throw new NotFoundException('Reserva vinculada nao encontrada.');
       }
     }
   }

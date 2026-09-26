@@ -24,6 +24,9 @@ describe("TransactionsService", () => {
       goal: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
+      envelope: {
+        findFirst: jest.fn().mockResolvedValue({ id: "env-1" }),
+      },
       ...overrides,
     }) as any;
 
@@ -176,6 +179,66 @@ describe("TransactionsService", () => {
       } as any);
 
       expect(prisma.transaction.create.mock.calls[0][0].data.envelopeId).toBe('env-1');
+    });
+
+    it('recusa envelope de outro usuario na criacao (nao grava nada)', async () => {
+      const prisma = buildPrisma({
+        envelope: { findFirst: jest.fn().mockResolvedValue(null) },
+      });
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
+
+      await expect(
+        service.create('user-1', {
+          type: 'EXPENSE',
+          description: 'Posto',
+          amount: 150,
+          date: '2026-09-10',
+          envelopeId: 'env-do-vizinho',
+        } as any),
+      ).rejects.toBeInstanceOf(NotFoundException);
+
+      expect(prisma.envelope.findFirst).toHaveBeenCalledWith({
+        where: { id: 'env-do-vizinho', userId: 'user-1' },
+        select: { id: true },
+      });
+      expect(prisma.transaction.create).not.toHaveBeenCalled();
+    });
+
+    it('recusa envelope de outro usuario na edicao (nao atualiza)', async () => {
+      const prisma = buildPrisma({
+        transaction: {
+          findMany: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue({ id: 'tx-1', userId: 'user-1' }),
+          update: jest.fn(),
+          create: jest.fn(),
+          delete: jest.fn(),
+        },
+        envelope: { findFirst: jest.fn().mockResolvedValue(null) },
+      });
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
+
+      await expect(
+        service.update('user-1', 'tx-1', { envelopeId: 'env-do-vizinho' } as any),
+      ).rejects.toBeInstanceOf(NotFoundException);
+
+      expect(prisma.transaction.update).not.toHaveBeenCalled();
+    });
+
+    it('limpar o envelope (null) nao consulta o banco de envelopes', async () => {
+      const prisma = buildPrisma({
+        transaction: {
+          findMany: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue({ id: 'tx-1', userId: 'user-1' }),
+          update: jest.fn().mockResolvedValue({ id: 'tx-1' }),
+          create: jest.fn(),
+          delete: jest.fn(),
+        },
+      });
+      const service = new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer());
+
+      await service.update('user-1', 'tx-1', { envelopeId: null } as any);
+
+      expect(prisma.envelope.findFirst).not.toHaveBeenCalled();
     });
 
     it('null limpa o envelope numa edicao; ausente nao mexe', async () => {
