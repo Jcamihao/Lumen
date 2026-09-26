@@ -860,10 +860,10 @@ export class OfflineLifeService {
             summary.forecast.predictedBalance + summary.finances.monthlyExpenses * 0.1,
             currency,
           )}.`,
-          monthlyDelta: Math.round(summary.finances.monthlyExpenses * 0.1),
+          monthlyDelta: Math.round(summary.finances.monthlyExpenses * 0.1 * 100) / 100,
           projectedBalance: Math.round(
-            summary.forecast.predictedBalance + summary.finances.monthlyExpenses * 0.1,
-          ),
+            (summary.forecast.predictedBalance + summary.finances.monthlyExpenses * 0.1) * 100,
+          ) / 100,
           confidence: "medium",
           assumptions: [
             "Simulação baseada somente no histórico local do dispositivo.",

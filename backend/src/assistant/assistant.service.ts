@@ -1110,7 +1110,7 @@ export class AssistantService {
 
     if (spendingAnalysis.topVariableCategory) {
       const { name, total } = spendingAnalysis.topVariableCategory;
-      const delta = Math.round(total * 0.1);
+      const delta = this.roundToCents(total * 0.1);
       simulations.push({
         id: "expense-trim-category",
         title: `Corte em ${name}`,
@@ -1130,7 +1130,7 @@ export class AssistantService {
         ],
       });
     } else if (monthlyExpenses > 0) {
-      const delta = Math.round(monthlyExpenses * 0.1);
+      const delta = this.roundToCents(monthlyExpenses * 0.1);
       simulations.push({
         id: "expense-trim-10",
         title: "Ajuste leve de gastos",
@@ -1151,7 +1151,7 @@ export class AssistantService {
     if (debtAmount && spendingAnalysis.avgMonthlySurplus && spendingAnalysis.avgMonthlySurplus > 0) {
       const surplus = spendingAnalysis.avgMonthlySurplus;
       const months = Math.min(Math.max(Math.ceil(debtAmount / surplus), 1), 60);
-      const monthlyParcel = Math.round(debtAmount / months);
+      const monthlyParcel = this.roundToCents(debtAmount / months);
       simulations.push({
         id: "debt-personalized",
         title: `Parcelamento em ${months} ${months === 1 ? "mês" : "meses"}`,
@@ -1174,7 +1174,7 @@ export class AssistantService {
         ],
       });
     } else if (debtAmount) {
-      const monthlyParcel = Math.round(debtAmount / 8);
+      const monthlyParcel = this.roundToCents(debtAmount / 8);
       simulations.push({
         id: "debt-8x",
         title: "Parcelamento linear em 8 meses",
@@ -1198,7 +1198,7 @@ export class AssistantService {
     // Meta sem alvo nao tem "quanto falta": sem simulacao de aporte tatico pra ela.
     if (topGoal && topGoal.targetAmount !== null) {
       const remaining = Math.max(topGoal.targetAmount - topGoal.currentAmount, 0);
-      const contribution = Math.min(Math.max(Math.round(forecastBalance * 0.15), 0), remaining);
+      const contribution = Math.min(Math.max(this.roundToCents(forecastBalance * 0.15), 0), remaining);
 
       if (contribution > 0) {
         simulations.push({
@@ -1592,6 +1592,10 @@ export class AssistantService {
     }
 
     return Math.max(0, Math.min(100, Math.round((current / target) * 100)));
+  }
+
+  private roundToCents(value: number) {
+    return Math.round(value * 100) / 100;
   }
 
   private formatCurrency(amount: number, currency: string) {

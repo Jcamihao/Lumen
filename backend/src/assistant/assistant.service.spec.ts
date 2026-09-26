@@ -339,6 +339,31 @@ describe("AssistantService", () => {
       expect(response.simulations.map((sim) => sim.id)).toContain("debt-8x");
     });
 
+    it("mantem os centavos na parcela da divida (nao arredonda pra inteiro)", async () => {
+      const service = new AssistantService(
+        buildDashboardService(),
+        buildConfigService(),
+        buildPrismaService({
+          privacyNoticeAcceptedAt: null,
+          aiAssistantEnabled: false,
+          aiAssistantConsentAt: null,
+          transactions: [],
+        }),
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+      );
+
+      const response = await service.ask(
+        "user-1",
+        "Tenho uma dívida de R$ 8.100, como organizo isso?",
+      );
+
+      // 8100 / 8 = 1012,50 — com Math.round virava 1013.
+      const debtSim = response.simulations.find((sim) => sim.id === "debt-8x");
+      expect(debtSim?.monthlyDelta).toBe(-1012.5);
+    });
+
     it("meta com alvo definido: sugere aporte tatico", async () => {
       const service = new AssistantService(
         buildDashboardService(),
