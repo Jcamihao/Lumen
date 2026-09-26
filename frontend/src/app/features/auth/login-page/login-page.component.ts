@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AUTH_PASSWORD_MIN_LENGTH } from '../../../core/constants/auth.constants';
+import { AUTH_LOGIN_PASSWORD_MIN_LENGTH } from '../../../core/constants/auth.constants';
 import { LoginMfaChallengeResponse, MfaBypassChallengeResponse } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 
@@ -26,13 +26,13 @@ export class LoginPageComponent {
   protected readonly showPassword = signal(false);
   protected readonly mfaChallenge = signal<LoginMfaChallengeResponse | null>(null);
   protected readonly emailBypassChallenge = signal<MfaBypassChallengeResponse | null>(null);
-  protected readonly passwordMinLength = AUTH_PASSWORD_MIN_LENGTH;
+  protected readonly passwordMinLength = AUTH_LOGIN_PASSWORD_MIN_LENGTH;
 
   protected readonly form = this.fb.nonNullable.group({
     email: ['', [Validators.required, Validators.email]],
     password: [
       '',
-      [Validators.required, Validators.minLength(AUTH_PASSWORD_MIN_LENGTH)],
+      [Validators.required, Validators.minLength(AUTH_LOGIN_PASSWORD_MIN_LENGTH)],
     ],
   });
   protected readonly mfaForm = this.fb.nonNullable.group({

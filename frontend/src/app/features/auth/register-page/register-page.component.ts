@@ -7,7 +7,8 @@ import {
   CURRENT_AI_CONSENT_VERSION,
   CURRENT_PRIVACY_NOTICE_VERSION,
 } from '../../../core/constants/privacy.constants';
-import { AUTH_PASSWORD_MIN_LENGTH } from '../../../core/constants/auth.constants';
+import { AUTH_PASSWORD_MAX_LENGTH, AUTH_PASSWORD_MIN_LENGTH } from '../../../core/constants/auth.constants';
+import { readApiError } from '../auth-flow.utils';
 import { AuthService } from '../../../core/services/auth.service';
 
 // O backend so aceita estes formatos (nao aceita SVG nem HEIC).
@@ -35,6 +36,7 @@ export class RegisterPageComponent {
   protected readonly privacyNoticeVersion = CURRENT_PRIVACY_NOTICE_VERSION;
   protected readonly aiConsentVersion = CURRENT_AI_CONSENT_VERSION;
   protected readonly passwordMinLength = AUTH_PASSWORD_MIN_LENGTH;
+  protected readonly passwordMaxLength = AUTH_PASSWORD_MAX_LENGTH;
 
   protected readonly form = this.fb.group({
     name: ['', [Validators.required, Validators.minLength(2)]],
@@ -94,9 +96,7 @@ export class RegisterPageComponent {
         },
         error: (error) => {
           this.loading.set(false);
-          this.errorMessage.set(
-            error?.error?.message ?? 'Não foi possível criar a conta.',
-          );
+          this.errorMessage.set(readApiError(error, 'Não foi possível criar a conta.'));
         },
       });
   }

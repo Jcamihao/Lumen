@@ -9,7 +9,7 @@ import {
   Validators,
 } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { AUTH_PASSWORD_MIN_LENGTH } from '../../../core/constants/auth.constants';
+import { AUTH_PASSWORD_MAX_LENGTH, AUTH_PASSWORD_MIN_LENGTH } from '../../../core/constants/auth.constants';
 import { AuthService } from '../../../core/services/auth.service';
 import { readApiError } from '../auth-flow.utils';
 
@@ -38,6 +38,7 @@ export class ResetPasswordPageComponent {
 
   protected readonly hasLink = !!this.linkId && !!this.linkToken;
   protected readonly passwordMinLength = AUTH_PASSWORD_MIN_LENGTH;
+  protected readonly passwordMaxLength = AUTH_PASSWORD_MAX_LENGTH;
   protected readonly loading = signal(false);
   protected readonly done = signal(false);
   protected readonly errorMessage = signal('');
