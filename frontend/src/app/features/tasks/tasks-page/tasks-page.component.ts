@@ -7,7 +7,7 @@ import { Task } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { focusField } from '../../../core/utils/focus.utils';
 import { LifeApiService } from '../../../core/services/life-api.service';
-import { formatDayLabel } from '../../../core/utils/date.utils';
+import { dayOnlyParts, formatDayLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
 import { ToastService } from '../../../core/services/toast.service';
 
 type TaskStatus = Task['status'];
@@ -64,6 +64,40 @@ export class TasksPageComponent {
   protected readonly hasActiveFilters = computed(
     () => !!(this.filterSearch() || this.filterStatus() || this.filterPriority() || this.filterCategory()),
   );
+
+  protected readonly groupedFilteredTasks = computed(() => {
+    const today = todayLocalInputValue();
+    const in7Days = this.addDaysToLocalDay(today, 7);
+
+    const groups: { label: string; tasks: Task[] }[] = [
+      { label: 'Atrasadas', tasks: [] },
+      { label: 'Hoje', tasks: [] },
+      { label: 'Próximos 7 dias', tasks: [] },
+      { label: 'Mais adiante', tasks: [] },
+      { label: 'Concluídas', tasks: [] },
+    ];
+    const [overdue, dueToday, dueSoon, later, done] = groups;
+
+    for (const task of this.filteredTasks()) {
+      if (task.status === 'DONE') {
+        done.tasks.push(task);
+        continue;
+      }
+
+      const day = this.dueDateLocalDay(task);
+      if (day !== null && day < today) {
+        overdue.tasks.push(task);
+      } else if (day === today) {
+        dueToday.tasks.push(task);
+      } else if (day !== null && day <= in7Days) {
+        dueSoon.tasks.push(task);
+      } else {
+        later.tasks.push(task);
+      }
+    }
+
+    return groups.filter((group) => group.tasks.length > 0);
+  });
 
   // --- Aggregates (over ALL tasks, not filtered) ---
   protected readonly activeTasks = computed(
@@ -292,10 +326,6 @@ export class TasksPageComponent {
       });
   }
 
-  protected taskSubtitle(task: Task) {
-    return task.description || task.category?.name || 'Sem categoria definida';
-  }
-
   protected priorityLabel(priority: Task['priority']) {
     return { LOW: 'Baixa', MEDIUM: 'Média', HIGH: 'Alta', CRITICAL: 'Crítica' }[priority];
   }
@@ -305,15 +335,43 @@ export class TasksPageComponent {
   }
 
   protected taskStatusTone(task: Task) {
-    return task.status === 'DONE' ? 'success' : this.priorityTone(task.priority);
+    if (task.status === 'DONE') return 'success';
+    if (this.isOverdue(task)) return 'danger';
+    return this.priorityTone(task.priority);
+  }
+
+  protected isOverdue(task: Task): boolean {
+    if (task.status === 'DONE') return false;
+    const day = this.dueDateLocalDay(task);
+    return day !== null && day < todayLocalInputValue();
+  }
+
+  private dueDateLocalDay(task: Task): string | null {
+    if (!task.dueDate) return null;
+
+    const parts = dayOnlyParts(task.dueDate);
+    if (parts) {
+      return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+    }
+
+    const date = new Date(task.dueDate);
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private addDaysToLocalDay(day: string, amount: number): string {
+    const [year, month, date] = day.split('-').map(Number);
+    const result = new Date(year, month - 1, date + amount);
+    const y = result.getFullYear();
+    const m = `${result.getMonth() + 1}`.padStart(2, '0');
+    const d = `${result.getDate()}`.padStart(2, '0');
+    return `${y}-${m}-${d}`;
   }
 
   protected taskStatusLabel(status: Task['status']) {
     return { PENDING: 'Pendente', IN_PROGRESS: 'Em andamento', DONE: 'Concluída', CANCELLED: 'Cancelada' }[status];
-  }
-
-  protected taskCategoryLabel(task: Task) {
-    return task.category?.name || 'Sem categoria';
   }
 
   protected recurrenceLabel(rule?: string | null) {
@@ -325,7 +383,6 @@ export class TasksPageComponent {
   }
 
   protected taskDeadlineLabel(task: Task) {
-    if (!task.dueDate) return 'Sem prazo';
     return formatDayLabel(task.dueDate, { day: '2-digit', month: 'short' });
   }
 
