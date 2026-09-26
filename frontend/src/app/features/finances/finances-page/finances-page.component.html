@@ -26,7 +26,7 @@
       <div class="proto-metric__top">
         <span class="proto-icon-bubble"><span class="material-symbols-rounded">trending_up</span></span>
       </div>
-      <strong>{{ incomeTotal() | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
+      <strong>{{ incomeTotal() | currency: currencyCode() : 'symbol' : '1.2-2' : 'pt-BR' }}</strong>
       <p>Receitas do período</p>
     </article>
 
@@ -34,7 +34,7 @@
       <div class="proto-metric__top">
         <span class="proto-icon-bubble"><span class="material-symbols-rounded">trending_down</span></span>
       </div>
-      <strong>{{ expenseTotal() | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
+      <strong>{{ expenseTotal() | currency: currencyCode() : 'symbol' : '1.2-2' : 'pt-BR' }}</strong>
       <p>Despesas registradas</p>
     </article>
 
@@ -42,7 +42,7 @@
       <div class="proto-metric__top">
         <span class="proto-icon-bubble"><span class="material-symbols-rounded">account_balance_wallet</span></span>
       </div>
-      <strong>{{ netFlow() | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
+      <strong>{{ netFlow() | currency: currencyCode() : 'symbol' : '1.2-2' : 'pt-BR' }}</strong>
       <p>{{ netFlow() >= 0 ? 'Saldo positivo' : 'Saldo negativo' }}</p>
     </article>
   </section>

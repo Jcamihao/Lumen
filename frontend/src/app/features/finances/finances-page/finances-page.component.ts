@@ -303,7 +303,6 @@ export class FinancesPageComponent {
     const formatted = new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: this.currencyCode(),
-      maximumFractionDigits: 0,
     }).format(transaction.amount);
 
     if (transaction.type === 'TRANSFER') {

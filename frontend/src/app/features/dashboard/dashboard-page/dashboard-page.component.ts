@@ -439,7 +439,6 @@ export class DashboardPageComponent {
     return `Saldo atual em ${new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: data.user.preferredCurrency,
-      maximumFractionDigits: 0,
     }).format(data.finances.balance)}. A projeção do mês aponta ${delta}.`;
   }
 
@@ -491,7 +490,6 @@ export class DashboardPageComponent {
     return `${dueLabel} · custo previsto ${new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: currencyCode,
-      maximumFractionDigits: 0,
     }).format(task.estimatedAmount)}`;
   }
 
@@ -521,7 +519,6 @@ export class DashboardPageComponent {
     const formatted = new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: currencyCode,
-      maximumFractionDigits: 0,
     }).format(transaction.amount);
 
     return `${transaction.type === 'INCOME' ? '+' : '-'} ${formatted}`;
@@ -548,7 +545,6 @@ export class DashboardPageComponent {
     return `${sign} ${new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: data.user.preferredCurrency,
-      maximumFractionDigits: 0,
     }).format(Math.abs(difference))}`;
   }
 
@@ -573,7 +569,7 @@ export class DashboardPageComponent {
       balance + weeklyIncomePace * 0.1 - weeklyExpensePace * 0.56 - overduePressure * 0.18,
       balance - pendingCost * 0.18 - overduePressure * 0.28,
       data.forecast.predictedBalance,
-    ].map((value) => Math.round(value));
+    ].map((value) => Math.round(value * 100) / 100);
   }
 
   protected projectionLabels() {
@@ -612,7 +608,6 @@ export class DashboardPageComponent {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: currencyCode,
-      maximumFractionDigits: 0,
     }).format(value);
   }
 

@@ -127,7 +127,7 @@
 
     <a class="proto-metric home-metric" routerLink="/finance" [attr.data-tone]="forecastTone(data.forecast.riskLevel)">
       <span class="home-metric__icon material-symbols-rounded">account_balance_wallet</span>
-      <strong>{{ data.forecast.predictedBalance | currency: data.user.preferredCurrency : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
+      <strong>{{ data.forecast.predictedBalance | currency: data.user.preferredCurrency : 'symbol' : '1.2-2' : 'pt-BR' }}</strong>
       <span>Previsão do mês</span>
       <small>
         <span class="proto-delta" [ngClass]="'proto-delta--' + projectionDeltaTone(data)">{{ projectionDelta(data) }}</span>

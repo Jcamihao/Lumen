@@ -27,7 +27,7 @@
       <div class="proto-metric__top">
         <span class="proto-icon-bubble"><span class="material-symbols-rounded">savings</span></span>
       </div>
-      <strong>{{ savedTotal() | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}</strong>
+      <strong>{{ savedTotal() | currency: currencyCode() : 'symbol' : '1.2-2' : 'pt-BR' }}</strong>
       <p>Total economizado</p>
     </article>
 
@@ -86,12 +86,12 @@
 
           <div class="proto-field">
             <label for="goal-target">Valor alvo (opcional)</label>
-            <input id="goal-target" type="number" min="1" placeholder="Deixe em branco pra um cofrinho sem alvo" formControlName="targetAmount" />
+            <input id="goal-target" type="number" inputmode="decimal" min="1" step="0.01" placeholder="Deixe em branco pra um cofrinho sem alvo" formControlName="targetAmount" />
           </div>
 
           <div class="proto-field">
             <label for="goal-current">Valor inicial</label>
-            <input id="goal-current" type="number" min="0" formControlName="currentAmount" />
+            <input id="goal-current" type="number" inputmode="decimal" min="0" step="0.01" formControlName="currentAmount" />
           </div>
 
           <div class="proto-field proto-field--full">
@@ -112,6 +112,7 @@
               <input
                 id="goal-recurring-amount"
                 type="number"
+                inputmode="decimal"
                 min="1"
                 step="0.01"
                 formControlName="recurringAmount"
@@ -166,17 +167,17 @@
                   {{ progress(goal) }}%
                 </span>
                 <span class="proto-chip">
-                  {{ goal.currentAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+                  {{ goal.currentAmount | currency: currencyCode() : 'symbol' : '1.2-2' : 'pt-BR' }}
                   de
-                  {{ goal.targetAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+                  {{ goal.targetAmount | currency: currencyCode() : 'symbol' : '1.2-2' : 'pt-BR' }}
                 </span>
                 <span class="proto-chip" [attr.data-tone]="remainingAmount(goal) === 0 ? 'success' : 'accent'">
-                  Faltam {{ remainingAmount(goal) | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }}
+                  Faltam {{ remainingAmount(goal) | currency: currencyCode() : 'symbol' : '1.2-2' : 'pt-BR' }}
                 </span>
               </ng-container>
               <ng-template #goalNoTargetBadges>
                 <span class="proto-chip">
-                  {{ goal.currentAmount | currency: currencyCode() : 'symbol' : '1.0-0' : 'pt-BR' }} guardados
+                  {{ goal.currentAmount | currency: currencyCode() : 'symbol' : '1.2-2' : 'pt-BR' }} guardados
                 </span>
                 <span class="proto-chip">Sem valor-alvo</span>
               </ng-template>
