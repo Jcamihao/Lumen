@@ -12,6 +12,38 @@ describe("MfaService", () => {
       }),
     } as any);
 
+  describe("conformidade com o RFC 6238", () => {
+    // Apendice B do RFC 6238: segredo ASCII "12345678901234567890" (SHA-1). O vetor oficial
+    // e de 8 digitos; os 6 digitos sao o mesmo numero truncado (94287082 -> 287082).
+    const RFC_SECRET_BASE32 = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+
+    it.each([
+      [59, "287082"],
+      [1111111109, "081804"],
+      [1111111111, "050471"],
+      [1234567890, "005924"],
+      [2000000000, "279037"],
+    ])("gera o codigo oficial para T=%d", (unixSeconds, expected) => {
+      const service = buildService();
+      const counter = Math.floor(unixSeconds / 30);
+
+      expect((service as any).generateTotpCode(RFC_SECRET_BASE32, counter)).toBe(expected);
+    });
+  });
+
+  describe("matchTotpStep", () => {
+    it("devolve o passo em que o codigo bate (e null quando nao bate)", () => {
+      const service = buildService();
+      const secret = service.generateTotpSecret();
+      const currentStep = Math.floor(Date.now() / 30_000);
+      const code = (service as any).generateTotpCode(secret, currentStep);
+
+      expect(service.matchTotpStep(secret, code)).toBe(currentStep);
+      expect(service.matchTotpStep(secret, code === "000000" ? "000001" : "000000")).toBeNull();
+      expect(service.matchTotpStep(secret, "abc")).toBeNull();
+    });
+  });
+
   describe("verifyTotpCode", () => {
     it("accepts a code generated for the current time window", () => {
       const service = buildService();

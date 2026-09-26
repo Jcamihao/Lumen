@@ -547,6 +547,7 @@ export class UsersService {
       mfaTotpSecretEncrypted,
       mfaPendingTotpSecretEncrypted,
       mfaRecoveryCodes,
+      mfaLastTotpStep,
       ...safeUser
     } = user;
     const mfaFeatureEnabled = this.isMfaFeatureEnabled();

@@ -1,4 +1,4 @@
-import { IsString, IsUUID, MinLength } from "class-validator";
+import { IsString, IsUUID, MaxLength, MinLength } from "class-validator";
 
 export class VerifyLoginMfaDto {
   @IsUUID()
@@ -6,5 +6,6 @@ export class VerifyLoginMfaDto {
 
   @IsString()
   @MinLength(6)
+  @MaxLength(32)
   code!: string;
 }

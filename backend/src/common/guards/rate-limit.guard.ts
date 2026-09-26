@@ -48,12 +48,39 @@ export class RateLimitGuard implements CanActivate {
     message:
       'Muitas tentativas de renovacao de sessao. Aguarde um pouco antes de tentar novamente.',
   };
+  // Limites de MFA por DESAFIO (nao por IP): quem tem a senha e troca de IP nao ganha
+  // tentativas novas no mesmo desafio; pra tentar de novo precisa refazer o login.
   private readonly authMfaVerifyPolicy: RateLimitPolicy = {
     keyPrefix: 'auth-mfa-verify',
-    limit: 10,
+    limit: 5,
     windowMs: 10 * 60_000,
     message:
       'Muitas tentativas de verificacao MFA. Aguarde alguns minutos antes de tentar novamente.',
+  };
+
+  private readonly authMfaBypassRequestPolicy: RateLimitPolicy = {
+    keyPrefix: 'auth-mfa-bypass-request',
+    limit: 3,
+    windowMs: 15 * 60_000,
+    message:
+      'Muitos pedidos de codigo por email. Aguarde alguns minutos antes de pedir de novo.',
+  };
+  // Codigo do email tem so 6 digitos: poucas tentativas por codigo emitido.
+  private readonly authMfaBypassVerifyPolicy: RateLimitPolicy = {
+    keyPrefix: 'auth-mfa-bypass-verify',
+    limit: 5,
+    windowMs: 10 * 60_000,
+    message:
+      'Muitas tentativas com o codigo do email. Peca um codigo novo e tente de novo em alguns minutos.',
+  };
+  // Confirmar/desativar MFA e regenerar codigos conferem um codigo TOTP com so o
+  // access token: sem limite viraria forca bruta do codigo pra quem roubou o token.
+  private readonly authMfaManagePolicy: RateLimitPolicy = {
+    keyPrefix: 'auth-mfa-manage',
+    limit: 10,
+    windowMs: 10 * 60_000,
+    message:
+      'Muitas tentativas de configurar o MFA. Aguarde alguns minutos e tente novamente.',
   };
 
   private readonly authForgotPasswordPolicy: RateLimitPolicy = {
@@ -169,6 +196,24 @@ export class RateLimitGuard implements CanActivate {
       return this.authMfaVerifyPolicy;
     }
 
+    if (method === 'POST' && path === '/api/v1/auth/mfa/email-bypass/request') {
+      return this.authMfaBypassRequestPolicy;
+    }
+
+    if (method === 'POST' && path === '/api/v1/auth/mfa/email-bypass/verify') {
+      return this.authMfaBypassVerifyPolicy;
+    }
+
+    if (
+      method === 'POST' &&
+      (path === '/api/v1/auth/mfa/setup' ||
+        path === '/api/v1/auth/mfa/confirm-setup' ||
+        path === '/api/v1/auth/mfa/recovery-codes/regenerate' ||
+        path === '/api/v1/auth/mfa/disable')
+    ) {
+      return this.authMfaManagePolicy;
+    }
+
     if (method === 'POST' && path === '/api/v1/auth/forgot-password') {
       return this.authForgotPasswordPolicy;
     }
@@ -231,15 +276,25 @@ export class RateLimitGuard implements CanActivate {
       return ipAddress;
     }
 
-    if (policy.keyPrefix === 'auth-mfa-verify') {
-      const challengeId =
-        typeof request.body?.challengeId === 'string'
-          ? request.body.challengeId.trim()
-          : 'unknown';
-      return `${ipAddress}:${challengeId}`;
+    if (
+      policy.keyPrefix === 'auth-mfa-verify' ||
+      policy.keyPrefix === 'auth-mfa-bypass-request'
+    ) {
+      return this.challengeActorKey(request.body?.challengeId, ipAddress);
+    }
+
+    if (policy.keyPrefix === 'auth-mfa-bypass-verify') {
+      return this.challengeActorKey(request.body?.bypassChallengeId, ipAddress);
     }
 
     return userId || ipAddress;
+  }
+
+  // Id de desafio valido = balde proprio (independente de IP); qualquer outra coisa cai
+  // num balde por IP, pra lixo nao esgotar o balde de ninguem.
+  private challengeActorKey(value: unknown, ipAddress: string) {
+    const id = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    return /^[0-9a-f-]{36}$/.test(id) ? `challenge:${id}` : `${ipAddress}:invalid-challenge`;
   }
 
   private resolveRouteKey(request: { method?: string; originalUrl?: string }) {

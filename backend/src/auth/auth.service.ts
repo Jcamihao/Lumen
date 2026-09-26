@@ -270,7 +270,9 @@ export class AuthService {
       user.mfaPendingTotpSecretEncrypted,
     );
 
-    if (!this.mfaService.verifyTotpCode(secret, dto.code)) {
+    const confirmedStep = this.mfaService.matchTotpStep(secret, dto.code);
+
+    if (confirmedStep === null) {
       throw new BadRequestException(
         "Codigo MFA invalido. Confira o codigo do autenticador e tente novamente.",
       );
@@ -285,6 +287,7 @@ export class AuthService {
       data: {
         mfaEnabledAt: user.mfaEnabledAt ?? now,
         mfaLastVerifiedAt: now,
+        mfaLastTotpStep: confirmedStep,
         mfaTotpSecretEncrypted: this.mfaService.encryptSecret(secret),
         mfaPendingTotpSecretEncrypted: null,
         mfaRecoveryCodes: hashedCodes,
@@ -332,6 +335,7 @@ export class AuthService {
       data: {
         mfaEnabledAt: null,
         mfaLastVerifiedAt: null,
+        mfaLastTotpStep: null,
         mfaTotpSecretEncrypted: null,
         mfaPendingTotpSecretEncrypted: null,
         mfaRecoveryCodes: null,
@@ -856,13 +860,25 @@ export class AuthService {
       ? this.mfaService.decryptSecret(user.mfaTotpSecretEncrypted)
       : null;
 
-    if (secret && this.mfaService.verifyTotpCode(secret, code)) {
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: {
-          mfaLastVerifiedAt: new Date(),
+    const totpStep = secret ? this.mfaService.matchTotpStep(secret, code) : null;
+
+    if (totpStep !== null) {
+      // Cada passo de 30s so vale uma vez (RFC 6238 §5.2). O UPDATE condicional e
+      // atomico: duas requisicoes com o mesmo codigo nao passam as duas.
+      const claimed = await this.prisma.user.updateMany({
+        where: {
+          id: user.id,
+          OR: [{ mfaLastTotpStep: null }, { mfaLastTotpStep: { lt: totpStep } }],
         },
+        data: { mfaLastTotpStep: totpStep, mfaLastVerifiedAt: new Date() },
       });
+
+      if (claimed.count === 0) {
+        throw new UnauthorizedException(
+          "Esse codigo ja foi usado. Aguarde o proximo codigo do autenticador.",
+        );
+      }
+
       return;
     }
 
@@ -902,11 +918,9 @@ export class AuthService {
   }
 
   private extractSessionContext(request?: RequestWithContext): SessionContext {
-    const forwardedFor = request?.headers["x-forwarded-for"];
-    const forwardedIp = Array.isArray(forwardedFor)
-      ? forwardedFor[0]
-      : forwardedFor?.split(",")[0];
-    const rawIp = forwardedIp?.trim() || request?.ip || null;
+    // request.ip ja respeita o "trust proxy" do Express; o 1o item do X-Forwarded-For
+    // vem do proprio cliente e pode ser forjado.
+    const rawIp = request?.ip?.trim() || null;
     const rawUserAgent = request?.headers["user-agent"];
     const userAgent = Array.isArray(rawUserAgent)
       ? rawUserAgent[0]

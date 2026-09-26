@@ -164,6 +164,7 @@ model User {
   aiAssistantConsentVersion     String?
   mfaEnabledAt                  DateTime?
   mfaLastVerifiedAt             DateTime?
+  mfaLastTotpStep               Int?
   mfaTotpSecretEncrypted        String?
   mfaPendingTotpSecretEncrypted String?
   mfaRecoveryCodes              Json?

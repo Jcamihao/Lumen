@@ -1,6 +1,7 @@
 import * as bcrypt from "bcryptjs";
 import { UnauthorizedException } from "@nestjs/common";
 import { AuthService } from "./auth.service";
+import { MfaService } from "./mfa.service";
 
 describe("AuthService", () => {
   const now = new Date();
@@ -219,6 +220,58 @@ describe("AuthService", () => {
       ).rejects.toThrow("Credenciais invalidas.");
 
       expect(compareSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("MFA: cada codigo TOTP so vale uma vez", () => {
+    const mfa = new MfaService({
+      get: jest.fn(),
+      getOrThrow: jest.fn(() => "test-mfa-encryption-secret"),
+    } as any);
+    const secret = mfa.generateTotpSecret();
+    const step = Math.floor(Date.now() / 30_000);
+    const codeFor = (offset: number) => (mfa as any).generateTotpCode(secret, step + offset);
+    const user = () => ({
+      id: "user-1",
+      mfaEnabledAt: new Date(),
+      mfaTotpSecretEncrypted: mfa.encryptSecret(secret),
+      mfaRecoveryCodes: null,
+    });
+    const build = (claimedCount: number) => {
+      const prisma = { user: { updateMany: jest.fn().mockResolvedValue({ count: claimedCount }), update: jest.fn() } } as any;
+      const service = new AuthService({} as any, {} as any, buildConfigService(), {} as any, prisma, mfa);
+      return { service, prisma };
+    };
+
+    it("primeiro uso: grava o passo com UPDATE condicional (so avanca, nunca repete)", async () => {
+      const { service, prisma } = build(1);
+
+      await (service as any).verifyAndPersistMfaCode(user(), codeFor(0));
+
+      const call = prisma.user.updateMany.mock.calls[0][0];
+      expect(call.where).toEqual({
+        id: "user-1",
+        OR: [{ mfaLastTotpStep: null }, { mfaLastTotpStep: { lt: step } }],
+      });
+      expect(call.data.mfaLastTotpStep).toBe(step);
+    });
+
+    it("reuso do mesmo codigo: 401, porque o passo ja foi consumido", async () => {
+      const { service } = build(0);
+
+      await expect((service as any).verifyAndPersistMfaCode(user(), codeFor(0))).rejects.toThrow(
+        "Esse codigo ja foi usado",
+      );
+    });
+
+    it("codigo errado nao consome nada e cai no codigo de recuperacao", async () => {
+      const { service, prisma } = build(1);
+      const wrong = codeFor(0) === "123456" ? "654321" : "123456";
+
+      await expect((service as any).verifyAndPersistMfaCode(user(), wrong)).rejects.toThrow(
+        "Codigo MFA invalido",
+      );
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
     });
   });
 

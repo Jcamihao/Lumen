@@ -77,15 +77,21 @@ export class MfaService {
   }
 
   verifyTotpCode(secret: string, code: string) {
+    return this.matchTotpStep(secret, code) !== null;
+  }
+
+  /** Passo (janela de 30s) em que o codigo bate, ou null. Serve pra recusar reuso. */
+  matchTotpStep(secret: string, code: string): number | null {
     const normalizedCode = this.normalizeCode(code);
     const currentCounter = Math.floor(Date.now() / TOTP_PERIOD_MS);
 
     if (!/^\d{6}$/.test(normalizedCode)) {
-      return false;
+      return null;
     }
 
     for (let offset = -1; offset <= 1; offset += 1) {
-      const expectedCode = this.generateTotpCode(secret, currentCounter + offset);
+      const step = currentCounter + offset;
+      const expectedCode = this.generateTotpCode(secret, step);
 
       if (
         timingSafeEqual(
@@ -93,11 +99,11 @@ export class MfaService {
           Buffer.from(normalizedCode),
         )
       ) {
-        return true;
+        return step;
       }
     }
 
-    return false;
+    return null;
   }
 
   async generateRecoveryCodes() {
