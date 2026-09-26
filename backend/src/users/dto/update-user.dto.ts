@@ -11,6 +11,7 @@ import {
   Min,
   MinLength,
 } from "class-validator";
+import { IsAvatarDataUrl } from "../../common/validators/avatar-data-url.validator";
 
 export class UpdateUserDto {
   @IsOptional()
@@ -20,7 +21,9 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(4500000)
+  // 2 MB de imagem (limite do front) vira ~2,8M caracteres em base64.
+  @MaxLength(3000000)
+  @IsAvatarDataUrl()
   avatarUrl?: string;
 
   @IsOptional()

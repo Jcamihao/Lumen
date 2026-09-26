@@ -13,6 +13,7 @@ import { AuthenticatedUser } from '../common/interfaces/authenticated-user.inter
 import { CommitImportDto } from './dto/commit-import.dto';
 import { CommitReceiptImportDto } from './dto/commit-receipt-import.dto';
 import { PreviewReceiptImportDto } from './dto/preview-receipt-import.dto';
+import { CSV_IMPORT_MAX_BYTES, RECEIPT_PDF_MAX_BYTES } from './imports.constants';
 import { ImportsService } from './imports.service';
 
 @ApiTags('imports')
@@ -34,7 +35,7 @@ export class ImportsController {
   }
 
   @Post('transactions/preview')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: CSV_IMPORT_MAX_BYTES, files: 1, fields: 10 } }))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Faz preview da importacao CSV com deduplicacao' })
   preview(
@@ -51,7 +52,7 @@ export class ImportsController {
   }
 
   @Post('receipts/preview')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: RECEIPT_PDF_MAX_BYTES, files: 1, fields: 10 } }))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Faz preview de nota fiscal por IA com itens extraidos da imagem' })
   previewReceipt(

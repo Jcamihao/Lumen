@@ -23,6 +23,13 @@ import {
   CommitReceiptImportItemDto,
 } from './dto/commit-receipt-import.dto';
 import { PreviewReceiptImportDto } from './dto/preview-receipt-import.dto';
+import { looksLikeText, sniffMime } from '../common/utils/file-sniff';
+import {
+  CSV_IMPORT_MAX_BYTES,
+  CSV_IMPORT_MAX_ROWS,
+  RECEIPT_IMAGE_MAX_BYTES,
+  RECEIPT_PDF_MAX_BYTES,
+} from './imports.constants';
 
 type ParsedRow = {
   type: TransactionType;
@@ -167,11 +174,30 @@ export class ImportsService {
       throw new BadRequestException('Envie um arquivo CSV no campo file.');
     }
 
-    const rows = parse(file.buffer, {
-      columns: true,
-      skip_empty_lines: true,
-      trim: true,
-    });
+    if (file.size > CSV_IMPORT_MAX_BYTES) {
+      throw new BadRequestException('O arquivo CSV deve ter no maximo 5 MB.');
+    }
+
+    if (!looksLikeText(file.buffer) || sniffMime(file.buffer) !== null) {
+      throw new BadRequestException('O arquivo enviado nao parece um CSV de texto.');
+    }
+
+    let rows: Record<string, string>[];
+    try {
+      // `to` interrompe a leitura logo depois do teto: arquivo enorme nao gasta CPU.
+      rows = parse(file.buffer, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+        to: CSV_IMPORT_MAX_ROWS + 1,
+      });
+    } catch {
+      throw new BadRequestException('Nao foi possivel ler o CSV. Confira se o arquivo esta no formato correto.');
+    }
+
+    if (rows.length > CSV_IMPORT_MAX_ROWS) {
+      throw new BadRequestException(`O CSV pode ter no maximo ${CSV_IMPORT_MAX_ROWS} linhas por importacao.`);
+    }
 
     if (rows.length === 0) {
       throw new BadRequestException('O arquivo CSV esta vazio.');
@@ -394,7 +420,7 @@ export class ImportsService {
       data: {
         userId,
         fileName: file!.originalname,
-        mimeType: file!.mimetype,
+        mimeType: sniffMime(file!.buffer) ?? file!.mimetype,
         status: ReceiptScanStatus.PREVIEWED,
         tagGroupId: tagGroup.id,
         compareWithPrevious: dto.compareWithPrevious ?? false,
@@ -558,17 +584,18 @@ export class ImportsService {
       throw new BadRequestException('Envie uma imagem ou PDF da nota fiscal no campo file.');
     }
 
-    const isImage = file.mimetype.startsWith('image/');
-    const isPdf = file.mimetype === 'application/pdf';
+    // O tipo vem dos bytes do arquivo, nao do mimetype que o cliente declarou.
+    const kind = sniffMime(file.buffer);
 
-    if (!isImage && !isPdf) {
+    if (!kind) {
       throw new BadRequestException(
         'Formato invalido. Envie uma imagem (JPG, PNG, WEBP) ou um arquivo PDF da nota fiscal.',
       );
     }
 
-    const maxSizeBytes = isPdf ? 20 * 1024 * 1024 : 8 * 1024 * 1024;
-    const maxLabel = isPdf ? '20 MB' : '8 MB';
+    const isPdf = kind === 'application/pdf';
+    const maxSizeBytes = isPdf ? RECEIPT_PDF_MAX_BYTES : RECEIPT_IMAGE_MAX_BYTES;
+    const maxLabel = isPdf ? '10 MB' : '8 MB';
     if (file.size > maxSizeBytes) {
       throw new BadRequestException(`O arquivo da nota deve ter no maximo ${maxLabel}.`);
     }
@@ -636,7 +663,7 @@ export class ImportsService {
 
     const body = JSON.stringify({
       fileName: file.originalname,
-      mimeType: file.mimetype,
+      mimeType: sniffMime(file.buffer) ?? file.mimetype,
       imageBase64: file.buffer.toString('base64'),
       preferredCurrency: 'BRL',
       localeHint: 'pt-BR',

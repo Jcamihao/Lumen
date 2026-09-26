@@ -10,6 +10,9 @@ import {
 import { AUTH_PASSWORD_MIN_LENGTH } from '../../../core/constants/auth.constants';
 import { AuthService } from '../../../core/services/auth.service';
 
+// O backend so aceita estes formatos (nao aceita SVG nem HEIC).
+const AVATAR_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+
 @Component({
   selector: 'app-register-page',
   standalone: true,
@@ -106,8 +109,8 @@ export class RegisterPageComponent {
       return;
     }
 
-    if (!file.type.startsWith("image/")) {
-      this.errorMessage.set("Selecione uma imagem válida para a foto de perfil.");
+    if (!AVATAR_MIME_TYPES.includes(file.type)) {
+      this.errorMessage.set("Selecione uma imagem PNG, JPEG, WEBP ou GIF.");
       input.value = "";
       return;
     }
