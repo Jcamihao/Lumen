@@ -170,7 +170,14 @@ export class TasksService {
 
     await this.lifeEngineService.touchUserData(userId);
 
-    if (dto.status === TaskStatus.DONE && task.isRecurring && task.recurrenceRule) {
+    // So na transicao pra DONE: concluir de novo (duplo clique, outra aba) nao pode
+    // gerar mais uma proxima ocorrencia.
+    if (
+      dto.status === TaskStatus.DONE &&
+      existingTask.status !== TaskStatus.DONE &&
+      task.isRecurring &&
+      task.recurrenceRule
+    ) {
       await this.spawnNextRecurrence(userId, task);
     }
 

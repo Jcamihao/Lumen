@@ -127,7 +127,7 @@
         </div>
 
         <div class="proto-actions-row">
-          <button type="submit" class="proto-button" [disabled]="form.invalid">
+          <button type="submit" class="proto-button" [disabled]="form.invalid || creatingGoal()">
             <span class="material-symbols-rounded">flag</span>
             Criar meta
           </button>
@@ -246,7 +246,7 @@
                 />
               </div>
               <div class="proto-actions-row">
-                <button type="button" class="proto-button" (click)="contributeCustom(goal)">
+                <button type="button" class="proto-button" [disabled]="busyGoalId() !== null" (click)="contributeCustom(goal)">
                   Confirmar aporte
                 </button>
                 <button type="button" class="proto-button proto-button--ghost" (click)="cancelCustomContribute()">
@@ -269,7 +269,7 @@
                 />
               </div>
               <div class="proto-actions-row">
-                <button type="button" class="proto-button" (click)="withdrawCustom(goal)">
+                <button type="button" class="proto-button" [disabled]="busyGoalId() !== null" (click)="withdrawCustom(goal)">
                   Confirmar saque
                 </button>
                 <button type="button" class="proto-button proto-button--ghost" (click)="cancelWithdraw()">
@@ -279,10 +279,10 @@
             </div>
 
             <div class="proto-actions-row goal-card__actions" *ngIf="!isContributing(goal.id) && !isWithdrawing(goal.id)">
-              <button type="button" class="proto-button proto-button--secondary" (click)="contribute(goal, 500)">
+              <button type="button" class="proto-button proto-button--secondary" [disabled]="busyGoalId() !== null" (click)="contribute(goal, 500)">
                 + R$ 500
               </button>
-              <button type="button" class="proto-button proto-button--secondary" (click)="contribute(goal, 1000)">
+              <button type="button" class="proto-button proto-button--secondary" [disabled]="busyGoalId() !== null" (click)="contribute(goal, 1000)">
                 + R$ 1.000
               </button>
               <button type="button" class="proto-button proto-button--secondary" (click)="openCustomContribute(goal.id)">

@@ -151,7 +151,7 @@
         </div>
 
         <div class="proto-actions-row">
-          <button type="submit" class="proto-button" [disabled]="form.invalid">
+          <button type="submit" class="proto-button" [disabled]="form.invalid || creatingTask()">
             <span class="material-symbols-rounded">add_task</span>
             Criar tarefa
           </button>
@@ -291,6 +291,7 @@
                   type="button"
                   class="proto-button proto-button--secondary"
                   *ngIf="task.status !== 'DONE'"
+                  [disabled]="busyTaskId() !== null"
                   (click)="markDone(task)"
                 >
                   Concluir
@@ -387,7 +388,7 @@
                 </div>
 
                 <div class="proto-actions-row task-card__actions proto-field--full">
-                  <button type="submit" class="proto-button" [disabled]="editForm.invalid">
+                  <button type="submit" class="proto-button" [disabled]="editForm.invalid || savingEdit()">
                     Salvar
                   </button>
                   <button type="button" class="proto-button proto-button--ghost" (click)="cancelEdit()">

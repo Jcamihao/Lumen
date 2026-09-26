@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signa
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
+import { finalize } from 'rxjs';
 import { Task } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { focusField } from '../../../core/utils/focus.utils';
@@ -30,6 +31,9 @@ export class TasksPageComponent {
   private readonly route = inject(ActivatedRoute);
 
   protected readonly tasks = signal<Task[]>([]);
+  protected readonly creatingTask = signal(false);
+  protected readonly savingEdit = signal(false);
+  protected readonly busyTaskId = signal<string | null>(null);
   protected readonly taskCategories = computed(
     () => this.authService.currentUser()?.taskCategories ?? [],
   );
@@ -170,6 +174,8 @@ export class TasksPageComponent {
   }
 
   protected createTask() {
+    if (this.creatingTask()) return;
+
     if (this.reminderMissingSchedule()) {
       this.toast.error('Pra usar lembrete, defina data e horário do prazo.');
       return;
@@ -182,6 +188,7 @@ export class TasksPageComponent {
         : raw.dueDate
       : undefined;
 
+    this.creatingTask.set(true);
     this.api
       .createTask({
         title: raw.title,
@@ -192,7 +199,10 @@ export class TasksPageComponent {
         isRecurring: raw.isRecurring,
         recurrenceRule: raw.isRecurring ? raw.recurrenceRule : undefined,
       })
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        finalize(() => this.creatingTask.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (task) => {
           if (raw.hasReminder && dueDateIso && raw.dueTime) {
@@ -247,9 +257,10 @@ export class TasksPageComponent {
 
   protected saveEdit() {
     const task = this.editingTask();
-    if (!task) return;
+    if (!task || this.savingEdit()) return;
 
     const raw = this.editForm.getRawValue();
+    this.savingEdit.set(true);
     this.api
       .updateTask(task.id, {
         title: raw.title,
@@ -261,7 +272,10 @@ export class TasksPageComponent {
         isRecurring: raw.isRecurring,
         recurrenceRule: raw.recurrenceRule || null,
       })
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        finalize(() => this.savingEdit.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (updatedTask) => {
           this.upsertTask(updatedTask);
@@ -297,9 +311,15 @@ export class TasksPageComponent {
   }
 
   protected markDone(task: Task) {
+    if (this.busyTaskId()) return;
+
+    this.busyTaskId.set(task.id);
     this.api
       .updateTask(task.id, { status: 'DONE' })
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        finalize(() => this.busyTaskId.set(null)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (updatedTask) => {
           this.upsertTask(updatedTask);

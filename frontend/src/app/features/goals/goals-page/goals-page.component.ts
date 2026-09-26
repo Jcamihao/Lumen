@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signa
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { finalize } from 'rxjs';
 import { Goal, GoalContribution } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
@@ -26,6 +27,8 @@ export class GoalsPageComponent {
   private readonly toast = inject(ToastService);
 
   protected readonly goals = signal<Goal[]>([]);
+  protected readonly creatingGoal = signal(false);
+  protected readonly busyGoalId = signal<string | null>(null);
   protected readonly currencyCode = computed(
     () => this.authService.currentUser()?.preferredCurrency ?? 'BRL',
   );
@@ -145,7 +148,10 @@ export class GoalsPageComponent {
   }
 
   protected createGoal() {
+    if (this.creatingGoal()) return;
+
     const raw = this.form.getRawValue();
+    this.creatingGoal.set(true);
     this.api
       .createGoal({
         title: raw.title,
@@ -156,7 +162,10 @@ export class GoalsPageComponent {
         recurringAmount: raw.recurringEnabled ? raw.recurringAmount : undefined,
         recurringDay: raw.recurringEnabled ? raw.recurringDay : undefined,
       })
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        finalize(() => this.creatingGoal.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (goal) => {
           this.form.reset({
@@ -243,9 +252,15 @@ export class GoalsPageComponent {
   }
 
   protected contribute(goal: Goal, amount: number) {
+    if (this.busyGoalId()) return;
+
+    this.busyGoalId.set(goal.id);
     this.api
       .contributeGoal(goal.id, { amount })
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        finalize(() => this.busyGoalId.set(null)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (updatedGoal) => {
           this.upsertGoal(updatedGoal);
@@ -284,9 +299,15 @@ export class GoalsPageComponent {
       return;
     }
 
+    if (this.busyGoalId()) return;
+
+    this.busyGoalId.set(goal.id);
     this.api
       .withdrawGoal(goal.id, { amount })
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        finalize(() => this.busyGoalId.set(null)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (updatedGoal) => {
           this.upsertGoal(updatedGoal);

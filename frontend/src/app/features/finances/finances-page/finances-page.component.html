@@ -326,7 +326,7 @@
         </div>
 
         <div class="proto-actions-row">
-          <button type="submit" class="proto-button" [disabled]="form.invalid">
+          <button type="submit" class="proto-button" [disabled]="form.invalid || creatingTransaction()">
             <span class="material-symbols-rounded">payments</span>
             Adicionar transação
           </button>

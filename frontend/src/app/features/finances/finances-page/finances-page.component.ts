@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, ViewChild, computed, ef
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
+import { finalize } from 'rxjs';
 import { Envelope, PaymentMethod, Transaction } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
@@ -78,6 +79,7 @@ export class FinancesPageComponent {
   );
   protected readonly editingBudgetId = signal<string | null>(null);
   protected readonly savingBudget = signal(false);
+  protected readonly creatingTransaction = signal(false);
   // type=number entrega number (ou null quando vazio), nao string.
   protected readonly budgetControl = new FormControl<number | null>(null);
   protected readonly categoryFormOpen = signal(false);
@@ -252,7 +254,10 @@ export class FinancesPageComponent {
   }
 
   protected createTransaction() {
+    if (this.creatingTransaction()) return;
+
     const raw = this.form.getRawValue();
+    this.creatingTransaction.set(true);
     this.api
       .createTransaction({
         description: raw.description,
@@ -263,7 +268,10 @@ export class FinancesPageComponent {
         paymentMethod: raw.paymentMethod || undefined,
         envelopeId: raw.envelopeId || undefined,
       })
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        finalize(() => this.creatingTransaction.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (transaction) => {
           this.form.patchValue({ description: '', amount: 0, categoryId: '', paymentMethod: '', envelopeId: '' });

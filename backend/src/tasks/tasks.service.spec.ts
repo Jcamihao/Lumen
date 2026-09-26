@@ -121,6 +121,35 @@ describe("TasksService", () => {
       );
     });
 
+    it("concluir de novo uma recorrente ja concluida (duplo clique) nao gera outra ocorrencia", async () => {
+      const alreadyDone = {
+        id: "task-1",
+        userId: "user-1",
+        title: "Arrumar a cama",
+        status: "DONE",
+        priority: "LOW",
+        isRecurring: true,
+        recurrenceRule: "daily",
+        dueDate: new Date("2026-08-10T00:00:00.000Z"),
+        streakCount: 1,
+        longestStreak: 1,
+      };
+      const prisma = buildPrisma({
+        task: {
+          findMany: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue(alreadyDone),
+          update: jest.fn().mockResolvedValue({ ...alreadyDone }),
+          create: jest.fn(),
+          delete: jest.fn(),
+        },
+      });
+      const service = new TasksService(prisma, buildLifeEngine());
+
+      await service.update("user-1", "task-1", { status: "DONE" } as any);
+
+      expect(prisma.task.create).not.toHaveBeenCalled();
+    });
+
     it("does not spawn a next occurrence for a non-recurring task", async () => {
       const existingTask = {
         id: "task-1",
