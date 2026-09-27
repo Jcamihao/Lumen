@@ -9,6 +9,7 @@ export interface SubscriptionLike {
   plan: 'INDIVIDUAL' | 'SHARED';
   status: 'PENDING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'EXPIRED';
   currentPeriodEnd: Date | null;
+  source: 'ASAAS' | 'GRANT';
 }
 
 export function subscriptionGrantsAccess(
@@ -19,8 +20,11 @@ export function subscriptionGrantsAccess(
   const t = now.getTime();
   switch (sub.status) {
     case 'ACTIVE':
-    case 'PAST_DUE':
-      return end === null || t <= end + GRACE_DAYS * DAY_MS;
+    case 'PAST_DUE': {
+      // Tolerância de atraso só vale para pagamento (Asaas); concessão acaba no fim.
+      const graceMs = sub.source === 'GRANT' ? 0 : GRACE_DAYS * DAY_MS;
+      return end === null || t <= end + graceMs;
+    }
     case 'CANCELED':
       return end !== null && t <= end;
     default:

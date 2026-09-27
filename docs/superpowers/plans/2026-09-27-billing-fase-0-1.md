@@ -14,7 +14,7 @@
 
 - Limites do **Grátis**: `goals` 2 · `envelopes` 1 · `recurringTransactions` 3 · `installmentPurchases` 2 · `selahQuestionsPerMonth` 5. **Individual**: itens sem limite (`null`), `selahQuestionsPerMonth` 300. **Compartilhado**: igual ao Individual, `seats: 4`, `sellable: false`.
 - Preços (R$): Individual 14.90 mensal / 149 anual; Compartilhado 24.90 / 249. Sobrescrevíveis por `BILLING_PRICE_<PLANO>_<MONTHLY|YEARLY>`. Nunca vindos do cliente.
-- Acesso de assinatura: `ACTIVE`/`PAST_DUE` enquanto `agora ≤ (currentPeriodEnd ?? ∞) + 7 dias`; `CANCELED` enquanto `agora ≤ currentPeriodEnd`; `PENDING`/`EXPIRED` nunca. Plano efetivo = o maior com acesso (FREE < INDIVIDUAL < SHARED).
+- Acesso de assinatura: `ACTIVE`/`PAST_DUE` enquanto `agora ≤ (currentPeriodEnd ?? ∞) + 7 dias` **apenas para assinaturas pagas via Asaas** (`source: 'ASAAS'`); concessões (`source: 'GRANT'`) **não têm tolerância** — `agora ≤ (currentPeriodEnd ?? ∞)`; `CANCELED` enquanto `agora ≤ currentPeriodEnd`; `PENDING`/`EXPIRED` nunca. Plano efetivo = o maior com acesso (FREE < INDIVIDUAL < SHARED).
 - Mês do Selah no fuso **America/Sao_Paulo, UTC-3 fixo** (sem horário de verão). Só conta pergunta **respondida pelo Selah**; fallback local não conta.
 - Estouro de limite: `403` com corpo `{ statusCode, error, code: "PLAN_LIMIT", resource, limit, used, plan, message }`, `message` em português. **Nunca apagar dado** ao cair de plano; só bloquear criação.
 - `BILLING_ENABLED` padrão `false`: nada é limitado e nada muda para o usuário.
@@ -87,7 +87,8 @@ export class PlanLimitException extends ForbiddenException {
 // access.util.ts
 export const GRACE_DAYS = 7;
 export interface SubscriptionLike { plan: 'INDIVIDUAL' | 'SHARED';
-  status: 'PENDING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'EXPIRED'; currentPeriodEnd: Date | null }
+  status: 'PENDING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'EXPIRED'; currentPeriodEnd: Date | null;
+  source: 'ASAAS' | 'GRANT' }   // tolerância de 7d só para ASAAS; GRANT não tem
 export function subscriptionGrantsAccess(sub: SubscriptionLike, now: Date): boolean;
 export function pickEffectivePlan(subs: SubscriptionLike[], now: Date): PlanId;
 export function currentMonthWindow(now: Date): { start: Date; end: Date };   // [start, end) em America/Sao_Paulo
@@ -127,7 +128,7 @@ export class EntitlementsService {
 
 - [ ] **Step 1: Testes** (`prisma` mockado, `configService.get` controlando `app.billingEnabled`): (a) desligado: `assertCanCreate`/`assertCanAskSelah` resolvem sem consultar o banco; (b) ligado, FREE com `goals` em 2/2 → rejeita com `PlanLimitException` (`resource:'goals', limit:2, used:2, plan:'FREE'`); com 1/2 → resolve; (c) a contagem de metas filtra `status: 'ACTIVE'` e `userId` (assert no `where` do `count`); (d) INDIVIDUAL ativo com 50 metas → resolve; (e) Selah: usa `selahUsage.count` com `createdAt: { gte: start, lt: end }` da janela do mês e rejeita em 5/5 no FREE, resolve em 299/300 no INDIVIDUAL; (f) `recordSelahQuestion` chama `selahUsage.create({ data: { userId } })`; (g) `getUsage` devolve `enforced:false` com o interruptor desligado, mas com o plano real e as contagens; `resetsAt` = `window.end` em ISO.
 - [ ] **Step 2: Rodar** `npx jest src/billing/entitlements` — FAIL.
-- [ ] **Step 3: Implementar** `EntitlementsService`: `resolvePlan` lê `subscription.findMany({ where: { ownerUserId } })` e aplica `pickEffectivePlan`; contagens: `goal` (`status ACTIVE`), `envelope` (`isActive`), `recurringTransaction` (`isActive`), `installmentPurchase` (`isActive`), `selahUsage` (janela do mês). Limite `null` = ilimitado.
+- [ ] **Step 3: Implementar** `EntitlementsService`: `resolvePlan` lê `subscription.findMany({ where: { ownerUserId } })` e passa a linha **inteira** da assinatura (incluindo `source`) para `pickEffectivePlan` — sem `select` que omita `source`, senão a concessão ganharia a tolerância; contagens: `goal` (`status ACTIVE`), `envelope` (`isActive`), `recurringTransaction` (`isActive`), `installmentPurchase` (`isActive`), `selahUsage` (janela do mês). Limite `null` = ilimitado.
 - [ ] **Step 4: Criar `BillingModule`** (providers/exports `EntitlementsService`; `BillingService`/controller entram na Task 5) e registrá-lo em `app.module.ts`.
 - [ ] **Step 5: Rodar** `npx jest src/billing && npx tsc --noEmit` — PASS. **Step 6: Commit** — `feat(billing): EntitlementsService (plano efetivo, limites e uso)`.
 

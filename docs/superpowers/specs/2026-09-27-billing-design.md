@@ -123,7 +123,7 @@ model SelahUsage {              // 1 linha por pergunta respondida PELO SELAH (s
 
 | Status | Dá acesso enquanto |
 |---|---|
-| ACTIVE, PAST_DUE | `agora ≤ (currentPeriodEnd ?? ∞) + 7 dias` de tolerância |
+| ACTIVE, PAST_DUE | Assinatura paga via Asaas: `agora ≤ (currentPeriodEnd ?? ∞) + 7 dias` (tolerância de atraso só para ela). Concessão (`GRANT`): `agora ≤ (currentPeriodEnd ?? ∞)`, **sem tolerância** — a data de fim é o fim |
 | CANCELED | `agora ≤ currentPeriodEnd` (sem tolerância) |
 | PENDING, EXPIRED | nunca |
 

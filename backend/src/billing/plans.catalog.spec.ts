@@ -57,7 +57,7 @@ describe('plans.catalog', () => {
     expect(getPlan('SHARED', env).prices).toEqual({ MONTHLY: 24.9, YEARLY: 300 });
   });
 
-  it.each(['abc', '', '0', '-5'])('valor invalido "%s" e ignorado', (v) => {
+  it.each(['abc', '', '0', '-5', 'NaN', 'Infinity', '  '])('valor invalido "%s" e ignorado', (v) => {
     const env = { BILLING_PRICE_INDIVIDUAL_MONTHLY: v } as NodeJS.ProcessEnv;
     expect(getPlan('INDIVIDUAL', env).prices?.MONTHLY).toBe(14.9);
   });
@@ -74,8 +74,12 @@ describe('PlanLimitException', () => {
     const e = new PlanLimitException({ resource: 'goals', limit: 2, used: 2, plan: 'FREE' });
     expect(e.getStatus()).toBe(403);
     const body = e.getResponse() as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(
+      ['code', 'error', 'limit', 'message', 'plan', 'resource', 'statusCode', 'used'],
+    );
     expect(body).toMatchObject({
       statusCode: 403,
+      error: 'Forbidden',
       code: 'PLAN_LIMIT',
       resource: 'goals',
       limit: 2,

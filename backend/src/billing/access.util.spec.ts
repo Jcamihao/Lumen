@@ -13,7 +13,13 @@ const sub = (
   status: SubscriptionLike['status'],
   currentPeriodEnd: Date | null,
   plan: SubscriptionLike['plan'] = 'INDIVIDUAL',
-): SubscriptionLike => ({ plan, status, currentPeriodEnd });
+  source: SubscriptionLike['source'] = 'ASAAS',
+): SubscriptionLike => ({ plan, status, currentPeriodEnd, source });
+const grant = (
+  status: SubscriptionLike['status'],
+  currentPeriodEnd: Date | null,
+  plan: SubscriptionLike['plan'] = 'SHARED',
+) => sub(status, currentPeriodEnd, plan, 'GRANT');
 
 describe('subscriptionGrantsAccess', () => {
   it('GRACE_DAYS e 7', () => {
@@ -30,9 +36,29 @@ describe('subscriptionGrantsAccess', () => {
     expect(subscriptionGrantsAccess(sub(status, at(-30 * DAY)), now)).toBe(false);
   });
 
+  it('assinatura paga (ASAAS) 3 dias apos o fim ainda tem acesso (tolerancia)', () => {
+    expect(subscriptionGrantsAccess(sub('ACTIVE', at(-3 * DAY)), now)).toBe(true);
+  });
+
   it('ACTIVE/PAST_DUE com fim null sempre tem acesso', () => {
+    expect(subscriptionGrantsAccess(grant('ACTIVE', null), now)).toBe(true);
+    expect(subscriptionGrantsAccess(grant('PAST_DUE', null), now)).toBe(true);
     expect(subscriptionGrantsAccess(sub('ACTIVE', null), now)).toBe(true);
-    expect(subscriptionGrantsAccess(sub('PAST_DUE', null), now)).toBe(true);
+  });
+
+  describe('concessao (GRANT) nao tem tolerancia de atraso', () => {
+    it('vencida ha 1 dia nao da acesso', () => {
+      expect(subscriptionGrantsAccess(grant('ACTIVE', at(-DAY)), now)).toBe(false);
+    });
+
+    it('fim exatamente agora da acesso; 1ms antes nao', () => {
+      expect(subscriptionGrantsAccess(grant('ACTIVE', now), now)).toBe(true);
+      expect(subscriptionGrantsAccess(grant('ACTIVE', at(-1)), now)).toBe(false);
+    });
+
+    it('fim no futuro da acesso', () => {
+      expect(subscriptionGrantsAccess(grant('ACTIVE', at(DAY)), now)).toBe(true);
+    });
   });
 
   it('CANCELED ate o fim tem acesso, fim + 1ms nao', () => {
@@ -70,8 +96,20 @@ describe('pickEffectivePlan', () => {
   });
 
   it('concessao (fim null) da acesso; concessao vencida ha mais de 7d nao', () => {
-    expect(pickEffectivePlan([sub('ACTIVE', null, 'SHARED')], now)).toBe('SHARED');
-    expect(pickEffectivePlan([sub('ACTIVE', at(-8 * DAY), 'SHARED')], now)).toBe('FREE');
+    expect(pickEffectivePlan([grant('ACTIVE', null, 'SHARED')], now)).toBe('SHARED');
+    expect(pickEffectivePlan([grant('ACTIVE', at(-8 * DAY), 'SHARED')], now)).toBe('FREE');
+  });
+
+  it('concessao vencida e ignorada; paga ativa prevalece', () => {
+    expect(
+      pickEffectivePlan([sub('ACTIVE', at(DAY), 'INDIVIDUAL'), grant('ACTIVE', at(-2 * DAY), 'SHARED')], now),
+    ).toBe('INDIVIDUAL');
+  });
+
+  it('concessao valida maior que a paga vence', () => {
+    expect(
+      pickEffectivePlan([grant('ACTIVE', at(DAY), 'SHARED'), sub('ACTIVE', at(DAY), 'INDIVIDUAL')], now),
+    ).toBe('SHARED');
   });
 });
 
@@ -107,6 +145,20 @@ describe('currentMonthWindow', () => {
     expect(iso(currentMonthWindow(new Date('2027-01-01T02:59:59Z')))).toEqual([
       '2026-12-01T03:00:00.000Z',
       '2027-01-01T03:00:00.000Z',
+    ]);
+  });
+
+  it('03:00:00Z de 1/jan ja e janeiro', () => {
+    expect(iso(currentMonthWindow(new Date('2027-01-01T03:00:00Z')))).toEqual([
+      '2027-01-01T03:00:00.000Z',
+      '2027-02-01T03:00:00.000Z',
+    ]);
+  });
+
+  it('fevereiro bissexto (2028)', () => {
+    expect(iso(currentMonthWindow(new Date('2028-02-15T12:00:00Z')))).toEqual([
+      '2028-02-01T03:00:00.000Z',
+      '2028-03-01T03:00:00.000Z',
     ]);
   });
 });
