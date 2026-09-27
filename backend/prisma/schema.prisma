@@ -192,6 +192,8 @@ model User {
   authSessions                  AuthSession[]
   authChallenges                AuthChallenge[]
   tagGroups                     TagGroup[]
+  subscriptions                 Subscription[]
+  selahUsage                    SelahUsage[]
 
   @@index([email])
 }
@@ -699,6 +701,77 @@ model AssistantTurn {
   answer    String
   focusArea String?
   source    String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+enum BillingPlan {
+  INDIVIDUAL
+  SHARED
+}
+
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum SubscriptionSource {
+  ASAAS
+  GRANT
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
+model Subscription {
+  id                  String             @id @default(uuid())
+  ownerUserId         String
+  plan                BillingPlan
+  status              SubscriptionStatus @default(PENDING)
+  source              SubscriptionSource
+  interval            BillingInterval?
+  seats               Int                @default(1)
+  // null + GRANT = sem fim
+  currentPeriodEnd    DateTime?
+  pastDueSince        DateTime?
+  cancelAtPeriodEnd   Boolean            @default(false)
+  asaasCheckoutId     String?            @unique
+  asaasSubscriptionId String?            @unique
+  asaasCustomerId     String?
+  grantedByUserId     String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  owner               User               @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([ownerUserId, status])
+}
+
+model BillingEvent {
+  id              String    @id @default(uuid())
+  provider        String    @default("ASAAS")
+  // id do evento do Asaas: idempotencia
+  externalEventId String    @unique
+  type            String
+  // ja SANITIZADO (sem CPF nem dado de cartao)
+  payload         Json
+  processedAt     DateTime?
+  error           String?
+  createdAt       DateTime  @default(now())
+
+  @@index([type, createdAt])
+}
+
+// 1 linha por pergunta respondida PELO SELAH (server-side).
+model SelahUsage {
+  id        String   @id @default(uuid())
+  userId    String
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
