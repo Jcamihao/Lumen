@@ -7,6 +7,7 @@ import { AssistantAction, AssistantModule, AssistantPulse, AssistantReply } from
 import { AuthService } from "../../../core/services/auth.service";
 import { LifeApiService } from "../../../core/services/life-api.service";
 import { NativeStorageService } from "../../../core/services/native-storage.service";
+import { readPlanLimitMessage } from "../../../core/utils/plan-limit.utils";
 
 type AssistantMessage = {
   id: string;
@@ -488,10 +489,10 @@ export class AssistantPageComponent {
           this.persistHistorySnapshot(nextHistory, message.id);
           this.persistTurnToServer(question, reply);
         },
-        error: () => {
+        error: (error) => {
           this.loading.set(false);
           this.errorMessage.set(
-            "Nao foi possivel consultar o Selah agora.",
+            readPlanLimitMessage(error) ?? "Nao foi possivel consultar o Selah agora.",
           );
         },
       });

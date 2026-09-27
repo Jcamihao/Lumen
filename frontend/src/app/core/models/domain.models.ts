@@ -569,3 +569,57 @@ export type FeedbackSummary = {
   distribution: Record<1 | 2 | 3 | 4 | 5, number>;
   byArea: Array<{ area: string; count: number; averageRating: number | null }>;
 };
+
+export type PlanId = 'FREE' | 'INDIVIDUAL' | 'SHARED';
+
+export type LimitedResource =
+  | 'goals'
+  | 'envelopes'
+  | 'recurringTransactions'
+  | 'installmentPurchases';
+
+export type SubscriptionStatus = 'PENDING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'EXPIRED';
+
+export type SubscriptionSource = 'ASAAS' | 'GRANT';
+
+export type PublicPlan = {
+  id: PlanId;
+  label: string;
+  sellable: boolean;
+  seats: number;
+  limits: Record<LimitedResource, number | null>;
+  selahQuestionsPerMonth: number | null;
+  prices: { MONTHLY: number; YEARLY: number } | null;
+};
+
+export type UsageLine = {
+  used: number;
+  limit: number | null;
+};
+
+export type UsageReport = {
+  enforced: boolean;
+  plan: PlanId;
+  resources: Record<LimitedResource, UsageLine>;
+  selahQuestions: UsageLine & { resetsAt: string };
+};
+
+export type BillingMe = {
+  enabled: boolean;
+  plan: PlanId;
+  status: SubscriptionStatus | null;
+  source: SubscriptionSource | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  usage: UsageReport;
+};
+
+export type GrantView = {
+  id: string;
+  email: string;
+  name: string;
+  plan: 'INDIVIDUAL' | 'SHARED';
+  status: SubscriptionStatus;
+  currentPeriodEnd: string | null;
+  createdAt: string;
+};
