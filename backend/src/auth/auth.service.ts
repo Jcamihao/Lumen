@@ -12,7 +12,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { JwtService } from "@nestjs/jwt";
+import { JwtService, JwtSignOptions } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { JwtPayload } from "../common/interfaces/jwt-payload.interface";
@@ -1133,11 +1133,12 @@ export class AuthService {
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
         secret: accessSecret,
-        expiresIn: accessExpiresIn,
+        // O tipo do @nestjs/jwt 11 exige "number | StringValue" (ex.: "15m"); o valor vem da env.
+        expiresIn: accessExpiresIn as JwtSignOptions["expiresIn"],
       }),
       this.jwtService.signAsync(payload, {
         secret: refreshSecret,
-        expiresIn: refreshExpiresIn,
+        expiresIn: refreshExpiresIn as JwtSignOptions["expiresIn"],
         // Sem isso, dois refresh no mesmo segundo geram o MESMO token (payload e iat
         // iguais) e a rotacao deixa de distinguir o novo do antigo.
         jwtid: randomUUID(),
