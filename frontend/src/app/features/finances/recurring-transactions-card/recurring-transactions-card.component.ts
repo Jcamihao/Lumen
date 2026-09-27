@@ -161,7 +161,9 @@ export class RecurringTransactionsCardComponent {
         },
         error: (error) => {
           this.busyId.set(null);
-          this.toast.error(this.errorMessage(error, 'Não foi possível atualizar a conta.'));
+          this.toast.error(
+            readPlanLimitMessage(error) ?? this.errorMessage(error, 'Não foi possível atualizar a conta.'),
+          );
         },
       });
   }

@@ -123,9 +123,9 @@ export class EnvelopesCardComponent {
           this.load();
           this.changed.emit();
         },
-        error: () => {
+        error: (error) => {
           this.busyId.set(null);
-          this.toast.error('Não foi possível atualizar a reserva.');
+          this.toast.error(readPlanLimitMessage(error) ?? 'Não foi possível atualizar a reserva.');
         },
       });
   }
