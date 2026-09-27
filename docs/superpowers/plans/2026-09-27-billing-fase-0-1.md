@@ -25,7 +25,7 @@
 
 ## Review Focus
 
-1. **Meta criada com status não-ACTIVE no limite** (ex.: `COMPLETED`) não deve ser bloqueada — teste na Task 6.
+1. **Meta criada com status não-ACTIVE no limite** (`PLANNED`, `PAUSED` ou `ACHIEVED`) não deve ser bloqueada, mas **reativar** uma meta (`PAUSED`/`PLANNED` → `ACTIVE`) no limite **deve** ser — senão bastaria pausar e recriar para burlar. Testes na Task 6.
 2. **Virada de mês do Selah à meia-noite de São Paulo**, não do UTC — teste na Task 3.
 3. **Concessão com `endsAt` já no passado** não dá acesso; e concessão + assinatura paga: vence o maior plano — testes nas Tasks 3 e 5.
 4. **Admin concede para e-mail com maiúsculas/espaços** e para e-mail inexistente (404); **revogar duas vezes** é idempotente — testes na Task 5.
@@ -165,18 +165,20 @@ Rotas (`@ApiTags('billing') @Controller('billing')`, padrão do `goals.controlle
 - [ ] **Step 2: Rodar** — FAIL. **Step 3: Implementar** service, DTO e controller (controller fino: só delega); registrar no módulo.
 - [ ] **Step 4: Rodar** `npx jest src/billing && npx tsc --noEmit` — PASS. **Step 5: Commit** — `feat(billing): planos, meu plano e concessoes de admin`.
 
-### Task 6: Aplicar limites nos 4 tipos de item
+### Task 6: Aplicar limites nos 4 tipos de item (criar **e reativar**)
 
 **Files:**
 - Modify: `backend/src/goals/goals.service.ts` + `goals.module.ts` + `goals.service.spec.ts`; idem `envelopes/`, `recurring-transactions/`, `installments/` (service, module, spec de cada)
 
 **Interfaces:**
-- Consumes: `EntitlementsService.assertCanCreate(userId, resource)` (Task 4) — injetado como **último** parâmetro do construtor de cada service; cada `*Module` importa `BillingModule`.
+- Consumes: `EntitlementsService.assertCanCreate(userId, resource)` (Task 4) — injetado como **último** parâmetro do construtor de cada service; cada `*Module` importa `BillingModule`. Ela também serve para **reativação**: como o item ainda está inativo, `used` não o inclui, então `used >= limit` é exatamente "não cabe mais um ativo".
 
-- [ ] **Step 1: Testes** — nos 4 specs existentes, passar o novo argumento (`{ assertCanCreate: jest.fn().mockResolvedValue(undefined) } as any`) e adicionar por serviço: `create` chama `assertCanCreate(userId, '<recurso>')` **antes** de gravar e, se ela rejeita, `prisma.<model>.create` **não** é chamado. Recursos: `goals`, `envelopes`, `recurringTransactions`, `installmentPurchases`. Em `goals`: **criar com `status: 'COMPLETED'` não chama `assertCanCreate`** (Review Focus 1).
-- [ ] **Step 2: Rodar** `npx jest src/goals src/envelopes src/recurring-transactions src/installments` — FAIL nos novos testes.
-- [ ] **Step 3: Implementar**: primeira linha do `create()` de cada service é `await this.entitlements.assertCanCreate(userId, '<recurso>')`; em `GoalsService.create` só quando `(dto.status ?? GoalStatus.ACTIVE) === GoalStatus.ACTIVE`.
-- [ ] **Step 4: Rodar** os 4 specs + `npx tsc --noEmit` — PASS. **Step 5: Commit** — `feat(billing): limites de itens nos create() de metas, reservas, contas fixas e parceladas`.
+**Regra (Global Constraints + spec §7):** o limite vale ao **criar** um item ativo e ao **reativar** um item inativo (meta `PAUSED`/`PLANNED` → `ACTIVE`; reserva e conta fixa `isActive: false` → `true`). Editar um item que já está ativo, ou criar/manter um item não-ativo, **nunca** é bloqueado. Compras parceladas não têm reativação (conferir no `installments.service.ts`; se existir caminho que reative, aplicar a mesma regra).
+
+- [ ] **Step 1: Testes** — nos 4 specs existentes, passar o novo argumento (`{ assertCanCreate: jest.fn().mockResolvedValue(undefined) } as any`) e adicionar por serviço: (a) `create` chama `assertCanCreate(userId, '<recurso>')` **antes** de gravar e, se ela rejeita, `prisma.<model>.create` **não** é chamado; recursos: `goals`, `envelopes`, `recurringTransactions`, `installmentPurchases`. (b) **Reativação** (goals, envelopes, recurring): `update` que leva o item de inativo para ativo chama `assertCanCreate` antes de gravar e, se rejeita, `prisma.<model>.update` não é chamado; `update` de um item que **já está ativo** (ex.: só o título) **não** chama `assertCanCreate`. (c) Em `goals`: **criar com `status: 'PAUSED'`, `'PLANNED'` ou `'ACHIEVED'` não chama `assertCanCreate`** (Review Focus 1).
+- [ ] **Step 2: Rodar** `npx jest src/goals src/envelopes src/recurring-transactions src/installments` — FAIL nos novos.
+- [ ] **Step 3: Implementar**: primeira linha do `create()` de cada service é `await this.entitlements.assertCanCreate(userId, '<recurso>')` (em `GoalsService.create` só quando `(dto.status ?? GoalStatus.ACTIVE) === GoalStatus.ACTIVE`); nos `update()` de goals, envelopes e recurring, depois de carregar o item existente, chamar `assertCanCreate` **somente** quando há transição de não-ativo para ativo.
+- [ ] **Step 4: Rodar** os 4 specs + `npx tsc --noEmit` — PASS. **Step 5: Commit** — `feat(billing): limites de itens ao criar e reativar metas, reservas, contas fixas e parceladas`.
 
 ### Task 7: Aplicar a cota do Selah
 

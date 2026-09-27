@@ -139,6 +139,8 @@ model SelahUsage {              // 1 linha por pergunta respondida PELO SELAH (s
 | `installmentPurchases` | `InstallmentPurchase` com `isActive` | `InstallmentsService.create` |
 | `selahQuestions` | `SelahUsage` do mês corrente (fuso America/Sao_Paulo, UTC-3 fixo: o Brasil não tem horário de verão) | `AssistantService.ask`: verifica **antes** de chamar o Selah e registra **depois**, só quando o Selah respondeu. Resposta local de *fallback* **não conta** |
 
+O limite vale ao **criar** um item ativo e também ao **reativá-lo** (meta de `PAUSED`/`PLANNED` para `ACTIVE`; reserva ou conta fixa de inativa para ativa); sem isso bastaria pausar e recriar para burlar. Editar um item que já está ativo nunca é bloqueado.
+
 Estourou: `403` com corpo `{ code: "PLAN_LIMIT", resource, limit, used, plan, message }`. **Nunca apaga nada**: quem cai de plano com itens acima do limite continua editando/concluindo/excluindo; só não cria novos até ficar abaixo.
 
 ## 8. Fluxos
