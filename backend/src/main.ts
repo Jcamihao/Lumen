@@ -68,12 +68,9 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin, callback) => {
-      if (!origin || corsAllowedOrigins.includes(origin)) {
-        callback(null, true);
-        return;
-      }
-
-      callback(new Error('CORS origin not allowed'));
+      // Origem fora da lista: so nao envia os cabecalhos CORS (o navegador bloqueia).
+      // Passar um Error aqui virava HTTP 500 e poluia o monitoramento.
+      callback(null, !origin || corsAllowedOrigins.includes(origin));
     },
     credentials: true,
   });
