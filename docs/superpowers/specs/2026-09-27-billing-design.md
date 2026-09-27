@@ -141,6 +141,8 @@ model SelahUsage {              // 1 linha por pergunta respondida PELO SELAH (s
 
 O limite vale ao **criar** um item ativo e também ao **reativá-lo** (meta de `PAUSED`/`PLANNED` para `ACTIVE`; reserva ou conta fixa de inativa para ativa); sem isso bastaria pausar e recriar para burlar. Editar um item que já está ativo nunca é bloqueado.
 
+**Exceção aceita:** um saque (`withdraw`) que derruba uma meta `ACHIEVED` de volta pra `ACTIVE` (porque o valor guardado ficou abaixo do alvo de novo) **não** checa o limite — bloquear um saque do próprio dinheiro do usuário por causa de um limite de plano seria pior do que deixar passar. Na prática exigiria a meta já ter chegado ao alvo primeiro, então o excedente é raro e efêmero (o próximo aporte reaplica o alvo).
+
 Estourou: `403` com corpo `{ code: "PLAN_LIMIT", resource, limit, used, plan, message }`. **Nunca apaga nada**: quem cai de plano com itens acima do limite continua editando/concluindo/excluindo; só não cria novos até ficar abaixo.
 
 ## 8. Fluxos
