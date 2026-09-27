@@ -101,6 +101,17 @@ model BillingEvent {
 }
 ```
 
+```prisma
+model SelahUsage {              // 1 linha por pergunta respondida PELO SELAH (server-side)
+  id        String   @id @default(uuid())
+  userId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
+}
+```
+
+- **Por que `SelahUsage` e não `AssistantTurn`:** o `AssistantTurn` é gravado pelo **frontend** (`POST /assistant/history`), então quem perguntasse sem salvar o histórico nunca gastaria a cota. O uso é registrado dentro do próprio `AssistantService.ask()`.
 - **Grátis = não ter assinatura com acesso** (sem linha).
 - `PENDING` (checkout aberto) **nunca** concede acesso; linhas `PENDING` com mais de 24 h são ignoradas.
 - Compartilhado futuro: uma tabela `SubscriptionMember` referenciando `Subscription`; a função de resolução (seção 7) é o único ponto a mudar.
@@ -126,7 +137,7 @@ model BillingEvent {
 | `envelopes` | `Envelope` com `isActive` | `EnvelopesService.create` |
 | `recurringTransactions` | `RecurringTransaction` com `isActive` | `RecurringTransactionsService.create` |
 | `installmentPurchases` | `InstallmentPurchase` com `isActive` | `InstallmentsService.create` |
-| `selahQuestions` | `AssistantTurn` do mês corrente (fuso America/Sao_Paulo) | `AssistantService.ask`, antes de chamar o Selah |
+| `selahQuestions` | `SelahUsage` do mês corrente (fuso America/Sao_Paulo, UTC-3 fixo: o Brasil não tem horário de verão) | `AssistantService.ask`: verifica **antes** de chamar o Selah e registra **depois**, só quando o Selah respondeu. Resposta local de *fallback* **não conta** |
 
 Estourou: `403` com corpo `{ code: "PLAN_LIMIT", resource, limit, used, plan, message }`. **Nunca apaga nada**: quem cai de plano com itens acima do limite continua editando/concluindo/excluindo; só não cria novos até ficar abaixo.
 
@@ -158,7 +169,7 @@ Estourou: `403` com corpo `{ code: "PLAN_LIMIT", resource, limit, used, plan, me
 | `POST /billing/sync` | autenticado | Reconcilia com o Asaas (limite 10/hora) |
 | `POST /billing/cancel` | autenticado | Cancela ao fim do período |
 | `POST /billing/webhooks/asaas` | público + token | Recebe eventos (política de rate limit própria e mais alta, por IP) |
-| `POST/DELETE /billing/admin/grants` | ADMIN | Concede/revoga plano |
+| `GET/POST/DELETE /billing/admin/grants` | ADMIN | Lista, concede e revoga plano (revogar encerra na hora e mantém o registro) |
 
 ## 10. Frontend
 
@@ -220,7 +231,6 @@ Cada fase tem seu plano de implementação e é verificada (testes + navegador) 
 - A conta de **produção** do Asaas exige cadastro e aprovação (pode levar dias): abrir cedo. Definir se recebe como **CPF ou CNPJ/MEI** (decide a nota fiscal) antes de ligar.
 - Rascunho dos **Termos de uso e política de reembolso** precisa de revisão do dono (e idealmente de um advogado) antes de ligar.
 - Decidir depois se leitura de nota fiscal e importação de CSV entram nos limites (custo de IA da nota).
-- No plano de implementação: definir se uma pergunta do Selah respondida por *fallback* (Selah fora do ar) conta na cota — recomendação: **não conta**.
 
 ## 17. Premissas a confirmar
 
