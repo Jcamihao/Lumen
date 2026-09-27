@@ -24,22 +24,21 @@ import { RecurringTransactionsCardComponent } from '../recurring-transactions-ca
 const CATEGORY_COLORS = ['#f18f01', '#006cd2', '#0f9d7a', '#7c5cff', '#ef4444', '#0ea5e9'];
 
 @Component({
-  selector: 'app-finances-page',
-  standalone: true,
-  imports: [
-    CommonModule,
-    ReactiveFormsModule,
-    RouterLink,
-    SpendingBreakdownComponent,
-    PaymentMethodPickerComponent,
-    CreditCycleCardComponent,
-    EnvelopesCardComponent,
-    RecurringTransactionsCardComponent,
-    InstallmentPurchasesCardComponent,
-  ],
-  templateUrl: './finances-page.component.html',
-  styleUrls: ['./finances-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-finances-page',
+    imports: [
+        CommonModule,
+        ReactiveFormsModule,
+        RouterLink,
+        SpendingBreakdownComponent,
+        PaymentMethodPickerComponent,
+        CreditCycleCardComponent,
+        EnvelopesCardComponent,
+        RecurringTransactionsCardComponent,
+        InstallmentPurchasesCardComponent,
+    ],
+    templateUrl: './finances-page.component.html',
+    styleUrls: ['./finances-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class FinancesPageComponent {
   @ViewChild(EnvelopesCardComponent) private envelopesCardRef?: EnvelopesCardComponent;

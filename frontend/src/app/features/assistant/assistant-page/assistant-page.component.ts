@@ -18,12 +18,11 @@ type AssistantMessage = {
 type AssistantReadingTab = "summary" | "actions" | "details";
 
 @Component({
-  selector: "app-assistant-page",
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
-  templateUrl: './assistant-page.component.html',
-  styleUrls: ['./assistant-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: "app-assistant-page",
+    imports: [CommonModule, ReactiveFormsModule],
+    templateUrl: './assistant-page.component.html',
+    styleUrls: ['./assistant-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class AssistantPageComponent {
   private readonly api = inject(LifeApiService);

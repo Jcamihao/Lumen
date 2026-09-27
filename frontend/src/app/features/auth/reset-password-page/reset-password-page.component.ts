@@ -20,12 +20,11 @@ function passwordsMatch(group: AbstractControl): ValidationErrors | null {
 }
 
 @Component({
-  selector: 'app-reset-password-page',
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink],
-  templateUrl: './reset-password-page.component.html',
-  styleUrls: ['../auth-flow.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-reset-password-page',
+    imports: [CommonModule, ReactiveFormsModule, RouterLink],
+    templateUrl: './reset-password-page.component.html',
+    styleUrls: ['../auth-flow.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ResetPasswordPageComponent {
   private readonly fb = inject(FormBuilder);

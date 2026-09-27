@@ -27,12 +27,11 @@ import { LifeApiService } from "../../../core/services/life-api.service";
 const AVATAR_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 
 @Component({
-  selector: "app-settings-page",
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink],
-  templateUrl: "./settings-page.component.html",
-  styleUrls: ["./settings-page.component.scss"],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: "app-settings-page",
+    imports: [CommonModule, ReactiveFormsModule, RouterLink],
+    templateUrl: "./settings-page.component.html",
+    styleUrls: ["./settings-page.component.scss"],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SettingsPageComponent {
   private qrCodeModulePromise: Promise<typeof import("qrcode")> | null = null;

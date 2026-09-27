@@ -42,12 +42,11 @@ function writeOnboardingDismissed(userId: string) {
 }
 
 @Component({
-  selector: 'app-dashboard-page',
-  standalone: true,
-  imports: [CommonModule, RouterLink, SpendingBreakdownComponent],
-  templateUrl: './dashboard-page.component.html',
-  styleUrls: ['./dashboard-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-dashboard-page',
+    imports: [CommonModule, RouterLink, SpendingBreakdownComponent],
+    templateUrl: './dashboard-page.component.html',
+    styleUrls: ['./dashboard-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class DashboardPageComponent {
   private readonly api = inject(LifeApiService);

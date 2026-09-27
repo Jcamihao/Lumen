@@ -20,12 +20,11 @@ import {
 type SentState = false | 'online' | 'offline';
 
 @Component({
-  selector: 'app-feedback-page',
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink],
-  templateUrl: './feedback-page.component.html',
-  styleUrls: ['./feedback-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-feedback-page',
+    imports: [CommonModule, ReactiveFormsModule, RouterLink],
+    templateUrl: './feedback-page.component.html',
+    styleUrls: ['./feedback-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class FeedbackPageComponent {
   private readonly api = inject(LifeApiService);

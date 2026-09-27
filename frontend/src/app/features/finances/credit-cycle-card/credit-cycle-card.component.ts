@@ -14,12 +14,11 @@ import { formatDayLabel } from '../../../core/utils/date.utils';
  * reorganização "Cartão" (opção D, fase 2).
  */
 @Component({
-  selector: 'app-credit-cycle-card',
-  standalone: true,
-  imports: [CommonModule, RouterLink],
-  templateUrl: './credit-cycle-card.component.html',
-  styleUrls: ['./credit-cycle-card.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-credit-cycle-card',
+    imports: [CommonModule, RouterLink],
+    templateUrl: './credit-cycle-card.component.html',
+    styleUrls: ['./credit-cycle-card.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class CreditCycleCardComponent {
   private readonly api = inject(LifeApiService);

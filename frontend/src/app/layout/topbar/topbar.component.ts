@@ -40,12 +40,11 @@ const BREADCRUMB_ITEMS: BreadcrumbItem[] = [
 const MAX_RESULTS_PER_KIND = 5;
 
 @Component({
-  selector: 'app-topbar',
-  standalone: true,
-  imports: [CommonModule, RouterLink, ThemeToggleComponent],
-  templateUrl: './topbar.component.html',
-  styleUrls: ['./topbar.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-topbar',
+    imports: [CommonModule, RouterLink, ThemeToggleComponent],
+    templateUrl: './topbar.component.html',
+    styleUrls: ['./topbar.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class TopbarComponent {
   protected readonly authService = inject(AuthService);

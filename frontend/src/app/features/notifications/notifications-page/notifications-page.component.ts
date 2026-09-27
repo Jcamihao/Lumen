@@ -5,12 +5,11 @@ import { NotificationCenterService } from "../../../core/services/notification-c
 type NotificationsSection = "inbox" | "reminders" | "preferences";
 
 @Component({
-  selector: "app-notifications-page",
-  standalone: true,
-  imports: [CommonModule],
-  templateUrl: "./notifications-page.component.html",
-  styleUrls: ["./notifications-page.component.scss"],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: "app-notifications-page",
+    imports: [CommonModule],
+    templateUrl: "./notifications-page.component.html",
+    styleUrls: ["./notifications-page.component.scss"],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class NotificationsPageComponent {
   protected readonly notificationCenter = inject(NotificationCenterService);

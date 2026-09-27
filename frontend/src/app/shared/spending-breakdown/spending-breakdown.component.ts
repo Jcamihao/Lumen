@@ -15,12 +15,11 @@ const DONUT_RADIUS = 15.9155;
 const SLICE_GAP = 0.6;
 
 @Component({
-  selector: 'app-spending-breakdown',
-  standalone: true,
-  imports: [CommonModule],
-  templateUrl: './spending-breakdown.component.html',
-  styleUrls: ['./spending-breakdown.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-spending-breakdown',
+    imports: [CommonModule],
+    templateUrl: './spending-breakdown.component.html',
+    styleUrls: ['./spending-breakdown.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SpendingBreakdownComponent implements OnChanges {
   protected readonly radius = DONUT_RADIUS;

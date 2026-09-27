@@ -26,12 +26,11 @@ import {
 } from '../../../core/utils/recurrence.utils';
 
 @Component({
-  selector: 'app-recurring-transactions-card',
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, PaymentMethodPickerComponent],
-  templateUrl: './recurring-transactions-card.component.html',
-  styleUrls: ['./recurring-transactions-card.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-recurring-transactions-card',
+    imports: [CommonModule, ReactiveFormsModule, PaymentMethodPickerComponent],
+    templateUrl: './recurring-transactions-card.component.html',
+    styleUrls: ['./recurring-transactions-card.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class RecurringTransactionsCardComponent {
   private readonly api = inject(LifeApiService);

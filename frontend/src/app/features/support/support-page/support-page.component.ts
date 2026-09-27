@@ -10,12 +10,11 @@ import { APP_VERSION } from "../../../core/app-version";
 import { buildDeviceInfo } from "../../../core/utils/device-info";
 
 @Component({
-  selector: "app-support-page",
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink],
-  templateUrl: "./support-page.component.html",
-  styleUrls: ["./support-page.component.scss"],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: "app-support-page",
+    imports: [CommonModule, ReactiveFormsModule, RouterLink],
+    templateUrl: "./support-page.component.html",
+    styleUrls: ["./support-page.component.scss"],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class SupportPageComponent {
   private readonly api = inject(LifeApiService);

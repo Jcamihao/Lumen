@@ -16,12 +16,11 @@ import { formatDayLabel } from '../../../core/utils/date.utils';
  * la ainda, so criado aqui pra validar antes de esvaziar os lugares antigos.
  */
 @Component({
-  selector: 'app-card-page',
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
-  templateUrl: './card-page.component.html',
-  styleUrls: ['./card-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-card-page',
+    imports: [CommonModule, ReactiveFormsModule],
+    templateUrl: './card-page.component.html',
+    styleUrls: ['./card-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class CardPageComponent {
   private readonly api = inject(LifeApiService);

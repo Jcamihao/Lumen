@@ -15,12 +15,11 @@ const QR_OPTIONS = {
 const PNG_SIZE = 2048;
 
 @Component({
-  selector: 'app-qr-page',
-  standalone: true,
-  imports: [CommonModule, RouterLink],
-  templateUrl: './qr-page.component.html',
-  styleUrls: ['./qr-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-qr-page',
+    imports: [CommonModule, RouterLink],
+    templateUrl: './qr-page.component.html',
+    styleUrls: ['./qr-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class QrPageComponent {
   private readonly title = inject(Title);

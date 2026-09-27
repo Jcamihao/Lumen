@@ -5,12 +5,11 @@ import { ThemeService } from '../../../core/services/theme.service';
 import { ThemeToggleComponent } from '../../../shared/theme-toggle/theme-toggle.component';
 
 @Component({
-  selector: 'app-landing-page',
-  standalone: true,
-  imports: [CommonModule, RouterLink, ThemeToggleComponent],
-  templateUrl: './landing-page.component.html',
-  styleUrls: ['./landing-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-landing-page',
+    imports: [CommonModule, RouterLink, ThemeToggleComponent],
+    templateUrl: './landing-page.component.html',
+    styleUrls: ['./landing-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class LandingPageComponent implements AfterViewInit {
   private readonly theme = inject(ThemeService);

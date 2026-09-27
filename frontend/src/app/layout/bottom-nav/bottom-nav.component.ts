@@ -14,12 +14,11 @@ type NavItem = {
 };
 
 @Component({
-  selector: 'app-bottom-nav',
-  standalone: true,
-  imports: [CommonModule, RouterLink],
-  templateUrl: './bottom-nav.component.html',
-  styleUrls: ['./bottom-nav.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-bottom-nav',
+    imports: [CommonModule, RouterLink],
+    templateUrl: './bottom-nav.component.html',
+    styleUrls: ['./bottom-nav.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class BottomNavComponent {
   private readonly api = inject(LifeApiService);

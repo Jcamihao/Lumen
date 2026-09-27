@@ -8,12 +8,11 @@ import { LoginMfaChallengeResponse, MfaBypassChallengeResponse } from '../../../
 import { AuthService } from '../../../core/services/auth.service';
 
 @Component({
-  selector: 'app-login-page',
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink],
-  templateUrl: './login-page.component.html',
-  styleUrls: ['./login-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-login-page',
+    imports: [CommonModule, ReactiveFormsModule, RouterLink],
+    templateUrl: './login-page.component.html',
+    styleUrls: ['./login-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class LoginPageComponent {
   private readonly fb = inject(FormBuilder);

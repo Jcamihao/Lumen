@@ -8,12 +8,11 @@ import { PAYMENT_METHODS } from '../../core/utils/payment-method.utils';
  * ("nao informado"): sem uma quarta opcao so para dizer que nao quer escolher.
  */
 @Component({
-  selector: 'app-payment-method-picker',
-  standalone: true,
-  imports: [CommonModule],
-  templateUrl: './payment-method-picker.component.html',
-  styleUrls: ['./payment-method-picker.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-payment-method-picker',
+    imports: [CommonModule],
+    templateUrl: './payment-method-picker.component.html',
+    styleUrls: ['./payment-method-picker.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class PaymentMethodPickerComponent {
   protected readonly options = PAYMENT_METHODS;

@@ -10,12 +10,11 @@ type StatusFilter = '' | 'OPEN' | 'IN_REVIEW' | 'RESOLVED' | 'CLOSED';
 type TypeFilter = '' | 'FEEDBACK' | 'BUG_REPORT';
 
 @Component({
-  selector: 'app-admin-support-page',
-  standalone: true,
-  imports: [CommonModule],
-  templateUrl: './admin-support-page.component.html',
-  styleUrls: ['./admin-support-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-admin-support-page',
+    imports: [CommonModule],
+    templateUrl: './admin-support-page.component.html',
+    styleUrls: ['./admin-support-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class AdminSupportPageComponent {
   private readonly api = inject(LifeApiService);

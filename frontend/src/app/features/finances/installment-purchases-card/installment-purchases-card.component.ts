@@ -20,12 +20,11 @@ import { paymentMethodLabel } from '../../../core/utils/payment-method.utils';
 import { PaymentMethodPickerComponent } from '../../../shared/payment-method-picker/payment-method-picker.component';
 
 @Component({
-  selector: 'app-installment-purchases-card',
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, PaymentMethodPickerComponent],
-  templateUrl: './installment-purchases-card.component.html',
-  styleUrls: ['./installment-purchases-card.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-installment-purchases-card',
+    imports: [CommonModule, ReactiveFormsModule, PaymentMethodPickerComponent],
+    templateUrl: './installment-purchases-card.component.html',
+    styleUrls: ['./installment-purchases-card.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class InstallmentPurchasesCardComponent {
   private readonly api = inject(LifeApiService);

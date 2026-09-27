@@ -7,12 +7,11 @@ import { AuthService } from '../../../core/services/auth.service';
 import { readApiError } from '../auth-flow.utils';
 
 @Component({
-  selector: 'app-forgot-password-page',
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink],
-  templateUrl: './forgot-password-page.component.html',
-  styleUrls: ['../auth-flow.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-forgot-password-page',
+    imports: [CommonModule, ReactiveFormsModule, RouterLink],
+    templateUrl: './forgot-password-page.component.html',
+    styleUrls: ['../auth-flow.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ForgotPasswordPageComponent {
   private readonly fb = inject(FormBuilder);

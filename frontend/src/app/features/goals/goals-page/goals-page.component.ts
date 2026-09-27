@@ -12,12 +12,11 @@ import { formatDayLabel } from '../../../core/utils/date.utils';
 import { focusField } from '../../../core/utils/focus.utils';
 
 @Component({
-  selector: 'app-goals-page',
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink],
-  templateUrl: './goals-page.component.html',
-  styleUrls: ['./goals-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-goals-page',
+    imports: [CommonModule, ReactiveFormsModule, RouterLink],
+    templateUrl: './goals-page.component.html',
+    styleUrls: ['./goals-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class GoalsPageComponent {
   private readonly api = inject(LifeApiService);

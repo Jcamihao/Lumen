@@ -8,12 +8,11 @@ import { readApiError } from '../auth-flow.utils';
 type VerifyState = 'loading' | 'success' | 'error';
 
 @Component({
-  selector: 'app-verify-email-page',
-  standalone: true,
-  imports: [CommonModule, RouterLink],
-  templateUrl: './verify-email-page.component.html',
-  styleUrls: ['../auth-flow.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-verify-email-page',
+    imports: [CommonModule, RouterLink],
+    templateUrl: './verify-email-page.component.html',
+    styleUrls: ['../auth-flow.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class VerifyEmailPageComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);

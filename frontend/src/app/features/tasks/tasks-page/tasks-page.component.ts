@@ -15,12 +15,11 @@ type TaskStatus = Task['status'];
 type TaskPriority = Task['priority'];
 
 @Component({
-  selector: 'app-tasks-page',
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink],
-  templateUrl: './tasks-page.component.html',
-  styleUrls: ['./tasks-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-tasks-page',
+    imports: [CommonModule, ReactiveFormsModule, RouterLink],
+    templateUrl: './tasks-page.component.html',
+    styleUrls: ['./tasks-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class TasksPageComponent {
   private readonly api = inject(LifeApiService);

@@ -16,12 +16,11 @@ import { formatDayLabel } from '../../../core/utils/date.utils';
 import { ToastService } from '../../../core/services/toast.service';
 
 @Component({
-  selector: 'app-imports-page',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
-  templateUrl: './imports-page.component.html',
-  styleUrls: ['./imports-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-imports-page',
+    imports: [CommonModule, FormsModule],
+    templateUrl: './imports-page.component.html',
+    styleUrls: ['./imports-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ImportsPageComponent {
   private readonly api = inject(LifeApiService);

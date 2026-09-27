@@ -12,12 +12,11 @@ const CATEGORY_LABEL: Record<string, string> = {
 };
 
 @Component({
-  selector: 'app-unsubscribe-page',
-  standalone: true,
-  imports: [CommonModule, RouterLink],
-  templateUrl: './unsubscribe-page.component.html',
-  styleUrls: ['../auth-flow.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-unsubscribe-page',
+    imports: [CommonModule, RouterLink],
+    templateUrl: './unsubscribe-page.component.html',
+    styleUrls: ['../auth-flow.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class UnsubscribePageComponent {
   private readonly route = inject(ActivatedRoute);

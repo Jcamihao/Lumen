@@ -15,12 +15,11 @@ import { AuthService } from '../../../core/services/auth.service';
 const AVATAR_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 
 @Component({
-  selector: 'app-register-page',
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink],
-  templateUrl: './register-page.component.html',
-  styleUrls: ['./register-page.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-register-page',
+    imports: [CommonModule, ReactiveFormsModule, RouterLink],
+    templateUrl: './register-page.component.html',
+    styleUrls: ['./register-page.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class RegisterPageComponent {
   private readonly fb = inject(FormBuilder);

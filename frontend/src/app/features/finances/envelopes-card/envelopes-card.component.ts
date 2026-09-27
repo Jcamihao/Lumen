@@ -11,12 +11,11 @@ import { ToastService } from '../../../core/services/toast.service';
 const ENVELOPE_COLORS = ['#f18f01', '#006cd2', '#0f9d7a', '#7c5cff', '#ef4444', '#0ea5e9'];
 
 @Component({
-  selector: 'app-envelopes-card',
-  standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
-  templateUrl: './envelopes-card.component.html',
-  styleUrls: ['./envelopes-card.component.scss'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+    selector: 'app-envelopes-card',
+    imports: [CommonModule, ReactiveFormsModule],
+    templateUrl: './envelopes-card.component.html',
+    styleUrls: ['./envelopes-card.component.scss'],
+    changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class EnvelopesCardComponent {
   private readonly api = inject(LifeApiService);
