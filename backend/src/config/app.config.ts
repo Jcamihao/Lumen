@@ -52,4 +52,6 @@ export const appConfig = registerAs('app', () => ({
   // Insight CRITICAL notificado (in-app) sem resolucao por N dias seguidos
   // ganha uma escalada por email, uma unica vez.
   selahEscalationDays: parseInt(process.env.SELAH_ESCALATION_DAYS ?? '3', 10),
+  // Interruptor de planos/limites. Desligado (padrao) = sem limites para ninguem.
+  billingEnabled: parseBoolean(process.env.BILLING_ENABLED, false),
 }));

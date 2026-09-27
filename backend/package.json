@@ -1,6 +1,6 @@
 {
   "name": "lumen-backend",
-  "version": "1.59.24",
+  "version": "1.59.25",
   "description": "LUMEN backend API",
   "author": "codeStage Solucoes",
   "private": true,
