@@ -1,6 +1,6 @@
 {
   "name": "lumen-frontend",
-  "version": "1.59.13",
+  "version": "1.59.14",
   "scripts": {
     "ng": "ng",
     "prestart": "node ./scripts/generate-runtime-config.mjs",
@@ -28,7 +28,6 @@
     "@angular/platform-browser-dynamic": "^16.2.0",
     "@angular/router": "^16.2.0",
     "@angular/service-worker": "^16.2.12",
-    "@capacitor/cli": "^5.7.8",
     "@capacitor/core": "^5.7.8",
     "@capacitor/ios": "^5.7.8",
     "@capacitor/local-notifications": "^5.0.8",
@@ -42,6 +41,7 @@
     "@angular-devkit/build-angular": "^16.2.16",
     "@angular/cli": "^16.2.16",
     "@angular/compiler-cli": "^16.2.0",
+    "@capacitor/cli": "^5.7.8",
     "@types/jasmine": "~4.3.0",
     "jasmine-core": "~4.6.0",
     "karma": "~6.4.0",
