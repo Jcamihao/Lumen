@@ -6,6 +6,65 @@
     </div>
   </header>
 
+  <!-- Conceder plano de fundador -->
+  <section class="proto-surface admin-grants" aria-label="Conceder plano">
+    <div class="proto-surface__head">
+      <div>
+        <h3>Conceder plano</h3>
+        <p>Dá acesso ao plano Individual sem cobrança (parceiro, fundador). Sem data de fim, a concessão não expira.</p>
+      </div>
+    </div>
+
+    <div class="proto-surface__body">
+      <form class="admin-grant-form" [formGroup]="grantForm" (submit)="$event.preventDefault(); submitGrant()" novalidate>
+        <div class="proto-field">
+          <label for="grant-email">E-mail</label>
+          <input id="grant-email" type="email" placeholder="pessoa@exemplo.com" formControlName="email" />
+        </div>
+
+        <div class="proto-field">
+          <label for="grant-ends-at">Fim (opcional)</label>
+          <input id="grant-ends-at" type="date" formControlName="endsAt" />
+        </div>
+
+        <div class="admin-grant-form__actions">
+          <button type="submit" class="proto-button" [disabled]="grantSaving()">
+            {{ grantSaving() ? 'Concedendo...' : 'Conceder plano' }}
+          </button>
+        </div>
+      </form>
+
+      <p class="admin-grants__hint" *ngIf="loadingGrants()">Carregando concessões...</p>
+
+      <div class="proto-empty" *ngIf="!loadingGrants() && !grants().length">
+        <strong>Nenhuma concessão ainda</strong>
+        <p>As concessões de plano criadas aqui aparecem nesta lista.</p>
+      </div>
+
+      <ul class="admin-grant-list" *ngIf="!loadingGrants() && grants().length">
+        <li class="admin-grant-row" *ngFor="let g of grants(); trackBy: trackGrant">
+          <div class="admin-grant-row__main">
+            <strong>{{ g.email }}</strong>
+            <span class="proto-chip">{{ grantPlanLabel(g.plan) }}</span>
+            <span class="proto-tag" [attr.data-tone]="grantStatusTone(g.status)">{{ grantStatusLabel(g.status) }}</span>
+          </div>
+
+          <div class="admin-grant-row__meta">
+            <span>{{ grantEndsLabel(g) }}</span>
+            <button
+              type="button"
+              class="proto-button proto-button--secondary"
+              [disabled]="revokingId() === g.id"
+              (click)="revokeGrant(g)"
+            >
+              {{ revokingId() === g.id ? 'Revogando...' : 'Revogar' }}
+            </button>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </section>
+
   <!-- Resumo do feedback dos testadores -->
   <section class="admin-feedback-summary" *ngIf="summary() as sum" aria-label="Resumo do feedback">
     <div class="proto-metric">
