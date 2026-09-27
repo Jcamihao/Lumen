@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
+import { BillingController } from './billing.controller';
+import { BillingService } from './billing.service';
 import { EntitlementsService } from './entitlements.service';
 
 @Module({
-  providers: [EntitlementsService],
-  exports: [EntitlementsService],
+  controllers: [BillingController],
+  providers: [EntitlementsService, BillingService],
+  exports: [EntitlementsService, BillingService],
 })
 export class BillingModule {}
