@@ -88,6 +88,13 @@ describe("AssistantService", () => {
       },
     }) as any;
 
+  const buildEntitlements = (overrides: Record<string, unknown> = {}) =>
+    ({
+      assertCanAskSelah: jest.fn().mockResolvedValue(undefined),
+      recordSelahQuestion: jest.fn().mockResolvedValue(undefined),
+      ...overrides,
+    }) as any;
+
   it("builds a financial answer when asked about money and external AI is disabled", async () => {
     const service = new AssistantService(
       buildDashboardService(),
@@ -100,6 +107,7 @@ describe("AssistantService", () => {
       { create: jest.fn() } as any,
       { create: jest.fn() } as any,
       { create: jest.fn() } as any,
+      buildEntitlements(),
     );
     const response = await service.ask(
       "user-1",
@@ -128,6 +136,7 @@ describe("AssistantService", () => {
       { create: jest.fn() } as any,
       { create: jest.fn() } as any,
       { create: jest.fn() } as any,
+      buildEntitlements(),
     );
 
     const postJsonSpy = jest.spyOn(service as any, "postJson").mockResolvedValue({
@@ -188,6 +197,7 @@ describe("AssistantService", () => {
       { create: jest.fn() } as any,
       { create: jest.fn() } as any,
       { create: jest.fn() } as any,
+      buildEntitlements(),
     );
 
     jest.spyOn(service as any, "postJson").mockResolvedValue({
@@ -203,6 +213,104 @@ describe("AssistantService", () => {
 
     expect(response.source).toBe("lumen_fallback");
     expect(response.disclaimer).toContain("SelahIA indisponivel");
+  });
+
+  describe("Selah quota (entitlements)", () => {
+    it("rejects with the same exception and never calls Selah when assertCanAskSelah rejects", async () => {
+      const entitlements = buildEntitlements({
+        assertCanAskSelah: jest
+          .fn()
+          .mockRejectedValue(new Error("PLAN_LIMIT")),
+      });
+      const service = new AssistantService(
+        buildDashboardService(),
+        buildConfigService({
+          SELAH_ASSISTANT_ENABLED: "true",
+          SELAH_BASE_URL: "http://localhost:3010",
+          SELAH_SOURCE_APP: "LumenBack",
+        }),
+        buildPrismaService(),
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+        entitlements,
+      );
+      const postJsonSpy = jest.spyOn(service as any, "postJson");
+
+      await expect(
+        service.ask("user-1", "O que devo priorizar agora?"),
+      ).rejects.toThrow("PLAN_LIMIT");
+      expect(postJsonSpy).not.toHaveBeenCalled();
+    });
+
+    it("records the Selah question once when Selah actually answers", async () => {
+      const entitlements = buildEntitlements();
+      const service = new AssistantService(
+        buildDashboardService(),
+        buildConfigService({
+          SELAH_ASSISTANT_ENABLED: "true",
+          SELAH_BASE_URL: "http://localhost:3010",
+          SELAH_SOURCE_APP: "LumenBack",
+        }),
+        buildPrismaService(),
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+        entitlements,
+      );
+
+      jest.spyOn(service as any, "postJson").mockResolvedValue({
+        statusCode: 200,
+        body: JSON.stringify({
+          answer: "Resposta de teste.",
+          highlights: [],
+          suggestedActions: [],
+          focusArea: "Prioridades",
+          confidence: "high",
+          disclaimer: null,
+          provider: "SelahIA",
+          generatedAt: "2026-03-26T12:00:00.000Z",
+        }),
+      });
+
+      await service.ask("user-1", "O que devo priorizar agora?");
+
+      expect(entitlements.recordSelahQuestion).toHaveBeenCalledTimes(1);
+      expect(entitlements.recordSelahQuestion).toHaveBeenCalledWith("user-1");
+    });
+
+    it("does not record the Selah question when it falls back to the local reply", async () => {
+      const entitlements = buildEntitlements();
+      const service = new AssistantService(
+        buildDashboardService(),
+        buildConfigService({
+          SELAH_ASSISTANT_ENABLED: "true",
+          SELAH_BASE_URL: "http://localhost:3010",
+          SELAH_SOURCE_APP: "LumenBack",
+        }),
+        buildPrismaService(),
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+        { create: jest.fn() } as any,
+        entitlements,
+      );
+
+      jest.spyOn(service as any, "postJson").mockResolvedValue({
+        statusCode: 429,
+        body: JSON.stringify({
+          statusCode: 429,
+          message: "Rate limit exceeded for this application.",
+        }),
+      });
+
+      const response = await service.ask(
+        "user-1",
+        "O que devo priorizar agora?",
+      );
+
+      expect(response.source).toBe("lumen_fallback");
+      expect(entitlements.recordSelahQuestion).not.toHaveBeenCalled();
+    });
   });
 
   it("feeds the user's personal profile (age, occupation, primary goal) into the SelahIA context", async () => {
@@ -235,6 +343,7 @@ describe("AssistantService", () => {
       { create: jest.fn() } as any,
       { create: jest.fn() } as any,
       { create: jest.fn() } as any,
+      buildEntitlements(),
     );
 
     const postJsonSpy = jest.spyOn(service as any, "postJson").mockResolvedValue({
@@ -293,6 +402,7 @@ describe("AssistantService", () => {
         { create: jest.fn() } as any,
         { create: jest.fn() } as any,
         { create: jest.fn() } as any,
+        buildEntitlements(),
       );
 
       const response = await service.ask(
@@ -328,6 +438,7 @@ describe("AssistantService", () => {
         { create: jest.fn() } as any,
         { create: jest.fn() } as any,
         { create: jest.fn() } as any,
+        buildEntitlements(),
       );
 
       const response = await service.ask(
@@ -352,6 +463,7 @@ describe("AssistantService", () => {
         { create: jest.fn() } as any,
         { create: jest.fn() } as any,
         { create: jest.fn() } as any,
+        buildEntitlements(),
       );
 
       const response = await service.ask(
@@ -377,6 +489,7 @@ describe("AssistantService", () => {
         { create: jest.fn() } as any,
         { create: jest.fn() } as any,
         { create: jest.fn() } as any,
+        buildEntitlements(),
       );
 
       const response = await service.ask("user-1", "O que eu faço com minha grana esse mês?");
@@ -407,6 +520,7 @@ describe("AssistantService", () => {
         { create: jest.fn() } as any,
         { create: jest.fn() } as any,
         { create: jest.fn() } as any,
+        buildEntitlements(),
       );
 
       const response = await service.ask("user-1", "O que eu faço com minha grana esse mês?");
@@ -430,6 +544,7 @@ describe("AssistantService", () => {
         { create: jest.fn() } as any,
         goalsService as any,
         { create: jest.fn() } as any,
+        buildEntitlements(),
       );
 
       await service.applyAction("user-1", {
@@ -458,6 +573,7 @@ describe("AssistantService", () => {
         { create: jest.fn() } as any,
         goalsService as any,
         { create: jest.fn() } as any,
+        buildEntitlements(),
       );
 
       await service.applyAction("user-1", {
@@ -486,6 +602,7 @@ describe("AssistantService", () => {
         { create: jest.fn() } as any,
         goalsService as any,
         { create: jest.fn() } as any,
+        buildEntitlements(),
       );
 
       await expect(
@@ -512,6 +629,7 @@ describe("AssistantService", () => {
         { create: jest.fn() } as any,
         { create: jest.fn() } as any,
         { create: jest.fn() } as any,
+        buildEntitlements(),
       );
 
     it("surfaces cash-risk from the forecast even without any insight", async () => {

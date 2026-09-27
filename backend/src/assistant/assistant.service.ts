@@ -4,6 +4,7 @@ import { TransactionType } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { request as httpRequest } from "http";
 import { request as httpsRequest } from "https";
+import { EntitlementsService } from "../billing/entitlements.service";
 import { DashboardService } from "../dashboard/dashboard.service";
 import { CreateGoalDto } from "../goals/dto/create-goal.dto";
 import { GoalsService } from "../goals/goals.service";
@@ -228,6 +229,7 @@ export class AssistantService {
     private readonly tasksService: TasksService,
     private readonly goalsService: GoalsService,
     private readonly remindersService: RemindersService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   async ask(
@@ -238,6 +240,8 @@ export class AssistantService {
       originModule?: AssistantModule;
     },
   ): Promise<AssistantReply> {
+    await this.entitlements.assertCanAskSelah(userId);
+
     const [summary, privacySettings, spendingAnalysis] = await Promise.all([
       this.dashboardService.getSummary(userId) as Promise<DashboardSummary>,
       this.loadPrivacySettings(userId),
@@ -253,6 +257,8 @@ export class AssistantService {
     const generatedAt = new Date().toISOString();
 
     if (selahResult.reply) {
+      await this.entitlements.recordSelahQuestion(userId);
+
       return this.enrichReply(
         summary,
         question,
