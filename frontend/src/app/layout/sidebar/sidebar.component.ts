@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, EventEmitter, Input, Ou
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
+import { BillingService } from '../../core/services/billing.service';
 import { LifeApiService } from '../../core/services/life-api.service';
 import { NotificationCenterService } from '../../core/services/notification-center.service';
 import { ToastService } from '../../core/services/toast.service';
@@ -37,6 +38,7 @@ export class SidebarComponent {
 
   protected readonly authService = inject(AuthService);
   protected readonly notificationCenter = inject(NotificationCenterService);
+  protected readonly billing = inject(BillingService);
   private readonly api = inject(LifeApiService);
   private readonly toast = inject(ToastService);
   private readonly destroyRef = inject(DestroyRef);
@@ -50,13 +52,25 @@ export class SidebarComponent {
     { label: 'Selah', icon: 'auto_awesome', route: '/assistant' },
   ];
 
-  protected readonly secondaryNavItems: NavItem[] = [
-    { label: 'Alertas', icon: 'notifications', route: '/notifications' },
-    { label: 'Importar', icon: 'upload_file', route: '/imports' },
-    { label: 'Configurações', icon: 'settings', route: '/settings' },
-    { label: 'Feedback', icon: 'rate_review', route: '/feedback' },
-    { label: 'Ajuda', icon: 'help', route: '/support' },
-  ];
+  // "Plano" so aparece com a cobranca ligada (billing.enabled(), carregado no construtor).
+  protected readonly secondaryNavItems = computed<NavItem[]>(() => {
+    const items: NavItem[] = [
+      { label: 'Alertas', icon: 'notifications', route: '/notifications' },
+      { label: 'Importar', icon: 'upload_file', route: '/imports' },
+      { label: 'Configurações', icon: 'settings', route: '/settings' },
+    ];
+
+    if (this.billing.enabled()) {
+      items.push({ label: 'Plano', icon: 'workspace_premium', route: '/plano' });
+    }
+
+    items.push(
+      { label: 'Feedback', icon: 'rate_review', route: '/feedback' },
+      { label: 'Ajuda', icon: 'help', route: '/support' },
+    );
+
+    return items;
+  });
 
   protected readonly syncStatusTone = computed<'online' | 'syncing' | 'offline'>(() => {
     if (this.api.offlineMode()) return 'offline';
@@ -99,6 +113,13 @@ export class SidebarComponent {
   );
 
   protected readonly profileMenuOpen = signal(false);
+
+  constructor() {
+    this.billing
+      .loadPlans()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+  }
 
   protected requestClose() {
     this.closeRequested.emit();

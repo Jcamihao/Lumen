@@ -72,7 +72,7 @@
 
     <nav class="proto-sidebar__nav">
       <a
-        *ngFor="let item of secondaryNavItems"
+        *ngFor="let item of secondaryNavItems()"
         class="proto-sidebar__link"
         [routerLink]="item.route"
         routerLinkActive="active"

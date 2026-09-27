@@ -1,0 +1,96 @@
+<div class="proto-page">
+  <header class="proto-header">
+    <div class="proto-header__copy">
+      <h2>Plano</h2>
+      <p>Seu plano atual e quanto você já usou dos limites do Lumen.</p>
+    </div>
+  </header>
+
+  <div class="proto-empty" *ngIf="!billing.enabled()">
+    <strong>A cobrança ainda não está ativa</strong>
+    <p>
+      Por enquanto todo mundo usa o Lumen sem limites. Quando a cobrança for ligada, esta tela
+      passa a mostrar seu plano e o quanto você já usou.
+    </p>
+  </div>
+
+  <ng-container *ngIf="billing.enabled()">
+    <ng-container *ngIf="billing.me() as me; else planLoading">
+      <article class="proto-surface plan-summary">
+        <div class="proto-surface__head">
+          <div>
+            <h3>{{ planTitle() }}</h3>
+            <p *ngIf="me.currentPeriodEnd; else noPeriodEnd">
+              {{ me.status === 'CANCELED' || me.cancelAtPeriodEnd ? 'Acesso até' : 'Renova em' }}
+              {{ periodEndLabel() }}
+            </p>
+            <ng-template #noPeriodEnd>
+              <p>Sem data de fim.</p>
+            </ng-template>
+          </div>
+
+          <span
+            class="proto-tag"
+            *ngIf="statusLabel() as label"
+            [attr.data-tone]="me.status === 'PAST_DUE' ? 'danger' : 'warning'"
+          >
+            {{ label }}
+          </span>
+        </div>
+      </article>
+
+      <article class="proto-surface">
+        <div class="proto-surface__head">
+          <div>
+            <h3>Uso deste mês</h3>
+            <p>O que você já criou frente ao limite do seu plano.</p>
+          </div>
+        </div>
+
+        <div class="proto-surface__body">
+          <div class="proto-list">
+            <article class="proto-list-item plan-usage-row" *ngFor="let row of usageRows()">
+              <div class="proto-list-item__top">
+                <strong>{{ row.label }}</strong>
+                <span class="proto-chip" *ngIf="row.limit !== null">{{ row.used }} de {{ row.limit }}</span>
+                <span class="proto-chip" *ngIf="row.limit === null">sem limite</span>
+              </div>
+
+              <div class="proto-progress" *ngIf="row.limit !== null">
+                <span
+                  [style.width.%]="progressPercent(row.used, row.limit)"
+                  [attr.data-tone]="progressTone(row.used, row.limit)"
+                ></span>
+              </div>
+            </article>
+
+            <article class="proto-list-item plan-usage-row">
+              <div class="proto-list-item__top">
+                <strong>Perguntas ao Selah</strong>
+                <span class="proto-chip" *ngIf="me.usage.selahQuestions.limit !== null">
+                  {{ me.usage.selahQuestions.used }} de {{ me.usage.selahQuestions.limit }}
+                </span>
+                <span class="proto-chip" *ngIf="me.usage.selahQuestions.limit === null">sem limite</span>
+              </div>
+
+              <div class="proto-progress" *ngIf="me.usage.selahQuestions.limit !== null">
+                <span
+                  [style.width.%]="progressPercent(me.usage.selahQuestions.used, me.usage.selahQuestions.limit)"
+                  [attr.data-tone]="progressTone(me.usage.selahQuestions.used, me.usage.selahQuestions.limit)"
+                ></span>
+              </div>
+
+              <p class="plan-usage-row__hint">Renova em {{ selahResetLabel() }}.</p>
+            </article>
+          </div>
+        </div>
+      </article>
+    </ng-container>
+
+    <ng-template #planLoading>
+      <article class="proto-surface plan-summary">
+        <p>Carregando plano...</p>
+      </article>
+    </ng-template>
+  </ng-container>
+</div>

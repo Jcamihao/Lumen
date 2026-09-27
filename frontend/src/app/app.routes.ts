@@ -127,6 +127,13 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'plano',
+        loadComponent: () =>
+          import('./features/billing/plan-page/plan-page.component').then(
+            (module) => module.PlanPageComponent,
+          ),
+      },
+      {
         path: 'card',
         loadComponent: () =>
           import('./features/card/card-page/card-page.component').then(
