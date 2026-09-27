@@ -6,6 +6,7 @@ import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { AssistantModule } from "./assistant/assistant.module";
 import { AuthModule } from "./auth/auth.module";
+import { BillingModule } from "./billing/billing.module";
 import { CacheQueueModule } from "./cache-queue/cache-queue.module";
 import { CreditCycleModule } from "./credit-cycle/credit-cycle.module";
 import { EnvelopesModule } from "./envelopes/envelopes.module";
@@ -70,6 +71,7 @@ import { UsersModule } from "./users/users.module";
     ImportsModule,
     AssistantModule,
     LifeEngineModule,
+    BillingModule,
   ],
   controllers: [AppController],
   providers: [
