@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InstallmentPurchase, Prisma } from '@prisma/client';
+import { EntitlementsService } from '../billing/entitlements.service';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { localToday, utcDate } from '../recurring-transactions/recurrence.util';
@@ -37,6 +38,7 @@ export class InstallmentsService {
     private readonly prisma: PrismaService,
     private readonly materializer: InstallmentMaterializerService,
     private readonly lifeEngineService: LifeEngineService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   async list(userId: string) {
@@ -56,6 +58,8 @@ export class InstallmentsService {
   }
 
   async create(userId: string, dto: CreateInstallmentPurchaseDto) {
+    await this.entitlements.assertCanCreate(userId, 'installmentPurchases');
+
     await this.validateCategory(userId, dto.categoryId);
 
     const user = await this.prisma.user.findUnique({

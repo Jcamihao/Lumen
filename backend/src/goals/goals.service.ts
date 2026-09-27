@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { GoalStatus, NotificationType, Prisma, TransactionType } from '@prisma/client';
+import { EntitlementsService } from '../billing/entitlements.service';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -14,6 +15,7 @@ export class GoalsService {
     private readonly prisma: PrismaService,
     private readonly lifeEngineService: LifeEngineService,
     private readonly notificationsService: NotificationsService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   async list(userId: string) {
@@ -26,6 +28,11 @@ export class GoalsService {
   }
 
   async create(userId: string, dto: CreateGoalDto) {
+    // So meta ativa ocupa vaga do plano; criar ja pausada/planejada/concluida nao bloqueia.
+    if ((dto.status ?? GoalStatus.ACTIVE) === GoalStatus.ACTIVE) {
+      await this.entitlements.assertCanCreate(userId, 'goals');
+    }
+
     const goal = await this.prisma.goal.create({
       data: {
         userId,
@@ -49,7 +56,12 @@ export class GoalsService {
   }
 
   async update(userId: string, id: string, dto: UpdateGoalDto) {
-    await this.findGoal(userId, id);
+    const existing = await this.findGoal(userId, id);
+
+    // Reativar (nao-ativa -> ACTIVE) ocupa vaga; senao bastaria pausar e recriar para burlar o limite.
+    if (dto.status === GoalStatus.ACTIVE && existing.status !== GoalStatus.ACTIVE) {
+      await this.entitlements.assertCanCreate(userId, 'goals');
+    }
 
     const goal = await this.prisma.goal.update({
       where: { id },

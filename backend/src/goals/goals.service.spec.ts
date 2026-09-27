@@ -31,9 +31,15 @@ describe('GoalsService', () => {
     };
     const lifeEngine = { touchUserData: jest.fn().mockResolvedValue(undefined) };
     const notifications = { createNotification: jest.fn().mockResolvedValue(undefined) };
-    const service = new GoalsService(prisma as any, lifeEngine as any, notifications as any);
+    const entitlements = { assertCanCreate: jest.fn().mockResolvedValue(undefined) };
+    const service = new GoalsService(
+      prisma as any,
+      lifeEngine as any,
+      notifications as any,
+      entitlements as any,
+    );
 
-    return { service, prisma, lifeEngine };
+    return { service, prisma, lifeEngine, entitlements };
   };
 
   describe('create', () => {
@@ -67,6 +73,102 @@ describe('GoalsService', () => {
       const result = await service.create('user-1', { title: 'Reserva' } as any);
 
       expect(result.targetAmount).toBeNull();
+    });
+  });
+
+  describe('limite do plano ao criar', () => {
+    it('meta ativa: checa o limite ANTES de gravar', async () => {
+      const { service, prisma, entitlements } = build();
+      const order: string[] = [];
+      entitlements.assertCanCreate.mockImplementation(async () => {
+        order.push('assert');
+      });
+      prisma.goal.create.mockImplementation(async ({ data }: any) => {
+        order.push('create');
+        return { id: 'goal-new', ...data };
+      });
+
+      await service.create('user-1', { title: 'Viagem' } as any);
+
+      expect(entitlements.assertCanCreate).toHaveBeenCalledWith('user-1', 'goals');
+      expect(order).toEqual(['assert', 'create']);
+    });
+
+    it('status ACTIVE explicito tambem checa', async () => {
+      const { service, entitlements } = build();
+
+      await service.create('user-1', { title: 'Viagem', status: GoalStatus.ACTIVE } as any);
+
+      expect(entitlements.assertCanCreate).toHaveBeenCalledWith('user-1', 'goals');
+    });
+
+    it('limite estourado: rejeita e nao grava', async () => {
+      const { service, prisma, entitlements } = build();
+      entitlements.assertCanCreate.mockRejectedValue(new Error('PLAN_LIMIT'));
+
+      await expect(service.create('user-1', { title: 'Viagem' } as any)).rejects.toThrow('PLAN_LIMIT');
+      expect(prisma.goal.create).not.toHaveBeenCalled();
+    });
+
+    it.each([GoalStatus.PAUSED, GoalStatus.PLANNED, GoalStatus.ACHIEVED])(
+      'criar com status %s nao consome vaga: nao checa o limite',
+      async (status) => {
+        const { service, prisma, entitlements } = build();
+
+        await service.create('user-1', { title: 'Viagem', status } as any);
+
+        expect(entitlements.assertCanCreate).not.toHaveBeenCalled();
+        expect(prisma.goal.create).toHaveBeenCalled();
+      },
+    );
+  });
+
+  describe('limite do plano ao reativar', () => {
+    it.each([GoalStatus.PAUSED, GoalStatus.PLANNED, GoalStatus.ACHIEVED])(
+      '%s -> ACTIVE checa o limite antes de gravar',
+      async (from) => {
+        const { service, prisma, entitlements } = build(stored({ status: from }));
+        const order: string[] = [];
+        entitlements.assertCanCreate.mockImplementation(async () => {
+          order.push('assert');
+        });
+        prisma.goal.update.mockImplementation(async ({ data }: any) => {
+          order.push('update');
+          return stored(data);
+        });
+
+        await service.update('user-1', 'goal-1', { status: GoalStatus.ACTIVE } as any);
+
+        expect(entitlements.assertCanCreate).toHaveBeenCalledWith('user-1', 'goals');
+        expect(order).toEqual(['assert', 'update']);
+      },
+    );
+
+    it('limite estourado ao reativar: rejeita e nao grava', async () => {
+      const { service, prisma, entitlements } = build(stored({ status: GoalStatus.PAUSED }));
+      entitlements.assertCanCreate.mockRejectedValue(new Error('PLAN_LIMIT'));
+
+      await expect(
+        service.update('user-1', 'goal-1', { status: GoalStatus.ACTIVE } as any),
+      ).rejects.toThrow('PLAN_LIMIT');
+      expect(prisma.goal.update).not.toHaveBeenCalled();
+    });
+
+    it('editar meta que ja esta ativa nao checa o limite', async () => {
+      const { service, entitlements } = build(stored({ status: GoalStatus.ACTIVE }));
+
+      await service.update('user-1', 'goal-1', { title: 'Viagem 2' } as any);
+      await service.update('user-1', 'goal-1', { status: GoalStatus.ACTIVE } as any);
+
+      expect(entitlements.assertCanCreate).not.toHaveBeenCalled();
+    });
+
+    it('pausar ou concluir nao checa o limite', async () => {
+      const { service, entitlements } = build(stored({ status: GoalStatus.ACTIVE }));
+
+      await service.update('user-1', 'goal-1', { status: GoalStatus.PAUSED } as any);
+
+      expect(entitlements.assertCanCreate).not.toHaveBeenCalled();
     });
   });
 

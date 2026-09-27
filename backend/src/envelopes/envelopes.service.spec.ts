@@ -61,9 +61,10 @@ describe('EnvelopesService', () => {
       },
     };
     const lifeEngine = { touchUserData: jest.fn().mockResolvedValue(undefined) };
-    const service = new EnvelopesService(prisma as any, lifeEngine as any);
+    const entitlements = { assertCanCreate: jest.fn().mockResolvedValue(undefined) };
+    const service = new EnvelopesService(prisma as any, lifeEngine as any, entitlements as any);
 
-    return { service, prisma, lifeEngine, topUpState };
+    return { service, prisma, lifeEngine, topUpState, entitlements };
   };
 
   describe('create', () => {
@@ -90,6 +91,78 @@ describe('EnvelopesService', () => {
       await service.create('user-1', { name: 'Gasolina', color: '#f18f01', monthlyAmount: 700 } as any);
 
       expect(lifeEngine.touchUserData).toHaveBeenCalledWith('user-1');
+    });
+  });
+
+  describe('limite do plano', () => {
+    it('create checa o limite ANTES de gravar', async () => {
+      const { service, prisma, entitlements } = build();
+      const order: string[] = [];
+      entitlements.assertCanCreate.mockImplementation(async () => {
+        order.push('assert');
+      });
+      prisma.envelope.create.mockImplementation(async ({ data }: any) => {
+        order.push('create');
+        return stored(data);
+      });
+
+      await service.create('user-1', { name: 'Gasolina', color: '#f18f01', monthlyAmount: 700 } as any);
+
+      expect(entitlements.assertCanCreate).toHaveBeenCalledWith('user-1', 'envelopes');
+      expect(order).toEqual(['assert', 'create']);
+    });
+
+    it('create com limite estourado: rejeita e nao grava', async () => {
+      const { service, prisma, entitlements } = build();
+      entitlements.assertCanCreate.mockRejectedValue(new Error('PLAN_LIMIT'));
+
+      await expect(
+        service.create('user-1', { name: 'Gasolina', color: '#f18f01', monthlyAmount: 700 } as any),
+      ).rejects.toThrow('PLAN_LIMIT');
+      expect(prisma.envelope.create).not.toHaveBeenCalled();
+    });
+
+    it('reativar (isActive false -> true) checa o limite antes de gravar', async () => {
+      const envelope = stored({ isActive: false });
+      const { service, prisma, entitlements } = build({ envelope });
+      const order: string[] = [];
+      entitlements.assertCanCreate.mockImplementation(async () => {
+        order.push('assert');
+      });
+      prisma.envelope.update.mockImplementation(async ({ data }: any) => {
+        order.push('update');
+        return { ...envelope, ...data };
+      });
+
+      await service.update('user-1', 'env-1', { isActive: true } as any);
+
+      expect(entitlements.assertCanCreate).toHaveBeenCalledWith('user-1', 'envelopes');
+      expect(order).toEqual(['assert', 'update']);
+    });
+
+    it('reativar com limite estourado: rejeita e nao grava', async () => {
+      const { service, prisma, entitlements } = build({ envelope: stored({ isActive: false }) });
+      entitlements.assertCanCreate.mockRejectedValue(new Error('PLAN_LIMIT'));
+
+      await expect(service.update('user-1', 'env-1', { isActive: true } as any)).rejects.toThrow('PLAN_LIMIT');
+      expect(prisma.envelope.update).not.toHaveBeenCalled();
+    });
+
+    it('editar reserva que ja esta ativa nao checa o limite', async () => {
+      const { service, entitlements } = build({ envelope: stored({ isActive: true }) });
+
+      await service.update('user-1', 'env-1', { name: 'Combustivel' } as any);
+      await service.update('user-1', 'env-1', { isActive: true } as any);
+
+      expect(entitlements.assertCanCreate).not.toHaveBeenCalled();
+    });
+
+    it('pausar nao checa o limite', async () => {
+      const { service, entitlements } = build({ envelope: stored({ isActive: true }) });
+
+      await service.update('user-1', 'env-1', { isActive: false } as any);
+
+      expect(entitlements.assertCanCreate).not.toHaveBeenCalled();
     });
   });
 

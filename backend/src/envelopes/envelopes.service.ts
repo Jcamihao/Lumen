@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Envelope, Prisma, TransactionType } from '@prisma/client';
+import { EntitlementsService } from '../billing/entitlements.service';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEnvelopeDto } from './dto/create-envelope.dto';
@@ -14,6 +15,7 @@ export class EnvelopesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly lifeEngineService: LifeEngineService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   async list(userId: string, now = new Date()) {
@@ -32,6 +34,8 @@ export class EnvelopesService {
   }
 
   async create(userId: string, dto: CreateEnvelopeDto) {
+    await this.entitlements.assertCanCreate(userId, 'envelopes');
+
     const envelope = await this.prisma.envelope
       .create({
         data: {
@@ -52,7 +56,12 @@ export class EnvelopesService {
   }
 
   async update(userId: string, id: string, dto: UpdateEnvelopeDto) {
-    await this.ensureOwnership(userId, id);
+    const existing = await this.ensureOwnership(userId, id);
+
+    // Reativar uma reserva pausada ocupa vaga do plano.
+    if (dto.isActive === true && !existing.isActive) {
+      await this.entitlements.assertCanCreate(userId, 'envelopes');
+    }
 
     const data: Prisma.EnvelopeUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name.trim();

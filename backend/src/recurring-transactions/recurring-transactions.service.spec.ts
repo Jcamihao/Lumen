@@ -39,9 +39,15 @@ const build = (existing: any = stored(), options: { category?: any; timezone?: s
   };
   const materializer = { materializeDue: jest.fn().mockResolvedValue(0) };
   const lifeEngine = { touchUserData: jest.fn().mockResolvedValue(undefined) };
-  const service = new RecurringTransactionsService(prisma as any, materializer as any, lifeEngine as any);
+  const entitlements = { assertCanCreate: jest.fn().mockResolvedValue(undefined) };
+  const service = new RecurringTransactionsService(
+    prisma as any,
+    materializer as any,
+    lifeEngine as any,
+    entitlements as any,
+  );
 
-  return { service, prisma, materializer, lifeEngine };
+  return { service, prisma, materializer, lifeEngine, entitlements };
 };
 
 const today = () => {
@@ -60,6 +66,77 @@ const validCreate = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe('RecurringTransactionsService', () => {
+  describe('limite do plano', () => {
+    it('create checa o limite ANTES de gravar', async () => {
+      const { service, prisma, entitlements } = build();
+      const order: string[] = [];
+      entitlements.assertCanCreate.mockImplementation(async () => {
+        order.push('assert');
+      });
+      prisma.recurringTransaction.create.mockImplementation(async ({ data }: any) => {
+        order.push('create');
+        return { id: 'rec-new', ...data };
+      });
+
+      await service.create('user-1', validCreate() as any);
+
+      expect(entitlements.assertCanCreate).toHaveBeenCalledWith('user-1', 'recurringTransactions');
+      expect(order).toEqual(['assert', 'create']);
+    });
+
+    it('create com limite estourado: rejeita e nao grava', async () => {
+      const { service, prisma, entitlements } = build();
+      entitlements.assertCanCreate.mockRejectedValue(new Error('PLAN_LIMIT'));
+
+      await expect(service.create('user-1', validCreate() as any)).rejects.toThrow('PLAN_LIMIT');
+      expect(prisma.recurringTransaction.create).not.toHaveBeenCalled();
+    });
+
+    it('retomar (isActive false -> true) checa o limite antes de gravar', async () => {
+      const { service, prisma, entitlements } = build(
+        stored({ isActive: false, nextDueDate: utcDate(2027, 5, 5) }),
+      );
+      const order: string[] = [];
+      entitlements.assertCanCreate.mockImplementation(async () => {
+        order.push('assert');
+      });
+      prisma.recurringTransaction.update.mockImplementation(async () => {
+        order.push('update');
+        return {};
+      });
+
+      await service.update('user-1', 'rec-1', { isActive: true });
+
+      expect(entitlements.assertCanCreate).toHaveBeenCalledWith('user-1', 'recurringTransactions');
+      expect(order).toEqual(['assert', 'update']);
+    });
+
+    it('retomar com limite estourado: rejeita e nao grava', async () => {
+      const { service, prisma, entitlements } = build(stored({ isActive: false }));
+      entitlements.assertCanCreate.mockRejectedValue(new Error('PLAN_LIMIT'));
+
+      await expect(service.update('user-1', 'rec-1', { isActive: true })).rejects.toThrow('PLAN_LIMIT');
+      expect(prisma.recurringTransaction.update).not.toHaveBeenCalled();
+    });
+
+    it('editar conta que ja esta ativa nao checa o limite', async () => {
+      const { service, entitlements } = build(stored({ isActive: true }));
+
+      await service.update('user-1', 'rec-1', { amount: 1350 });
+      await service.update('user-1', 'rec-1', { isActive: true });
+
+      expect(entitlements.assertCanCreate).not.toHaveBeenCalled();
+    });
+
+    it('pausar nao checa o limite', async () => {
+      const { service, entitlements } = build(stored({ isActive: true }));
+
+      await service.update('user-1', 'rec-1', { isActive: false });
+
+      expect(entitlements.assertCanCreate).not.toHaveBeenCalled();
+    });
+  });
+
   describe('list', () => {
     it('gera o que venceu antes de listar e devolve valores numericos', async () => {
       const { service, prisma, materializer, lifeEngine } = build();

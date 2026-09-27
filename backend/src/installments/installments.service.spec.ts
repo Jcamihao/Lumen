@@ -40,9 +40,15 @@ const build = (existing: any = stored(), options: { category?: any; timezone?: s
   };
   const materializer = { materializeDue: jest.fn().mockResolvedValue(0) };
   const lifeEngine = { touchUserData: jest.fn().mockResolvedValue(undefined) };
-  const service = new InstallmentsService(prisma as any, materializer as any, lifeEngine as any);
+  const entitlements = { assertCanCreate: jest.fn().mockResolvedValue(undefined) };
+  const service = new InstallmentsService(
+    prisma as any,
+    materializer as any,
+    lifeEngine as any,
+    entitlements as any,
+  );
 
-  return { service, prisma, materializer, lifeEngine };
+  return { service, prisma, materializer, lifeEngine, entitlements };
 };
 
 const today = () => {
@@ -60,6 +66,33 @@ const validCreate = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe('InstallmentsService', () => {
+  describe('limite do plano', () => {
+    it('create checa o limite ANTES de gravar', async () => {
+      const { service, prisma, entitlements } = build();
+      const order: string[] = [];
+      entitlements.assertCanCreate.mockImplementation(async () => {
+        order.push('assert');
+      });
+      prisma.installmentPurchase.create.mockImplementation(async ({ data }: any) => {
+        order.push('create');
+        return { id: 'plan-new', ...data };
+      });
+
+      await service.create('user-1', validCreate() as any);
+
+      expect(entitlements.assertCanCreate).toHaveBeenCalledWith('user-1', 'installmentPurchases');
+      expect(order).toEqual(['assert', 'create']);
+    });
+
+    it('create com limite estourado: rejeita e nao grava', async () => {
+      const { service, prisma, entitlements } = build();
+      entitlements.assertCanCreate.mockRejectedValue(new Error('PLAN_LIMIT'));
+
+      await expect(service.create('user-1', validCreate() as any)).rejects.toThrow('PLAN_LIMIT');
+      expect(prisma.installmentPurchase.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('list', () => {
     it('gera o que venceu antes de listar e devolve valores numericos com o progresso', async () => {
       const { service, prisma, materializer, lifeEngine } = build();

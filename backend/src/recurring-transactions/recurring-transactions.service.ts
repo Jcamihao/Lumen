@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, RecurringTransaction } from '@prisma/client';
+import { EntitlementsService } from '../billing/entitlements.service';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRecurringTransactionDto } from './dto/create-recurring-transaction.dto';
@@ -29,6 +30,7 @@ export class RecurringTransactionsService {
     private readonly prisma: PrismaService,
     private readonly materializer: RecurringMaterializerService,
     private readonly lifeEngineService: LifeEngineService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   async list(userId: string) {
@@ -48,6 +50,8 @@ export class RecurringTransactionsService {
   }
 
   async create(userId: string, dto: CreateRecurringTransactionDto) {
+    await this.entitlements.assertCanCreate(userId, 'recurringTransactions');
+
     await this.validateCategory(userId, dto.categoryId, dto.type);
 
     const user = await this.prisma.user.findUnique({
@@ -101,6 +105,11 @@ export class RecurringTransactionsService {
 
   async update(userId: string, id: string, dto: UpdateRecurringTransactionDto) {
     const existing = await this.findOwned(userId, id);
+
+    // Retomar uma conta fixa pausada ocupa vaga do plano.
+    if (dto.isActive === true && !existing.isActive) {
+      await this.entitlements.assertCanCreate(userId, 'recurringTransactions');
+    }
 
     if (dto.categoryId) {
       await this.validateCategory(userId, dto.categoryId, existing.type);
