@@ -14,6 +14,7 @@ import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
 import { RateLimitGuard } from "./common/guards/rate-limit.guard";
 import { RolesGuard } from "./common/guards/roles.guard";
 import { appConfig } from "./config/app.config";
+import { asaasConfig } from "./config/asaas.config";
 import { authConfig } from "./config/auth.config";
 import { cacheConfig } from "./config/cache.config";
 import { mailConfig } from "./config/mail.config";
@@ -45,7 +46,7 @@ import { UsersModule } from "./users/users.module";
         resolve(__dirname, "../../.env"),
         resolve(__dirname, "../../.env.example"),
       ],
-      load: [appConfig, authConfig, cacheConfig, mailConfig],
+      load: [appConfig, authConfig, cacheConfig, mailConfig, asaasConfig],
     }),
     PrismaModule,
     CacheQueueModule,
