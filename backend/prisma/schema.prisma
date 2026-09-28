@@ -745,6 +745,8 @@ model Subscription {
   asaasCheckoutId     String?            @unique
   asaasSubscriptionId String?            @unique
   asaasCustomerId     String?
+  asaasCheckoutLink   String?
+  latestInvoiceUrl    String?
   grantedByUserId     String?
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
