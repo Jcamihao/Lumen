@@ -53,15 +53,16 @@ Módulo novo `backend/src/billing/`, peças pequenas com uma responsabilidade ca
 |---|---|---|
 | Catálogo | Planos, limites, preços | nada |
 | `EntitlementsService` | Resolve o plano efetivo; `assertCanCreate(userId, recurso)`; `assertCanAskSelah(userId)`; `getUsage(userId)` | catálogo, Prisma |
-| `PaymentProvider` (interface) + `AsaasClient` | Criar checkout, buscar cliente/assinatura/cobranças, remover assinatura. Testes usam um provedor falso | env |
-| `BillingService` | Assinar, cancelar, sincronizar, processar eventos, concessões | as três acima |
-| `BillingController` | Rotas (seção 9) | `BillingService` |
+| `AsaasClient` | Criar checkout, buscar/procurar assinatura, remover assinatura. Injetável, testes espionam seu método privado de request (mesmo padrão de `MailService`) | env |
+| `BillingService` | Planos, plano efetivo do usuário, concessões de fundador | catálogo, `EntitlementsService` |
+| `BillingPaymentsService` | Assinar, cancelar, sincronizar, processar eventos do webhook | `AsaasClient`, catálogo |
+| `BillingController` | Rotas (seção 9) | `BillingService`, `BillingPaymentsService` |
 
 Regra de ouro: o resto do app só pergunta ao `EntitlementsService`; ele **não** conhece Asaas.
 
-**`AsaasClient`** (Fase 2): `createCheckout`, `getCheckout`, `getSubscription`, `getPayment`, `getCustomer`, `deleteSubscription` — nada de `refundPayment`; reembolso continua manual pelo painel do Asaas (seção 8), o backend só reage ao evento `PAYMENT_REFUNDED`. Retry: 2 tentativas com backoff em erro de rede/timeout/5xx; erro 4xx nunca repete (é erro de dado, repetir não resolve); timeout de 10s por chamada.
+**`AsaasClient`** (Fase 2): `createCheckout`, `getSubscription`, `findSubscriptionByExternalReference`, `deleteSubscription` — nada de `getPayment`/`getCustomer`/`refundPayment`. Decisão do plano de implementação: usar só os dois campos confirmados no spike (`deleted`, `nextDueDate`) pra derivar o estado local (ver `reconcileSubscription` abaixo), em vez de confiar num valor de `status` do Asaas que a Task 12 não chegou a verificar para uma assinatura saudável; `invoiceUrl` vem direto do payload do webhook de pagamento (já confirmado presente), sem precisar de uma chamada `getPayment` separada; `findSubscriptionByExternalReference` (`GET /subscriptions?externalReference=`) resolve o caso de `/billing/sync` recuperar um `CHECKOUT_PAID` perdido, sem depender de um endpoint de consulta de checkout que a Task 12 não confirmou existir. Reembolso continua manual pelo painel do Asaas, o backend só reage ao evento `PAYMENT_REFUNDED`. Retry: 2 tentativas com backoff em erro de rede/timeout/5xx; erro 4xx nunca repete (é erro de dado, repetir não resolve); timeout de 10s por chamada.
 
-**`reconcileSubscription()`** (dentro do `BillingService`): busca o estado no Asaas e aplica na `Subscription` local (status, `currentPeriodEnd`, `pastDueSince`, ids). O webhook e o `POST /billing/sync` chamam exatamente essa mesma função — um é acionado pelo evento, o outro pelo clique do usuário — pra nunca haver dois caminhos que possam divergir em comportamento.
+**`reconcileSubscription`** (dentro do `BillingPaymentsService`): busca `getSubscription(asaasSubscriptionId)`; `deleted:true` → `CANCELED`; senão, se o `nextDueDate` devolvido é mais recente que o `currentPeriodEnd` já gravado (ou esse campo ainda é nulo) → `ACTIVE` com `currentPeriodEnd = nextDueDate` (cobre tanto a primeira ativação quanto uma renovação); senão → `PAST_DUE` (o vencimento não avançou, então o ciclo atual não foi pago). Usada pelo webhook (`CHECKOUT_PAID`, `PAYMENT_CONFIRMED/RECEIVED/OVERDUE`, `SUBSCRIPTION_DELETED/INACTIVATED`) e por `/billing/sync` — os dois caminhos nunca podem divergir porque chamam a mesma função. `PAYMENT_REFUNDED` é o único evento que não passa por ela: encerra na hora (`currentPeriodEnd = agora`) sem consultar o Asaas de novo, porque o payload do próprio evento já basta.
 
 ## 6. Modelo de dados (Prisma)
 
