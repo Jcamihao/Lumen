@@ -59,6 +59,10 @@ Módulo novo `backend/src/billing/`, peças pequenas com uma responsabilidade ca
 
 Regra de ouro: o resto do app só pergunta ao `EntitlementsService`; ele **não** conhece Asaas.
 
+**`AsaasClient`** (Fase 2): `createCheckout`, `getCheckout`, `getSubscription`, `getPayment`, `getCustomer`, `deleteSubscription` — nada de `refundPayment`; reembolso continua manual pelo painel do Asaas (seção 8), o backend só reage ao evento `PAYMENT_REFUNDED`. Retry: 2 tentativas com backoff em erro de rede/timeout/5xx; erro 4xx nunca repete (é erro de dado, repetir não resolve); timeout de 10s por chamada.
+
+**`reconcileSubscription()`** (dentro do `BillingService`): busca o estado no Asaas e aplica na `Subscription` local (status, `currentPeriodEnd`, `pastDueSince`, ids). O webhook e o `POST /billing/sync` chamam exatamente essa mesma função — um é acionado pelo evento, o outro pelo clique do usuário — pra nunca haver dois caminhos que possam divergir em comportamento.
+
 ## 6. Modelo de dados (Prisma)
 
 ```prisma
@@ -147,7 +151,10 @@ Estourou: `403` com corpo `{ code: "PLAN_LIMIT", resource, limit, used, plan, me
 
 ## 8. Fluxos
 
-**Assinar.** `POST /billing/checkout {plan, interval}` (só planos `sellable`; recusa se já há concessão igual ou maior): cria `Subscription` `PENDING` e pede ao Asaas um Checkout `RECURRENT` com valor do catálogo, ciclo `MONTHLY`/`YEARLY`, `billingTypes: ["CREDIT_CARD"]` (confirmado no sandbox: é o **único** método aceito para `RECURRENT`; Pix exige `chargeTypes: ["DETACHED"]` e chave Pix configurada — ver §13), **sem `customerData`** (confirmado no sandbox: mandar só nome/e-mail é rejeitado com `400`; omitir o campo inteiramente funciona e deixa a própria página do Asaas coletar nome/e-mail/CPF/endereço do comprador, o que também bate melhor com "o Lumen nunca vê CPF"), `callback` (`successUrl`/`cancelUrl`/`expiredUrl` em `FRONTEND_URL/plano?...`) e `minutesToExpire: 60`. Guarda `asaasCheckoutId` e devolve o `link`; o app redireciona. O cliente informa nome/e-mail/CPF **na página do Asaas**. A volta para `/plano?checkout=sucesso` **não libera nada**: a tela mostra "Confirmando pagamento…" e consulta `GET /billing/me` por até 60 s.
+**Assinar.** `POST /billing/checkout {plan, interval}` (só planos `sellable`). Antes de criar qualquer coisa, três checagens, nessa ordem:
+1. Já existe `Subscription` `ACTIVE`/`PAST_DUE` (Asaas **ou** concessão) de plano igual ou maior → `400`, recusa ("Você já tem uma assinatura ativa; cancele antes de trocar"). Não dá pra ter duas assinaturas Asaas simultâneas pro mesmo usuário.
+2. Já existe um checkout `PENDING` (source `ASAAS`) criado há menos de `minutesToExpire` (60 min) → **reaproveita**: devolve o `link` já guardado, sem chamar o Asaas de novo (evita checkout órfão do lado deles).
+3. Nenhum dos dois → cria `Subscription` `PENDING` e pede ao Asaas um Checkout `RECURRENT` com valor do catálogo, ciclo `MONTHLY`/`YEARLY`, `billingTypes: ["CREDIT_CARD"]` (confirmado no sandbox: é o **único** método aceito para `RECURRENT`; Pix exige `chargeTypes: ["DETACHED"]` e chave Pix configurada — ver §13), **sem `customerData`** (confirmado no sandbox: mandar só nome/e-mail é rejeitado com `400`; omitir o campo inteiramente funciona e deixa a própria página do Asaas coletar nome/e-mail/CPF/endereço do comprador, o que também bate melhor com "o Lumen nunca vê CPF"), `callback` (`successUrl`/`cancelUrl`/`expiredUrl` em `FRONTEND_URL/plano?...`) e `minutesToExpire: 60`. Guarda `asaasCheckoutId` e devolve o `link`; o app redireciona. O cliente informa nome/e-mail/CPF **na página do Asaas**. A volta para `/plano?checkout=sucesso` **não libera nada**: a tela mostra "Confirmando pagamento…" e consulta `GET /billing/me` por até 60 s.
 
 **Confirmação (o que libera o acesso).** `POST /billing/webhooks/asaas`:
 1. Confere o header `asaas-access-token` contra `ASAAS_WEBHOOK_TOKEN` com `timingSafeEqual`; inválido = 401.
@@ -155,7 +162,9 @@ Estourou: `403` com corpo `{ code: "PLAN_LIMIT", resource, limit, used, plan, me
 3. Mapa de eventos (nomes confirmados no sandbox via API — payload de webhook ao vivo não foi capturado, ver seção 13): `CHECKOUT_PAID` → resolve cliente/assinatura no Asaas por API, grava os ids, `ACTIVE`, `currentPeriodEnd = vencimento + ciclo` · `PAYMENT_CONFIRMED`/`PAYMENT_RECEIVED` → renova o período (não existe evento de "renovação" próprio; a virada de ciclo aparece como `SUBSCRIPTION_UPDATED` + a cobrança nova) · `PAYMENT_OVERDUE` → `PAST_DUE` + `pastDueSince` · `SUBSCRIPTION_DELETED`/`SUBSCRIPTION_INACTIVATED` → `CANCELED` (do lado do Asaas a assinatura removida vira `deleted:true`+`status:"INACTIVE"`, sem um status "CANCELED" próprio) · `PAYMENT_REFUNDED` → encerra na hora (`currentPeriodEnd = agora`) · evento desconhecido → registra e ignora (responde 200).
 4. Os eventos seguintes se casam por `asaasSubscriptionId`/`asaasCustomerId`, **sem depender do `externalReference`**.
 
-**Sincronizar (rede de segurança).** `POST /billing/sync` faz o backend consultar o Asaas e reconciliar o estado do usuário; cobre webhook perdido. Botão "Já paguei / atualizar" em `/plano`.
+**Sincronizar (rede de segurança).** `POST /billing/sync` faz o backend consultar o Asaas e reconciliar o estado do usuário (mesma `reconcileSubscription()` do webhook); cobre webhook perdido. Botão "Já paguei / atualizar" em `/plano`.
+
+**Regularizar pagamento (`PAST_DUE`).** Sem endpoint novo: `/plano` mostra o `invoiceUrl` (seção 13 confirma que toda cobrança tem um) da cobrança em atraso mais recente, já vindo em `GET /billing/me`, como botão "Regularizar pagamento" — o usuário paga essa fatura na página do próprio Asaas. **Não verificado no sandbox:** se pagar a fatura atrasada também atualiza o cartão da assinatura pro próximo ciclo, ou só quita aquela cobrança (ver seção 17). Não bloqueia o lançamento: ao lado sempre existe "Cancelar e assinar de novo" como saída garantida, então o pior caso é o usuário repetir esse passo todo mês até trocar de cartão.
 
 **Cancelar.** `POST /billing/cancel`: remove a assinatura no Asaas, marca `cancelAtPeriodEnd`. Acesso segue até `currentPeriodEnd`. Idempotente com o evento de remoção.
 
@@ -177,7 +186,7 @@ Estourou: `403` com corpo `{ code: "PLAN_LIMIT", resource, limit, used, plan, me
 
 ## 10. Frontend
 
-- **`/plano` (nova, no shell):** plano atual e status, barras de uso, botões assinar (mensal/anual) e cancelar, aviso de atraso com ação.
+- **`/plano` (já existe da Fase 1, ganha ação de verdade):** botões "Assinar" (mensal/anual, cria checkout e redireciona), "Cancelar" (confirma, chama `/billing/cancel`, mostra "acesso até DD/MM"); em `PAST_DUE`, "Regularizar pagamento" (link pro `invoiceUrl`) ao lado de "Cancelar e assinar de novo"; volta do checkout mostra "Confirmando pagamento…" e sonda `GET /billing/me` por até 60s. **Não** suporta trocar mensal↔anual direto (decisão: cancelar e assinar de novo no ciclo desejado).
 - **Onde se cria** (metas, reservas, contas fixas, parceladas, Selah): mostra "2 de 2" e, no limite, o aviso de upgrade com link para `/plano` (tratamento central do `PLAN_LIMIT`).
 - **Landing:** seção de preços, exibida só com `enabled`; a frase "Hoje o Lumen é gratuito… não existe plano pago" é trocada.
 - **Admin:** bloco "Conceder plano" na página de admin existente.
@@ -237,9 +246,9 @@ Spike feito em 2026-09-27 direto na API sandbox (`https://api-sandbox.asaas.com/
 
 ## 15. Fases de entrega
 
-0. **Spike no sandbox do Asaas** — fecha as 3 validações da seção 13. Precisa da chave de sandbox.
-1. **Núcleo sem cobrança** — catálogo, tabelas, `EntitlementsService`, limites nos 5 pontos, `GET /billing/me`, `/plano` (uso), concessões pelo admin. Interruptor desligado por padrão. Já entrega valor: o dono concede planos e os limites funcionam quando ligados.
-2. **Cobrança** — `AsaasClient`, checkout, webhook, sincronizar, cancelar, telas de assinar/cancelar.
+0. ✅ **Spike no sandbox do Asaas** — fecha as 3 validações da seção 13 (achados na seção 13).
+1. ✅ **Núcleo sem cobrança** — catálogo, tabelas, `EntitlementsService`, limites nos 5 pontos, `GET /billing/me`, `/plano` (uso), concessões pelo admin. Interruptor desligado por padrão. Já entrega valor: o dono concede planos e os limites funcionam quando ligados.
+2. **Cobrança** — `AsaasClient`, checkout (com prevenção de duplicado), webhook, sincronizar, cancelar, regularizar pagamento em atraso. **Fora do escopo:** trocar mensal↔anual direto (cancelar e assinar de novo cobre isso); refund self-service (continua manual pelo painel).
 3. **Landing de preços, textos legais, avisos de upgrade polidos** — e só então ligar em produção.
 4. *(projeto futuro)* Compartilhado.
 
@@ -253,4 +262,4 @@ Cada fase tem seu plano de implementação e é verificada (testes + navegador) 
 
 ## 17. Premissas a confirmar
 
-Sem trial do plano pago · teto de uso justo do Selah no Individual em 300/mês · tolerância de atraso de 7 dias · limites do Grátis conforme a seção 4.
+Sem trial do plano pago · teto de uso justo do Selah no Individual em 300/mês · tolerância de atraso de 7 dias · limites do Grátis conforme a seção 4 · **pagar a fatura em atraso pelo `invoiceUrl` atualiza o cartão da assinatura pro próximo ciclo, ou só quita aquela cobrança** (não verificado no sandbox — seção 8, "Regularizar pagamento"; não bloqueia o lançamento porque "cancelar e assinar de novo" sempre funciona como saída).
