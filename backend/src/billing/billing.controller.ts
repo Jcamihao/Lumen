@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -40,6 +40,16 @@ export class BillingController {
     @Body() dto: CreateCheckoutDto,
   ) {
     return this.billingPaymentsService.checkout(user.sub, dto);
+  }
+
+  @Public()
+  @Post('webhooks/asaas')
+  @ApiOperation({ summary: 'Recebe eventos do Asaas (checkout, assinatura, pagamento)' })
+  webhook(
+    @Headers('asaas-access-token') token: string | undefined,
+    @Body() payload: Record<string, unknown>,
+  ) {
+    return this.billingPaymentsService.processWebhookEvent(token, payload);
   }
 
   @Get('admin/grants')

@@ -92,4 +92,21 @@ describe("RateLimitGuard — MFA", () => {
       await hammer(guard, 10, "/api/v1/billing/checkout", {}, "203.0.113.10", { sub: "user-1" }),
     ).toBe(6);
   });
+
+  it("billing/webhooks/asaas: bloqueia na 301a chamada do mesmo IP em 5 minutos", async () => {
+    const guard = buildGuard();
+
+    expect(await hammer(guard, 302, "/api/v1/billing/webhooks/asaas", {}, "203.0.113.10")).toBe(
+      301,
+    );
+  });
+
+  it("billing/webhooks/asaas: IP diferente tem balde proprio", async () => {
+    const guard = buildGuard();
+    await hammer(guard, 300, "/api/v1/billing/webhooks/asaas", {}, "203.0.113.10");
+
+    await expect(
+      call(guard, "/api/v1/billing/webhooks/asaas", {}, "203.0.113.11"),
+    ).resolves.toBe(true);
+  });
 });

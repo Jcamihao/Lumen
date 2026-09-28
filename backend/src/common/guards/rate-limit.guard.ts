@@ -141,6 +141,15 @@ export class RateLimitGuard implements CanActivate {
     windowMs: 60 * 60_000,
     message: 'Muitas tentativas de assinatura em pouco tempo. Tente novamente mais tarde.',
   };
+  // Rota publica, sem usuario autenticado (cai em ipAddress): limite alto e por
+  // janela curta, generoso o bastante pra rajadas legitimas de reenvio do Asaas
+  // (entrega "pelo menos uma vez", 15 tentativas) sem abrir a porta pra abuso.
+  private readonly billingWebhookPolicy: RateLimitPolicy = {
+    keyPrefix: 'billing-webhook',
+    limit: 300,
+    windowMs: 5 * 60_000,
+    message: 'Muitas requisicoes de webhook em pouco tempo. Tente novamente em instantes.',
+  };
 
   constructor(private readonly cacheQueueService: CacheQueueService) {}
 
@@ -252,6 +261,10 @@ export class RateLimitGuard implements CanActivate {
 
     if (method === 'POST' && path === '/api/v1/billing/checkout') {
       return this.billingCheckoutPolicy;
+    }
+
+    if (method === 'POST' && path === '/api/v1/billing/webhooks/asaas') {
+      return this.billingWebhookPolicy;
     }
 
     return this.defaultPolicy;

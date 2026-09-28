@@ -1,9 +1,24 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BillingPaymentsService } from './billing-payments.service';
 
 const NOW = new Date('2026-09-28T12:00:00.000Z');
 const MIN = 60 * 1000;
+const WEBHOOK_TOKEN = 'whsec_test_token_123';
+
+function billingEventRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'event-1',
+    provider: 'ASAAS',
+    externalEventId: 'evt-1',
+    type: 'CHECKOUT_PAID',
+    payload: {},
+    processedAt: null,
+    error: null,
+    createdAt: NOW,
+    ...overrides,
+  };
+}
 
 function subRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -37,6 +52,11 @@ function build(overrides: { enabled?: boolean } = {}) {
       create: jest.fn().mockResolvedValue(subRow({ id: 'sub-new', status: 'PENDING' })),
       update: jest.fn().mockResolvedValue(subRow({ id: 'sub-new', status: 'PENDING' })),
     },
+    billingEvent: {
+      create: jest.fn().mockResolvedValue(billingEventRow()),
+      findUnique: jest.fn().mockResolvedValue(null),
+      update: jest.fn().mockResolvedValue(billingEventRow({ processedAt: NOW })),
+    },
   };
   const asaasClient = {
     createCheckout: jest
@@ -50,6 +70,7 @@ function build(overrides: { enabled?: boolean } = {}) {
     get: jest.fn((key: string) => {
       if (key === 'app.billingEnabled') return overrides.enabled ?? true;
       if (key === 'app.frontendUrl') return 'https://lumen.test';
+      if (key === 'asaas.webhookToken') return WEBHOOK_TOKEN;
       return undefined;
     }),
   };
@@ -198,5 +219,143 @@ describe('BillingPaymentsService#checkout', () => {
       data: { asaasCheckoutId: 'asaas-checkout-1', asaasCheckoutLink: 'https://asaas.test/c/1' },
     });
     expect(result).toEqual({ link: 'https://asaas.test/c/1' });
+  });
+});
+
+describe('BillingPaymentsService#processWebhookEvent', () => {
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(NOW);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('sem header, ou header diferente do token configurado, rejeita com UnauthorizedException sem gravar nada', async () => {
+    const { service, prisma, asaasClient } = build();
+
+    await expect(
+      service.processWebhookEvent(undefined, { id: 'evt-1', event: 'CHECKOUT_PAID' }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(
+      service.processWebhookEvent('token-errado', { id: 'evt-1', event: 'CHECKOUT_PAID' }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+
+    expect(prisma.billingEvent.create).not.toHaveBeenCalled();
+    expect(asaasClient.getSubscription).not.toHaveBeenCalled();
+  });
+
+  it('payload sem id ou sem event (string) rejeita com BadRequestException', async () => {
+    const { service, prisma } = build();
+
+    await expect(
+      service.processWebhookEvent(WEBHOOK_TOKEN, { event: 'CHECKOUT_PAID' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.processWebhookEvent(WEBHOOK_TOKEN, { id: 'evt-1' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.processWebhookEvent(WEBHOOK_TOKEN, { id: 'evt-1', event: 42 }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.billingEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('evento ja existente com processedAt preenchido devolve sem reprocessar', async () => {
+    const { service, prisma, asaasClient } = build();
+    prisma.billingEvent.create.mockRejectedValue(
+      Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }),
+    );
+    prisma.billingEvent.findUnique.mockResolvedValue(billingEventRow({ processedAt: NOW }));
+
+    await expect(
+      service.processWebhookEvent(WEBHOOK_TOKEN, { id: 'evt-1', event: 'CHECKOUT_PAID' }),
+    ).resolves.toBeUndefined();
+
+    expect(asaasClient.getSubscription).not.toHaveBeenCalled();
+    expect(prisma.billingEvent.update).not.toHaveBeenCalled();
+  });
+
+  it('CHECKOUT_PAID com checkout.id conhecido grava os ids do Asaas e ativa a assinatura', async () => {
+    const { service, prisma, asaasClient } = build();
+    const local = subRow({
+      id: 'sub-1',
+      status: 'PENDING',
+      source: 'ASAAS',
+      asaasCheckoutId: 'checkout-1',
+      asaasSubscriptionId: null,
+      asaasCustomerId: null,
+      currentPeriodEnd: null,
+      pastDueSince: null,
+    });
+    prisma.subscription.findFirst.mockResolvedValue(local);
+    asaasClient.getSubscription.mockResolvedValue({
+      id: 'asaas-sub-1',
+      deleted: false,
+      nextDueDate: '2026-10-28',
+      externalReference: local.id,
+    });
+
+    await service.processWebhookEvent(WEBHOOK_TOKEN, {
+      id: 'evt-1',
+      event: 'CHECKOUT_PAID',
+      checkout: { id: 'checkout-1', subscription: 'asaas-sub-1', customer: 'cus-1' },
+    });
+
+    expect(prisma.subscription.findFirst).toHaveBeenCalledWith({
+      where: { asaasCheckoutId: 'checkout-1' },
+    });
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: { asaasSubscriptionId: 'asaas-sub-1', asaasCustomerId: 'cus-1' },
+    });
+    expect(asaasClient.getSubscription).toHaveBeenCalledWith('asaas-sub-1');
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: {
+        status: 'ACTIVE',
+        currentPeriodEnd: new Date('2026-10-28'),
+        pastDueSince: null,
+      },
+    });
+    expect(prisma.billingEvent.update).toHaveBeenCalledWith({
+      where: { id: 'event-1' },
+      data: { processedAt: NOW },
+    });
+  });
+
+  it('CHECKOUT_PAID com checkout.id desconhecido nao lanca erro e nao chama o Asaas', async () => {
+    const { service, prisma, asaasClient } = build();
+    prisma.subscription.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.processWebhookEvent(WEBHOOK_TOKEN, {
+        id: 'evt-1',
+        event: 'CHECKOUT_PAID',
+        checkout: { id: 'checkout-orfao' },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(asaasClient.getSubscription).not.toHaveBeenCalled();
+    expect(prisma.subscription.update).not.toHaveBeenCalled();
+    expect(prisma.billingEvent.update).toHaveBeenCalledWith({
+      where: { id: 'event-1' },
+      data: { processedAt: NOW },
+    });
+  });
+
+  it('evento de tipo desconhecido (ex. SPLIT_CREATED) nao lanca erro e nao toca em Subscription', async () => {
+    const { service, prisma, asaasClient } = build();
+
+    await expect(
+      service.processWebhookEvent(WEBHOOK_TOKEN, { id: 'evt-1', event: 'SPLIT_CREATED' }),
+    ).resolves.toBeUndefined();
+
+    expect(prisma.subscription.findFirst).not.toHaveBeenCalled();
+    expect(prisma.subscription.update).not.toHaveBeenCalled();
+    expect(asaasClient.getSubscription).not.toHaveBeenCalled();
+    expect(prisma.billingEvent.update).toHaveBeenCalledWith({
+      where: { id: 'event-1' },
+      data: { processedAt: NOW },
+    });
   });
 });
