@@ -234,6 +234,18 @@ export class BillingPaymentsService {
       case 'CHECKOUT_PAID':
         await this.handleCheckoutPaid(payload);
         break;
+      case 'PAYMENT_CONFIRMED':
+      case 'PAYMENT_RECEIVED':
+      case 'PAYMENT_OVERDUE':
+        await this.handlePaymentStatusEvent(payload);
+        break;
+      case 'PAYMENT_REFUNDED':
+        await this.handlePaymentRefunded(payload);
+        break;
+      case 'SUBSCRIPTION_DELETED':
+      case 'SUBSCRIPTION_INACTIVATED':
+        await this.handleSubscriptionRemoved(payload);
+        break;
       default:
         this.logger.warn(`Evento de webhook do Asaas nao tratado: ${eventType}`);
     }
@@ -274,6 +286,112 @@ export class BillingPaymentsService {
       ...local,
       asaasSubscriptionId: asaasSubscriptionId ?? local.asaasSubscriptionId,
       asaasCustomerId: asaasCustomerId ?? local.asaasCustomerId,
+    });
+  }
+
+  /**
+   * PAYMENT_CONFIRMED/PAYMENT_RECEIVED/PAYMENT_OVERDUE: acha a linha local por
+   * `asaasSubscriptionId = payload.payment.subscription`, grava `latestInvoiceUrl`
+   * quando o payload traz `payment.invoiceUrl` e reconcilia contra o Asaas
+   * (mesma funcao usada pelo `CHECKOUT_PAID` e pelo `/billing/sync`).
+   */
+  private async handlePaymentStatusEvent(
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const local = await this.findLocalByPaymentSubscription(payload);
+    if (!local) {
+      return;
+    }
+
+    const invoiceUrl = this.extractInvoiceUrl(payload);
+    if (invoiceUrl) {
+      await this.prisma.subscription.update({
+        where: { id: local.id },
+        data: { latestInvoiceUrl: invoiceUrl },
+      });
+    }
+
+    await this.reconcileSubscription(local);
+  }
+
+  /**
+   * PAYMENT_REFUNDED: encerra o acesso na hora, sem consultar o Asaas — o
+   * reembolso ja aconteceu do lado deles, entao nao ha nada a reconciliar.
+   */
+  private async handlePaymentRefunded(
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const local = await this.findLocalByPaymentSubscription(payload);
+    if (!local) {
+      return;
+    }
+
+    await this.endAccessNow(local);
+  }
+
+  /**
+   * SUBSCRIPTION_DELETED/SUBSCRIPTION_INACTIVATED: acha a linha local por
+   * `asaasSubscriptionId = payload.subscription.id` e reconcilia (o Asaas
+   * devolve `deleted:true` nessa consulta, entao vira CANCELED).
+   */
+  private async handleSubscriptionRemoved(
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const subscription = payload.subscription as Record<string, unknown> | undefined;
+    const asaasSubscriptionId =
+      typeof subscription?.id === 'string' ? subscription.id : undefined;
+    if (!asaasSubscriptionId) {
+      this.logger.warn('Webhook de assinatura removida sem subscription.id.');
+      return;
+    }
+
+    const local = await this.prisma.subscription.findFirst({
+      where: { asaasSubscriptionId },
+    });
+    if (!local) {
+      this.logger.warn(
+        `Webhook de assinatura removida sem Subscription local para ${asaasSubscriptionId}.`,
+      );
+      return;
+    }
+
+    await this.reconcileSubscription(local);
+  }
+
+  private async findLocalByPaymentSubscription(
+    payload: Record<string, unknown>,
+  ): Promise<Subscription | null> {
+    const payment = payload.payment as Record<string, unknown> | undefined;
+    const asaasSubscriptionId =
+      typeof payment?.subscription === 'string' ? payment.subscription : undefined;
+    if (!asaasSubscriptionId) {
+      this.logger.warn('Webhook de pagamento sem payment.subscription.');
+      return null;
+    }
+
+    const local = await this.prisma.subscription.findFirst({
+      where: { asaasSubscriptionId },
+    });
+    if (!local) {
+      this.logger.warn(
+        `Webhook de pagamento sem Subscription local para ${asaasSubscriptionId}.`,
+      );
+      return null;
+    }
+
+    return local;
+  }
+
+  private extractInvoiceUrl(payload: Record<string, unknown>): string | undefined {
+    const payment = payload.payment as Record<string, unknown> | undefined;
+    return typeof payment?.invoiceUrl === 'string' ? payment.invoiceUrl : undefined;
+  }
+
+  /** PAYMENT_REFUNDED: encerra o acesso direto, sem tocar no Asaas. */
+  private async endAccessNow(local: Subscription): Promise<void> {
+    await this.prisma.subscription.update({
+      where: { id: local.id },
+      data: { status: 'CANCELED', currentPeriodEnd: new Date() },
     });
   }
 

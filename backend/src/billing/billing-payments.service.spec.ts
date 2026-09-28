@@ -359,3 +359,259 @@ describe('BillingPaymentsService#processWebhookEvent', () => {
     });
   });
 });
+
+describe('BillingPaymentsService#processWebhookEvent — pagamento, cancelamento e reembolso (Task 5)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(NOW);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function activeLocal(overrides: Record<string, unknown> = {}) {
+    return subRow({
+      id: 'sub-1',
+      status: 'ACTIVE',
+      source: 'ASAAS',
+      asaasSubscriptionId: 'asaas-sub-1',
+      asaasCustomerId: 'cus-1',
+      currentPeriodEnd: new Date('2026-09-28T00:00:00.000Z'),
+      pastDueSince: null,
+      ...overrides,
+    });
+  }
+
+  it('PAYMENT_CONFIRMED com payment.subscription conhecido reconcilia e grava latestInvoiceUrl', async () => {
+    const { service, prisma, asaasClient } = build();
+    prisma.subscription.findFirst.mockResolvedValue(activeLocal());
+    asaasClient.getSubscription.mockResolvedValue({
+      id: 'asaas-sub-1',
+      deleted: false,
+      nextDueDate: '2026-10-28',
+      externalReference: null,
+    });
+
+    await service.processWebhookEvent(WEBHOOK_TOKEN, {
+      id: 'evt-1',
+      event: 'PAYMENT_CONFIRMED',
+      payment: { subscription: 'asaas-sub-1', invoiceUrl: 'https://sandbox.asaas.com/i/pay-1' },
+    });
+
+    expect(prisma.subscription.findFirst).toHaveBeenCalledWith({
+      where: { asaasSubscriptionId: 'asaas-sub-1' },
+    });
+    expect(asaasClient.getSubscription).toHaveBeenCalledWith('asaas-sub-1');
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: { latestInvoiceUrl: 'https://sandbox.asaas.com/i/pay-1' },
+    });
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: { status: 'ACTIVE', currentPeriodEnd: new Date('2026-10-28'), pastDueSince: null },
+    });
+  });
+
+  it('PAYMENT_RECEIVED com payment.subscription conhecido reconcilia e grava latestInvoiceUrl', async () => {
+    const { service, prisma, asaasClient } = build();
+    prisma.subscription.findFirst.mockResolvedValue(activeLocal());
+    asaasClient.getSubscription.mockResolvedValue({
+      id: 'asaas-sub-1',
+      deleted: false,
+      nextDueDate: '2026-10-28',
+      externalReference: null,
+    });
+
+    await service.processWebhookEvent(WEBHOOK_TOKEN, {
+      id: 'evt-1',
+      event: 'PAYMENT_RECEIVED',
+      payment: { subscription: 'asaas-sub-1', invoiceUrl: 'https://sandbox.asaas.com/i/pay-2' },
+    });
+
+    expect(asaasClient.getSubscription).toHaveBeenCalledWith('asaas-sub-1');
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: { latestInvoiceUrl: 'https://sandbox.asaas.com/i/pay-2' },
+    });
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: { status: 'ACTIVE', currentPeriodEnd: new Date('2026-10-28'), pastDueSince: null },
+    });
+  });
+
+  it('PAYMENT_OVERDUE com nextDueDate nao avancado vira PAST_DUE e grava latestInvoiceUrl', async () => {
+    const { service, prisma, asaasClient } = build();
+    prisma.subscription.findFirst.mockResolvedValue(
+      activeLocal({ currentPeriodEnd: new Date('2026-10-28T00:00:00.000Z') }),
+    );
+    asaasClient.getSubscription.mockResolvedValue({
+      id: 'asaas-sub-1',
+      deleted: false,
+      nextDueDate: '2026-10-28',
+      externalReference: null,
+    });
+
+    await service.processWebhookEvent(WEBHOOK_TOKEN, {
+      id: 'evt-1',
+      event: 'PAYMENT_OVERDUE',
+      payment: { subscription: 'asaas-sub-1', invoiceUrl: 'https://sandbox.asaas.com/i/pay-3' },
+    });
+
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: { latestInvoiceUrl: 'https://sandbox.asaas.com/i/pay-3' },
+    });
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: { status: 'PAST_DUE', pastDueSince: NOW },
+    });
+  });
+
+  it('PAYMENT_REFUNDED encerra na hora sem chamar o Asaas', async () => {
+    const { service, prisma, asaasClient } = build();
+    prisma.subscription.findFirst.mockResolvedValue(activeLocal());
+
+    await service.processWebhookEvent(WEBHOOK_TOKEN, {
+      id: 'evt-1',
+      event: 'PAYMENT_REFUNDED',
+      payment: { subscription: 'asaas-sub-1' },
+    });
+
+    expect(prisma.subscription.findFirst).toHaveBeenCalledWith({
+      where: { asaasSubscriptionId: 'asaas-sub-1' },
+    });
+    expect(asaasClient.getSubscription).not.toHaveBeenCalled();
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: { status: 'CANCELED', currentPeriodEnd: NOW },
+    });
+  });
+
+  it('SUBSCRIPTION_DELETED com subscription.id conhecido reconcilia (deleted:true -> CANCELED)', async () => {
+    const { service, prisma, asaasClient } = build();
+    prisma.subscription.findFirst.mockResolvedValue(activeLocal());
+    asaasClient.getSubscription.mockResolvedValue({
+      id: 'asaas-sub-1',
+      deleted: true,
+      nextDueDate: '2026-10-28',
+      externalReference: null,
+    });
+
+    await service.processWebhookEvent(WEBHOOK_TOKEN, {
+      id: 'evt-1',
+      event: 'SUBSCRIPTION_DELETED',
+      subscription: { id: 'asaas-sub-1' },
+    });
+
+    expect(prisma.subscription.findFirst).toHaveBeenCalledWith({
+      where: { asaasSubscriptionId: 'asaas-sub-1' },
+    });
+    expect(asaasClient.getSubscription).toHaveBeenCalledWith('asaas-sub-1');
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: { status: 'CANCELED' },
+    });
+  });
+
+  it('SUBSCRIPTION_INACTIVATED com subscription.id conhecido reconcilia (deleted:true -> CANCELED)', async () => {
+    const { service, prisma, asaasClient } = build();
+    prisma.subscription.findFirst.mockResolvedValue(activeLocal());
+    asaasClient.getSubscription.mockResolvedValue({
+      id: 'asaas-sub-1',
+      deleted: true,
+      nextDueDate: '2026-10-28',
+      externalReference: null,
+    });
+
+    await service.processWebhookEvent(WEBHOOK_TOKEN, {
+      id: 'evt-1',
+      event: 'SUBSCRIPTION_INACTIVATED',
+      subscription: { id: 'asaas-sub-1' },
+    });
+
+    expect(asaasClient.getSubscription).toHaveBeenCalledWith('asaas-sub-1');
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: { status: 'CANCELED' },
+    });
+  });
+
+  it('PAYMENT_CONFIRMED sem Subscription local correspondente nao lanca erro nem chama o Asaas', async () => {
+    const { service, prisma, asaasClient } = build();
+    prisma.subscription.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.processWebhookEvent(WEBHOOK_TOKEN, {
+        id: 'evt-1',
+        event: 'PAYMENT_CONFIRMED',
+        payment: { subscription: 'asaas-sub-orfao', invoiceUrl: 'https://sandbox.asaas.com/i/x' },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(asaasClient.getSubscription).not.toHaveBeenCalled();
+    expect(prisma.subscription.update).not.toHaveBeenCalled();
+    expect(prisma.billingEvent.update).toHaveBeenCalledWith({
+      where: { id: 'event-1' },
+      data: { processedAt: NOW },
+    });
+  });
+
+  it('PAYMENT_OVERDUE sem Subscription local correspondente nao lanca erro nem chama o Asaas', async () => {
+    const { service, prisma, asaasClient } = build();
+    prisma.subscription.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.processWebhookEvent(WEBHOOK_TOKEN, {
+        id: 'evt-1',
+        event: 'PAYMENT_OVERDUE',
+        payment: { subscription: 'asaas-sub-orfao' },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(asaasClient.getSubscription).not.toHaveBeenCalled();
+    expect(prisma.subscription.update).not.toHaveBeenCalled();
+    expect(prisma.billingEvent.update).toHaveBeenCalledWith({
+      where: { id: 'event-1' },
+      data: { processedAt: NOW },
+    });
+  });
+
+  it('PAYMENT_REFUNDED sem Subscription local correspondente nao lanca erro nem chama o Asaas', async () => {
+    const { service, prisma, asaasClient } = build();
+    prisma.subscription.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.processWebhookEvent(WEBHOOK_TOKEN, {
+        id: 'evt-1',
+        event: 'PAYMENT_REFUNDED',
+        payment: { subscription: 'asaas-sub-orfao' },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(asaasClient.getSubscription).not.toHaveBeenCalled();
+    expect(prisma.subscription.update).not.toHaveBeenCalled();
+    expect(prisma.billingEvent.update).toHaveBeenCalledWith({
+      where: { id: 'event-1' },
+      data: { processedAt: NOW },
+    });
+  });
+
+  it('SUBSCRIPTION_DELETED sem Subscription local correspondente nao lanca erro nem chama o Asaas', async () => {
+    const { service, prisma, asaasClient } = build();
+    prisma.subscription.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.processWebhookEvent(WEBHOOK_TOKEN, {
+        id: 'evt-1',
+        event: 'SUBSCRIPTION_DELETED',
+        subscription: { id: 'asaas-sub-orfao' },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(asaasClient.getSubscription).not.toHaveBeenCalled();
+    expect(prisma.subscription.update).not.toHaveBeenCalled();
+    expect(prisma.billingEvent.update).toHaveBeenCalledWith({
+      where: { id: 'event-1' },
+      data: { processedAt: NOW },
+    });
+  });
+});

@@ -32,6 +32,7 @@ export interface BillingMe {
   source: SubscriptionSource | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  latestInvoiceUrl: string | null;
   usage: UsageReport;
 }
 
@@ -111,6 +112,7 @@ export class BillingService {
       source: effective?.source ?? null,
       currentPeriodEnd: effective?.currentPeriodEnd?.toISOString() ?? null,
       cancelAtPeriodEnd: effective?.cancelAtPeriodEnd ?? false,
+      latestInvoiceUrl: effective?.latestInvoiceUrl ?? null,
       usage,
     };
   }

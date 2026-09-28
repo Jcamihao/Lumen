@@ -24,6 +24,7 @@ function subRow(overrides: Record<string, unknown> = {}) {
     seats: 1,
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,
+    latestInvoiceUrl: null,
     grantedByUserId: 'admin-1',
     createdAt: new Date('2026-09-01T00:00:00.000Z'),
     owner: { email: 'ana@exemplo.com', name: 'Ana' },
@@ -87,6 +88,7 @@ describe('BillingService', () => {
         source: null,
         currentPeriodEnd: null,
         cancelAtPeriodEnd: false,
+        latestInvoiceUrl: null,
       });
       expect(me.usage.plan).toBe('FREE');
     });
@@ -100,7 +102,22 @@ describe('BillingService', () => {
         status: 'ACTIVE',
         source: 'GRANT',
         currentPeriodEnd: null,
+        latestInvoiceUrl: null,
       });
+    });
+
+    it('assinatura efetiva com latestInvoiceUrl gravado: getMe devolve esse valor', async () => {
+      const { service, prisma } = build();
+      prisma.subscription.findMany.mockResolvedValue([
+        subRow({
+          source: 'ASAAS',
+          status: 'PAST_DUE',
+          latestInvoiceUrl: 'https://sandbox.asaas.com/i/pay-1',
+        }),
+      ]);
+      const me = await service.getMe('user-1');
+      expect(me.plan).toBe('INDIVIDUAL');
+      expect(me.latestInvoiceUrl).toBe('https://sandbox.asaas.com/i/pay-1');
     });
 
     it('concessão vencida há 10 dias (sem tolerância): FREE', async () => {
