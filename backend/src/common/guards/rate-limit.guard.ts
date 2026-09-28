@@ -133,6 +133,14 @@ export class RateLimitGuard implements CanActivate {
     windowMs: 15 * 60_000,
     message: 'Muitas tentativas de descadastro. Tente novamente em instantes.',
   };
+  // Abrir checkout chama o Asaas de verdade (cria recurso do lado deles) por
+  // usuario autenticado: limite baixo, generoso o bastante pra reabrir apos erro.
+  private readonly billingCheckoutPolicy: RateLimitPolicy = {
+    keyPrefix: 'billing-checkout',
+    limit: 5,
+    windowMs: 60 * 60_000,
+    message: 'Muitas tentativas de assinatura em pouco tempo. Tente novamente mais tarde.',
+  };
 
   constructor(private readonly cacheQueueService: CacheQueueService) {}
 
@@ -240,6 +248,10 @@ export class RateLimitGuard implements CanActivate {
 
     if (method === 'DELETE' && path === '/api/v1/users/me') {
       return this.deleteAccountPolicy;
+    }
+
+    if (method === 'POST' && path === '/api/v1/billing/checkout') {
+      return this.billingCheckoutPolicy;
     }
 
     return this.defaultPolicy;

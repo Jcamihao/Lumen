@@ -6,14 +6,19 @@ import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
+import { BillingPaymentsService } from './billing-payments.service';
 import { BillingService } from './billing.service';
+import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import { CreateGrantDto } from './dto/create-grant.dto';
 
 @ApiTags('billing')
 @ApiBearerAuth()
 @Controller('billing')
 export class BillingController {
-  constructor(private readonly billingService: BillingService) {}
+  constructor(
+    private readonly billingService: BillingService,
+    private readonly billingPaymentsService: BillingPaymentsService,
+  ) {}
 
   @Public()
   @Get('plans')
@@ -26,6 +31,15 @@ export class BillingController {
   @ApiOperation({ summary: 'Plano efetivo e uso do usuário logado' })
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.billingService.getMe(user.sub);
+  }
+
+  @Post('checkout')
+  @ApiOperation({ summary: 'Cria (ou reaproveita) um checkout do Asaas para assinar' })
+  checkout(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateCheckoutDto,
+  ) {
+    return this.billingPaymentsService.checkout(user.sub, dto);
   }
 
   @Get('admin/grants')

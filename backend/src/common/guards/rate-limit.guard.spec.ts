@@ -84,4 +84,12 @@ describe("RateLimitGuard — MFA", () => {
 
     await expect(call(guard, "/api/v1/auth/mfa/verify-login", { challengeId: UUID_A })).resolves.toBe(true);
   });
+
+  it("billing/checkout: bloqueia na 6a tentativa do mesmo usuario na mesma hora", async () => {
+    const guard = buildGuard();
+
+    expect(
+      await hammer(guard, 10, "/api/v1/billing/checkout", {}, "203.0.113.10", { sub: "user-1" }),
+    ).toBe(6);
+  });
 });
