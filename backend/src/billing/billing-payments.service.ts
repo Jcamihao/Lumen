@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Injectable,
   Logger,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -157,6 +158,86 @@ export class BillingPaymentsService {
     });
 
     return { link: checkout.link };
+  }
+
+  /**
+   * Rede de seguranca contra webhook perdido: reconcilia a Subscription ASAAS
+   * em aberto do usuario (PENDING/ACTIVE/PAST_DUE — nunca mais de uma ao mesmo
+   * tempo, garantido pelo bloqueio do `checkout()`) contra o estado real no
+   * Asaas. Sem nada em aberto, nao ha o que sincronizar.
+   */
+  async sync(userId: string): Promise<void> {
+    const local = await this.prisma.subscription.findFirst({
+      where: {
+        ownerUserId: userId,
+        source: 'ASAAS',
+        status: { in: ['PENDING', 'ACTIVE', 'PAST_DUE'] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!local) {
+      return;
+    }
+
+    if (!local.asaasSubscriptionId) {
+      // Checkout ainda sem `asaasSubscriptionId` gravado: o webhook
+      // CHECKOUT_PAID pode ter se perdido. Tenta achar a assinatura no Asaas
+      // pelo externalReference (= id desta linha).
+      const remote = await this.asaasClient.findSubscriptionByExternalReference(
+        local.id,
+      );
+      if (!remote) {
+        return;
+      }
+
+      const updated = await this.prisma.subscription.update({
+        where: { id: local.id },
+        data: { asaasSubscriptionId: remote.id },
+      });
+
+      await this.reconcileSubscription(updated);
+      return;
+    }
+
+    // Ja vinculada: mesmo caminho do webhook, so que puxado pelo usuario.
+    await this.reconcileSubscription(local);
+  }
+
+  /**
+   * Cancela a assinatura ASAAS em cobranca do usuario (ACTIVE/PAST_DUE) ou,
+   * se ja cancelada, nao faz nada (idempotente). Sem nenhuma assinatura ASAAS
+   * (usuario so Gratis, ou so com concessao GRANT), erro claro em vez de 500
+   * ou de mexer numa concessao que nao tem nada a ver com o Asaas.
+   */
+  async cancel(userId: string): Promise<void> {
+    const local = await this.prisma.subscription.findFirst({
+      where: {
+        ownerUserId: userId,
+        source: 'ASAAS',
+        status: { in: ['ACTIVE', 'PAST_DUE', 'CANCELED'] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!local) {
+      throw new NotFoundException('Voce nao tem uma assinatura para cancelar.');
+    }
+
+    if (local.status === 'CANCELED') {
+      return;
+    }
+
+    if (local.asaasSubscriptionId) {
+      await this.asaasClient.deleteSubscription(local.asaasSubscriptionId);
+    }
+
+    // `currentPeriodEnd` nao muda: o acesso segue ate o fim do periodo ja
+    // pago (regra ja existente em `access.util.ts`).
+    await this.prisma.subscription.update({
+      where: { id: local.id },
+      data: { status: 'CANCELED', cancelAtPeriodEnd: true },
+    });
   }
 
   /**

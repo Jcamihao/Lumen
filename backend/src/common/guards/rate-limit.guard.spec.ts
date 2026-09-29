@@ -109,4 +109,12 @@ describe("RateLimitGuard — MFA", () => {
       call(guard, "/api/v1/billing/webhooks/asaas", {}, "203.0.113.11"),
     ).resolves.toBe(true);
   });
+
+  it("billing/sync: bloqueia na 11a tentativa do mesmo usuario na mesma hora", async () => {
+    const guard = buildGuard();
+
+    expect(
+      await hammer(guard, 15, "/api/v1/billing/sync", {}, "203.0.113.10", { sub: "user-1" }),
+    ).toBe(11);
+  });
 });

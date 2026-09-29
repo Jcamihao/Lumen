@@ -42,6 +42,18 @@ export class BillingController {
     return this.billingPaymentsService.checkout(user.sub, dto);
   }
 
+  @Post('sync')
+  @ApiOperation({ summary: 'Sincroniza a assinatura do usuario contra o Asaas (rede de seguranca)' })
+  sync(@CurrentUser() user: AuthenticatedUser) {
+    return this.billingPaymentsService.sync(user.sub);
+  }
+
+  @Post('cancel')
+  @ApiOperation({ summary: 'Cancela a assinatura ASAAS do usuario logado' })
+  cancel(@CurrentUser() user: AuthenticatedUser) {
+    return this.billingPaymentsService.cancel(user.sub);
+  }
+
   @Public()
   @Post('webhooks/asaas')
   @ApiOperation({ summary: 'Recebe eventos do Asaas (checkout, assinatura, pagamento)' })

@@ -150,6 +150,14 @@ export class RateLimitGuard implements CanActivate {
     windowMs: 5 * 60_000,
     message: 'Muitas requisicoes de webhook em pouco tempo. Tente novamente em instantes.',
   };
+  // Sincronizar chama o Asaas de verdade por usuario autenticado: limite generoso
+  // o bastante pra reconferir apos um webhook perdido, sem virar polling disfarcado.
+  private readonly billingSyncPolicy: RateLimitPolicy = {
+    keyPrefix: 'billing-sync',
+    limit: 10,
+    windowMs: 60 * 60_000,
+    message: 'Muitas tentativas de sincronizacao em pouco tempo. Tente novamente mais tarde.',
+  };
 
   constructor(private readonly cacheQueueService: CacheQueueService) {}
 
@@ -265,6 +273,10 @@ export class RateLimitGuard implements CanActivate {
 
     if (method === 'POST' && path === '/api/v1/billing/webhooks/asaas') {
       return this.billingWebhookPolicy;
+    }
+
+    if (method === 'POST' && path === '/api/v1/billing/sync') {
+      return this.billingSyncPolicy;
     }
 
     return this.defaultPolicy;

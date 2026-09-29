@@ -1,4 +1,8 @@
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BillingPaymentsService } from './billing-payments.service';
 
@@ -613,5 +617,195 @@ describe('BillingPaymentsService#processWebhookEvent — pagamento, cancelamento
       where: { id: 'event-1' },
       data: { processedAt: NOW },
     });
+  });
+});
+
+describe('BillingPaymentsService#sync', () => {
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(NOW);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('sem nenhuma Subscription source ASAAS nao faz nada e nao lanca erro', async () => {
+    const { service, prisma, asaasClient } = build();
+    prisma.subscription.findFirst.mockResolvedValue(null);
+
+    await expect(service.sync('user-1')).resolves.toBeUndefined();
+
+    expect(asaasClient.findSubscriptionByExternalReference).not.toHaveBeenCalled();
+    expect(asaasClient.getSubscription).not.toHaveBeenCalled();
+    expect(prisma.subscription.update).not.toHaveBeenCalled();
+  });
+
+  it('PENDING sem asaasSubscriptionId: acha a assinatura pelo externalReference e reconcilia (webhook perdido)', async () => {
+    const { service, prisma, asaasClient } = build();
+    const local = subRow({
+      id: 'sub-1',
+      status: 'PENDING',
+      source: 'ASAAS',
+      asaasSubscriptionId: null,
+      currentPeriodEnd: null,
+      pastDueSince: null,
+    });
+    prisma.subscription.findFirst.mockResolvedValue(local);
+    asaasClient.findSubscriptionByExternalReference.mockResolvedValue({
+      id: 'asaas-sub-1',
+      deleted: false,
+      nextDueDate: '2026-10-28',
+      externalReference: 'sub-1',
+    });
+    prisma.subscription.update.mockResolvedValue(
+      subRow({ ...local, asaasSubscriptionId: 'asaas-sub-1' }),
+    );
+    asaasClient.getSubscription.mockResolvedValue({
+      id: 'asaas-sub-1',
+      deleted: false,
+      nextDueDate: '2026-10-28',
+      externalReference: 'sub-1',
+    });
+
+    await service.sync('user-1');
+
+    expect(asaasClient.findSubscriptionByExternalReference).toHaveBeenCalledWith('sub-1');
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: { asaasSubscriptionId: 'asaas-sub-1' },
+    });
+    expect(asaasClient.getSubscription).toHaveBeenCalledWith('asaas-sub-1');
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: { status: 'ACTIVE', currentPeriodEnd: new Date('2026-10-28'), pastDueSince: null },
+    });
+  });
+
+  it('PENDING sem asaasSubscriptionId: externalReference nao encontrado no Asaas, nada muda', async () => {
+    const { service, prisma, asaasClient } = build();
+    const local = subRow({
+      id: 'sub-1',
+      status: 'PENDING',
+      source: 'ASAAS',
+      asaasSubscriptionId: null,
+    });
+    prisma.subscription.findFirst.mockResolvedValue(local);
+    asaasClient.findSubscriptionByExternalReference.mockResolvedValue(null);
+
+    await service.sync('user-1');
+
+    expect(asaasClient.findSubscriptionByExternalReference).toHaveBeenCalledWith('sub-1');
+    expect(asaasClient.getSubscription).not.toHaveBeenCalled();
+    expect(prisma.subscription.update).not.toHaveBeenCalled();
+  });
+
+  it('ACTIVE ja com asaasSubscriptionId: chama getSubscription (nao findSubscriptionByExternalReference) e reconcilia', async () => {
+    const { service, prisma, asaasClient } = build();
+    const local = subRow({
+      id: 'sub-1',
+      status: 'ACTIVE',
+      source: 'ASAAS',
+      asaasSubscriptionId: 'asaas-sub-1',
+      currentPeriodEnd: new Date('2026-09-28T00:00:00.000Z'),
+      pastDueSince: null,
+    });
+    prisma.subscription.findFirst.mockResolvedValue(local);
+    asaasClient.getSubscription.mockResolvedValue({
+      id: 'asaas-sub-1',
+      deleted: false,
+      nextDueDate: '2026-10-28',
+      externalReference: 'sub-1',
+    });
+
+    await service.sync('user-1');
+
+    expect(asaasClient.findSubscriptionByExternalReference).not.toHaveBeenCalled();
+    expect(asaasClient.getSubscription).toHaveBeenCalledWith('asaas-sub-1');
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: { status: 'ACTIVE', currentPeriodEnd: new Date('2026-10-28'), pastDueSince: null },
+    });
+  });
+
+  it('PAST_DUE ja com asaasSubscriptionId: chama getSubscription (nao findSubscriptionByExternalReference) e reconcilia', async () => {
+    const { service, prisma, asaasClient } = build();
+    const local = subRow({
+      id: 'sub-1',
+      status: 'PAST_DUE',
+      source: 'ASAAS',
+      asaasSubscriptionId: 'asaas-sub-1',
+      currentPeriodEnd: new Date('2026-10-28T00:00:00.000Z'),
+      pastDueSince: NOW,
+    });
+    prisma.subscription.findFirst.mockResolvedValue(local);
+    asaasClient.getSubscription.mockResolvedValue({
+      id: 'asaas-sub-1',
+      deleted: true,
+      nextDueDate: '2026-10-28',
+      externalReference: 'sub-1',
+    });
+
+    await service.sync('user-1');
+
+    expect(asaasClient.findSubscriptionByExternalReference).not.toHaveBeenCalled();
+    expect(asaasClient.getSubscription).toHaveBeenCalledWith('asaas-sub-1');
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: { status: 'CANCELED' },
+    });
+  });
+});
+
+describe('BillingPaymentsService#cancel', () => {
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(NOW);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('sem Subscription ASAAS (so Gratis, ou so GRANT) lanca NotFoundException sem chamar o Asaas', async () => {
+    const { service, prisma, asaasClient } = build();
+    prisma.subscription.findFirst.mockResolvedValue(null);
+
+    await expect(service.cancel('user-1')).rejects.toBeInstanceOf(NotFoundException);
+    expect(asaasClient.deleteSubscription).not.toHaveBeenCalled();
+  });
+
+  it('Subscription ASAAS ACTIVE: cancela no Asaas e grava CANCELED/cancelAtPeriodEnd sem tocar currentPeriodEnd', async () => {
+    const { service, prisma, asaasClient } = build();
+    const local = subRow({
+      id: 'sub-1',
+      status: 'ACTIVE',
+      source: 'ASAAS',
+      asaasSubscriptionId: 'asaas-sub-1',
+      currentPeriodEnd: new Date('2026-10-28T00:00:00.000Z'),
+      cancelAtPeriodEnd: false,
+    });
+    prisma.subscription.findFirst.mockResolvedValue(local);
+
+    await service.cancel('user-1');
+
+    expect(asaasClient.deleteSubscription).toHaveBeenCalledWith('asaas-sub-1');
+    expect(prisma.subscription.update).toHaveBeenCalledWith({
+      where: { id: 'sub-1' },
+      data: { status: 'CANCELED', cancelAtPeriodEnd: true },
+    });
+  });
+
+  it('chamar cancel de novo na mesma assinatura ja CANCELED e idempotente', async () => {
+    const { service, prisma, asaasClient } = build();
+    const local = subRow({
+      id: 'sub-1',
+      status: 'CANCELED',
+      source: 'ASAAS',
+      asaasSubscriptionId: 'asaas-sub-1',
+      cancelAtPeriodEnd: true,
+    });
+    prisma.subscription.findFirst.mockResolvedValue(local);
+
+    await expect(service.cancel('user-1')).resolves.toBeUndefined();
+
+    expect(asaasClient.deleteSubscription).not.toHaveBeenCalled();
+    expect(prisma.subscription.update).not.toHaveBeenCalled();
   });
 });
