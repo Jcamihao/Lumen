@@ -1,8 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { of } from 'rxjs';
+import { ActivatedRoute } from '@angular/router';
+import { Subject, of } from 'rxjs';
 import { BillingMe } from '../../../core/models/domain.models';
 import { BillingService } from '../../../core/services/billing.service';
+import { ToastService } from '../../../core/services/toast.service';
 import { PlanPageComponent } from './plan-page.component';
 
 class FakeBillingService {
@@ -11,10 +13,18 @@ class FakeBillingService {
   readonly enabled = this.enabledSignal.asReadonly();
   readonly me = this.meSignal.asReadonly();
 
-  loadMe() {
+  readonly loadMe = jasmine.createSpy('loadMe').and.callFake(() => {
     const value = this.meSignal();
     return value ? of(value) : of(null as unknown as BillingMe);
-  }
+  });
+
+  readonly checkout = jasmine
+    .createSpy('checkout')
+    .and.returnValue(of({ link: 'https://asaas.example/checkout/123' }));
+
+  readonly cancel = jasmine.createSpy('cancel').and.returnValue(of(undefined));
+
+  readonly sync = jasmine.createSpy('sync').and.returnValue(of(undefined));
 }
 
 const meFree = (): BillingMe => ({
@@ -59,23 +69,51 @@ const meIndividualGrant = (): BillingMe => ({
   },
 });
 
+const meIndividualAsaas = (): BillingMe => ({
+  ...meIndividualGrant(),
+  source: 'ASAAS',
+  currentPeriodEnd: '2026-10-27T00:00:00.000Z',
+});
+
+const mePastDue = (): BillingMe => ({
+  ...meIndividualAsaas(),
+  status: 'PAST_DUE',
+  latestInvoiceUrl: 'https://asaas.example/fatura/999',
+});
+
 describe('PlanPageComponent', () => {
   let billing: FakeBillingService;
+  let toast: jasmine.SpyObj<ToastService>;
   let fixture: ComponentFixture<PlanPageComponent>;
 
   const root = () => fixture.nativeElement as HTMLElement;
   const text = () => root().textContent ?? '';
+  const clickButton = (label: string) => {
+    const button = Array.from(root().querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === label,
+    ) as HTMLButtonElement;
+    button?.click();
+    fixture.detectChanges();
+  };
+  const findLink = (label: string) =>
+    Array.from(root().querySelectorAll('a')).find((a) => a.textContent?.trim() === label) as
+      | HTMLAnchorElement
+      | undefined;
 
   beforeEach(() => {
     billing = new FakeBillingService();
-
-    TestBed.configureTestingModule({
-      imports: [PlanPageComponent],
-      providers: [{ provide: BillingService, useValue: billing }],
-    });
+    toast = jasmine.createSpyObj('ToastService', ['show', 'success', 'error']);
   });
 
-  const create = () => {
+  const create = (queryParams: Record<string, string> = {}) => {
+    TestBed.configureTestingModule({
+      imports: [PlanPageComponent],
+      providers: [
+        { provide: BillingService, useValue: billing },
+        { provide: ToastService, useValue: toast },
+        { provide: ActivatedRoute, useValue: { queryParams: of(queryParams) } },
+      ],
+    });
     fixture = TestBed.createComponent(PlanPageComponent);
     fixture.detectChanges();
   };
@@ -108,5 +146,65 @@ describe('PlanPageComponent', () => {
 
     expect(text()).toContain('Plano Individual — concedido pelo Lumen');
     expect(text()).toContain('sem limite');
+  });
+
+  it('clicar "Assinar mensal" chama checkout e navega para o link do Asaas', () => {
+    billing.enabledSignal.set(true);
+    billing.meSignal.set(meFree());
+    create();
+    const navigateSpy = spyOn(fixture.componentInstance as any, 'navigateToExternal');
+
+    clickButton('Assinar mensal');
+
+    expect(billing.checkout).toHaveBeenCalledWith({ plan: 'INDIVIDUAL', interval: 'MONTHLY' });
+    expect(navigateSpy).toHaveBeenCalledWith('https://asaas.example/checkout/123');
+  });
+
+  it('clicar "Cancelar" com confirmacao aceita chama cancel() e recarrega billing.me()', () => {
+    billing.enabledSignal.set(true);
+    billing.meSignal.set(meIndividualAsaas());
+    create();
+    spyOn(window, 'confirm').and.returnValue(true);
+    const loadMeCallsBefore = billing.loadMe.calls.count();
+
+    clickButton('Cancelar');
+
+    expect(billing.cancel).toHaveBeenCalled();
+    expect(billing.loadMe.calls.count()).toBe(loadMeCallsBefore + 1);
+  });
+
+  it('clicar "Cancelar" com confirmacao recusada nao chama cancel()', () => {
+    billing.enabledSignal.set(true);
+    billing.meSignal.set(meIndividualAsaas());
+    create();
+    spyOn(window, 'confirm').and.returnValue(false);
+
+    clickButton('Cancelar');
+
+    expect(billing.cancel).not.toHaveBeenCalled();
+  });
+
+  it('com status PAST_DUE e fatura disponivel, mostra "Regularizar pagamento" apontando pra fatura', () => {
+    billing.enabledSignal.set(true);
+    billing.meSignal.set(mePastDue());
+
+    create();
+
+    const link = findLink('Regularizar pagamento');
+    expect(link).toBeTruthy();
+    expect(link?.getAttribute('href')).toBe('https://asaas.example/fatura/999');
+  });
+
+  it('com ?checkout=sucesso na URL, mostra "Confirmando pagamento..." e chama sync() uma vez', () => {
+    billing.enabledSignal.set(true);
+    billing.meSignal.set(meFree());
+    // sync() nunca emite aqui de proposito: em produção é uma chamada HTTP assíncrona, então
+    // a tela deve continuar mostrando "Confirmando pagamento..." até ela resolver.
+    billing.sync.and.returnValue(new Subject<void>());
+
+    create({ checkout: 'sucesso' });
+
+    expect(text()).toContain('Confirmando pagamento');
+    expect(billing.sync).toHaveBeenCalledTimes(1);
   });
 });
