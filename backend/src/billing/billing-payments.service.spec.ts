@@ -726,6 +726,24 @@ describe('BillingPaymentsService#sync', () => {
     });
   });
 
+  it('ACTIVE dentro do periodo ainda nao vencido: sync nem consulta o Asaas, nao rebaixa pra PAST_DUE', async () => {
+    const { service, prisma, asaasClient } = build();
+    const local = subRow({
+      id: 'sub-1',
+      status: 'ACTIVE',
+      source: 'ASAAS',
+      asaasSubscriptionId: 'asaas-sub-1',
+      currentPeriodEnd: new Date('2026-10-05T00:00:00.000Z'), // ainda no futuro em relacao a NOW
+      pastDueSince: null,
+    });
+    prisma.subscription.findFirst.mockResolvedValue(local);
+
+    await service.sync('user-1');
+
+    expect(asaasClient.getSubscription).not.toHaveBeenCalled();
+    expect(prisma.subscription.update).not.toHaveBeenCalled();
+  });
+
   it('PAST_DUE ja com asaasSubscriptionId: chama getSubscription (nao findSubscriptionByExternalReference) e reconcilia', async () => {
     const { service, prisma, asaasClient } = build();
     const local = subRow({

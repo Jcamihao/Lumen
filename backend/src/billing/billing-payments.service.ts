@@ -200,7 +200,23 @@ export class BillingPaymentsService {
       return;
     }
 
-    // Ja vinculada: mesmo caminho do webhook, so que puxado pelo usuario.
+    // Ja vinculada. Se ja esta ACTIVE e o periodo que a gente conhece nem
+    // venceu, nao ha nada genuino pra reconciliar ainda — pular evita que um
+    // clique em "sincronizar" no meio do ciclo rebaixe um usuario saudavel pra
+    // PAST_DUE so porque o `nextDueDate` do Asaas ainda nao mudou (achado no
+    // teste E2E da Task 7). Quem ja esta PAST_DUE sempre e checado de novo
+    // (e exatamente pra isso que o sync serve: ver se resolveu ou confirmar
+    // que foi cancelada). Webhooks continuam autoritativos e nao passam por
+    // essa checagem, so o `sync()`, que e especulativo.
+    if (
+      local.status === 'ACTIVE' &&
+      local.currentPeriodEnd !== null &&
+      new Date() <= local.currentPeriodEnd
+    ) {
+      return;
+    }
+
+    // Mesmo caminho do webhook, so que puxado pelo usuario.
     await this.reconcileSubscription(local);
   }
 
