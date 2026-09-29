@@ -24,6 +24,7 @@ const meFree = (): BillingMe => ({
   source: null,
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
+  latestInvoiceUrl: null,
   usage: {
     enforced: true,
     plan: 'FREE',
@@ -44,6 +45,7 @@ const meIndividualGrant = (): BillingMe => ({
   source: 'GRANT',
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
+  latestInvoiceUrl: null,
   usage: {
     enforced: true,
     plan: 'INDIVIDUAL',

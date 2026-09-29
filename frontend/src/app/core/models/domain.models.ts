@@ -611,6 +611,7 @@ export type BillingMe = {
   source: SubscriptionSource | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  latestInvoiceUrl: string | null;
   usage: UsageReport;
 };
 

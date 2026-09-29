@@ -26,6 +26,7 @@ describe('BillingService', () => {
     source: null,
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,
+    latestInvoiceUrl: null,
     usage: {
       enforced: true,
       plan: 'FREE',
@@ -116,5 +117,34 @@ describe('BillingService', () => {
     const req = httpMock.expectOne(`${environment.apiBaseUrl}/billing/admin/grants/grant-1`);
     expect(req.request.method).toBe('DELETE');
     req.flush({ ...grant, status: 'CANCELED' });
+  });
+
+  it('checkout faz POST em /billing/checkout com o corpo enviado e devolve o link', () => {
+    service.checkout({ plan: 'INDIVIDUAL', interval: 'MONTHLY' }).subscribe((result) => {
+      expect(result).toEqual({ link: 'https://sandbox.asaas.com/checkout/abc' });
+    });
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/billing/checkout`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ plan: 'INDIVIDUAL', interval: 'MONTHLY' });
+    req.flush({ link: 'https://sandbox.asaas.com/checkout/abc' });
+  });
+
+  it('cancel faz POST em /billing/cancel sem corpo', () => {
+    service.cancel().subscribe();
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/billing/cancel`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toBeNull();
+    req.flush(null);
+  });
+
+  it('sync faz POST em /billing/sync sem corpo', () => {
+    service.sync().subscribe();
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/billing/sync`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toBeNull();
+    req.flush(null);
   });
 });

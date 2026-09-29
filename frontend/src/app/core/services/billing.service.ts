@@ -37,4 +37,16 @@ export class BillingService {
   revokeGrant(id: string): Observable<GrantView> {
     return this.http.delete<GrantView>(`${environment.apiBaseUrl}/billing/admin/grants/${id}`);
   }
+
+  checkout(body: { plan: 'INDIVIDUAL'; interval: 'MONTHLY' | 'YEARLY' }): Observable<{ link: string }> {
+    return this.http.post<{ link: string }>(`${environment.apiBaseUrl}/billing/checkout`, body);
+  }
+
+  cancel(): Observable<void> {
+    return this.http.post<void>(`${environment.apiBaseUrl}/billing/cancel`, null);
+  }
+
+  sync(): Observable<void> {
+    return this.http.post<void>(`${environment.apiBaseUrl}/billing/sync`, null);
+  }
 }
