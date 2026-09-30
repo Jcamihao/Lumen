@@ -131,6 +131,18 @@ describe('LandingPageComponent', () => {
     expect(text()).not.toContain('Compartilhado');
   });
 
+  it('checa sellable de verdade, nao so o id: um plano INDIVIDUAL com sellable:false tambem nao renderiza o card', () => {
+    billing.setPlansResponse({
+      enabled: true,
+      plans: [freePlan(), { ...individualPlan(), sellable: false }],
+    });
+
+    create();
+
+    expect(root().querySelector('#precos')).toBeTruthy();
+    expect(text()).not.toContain('300 perguntas/mês');
+  });
+
   it('com a cobranca ligada e plano Individual carregado, o FAQ mostra a resposta dinamica com o preco', () => {
     billing.setPlansResponse({ enabled: true, plans: [freePlan(), individualPlan(), sharedPlan()] });
 
