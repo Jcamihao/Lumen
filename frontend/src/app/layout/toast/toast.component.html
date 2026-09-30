@@ -8,6 +8,12 @@
   >
     <span class="material-symbols-rounded toast__icon">{{ toneIcon(toast.tone) }}</span>
     <span class="toast__message">{{ toast.message }}</span>
+    <a
+      *ngIf="toast.action as action"
+      class="toast__action"
+      [routerLink]="action.route"
+      (click)="toastService.dismiss(toast.id)"
+    >{{ action.label }}</a>
     <button
       type="button"
       class="toast__dismiss"

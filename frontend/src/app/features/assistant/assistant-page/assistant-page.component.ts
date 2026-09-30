@@ -2,12 +2,12 @@ import { CommonModule } from "@angular/common";
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from "@angular/core";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
 import { FormBuilder, ReactiveFormsModule, Validators } from "@angular/forms";
-import { ActivatedRoute, Router } from "@angular/router";
+import { ActivatedRoute, Router, RouterLink } from "@angular/router";
 import { AssistantAction, AssistantModule, AssistantPulse, AssistantReply } from "../../../core/models/domain.models";
 import { AuthService } from "../../../core/services/auth.service";
 import { LifeApiService } from "../../../core/services/life-api.service";
 import { NativeStorageService } from "../../../core/services/native-storage.service";
-import { readPlanLimitMessage } from "../../../core/utils/plan-limit.utils";
+import { readPlanLimitAction, readPlanLimitMessage } from "../../../core/utils/plan-limit.utils";
 
 type AssistantMessage = {
   id: string;
@@ -20,7 +20,7 @@ type AssistantReadingTab = "summary" | "actions" | "details";
 
 @Component({
     selector: "app-assistant-page",
-    imports: [CommonModule, ReactiveFormsModule],
+    imports: [CommonModule, ReactiveFormsModule, RouterLink],
     templateUrl: './assistant-page.component.html',
     styleUrls: ['./assistant-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush
@@ -48,6 +48,7 @@ export class AssistantPageComponent {
   protected readonly consentErrorMessage = signal<string | null>(null);
   protected readonly pendingQuestion = signal<string | null>(null);
   protected readonly errorMessage = signal<string | null>(null);
+  protected readonly errorAction = signal<{ label: string; route: string } | null>(null);
   protected readonly actionFeedback = signal<string | null>(null);
   protected readonly runningActionIds = signal<string[]>([]);
   protected readonly originModule = signal<AssistantModule | null>(null);
@@ -401,6 +402,7 @@ export class AssistantPageComponent {
       this.consentChecked.set(false);
       this.consentErrorMessage.set(null);
       this.errorMessage.set(null);
+      this.errorAction.set(null);
       this.consentDialogOpen.set(true);
       return;
     }
@@ -464,6 +466,7 @@ export class AssistantPageComponent {
   private submitAssistantQuestion(question: string) {
     this.loading.set(true);
     this.errorMessage.set(null);
+    this.errorAction.set(null);
     this.actionFeedback.set(null);
 
     this.api
@@ -494,6 +497,7 @@ export class AssistantPageComponent {
           this.errorMessage.set(
             readPlanLimitMessage(error) ?? "Nao foi possivel consultar o Selah agora.",
           );
+          this.errorAction.set(readPlanLimitAction(error));
         },
       });
   }

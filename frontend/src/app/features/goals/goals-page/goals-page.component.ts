@@ -10,7 +10,7 @@ import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { formatDayLabel } from '../../../core/utils/date.utils';
 import { focusField } from '../../../core/utils/focus.utils';
-import { readPlanLimitMessage } from '../../../core/utils/plan-limit.utils';
+import { readPlanLimitAction, readPlanLimitMessage } from '../../../core/utils/plan-limit.utils';
 
 @Component({
     selector: 'app-goals-page',
@@ -181,8 +181,15 @@ export class GoalsPageComponent {
           this.upsertGoal(goal);
           this.toast.success('Meta criada.');
         },
-        error: (error) =>
-          this.toast.error(readPlanLimitMessage(error) ?? 'Não foi possível criar a meta.'),
+        error: (error) => {
+          const message = readPlanLimitMessage(error) ?? 'Não foi possível criar a meta.';
+          const action = readPlanLimitAction(error);
+          if (action) {
+            this.toast.errorWithAction(message, action);
+          } else {
+            this.toast.error(message);
+          }
+        },
       });
   }
 

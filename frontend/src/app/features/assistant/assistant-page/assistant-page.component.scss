@@ -136,6 +136,18 @@
   font-weight: 700;
 }
 
+.assistant-error-action {
+  margin-left: 0.4rem;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+
+  &:hover {
+    opacity: 0.8;
+  }
+}
+
 .assistant-success {
   margin: 0;
   color: var(--success);

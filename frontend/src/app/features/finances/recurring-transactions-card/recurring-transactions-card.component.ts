@@ -17,7 +17,7 @@ import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { todayLocalInputValue } from '../../../core/utils/date.utils';
 import { paymentMethodLabel } from '../../../core/utils/payment-method.utils';
-import { readPlanLimitMessage } from '../../../core/utils/plan-limit.utils';
+import { readPlanLimitAction, readPlanLimitMessage } from '../../../core/utils/plan-limit.utils';
 import { PaymentMethodPickerComponent } from '../../../shared/payment-method-picker/payment-method-picker.component';
 import {
   daysUntilDue,
@@ -139,9 +139,14 @@ export class RecurringTransactionsCardComponent {
         },
         error: (error) => {
           this.saving.set(false);
-          this.toast.error(
-            readPlanLimitMessage(error) ?? this.errorMessage(error, 'Não foi possível criar a conta fixa.'),
-          );
+          const message =
+            readPlanLimitMessage(error) ?? this.errorMessage(error, 'Não foi possível criar a conta fixa.');
+          const action = readPlanLimitAction(error);
+          if (action) {
+            this.toast.errorWithAction(message, action);
+          } else {
+            this.toast.error(message);
+          }
         },
       });
   }
@@ -161,9 +166,14 @@ export class RecurringTransactionsCardComponent {
         },
         error: (error) => {
           this.busyId.set(null);
-          this.toast.error(
-            readPlanLimitMessage(error) ?? this.errorMessage(error, 'Não foi possível atualizar a conta.'),
-          );
+          const message =
+            readPlanLimitMessage(error) ?? this.errorMessage(error, 'Não foi possível atualizar a conta.');
+          const action = readPlanLimitAction(error);
+          if (action) {
+            this.toast.errorWithAction(message, action);
+          } else {
+            this.toast.error(message);
+          }
         },
       });
   }

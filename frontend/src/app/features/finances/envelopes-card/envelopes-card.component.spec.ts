@@ -66,7 +66,7 @@ describe('EnvelopesCardComponent', () => {
       providers: [
         { provide: LifeApiService, useValue: api },
         { provide: AuthService, useValue: { currentUser: () => ({ preferredCurrency: 'BRL' }) } },
-        { provide: ToastService, useValue: { success: () => {}, error: () => {} } },
+        { provide: ToastService, useValue: { success: () => {}, error: () => {}, errorWithAction: () => {} } },
       ],
     });
 
@@ -235,5 +235,31 @@ describe('EnvelopesCardComponent', () => {
     clickCardButton('Criar reserva');
 
     expect(errorSpy).toHaveBeenCalledWith('Não foi possível criar a reserva agora.');
+  });
+
+  it('erro de limite de plano (403 PLAN_LIMIT) chama errorWithAction com o link pra "Ver planos"', () => {
+    create();
+    api.createEnvelope.and.returnValue(
+      throwError(() => ({
+        status: 403,
+        error: { code: 'PLAN_LIMIT', message: 'Você atingiu o limite de reservas do plano Grátis.' },
+      })),
+    );
+    const toast = TestBed.inject(ToastService);
+    const errorSpy = spyOn(toast, 'error');
+    const errorWithActionSpy = spyOn(toast, 'errorWithAction');
+
+    clickCardButton('Nova reserva');
+    fixture.detectChanges();
+    setVal('#envelope-name', 'Gasolina');
+    setVal('#envelope-amount', '100');
+    fixture.detectChanges();
+    clickCardButton('Criar reserva');
+
+    expect(errorWithActionSpy).toHaveBeenCalledWith(
+      'Você atingiu o limite de reservas do plano Grátis.',
+      { label: 'Ver planos', route: '/plano' },
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 });

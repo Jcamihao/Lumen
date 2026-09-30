@@ -59,7 +59,7 @@ describe('InstallmentPurchasesCardComponent', () => {
       providers: [
         { provide: LifeApiService, useValue: api },
         { provide: AuthService, useValue: { currentUser: () => ({ preferredCurrency: 'BRL', financeCategories: [] }) } },
-        { provide: ToastService, useValue: { success: () => {}, error: () => {} } },
+        { provide: ToastService, useValue: { success: () => {}, error: () => {}, errorWithAction: () => {} } },
       ],
     });
   });
@@ -207,5 +207,32 @@ describe('InstallmentPurchasesCardComponent', () => {
     clickButton('Registrar compra');
 
     expect(errorSpy).toHaveBeenCalledWith('Uma compra parcelada precisa de pelo menos 2 parcelas.');
+  });
+
+  it('erro de limite de plano (403 PLAN_LIMIT) chama errorWithAction com o link pra "Ver planos"', () => {
+    create();
+    api.createInstallmentPurchase.and.returnValue(
+      throwError(() => ({
+        status: 403,
+        error: { code: 'PLAN_LIMIT', message: 'Você atingiu o limite de compras parceladas do plano Grátis.' },
+      })),
+    );
+    const toast = TestBed.inject(ToastService);
+    const errorSpy = spyOn(toast, 'error');
+    const errorWithActionSpy = spyOn(toast, 'errorWithAction');
+
+    clickButton('Nova compra parcelada');
+    fixture.detectChanges();
+    setVal('#installment-description', 'Notebook');
+    setVal('#installment-total', '3000');
+    setVal('#installment-count', '2');
+    fixture.detectChanges();
+    clickButton('Registrar compra');
+
+    expect(errorWithActionSpy).toHaveBeenCalledWith(
+      'Você atingiu o limite de compras parceladas do plano Grátis.',
+      { label: 'Ver planos', route: '/plano' },
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 });

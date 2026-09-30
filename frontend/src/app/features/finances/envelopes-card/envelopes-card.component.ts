@@ -6,7 +6,7 @@ import { Envelope } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
-import { readPlanLimitMessage } from '../../../core/utils/plan-limit.utils';
+import { readPlanLimitAction, readPlanLimitMessage } from '../../../core/utils/plan-limit.utils';
 
 /** Paleta simples: o usuario nao escolhe cor, cicla por aqui na criacao. */
 const ENVELOPE_COLORS = ['#f18f01', '#006cd2', '#0f9d7a', '#7c5cff', '#ef4444', '#0ea5e9'];
@@ -103,9 +103,14 @@ export class EnvelopesCardComponent {
         },
         error: (error) => {
           this.saving.set(false);
-          this.toast.error(
-            readPlanLimitMessage(error) ?? this.errorMessage(error, 'Não foi possível criar a reserva agora.'),
-          );
+          const message =
+            readPlanLimitMessage(error) ?? this.errorMessage(error, 'Não foi possível criar a reserva agora.');
+          const action = readPlanLimitAction(error);
+          if (action) {
+            this.toast.errorWithAction(message, action);
+          } else {
+            this.toast.error(message);
+          }
         },
       });
   }
@@ -125,7 +130,13 @@ export class EnvelopesCardComponent {
         },
         error: (error) => {
           this.busyId.set(null);
-          this.toast.error(readPlanLimitMessage(error) ?? 'Não foi possível atualizar a reserva.');
+          const message = readPlanLimitMessage(error) ?? 'Não foi possível atualizar a reserva.';
+          const action = readPlanLimitAction(error);
+          if (action) {
+            this.toast.errorWithAction(message, action);
+          } else {
+            this.toast.error(message);
+          }
         },
       });
   }

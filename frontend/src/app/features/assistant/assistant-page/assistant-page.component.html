@@ -101,7 +101,10 @@
           Na primeira pergunta, o Lumen vai pedir sua autorização para usar IA externa.
         </p>
 
-        <p class="assistant-error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
+        <p class="assistant-error" *ngIf="errorMessage()">
+          {{ errorMessage() }}
+          <a *ngIf="errorAction() as action" class="assistant-error-action" [routerLink]="action.route">{{ action.label }}</a>
+        </p>
         <p class="assistant-success" *ngIf="actionFeedback()">{{ actionFeedback() }}</p>
       </div>
     </article>

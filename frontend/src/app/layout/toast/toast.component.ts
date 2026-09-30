@@ -1,10 +1,11 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { ToastEntry, ToastService } from '../../core/services/toast.service';
 
 @Component({
     selector: 'app-toast',
-    imports: [CommonModule],
+    imports: [CommonModule, RouterLink],
     templateUrl: './toast.component.html',
     styleUrls: ['./toast.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush

@@ -48,6 +48,19 @@
   line-height: 1.4;
 }
 
+.toast__action {
+  flex-shrink: 0;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+
+  &:hover {
+    opacity: 0.8;
+  }
+}
+
 .toast__dismiss {
   flex-shrink: 0;
   display: flex;
