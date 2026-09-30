@@ -260,6 +260,8 @@ Cada fase tem seu plano de implementação e é verificada (testes + navegador) 
 - A conta de **produção** do Asaas exige cadastro e aprovação (pode levar dias): abrir cedo. Definir se recebe como **CPF ou CNPJ/MEI** (decide a nota fiscal) antes de ligar.
 - Rascunho dos **Termos de uso e política de reembolso** precisa de revisão do dono (e idealmente de um advogado) antes de ligar.
 - Decidir depois se leitura de nota fiscal e importação de CSV entram nos limites (custo de IA da nota).
+- **Antes de ligar `BILLING_ENABLED=true` em produção:** o corpo exato do `POST /checkouts` (`chargeTypes:['RECURRENT']`, `subscription:{cycle,value}`) foi verificado só contra o servidor Asaas falso do harness (Tasks 2 e 7), não contra o sandbox real — vale uma passada final no sandbox de verdade antes do lançamento (a spec já previa isso na Fase 3, §15).
+- **Limitações aceitas, achadas na revisão final da Fase 2** (não bloqueiam, documentadas pra não serem re-descobertas): (1) se `AsaasClient.createCheckout` falhar depois do Asaas já ter criado o checkout do lado deles (ex. timeout numa resposta 200 que não chegou), o retry cria um checkout órfão lá — o checkout hospedado não tem um jeito de mandar uma chave de idempotência; (2) se a criação da `Subscription` local funcionar mas `createCheckout` falhar depois, a linha `PENDING` fica órfã no banco (inerte — nunca bloqueia nem concede acesso, só lixo); (3) duas entregas realmente simultâneas do mesmo evento de webhook podem passar as duas pela checagem de idempotência antes da primeira gravar `processedAt` (janela de corrida pequena; a proteção atual cobre reentrega sequencial, que é o caso comum do Asaas, não concorrência genuína).
 
 ## 17. Premissas a confirmar
 

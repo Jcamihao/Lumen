@@ -179,6 +179,22 @@ describe('BillingPaymentsService#checkout', () => {
     expect(prisma.subscription.create).not.toHaveBeenCalled();
   });
 
+  it('reaproveitar so busca checkout PENDING do mesmo plano/intervalo pedido agora', async () => {
+    const { service, prisma } = build();
+    prisma.subscription.findMany.mockResolvedValue([]);
+    prisma.subscription.findFirst.mockResolvedValue(null);
+
+    await service.checkout('user-1', { plan: 'INDIVIDUAL', interval: 'YEARLY' });
+
+    // Sem isso, um checkout PENDING mensal (esquecido/abandonado) seria devolvido
+    // pra quem pediu anual agora — o usuario iria pro link com o preco errado.
+    expect(prisma.subscription.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ plan: 'INDIVIDUAL', interval: 'YEARLY' }),
+      }),
+    );
+  });
+
   it('checkout PENDING expirado (90min, > 60 de minutesToExpire) nao e reaproveitado — cria um novo', async () => {
     const { service, prisma, asaasClient } = build();
     prisma.subscription.findMany.mockResolvedValue([]);

@@ -116,6 +116,8 @@ export class BillingPaymentsService {
         ownerUserId: userId,
         source: 'ASAAS',
         status: 'PENDING',
+        plan: dto.plan,
+        interval: dto.interval,
         asaasCheckoutLink: { not: null },
         createdAt: { gt: cutoff },
       },
