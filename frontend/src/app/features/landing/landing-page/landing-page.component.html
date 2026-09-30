@@ -12,6 +12,7 @@
       <nav class="landing__nav-links" aria-label="Principal">
         <a href="#recursos" (click)="scrollToSection($event, 'recursos')">Recursos</a>
         <a href="#como-funciona" (click)="scrollToSection($event, 'como-funciona')">Como funciona</a>
+        <a *ngIf="billing.enabled()" href="#precos" (click)="scrollToSection($event, 'precos')">Preços</a>
         <a href="#faq" (click)="scrollToSection($event, 'faq')">Perguntas frequentes</a>
       </nav>
 
@@ -49,6 +50,7 @@
     >
       <a href="#recursos" (click)="scrollToSection($event, 'recursos')">Recursos</a>
       <a href="#como-funciona" (click)="scrollToSection($event, 'como-funciona')">Como funciona</a>
+      <a *ngIf="billing.enabled()" href="#precos" (click)="scrollToSection($event, 'precos')">Preços</a>
       <a href="#faq" (click)="scrollToSection($event, 'faq')">Perguntas frequentes</a>
     </nav>
 
@@ -189,6 +191,53 @@
     </a>
   </section>
 
+  <section class="landing__section" id="precos" *ngIf="billing.enabled()">
+    <p class="section-kicker">Preços</p>
+    <h2 class="landing__section-title">Comece grátis, evolua quando fizer sentido</h2>
+    <p class="landing__section-subtitle">
+      Um plano Grátis com limites generosos pra usar o Lumen de verdade, e um plano Individual
+      sem limite nenhum quando você quiser ir além.
+    </p>
+
+    <div class="landing__feature-grid">
+      <article class="landing__feature">
+        <h3>Grátis</h3>
+        <p class="landing__pricing-price">R$ 0</p>
+        <ul class="landing__feature-list">
+          <li>Tarefas, transações e categorias sem limite</li>
+          <li>Importação de extrato em CSV</li>
+          <li>Leitura de nota fiscal por foto</li>
+          <li>Exportação dos seus dados</li>
+          <li>MFA e segurança da conta</li>
+        </ul>
+        <a class="landing-btn landing-btn--primary landing__pricing-cta" routerLink="/auth/register">
+          <span>Criar conta grátis</span>
+          <span class="landing-btn__icon">
+            <span class="material-symbols-rounded">arrow_forward</span>
+          </span>
+        </a>
+      </article>
+
+      <article class="landing__feature" *ngIf="individualPlan() as plan">
+        <h3>{{ plan.label }}</h3>
+        <p class="landing__pricing-price">
+          {{ individualMonthlyLabel() }}/mês
+          <span>ou {{ individualYearlyLabel() }}/ano</span>
+        </p>
+        <ul class="landing__feature-list">
+          <li>Tudo ilimitado — metas, reservas, contas fixas e compras parceladas</li>
+          <li>Selah: 300 perguntas/mês</li>
+        </ul>
+        <a class="landing-btn landing-btn--primary landing__pricing-cta" routerLink="/auth/register">
+          <span>Criar conta grátis</span>
+          <span class="landing-btn__icon">
+            <span class="material-symbols-rounded">arrow_forward</span>
+          </span>
+        </a>
+      </article>
+    </div>
+  </section>
+
   <section class="landing__section" id="faq">
     <p class="section-kicker">Perguntas frequentes</p>
     <h2 class="landing__section-title">O que você precisa saber antes de começar</h2>
@@ -196,7 +245,12 @@
     <div class="landing__faq-list">
       <article class="landing__faq-item">
         <h3>O Lumen é pago?</h3>
-        <p>Hoje o Lumen é gratuito. Não existe plano pago nem cobrança — é uma conta só, sem letra miúda.</p>
+        <p *ngIf="!billing.enabled()">Hoje o Lumen é gratuito. Não existe plano pago nem cobrança — é uma conta só, sem letra miúda.</p>
+        <p *ngIf="billing.enabled() && individualPlan() as plan">
+          O Lumen tem um plano Grátis com limites generosos, e o plano Individual por
+          {{ individualMonthlyLabel() }}/mês (ou {{ individualYearlyLabel() }}/ano) que remove os limites.
+          Veja os detalhes na seção Preços.
+        </p>
       </article>
 
       <article class="landing__faq-item">

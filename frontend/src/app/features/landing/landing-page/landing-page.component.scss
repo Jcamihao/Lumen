@@ -466,6 +466,26 @@
   margin-top: clamp(32px, 5vw, 56px);
 }
 
+.landing__pricing-price {
+  margin-top: 0.6rem;
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--text-primary);
+
+  span {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.86rem;
+    font-weight: 500;
+    color: var(--text-medium);
+  }
+}
+
+.landing__pricing-cta {
+  margin-top: 1.5rem;
+}
+
 .landing__faq-list {
   display: grid;
   gap: 1px;

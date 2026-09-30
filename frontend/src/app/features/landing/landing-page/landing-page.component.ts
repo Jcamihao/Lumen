@@ -1,8 +1,13 @@
 import { CommonModule } from '@angular/common';
-import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, ViewChild, computed, inject, signal } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, ViewChild, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
+import { PublicPlan } from '../../../core/models/domain.models';
+import { BillingService } from '../../../core/services/billing.service';
 import { ThemeService } from '../../../core/services/theme.service';
 import { ThemeToggleComponent } from '../../../shared/theme-toggle/theme-toggle.component';
+
+const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
 @Component({
     selector: 'app-landing-page',
@@ -13,6 +18,8 @@ import { ThemeToggleComponent } from '../../../shared/theme-toggle/theme-toggle.
 })
 export class LandingPageComponent implements AfterViewInit {
   private readonly theme = inject(ThemeService);
+  protected readonly billing = inject(BillingService);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly logoSrc = computed(() =>
     this.theme.theme() === 'dark' ? 'assets/logo/lumen-mark-inverse.svg' : 'assets/logo/lumen-mark.svg',
@@ -20,7 +27,32 @@ export class LandingPageComponent implements AfterViewInit {
 
   protected readonly mobileMenuOpen = signal(false);
 
+  /** Catálogo público de planos (GET /billing/plans, @Public no backend) — carregado uma vez ao abrir a landing. */
+  protected readonly plans = signal<PublicPlan[]>([]);
+
+  // Só o plano Individual é vendido na landing; SHARED tem sellable: false no catálogo.
+  protected readonly individualPlan = computed(() =>
+    this.plans().find((plan) => plan.id === 'INDIVIDUAL' && plan.sellable) ?? null,
+  );
+
+  protected readonly individualMonthlyLabel = computed(() => {
+    const plan = this.individualPlan();
+    return plan?.prices ? currencyFormatter.format(plan.prices.MONTHLY) : '';
+  });
+
+  protected readonly individualYearlyLabel = computed(() => {
+    const plan = this.individualPlan();
+    return plan?.prices ? currencyFormatter.format(plan.prices.YEARLY) : '';
+  });
+
   @ViewChild('bgVideo') private readonly bgVideoRef?: ElementRef<HTMLVideoElement>;
+
+  constructor() {
+    this.billing
+      .loadPlans()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((response) => this.plans.set(response.plans));
+  }
 
   ngAfterViewInit() {
     const video = this.bgVideoRef?.nativeElement;
