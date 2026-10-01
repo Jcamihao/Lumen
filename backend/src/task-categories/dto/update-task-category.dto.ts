@@ -1,16 +1,4 @@
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { PartialType } from '@nestjs/swagger';
+import { CreateTaskCategoryDto } from './create-task-category.dto';
 
-export class UpdateTaskCategoryDto {
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  name?: string;
-
-  @IsOptional()
-  @IsString()
-  color?: string;
-
-  @IsOptional()
-  @IsString()
-  icon?: string;
-}
+export class UpdateTaskCategoryDto extends PartialType(CreateTaskCategoryDto) {}

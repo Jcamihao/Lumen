@@ -1,24 +1,17 @@
-import { PaymentMethod, TransactionType } from '@prisma/client';
-import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import { OmitType, PartialType } from '@nestjs/swagger';
+import { PaymentMethod } from '@prisma/client';
+import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { CreateTransactionDto } from './create-transaction.dto';
 
-export class UpdateTransactionDto {
-  @IsOptional()
-  @IsEnum(TransactionType)
-  type?: TransactionType;
-
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  description?: string;
-
-  @IsOptional()
-  @IsNumber()
-  amount?: number;
-
-  @IsOptional()
-  @IsDateString()
-  date?: string;
-
+export class UpdateTransactionDto extends PartialType(
+  OmitType(CreateTransactionDto, [
+    'categoryId',
+    'linkedTaskId',
+    'linkedGoalId',
+    'paymentMethod',
+    'envelopeId',
+  ] as const),
+) {
   @IsOptional()
   @IsString()
   categoryId?: string | null;

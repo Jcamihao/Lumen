@@ -1,15 +1,10 @@
-import { IsDateString, IsOptional, IsString, MinLength } from 'class-validator';
+import { OmitType, PartialType } from '@nestjs/swagger';
+import { IsOptional, IsString } from 'class-validator';
+import { CreateReminderDto } from './create-reminder.dto';
 
-export class UpdateReminderDto {
-  @IsOptional()
-  @IsString()
-  @MinLength(2)
-  title?: string;
-
-  @IsOptional()
-  @IsDateString()
-  remindAt?: string;
-
+export class UpdateReminderDto extends PartialType(
+  OmitType(CreateReminderDto, ['taskId', 'transactionId', 'goalId'] as const),
+) {
   @IsOptional()
   @IsString()
   taskId?: string | null;
