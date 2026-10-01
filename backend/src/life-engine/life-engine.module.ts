@@ -8,6 +8,7 @@ import { MailModule } from "../mail/mail.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { RecurringMaterializerModule } from "../recurring-transactions/recurring-materializer.module";
 import { InstallmentMaterializerModule } from "../installments/installment-materializer.module";
+import { BillReminderService } from "./bill-reminder.service";
 import { LifeEngineService } from "./life-engine.service";
 import { LifeWorkersService } from "./life-workers.service";
 
@@ -29,7 +30,7 @@ import { LifeWorkersService } from "./life-workers.service";
     RecurringMaterializerModule,
     InstallmentMaterializerModule,
   ],
-  providers: [LifeEngineService, LifeWorkersService],
+  providers: [LifeEngineService, LifeWorkersService, BillReminderService],
   exports: [LifeEngineService],
 })
 export class LifeEngineModule {}

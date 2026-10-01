@@ -100,6 +100,7 @@ export class SettingsPageComponent {
     emailWeeklyDigest: [this.authService.currentUser()?.emailWeeklyDigest ?? true],
     emailReminders: [this.authService.currentUser()?.emailReminders ?? true],
     emailInsightAlerts: [this.authService.currentUser()?.emailInsightAlerts ?? true],
+    emailBillReminders: [this.authService.currentUser()?.emailBillReminders ?? true],
   });
   protected readonly emailUnverified = computed(
     () => this.authService.currentUser()?.emailVerifiedAt === null,

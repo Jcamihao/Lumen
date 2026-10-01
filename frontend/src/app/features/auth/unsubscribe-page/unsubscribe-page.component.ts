@@ -9,6 +9,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   weekly_digest: 'o resumo semanal',
   reminders: 'os lembretes por email',
   insight_alerts: 'os alertas por email',
+  bill_due: 'os avisos de contas a vencer',
 };
 
 @Component({

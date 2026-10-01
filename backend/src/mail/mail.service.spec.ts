@@ -263,4 +263,108 @@ describe("MailService", () => {
       }
     });
   });
+
+  describe("bill due email", () => {
+    const unsubscribe = {
+      pageUrl: "http://localhost:4200/unsubscribe?token=t",
+      oneClickUrl: "http://localhost:3000/api/v1/email-preferences/unsubscribe?token=t",
+    };
+    const person = { email: "marina@exemplo.com", name: "Marina Souza", preferredCurrency: "BRL" };
+
+    it("uses the singular subject with the description and 'amanha' for one bill due tomorrow", async () => {
+      const service = new MailService(buildConfigService());
+      const sendSpy = stubSend(service);
+
+      await service.sendBillDueEmail({
+        ...person,
+        bills: [{ description: "Aluguel", amount: 1500.5, dueDate: new Date("2026-10-02T00:00:00.000Z"), daysUntil: 1 }],
+        unsubscribe,
+      });
+
+      const [options] = sendSpy.mock.calls[0];
+      expect(options.subject).toBe('LUMEN: "Aluguel" vence amanha');
+      expect(options.tags).toEqual(["bill_due"]);
+      expect(options.text).toContain("Oi Marina,");
+      expect(options.text).toContain("Aluguel");
+      expect(options.text).toMatch(/R\$\s?1\.500,50/);
+      expect(options.text).toContain("vence 02/10 (amanha)");
+      expect(options.text).toContain("Abra o LUMEN para conferir.");
+    });
+
+    it("uses 'em N dias' for a single bill further out", async () => {
+      const service = new MailService(buildConfigService());
+      const sendSpy = stubSend(service);
+
+      await service.sendBillDueEmail({
+        ...person,
+        bills: [{ description: "Internet", amount: 100, dueDate: new Date("2026-10-04T00:00:00.000Z"), daysUntil: 3 }],
+      });
+
+      expect(sendSpy.mock.calls[0][0].subject).toBe('LUMEN: "Internet" vence em 3 dias');
+    });
+
+    it("uses the plural subject, lists every bill and shows the total", async () => {
+      const service = new MailService(buildConfigService());
+      const sendSpy = stubSend(service);
+
+      await service.sendBillDueEmail({
+        ...person,
+        bills: [
+          { description: "Aluguel", amount: 1500, dueDate: new Date("2026-10-02T00:00:00.000Z"), daysUntil: 1 },
+          { description: "Internet", amount: 100.25, dueDate: new Date("2026-10-04T00:00:00.000Z"), daysUntil: 3 },
+        ],
+      });
+
+      const [options] = sendSpy.mock.calls[0];
+      expect(options.subject).toBe("LUMEN: 2 contas vencem nos proximos dias");
+      expect(options.text).toContain("vence 02/10 (amanha)");
+      expect(options.text).toContain("vence 04/10 (em 3 dias)");
+      expect(options.text).toMatch(/Total: R\$\s?1\.600,25/);
+    });
+
+    it("formats the date-only due date in UTC (never the previous day) and escapes user text", async () => {
+      const service = new MailService(buildConfigService());
+      const sendSpy = stubSend(service);
+      const originalTz = process.env.TZ;
+
+      try {
+        process.env.TZ = "America/Sao_Paulo";
+        await service.sendBillDueEmail({
+          ...person,
+          name: "<b>Marina</b>",
+          bills: [{ description: "<script>alert(1)</script>", amount: 10, dueDate: new Date("2026-10-05T00:00:00.000Z"), daysUntil: 2 }],
+        });
+      } finally {
+        if (originalTz === undefined) delete process.env.TZ;
+        else process.env.TZ = originalTz;
+      }
+
+      const [options] = sendSpy.mock.calls[0];
+      expect(options.text).toContain("05/10");
+      expect(options.text).not.toContain("04/10");
+      expect(options.html).toContain("05/10");
+      expect(options.html).not.toContain("<script>");
+      expect(options.html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+      expect(options.html).not.toContain("<b>Marina</b>");
+    });
+
+    it("adds the unsubscribe footer and List-Unsubscribe headers", async () => {
+      const service = new MailService(buildConfigService());
+      const sendSpy = stubSend(service);
+
+      await service.sendBillDueEmail({
+        ...person,
+        bills: [{ description: "Aluguel", amount: 1, dueDate: new Date("2026-10-02T00:00:00.000Z"), daysUntil: 1 }],
+        unsubscribe,
+      });
+
+      const [options] = sendSpy.mock.calls[0];
+      expect(options.headers).toEqual({
+        "List-Unsubscribe": `<${unsubscribe.oneClickUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      });
+      expect(options.text).toContain(unsubscribe.pageUrl);
+      expect(options.html).toContain("Deixar de receber");
+    });
+  });
 });

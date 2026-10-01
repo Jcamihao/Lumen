@@ -102,6 +102,14 @@ type WeeklyDigestEmailInput = {
   unsubscribe?: UnsubscribeLinks;
 };
 
+type BillDueEmailInput = {
+  email: string;
+  name?: string | null;
+  preferredCurrency: string;
+  bills: { description: string; amount: number; dueDate: Date; daysUntil: number }[];
+  unsubscribe?: UnsubscribeLinks;
+};
+
 type MfaBypassEmailInput = {
   email: string;
   name?: string | null;
@@ -403,6 +411,79 @@ export class MailService {
       text,
       html,
       tags: ["weekly_digest"],
+      headers: this.unsubscribeHeaders(input.unsubscribe),
+    });
+  }
+
+  /**
+   * Aviso de conta(s) fixa(s) perto de vencer — um e-mail por usuario com
+   * todas as contas da janela. dueDate e "so dia" (meia-noite UTC), entao a
+   * data e formatada em UTC: no fuso do Brasil viraria o dia anterior.
+   */
+  async sendBillDueEmail(input: BillDueEmailInput) {
+    const greetingName = input.name ? this.firstName(input.name) : "voce";
+    const money = (value: number) => {
+      try {
+        return new Intl.NumberFormat("pt-BR", {
+          style: "currency",
+          currency: input.preferredCurrency || "BRL",
+        }).format(value);
+      } catch {
+        return value.toFixed(2);
+      }
+    };
+    const when = (daysUntil: number) =>
+      daysUntil === 1 ? "amanha" : `em ${daysUntil} dias`;
+    const dayMonth = (date: Date) =>
+      new Intl.DateTimeFormat("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        timeZone: "UTC",
+      }).format(date);
+
+    const lines = input.bills.map(
+      (bill) =>
+        `${bill.description} — ${money(bill.amount)} — vence ${dayMonth(bill.dueDate)} (${when(bill.daysUntil)})`,
+    );
+    const total = money(input.bills.reduce((sum, bill) => sum + bill.amount, 0));
+    const subject =
+      input.bills.length === 1
+        ? `LUMEN: "${input.bills[0].description}" vence ${when(input.bills[0].daysUntil)}`
+        : `LUMEN: ${input.bills.length} contas vencem nos proximos dias`;
+
+    const text = [
+      `Oi ${greetingName},`,
+      "",
+      input.bills.length === 1
+        ? "Uma conta sua vence em breve:"
+        : "Estas contas vencem em breve:",
+      ...lines.map((line) => `- ${line}`),
+      "",
+      `Total: ${total}`,
+      "",
+      "Abra o LUMEN para conferir.",
+      "Equipe LUMEN",
+    ].join("\n") + this.footerText(input.unsubscribe);
+    const html = [
+      this.emailOpen(),
+      `<p>Oi <strong>${this.escapeHtml(greetingName)}</strong>,</p>`,
+      input.bills.length === 1
+        ? "<p>Uma conta sua vence em breve:</p>"
+        : "<p>Estas contas vencem em breve:</p>",
+      `<ul>${lines.map((line) => `<li>${this.escapeHtml(line)}</li>`).join("")}</ul>`,
+      `<p>Total: <strong>${this.escapeHtml(total)}</strong></p>`,
+      "<p>Abra o LUMEN para conferir.</p>",
+      "<p>Equipe LUMEN</p>",
+      this.footerHtml(input.unsubscribe),
+      "</body></html>",
+    ].join("");
+
+    return this.sendEmail({
+      to: input.email,
+      subject,
+      text,
+      html,
+      tags: ["bill_due"],
       headers: this.unsubscribeHeaders(input.unsubscribe),
     });
   }

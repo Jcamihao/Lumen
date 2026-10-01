@@ -84,4 +84,8 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   emailInsightAlerts?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  emailBillReminders?: boolean;
 }

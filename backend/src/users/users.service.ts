@@ -213,6 +213,7 @@ export class UsersService {
         emailWeeklyDigest: dto.emailWeeklyDigest,
         emailReminders: dto.emailReminders,
         emailInsightAlerts: dto.emailInsightAlerts,
+        emailBillReminders: dto.emailBillReminders,
         ...(dto.privacyNoticeAccepted
           ? {
               privacyNoticeAcceptedAt:

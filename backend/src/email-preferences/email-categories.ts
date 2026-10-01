@@ -2,6 +2,7 @@ export const EMAIL_CATEGORIES = [
   "weekly_digest",
   "reminders",
   "insight_alerts",
+  "bill_due",
 ] as const;
 
 export type EmailCategory = (typeof EMAIL_CATEGORIES)[number];
@@ -10,6 +11,7 @@ export const EMAIL_CATEGORY_FIELD = {
   weekly_digest: "emailWeeklyDigest",
   reminders: "emailReminders",
   insight_alerts: "emailInsightAlerts",
+  bill_due: "emailBillReminders",
 } as const;
 
 export type EmailPreferenceSubject = {
@@ -17,6 +19,7 @@ export type EmailPreferenceSubject = {
   emailWeeklyDigest?: boolean | null;
   emailReminders?: boolean | null;
   emailInsightAlerts?: boolean | null;
+  emailBillReminders?: boolean | null;
 };
 
 /**

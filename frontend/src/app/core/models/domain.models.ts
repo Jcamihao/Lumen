@@ -21,6 +21,7 @@ export type User = {
   emailWeeklyDigest?: boolean;
   emailReminders?: boolean;
   emailInsightAlerts?: boolean;
+  emailBillReminders?: boolean;
   mfaEnabled?: boolean;
   mfaSetupPending?: boolean;
   mfaEnabledAt?: string | null;

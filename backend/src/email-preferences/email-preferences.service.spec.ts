@@ -58,6 +58,18 @@ describe("EmailPreferencesService", () => {
     });
   });
 
+  it("turns off the bill_due category through its own switch", async () => {
+    const { service, prisma } = buildService();
+
+    const result = await service.unsubscribe(service.signToken("user-1", "bill_due"));
+
+    expect(result).toEqual({ success: true, category: "bill_due" });
+    expect(prisma.user.updateMany).toHaveBeenCalledWith({
+      where: { id: "user-1" },
+      data: { emailBillReminders: false },
+    });
+  });
+
   it("refuses an invalid token without touching the database", async () => {
     const { service, prisma } = buildService();
 
@@ -96,5 +108,16 @@ describe("canSendAutomatedEmail", () => {
     expect(canSendAutomatedEmail(user, "weekly_digest")).toBe(false);
     expect(canSendAutomatedEmail(user, "reminders")).toBe(true);
     expect(canSendAutomatedEmail(user, "insight_alerts")).toBe(true);
+  });
+
+  it("gates bill_due on a verified email and on its own switch", () => {
+    expect(canSendAutomatedEmail({ emailVerifiedAt: null }, "bill_due")).toBe(false);
+    expect(canSendAutomatedEmail({ emailVerifiedAt: verified }, "bill_due")).toBe(true);
+    expect(
+      canSendAutomatedEmail({ emailVerifiedAt: verified, emailBillReminders: false }, "bill_due"),
+    ).toBe(false);
+    expect(
+      canSendAutomatedEmail({ emailVerifiedAt: verified, emailInsightAlerts: false }, "bill_due"),
+    ).toBe(true);
   });
 });

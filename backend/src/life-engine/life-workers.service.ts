@@ -25,6 +25,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { RecurringMaterializerService } from "../recurring-transactions/recurring-materializer.service";
 import { InstallmentMaterializerService } from "../installments/installment-materializer.service";
+import { BillReminderService } from "./bill-reminder.service";
 import {
   FORECASTS_QUEUE,
   INSIGHTS_QUEUE,
@@ -51,6 +52,7 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
     private readonly emailPreferencesService: EmailPreferencesService,
     private readonly recurringMaterializer: RecurringMaterializerService,
     private readonly installmentMaterializer: InstallmentMaterializerService,
+    private readonly billReminderService: BillReminderService,
   ) {}
 
   async onModuleInit() {
@@ -204,11 +206,21 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
     );
 
     const users = await this.prisma.user.findMany({
-      select: { id: true, timezone: true, lastWeeklyDigestAt: true, preferredCurrency: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        timezone: true,
+        lastWeeklyDigestAt: true,
+        preferredCurrency: true,
+        emailVerifiedAt: true,
+        emailBillReminders: true,
+      },
     });
 
     let touched = 0;
     let digests = 0;
+    let billReminders = 0;
     let autoContributions = 0;
     let forecastsResolved = 0;
 
@@ -250,6 +262,16 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
 
       forecastsResolved += await this.forecastsService.resolveMatureSnapshots(user.id);
 
+      try {
+        if (await this.billReminderService.sendDueReminders(user)) {
+          billReminders += 1;
+        }
+      } catch (error) {
+        this.logger.warn(
+          `bill_due_reminder_failed userId=${user.id} reason=${this.getErrorMessage(error)}`,
+        );
+      }
+
       if (this.isMondayLocal(user.timezone) && this.daysSince(user.lastWeeklyDigestAt) >= 6) {
         const sent = await this.sendWeeklyDigest(user.id);
         if (sent) digests += 1;
@@ -258,7 +280,7 @@ export class LifeWorkersService implements OnModuleInit, OnModuleDestroy {
 
     if (touched > 0) {
       this.logger.log(
-        `pulse_scan touched=${touched} digests=${digests} autoContributions=${autoContributions} forecastsResolved=${forecastsResolved} targetHour=${targetHour}`,
+        `pulse_scan touched=${touched} digests=${digests} billReminders=${billReminders} autoContributions=${autoContributions} forecastsResolved=${forecastsResolved} targetHour=${targetHour}`,
       );
     }
   }
