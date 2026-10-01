@@ -13,6 +13,7 @@ import {
 } from '../../../core/models/domain.models';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { formatDayLabel, formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
+import { formatCurrency } from '../../../core/utils/money.utils';
 import { buildOnboarding } from '../../../core/utils/onboarding.utils';
 import { buildSpendingBreakdown } from '../../../core/utils/spending.utils';
 import { SpendingBreakdownComponent } from '../../../shared/spending-breakdown/spending-breakdown.component';
@@ -435,10 +436,7 @@ export class DashboardPageComponent {
 
   protected financeSummaryText(data: DashboardSummary) {
     const delta = this.projectionDelta(data);
-    return `Saldo atual em ${new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: data.user.preferredCurrency,
-    }).format(data.finances.balance)}. A projeção do mês aponta ${delta}.`;
+    return `Saldo atual em ${formatCurrency(data.finances.balance, data.user.preferredCurrency)}. A projeção do mês aponta ${delta}.`;
   }
 
   // Meta sem alvo nao tem "%": fica fora da media (senao puxaria pra baixo injustamente).
@@ -486,10 +484,7 @@ export class DashboardPageComponent {
       return dueLabel;
     }
 
-    return `${dueLabel} · custo previsto ${new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: currencyCode,
-    }).format(task.estimatedAmount)}`;
+    return `${dueLabel} · custo previsto ${formatCurrency(task.estimatedAmount, currencyCode)}`;
   }
 
   protected priorityLabel(priority: Task['priority']) {
@@ -515,10 +510,7 @@ export class DashboardPageComponent {
   }
 
   protected transactionAmount(transaction: Transaction, currencyCode: string) {
-    const formatted = new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: currencyCode,
-    }).format(transaction.amount);
+    const formatted = formatCurrency(transaction.amount, currencyCode);
 
     return `${transaction.type === 'INCOME' ? '+' : '-'} ${formatted}`;
   }
@@ -541,10 +533,7 @@ export class DashboardPageComponent {
   protected projectionDelta(data: DashboardSummary) {
     const difference = data.forecast.predictedBalance - data.finances.balance;
     const sign = difference >= 0 ? '+' : '-';
-    return `${sign} ${new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: data.user.preferredCurrency,
-    }).format(Math.abs(difference))}`;
+    return `${sign} ${formatCurrency(Math.abs(difference), data.user.preferredCurrency)}`;
   }
 
   protected projectionSeries(data: DashboardSummary) {
@@ -604,10 +593,7 @@ export class DashboardPageComponent {
   }
 
   protected formatCurrency(value: number, currencyCode: string) {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: currencyCode,
-    }).format(value);
+    return formatCurrency(value, currencyCode);
   }
 
   private loadSummary() {

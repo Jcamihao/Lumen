@@ -10,6 +10,8 @@ import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { formatDayLabel } from '../../../core/utils/date.utils';
 import { focusField } from '../../../core/utils/focus.utils';
+import { readErrorMessage } from '../../../core/utils/http-error.utils';
+import { formatCurrency } from '../../../core/utils/money.utils';
 import { readPlanLimitAction, readPlanLimitMessage } from '../../../core/utils/plan-limit.utils';
 
 @Component({
@@ -199,10 +201,7 @@ export class GoalsPageComponent {
 
   protected recurringLabel(goal: Goal) {
     if (!this.hasRecurring(goal)) return 'Sem aporte automático configurado';
-    const amount = new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: this.currencyCode(),
-    }).format(goal.recurringAmount!);
+    const amount = formatCurrency(goal.recurringAmount!, this.currencyCode());
     return `${amount} todo dia ${goal.recurringDay} do mês`;
   }
 
@@ -327,7 +326,7 @@ export class GoalsPageComponent {
           this.toast.success('Saque registrado.');
         },
         error: (error) =>
-          this.toast.error(this.errorMessage(error, 'Não foi possível registrar o saque.')),
+          this.toast.error(readErrorMessage(error, 'Não foi possível registrar o saque.')),
       });
   }
 
@@ -414,15 +413,5 @@ export class GoalsPageComponent {
       const rightDate = right.targetDate ? new Date(right.targetDate).getTime() : Number.MAX_SAFE_INTEGER;
       return leftDate - rightDate;
     });
-  }
-
-  private errorMessage(error: any, fallback: string) {
-    const message = error?.error?.message;
-
-    if (error?.status === 400 && typeof message === 'string') {
-      return message;
-    }
-
-    return fallback;
   }
 }

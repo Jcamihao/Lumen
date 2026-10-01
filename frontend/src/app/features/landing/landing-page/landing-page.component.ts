@@ -5,9 +5,8 @@ import { RouterLink } from '@angular/router';
 import { PublicPlan } from '../../../core/models/domain.models';
 import { BillingService } from '../../../core/services/billing.service';
 import { ThemeService } from '../../../core/services/theme.service';
+import { formatCurrency } from '../../../core/utils/money.utils';
 import { ThemeToggleComponent } from '../../../shared/theme-toggle/theme-toggle.component';
-
-const currencyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
 @Component({
     selector: 'app-landing-page',
@@ -37,12 +36,12 @@ export class LandingPageComponent implements AfterViewInit {
 
   protected readonly individualMonthlyLabel = computed(() => {
     const plan = this.individualPlan();
-    return plan?.prices ? currencyFormatter.format(plan.prices.MONTHLY) : '';
+    return plan?.prices ? formatCurrency(plan.prices.MONTHLY, 'BRL') : '';
   });
 
   protected readonly individualYearlyLabel = computed(() => {
     const plan = this.individualPlan();
-    return plan?.prices ? currencyFormatter.format(plan.prices.YEARLY) : '';
+    return plan?.prices ? formatCurrency(plan.prices.YEARLY, 'BRL') : '';
   });
 
   @ViewChild('bgVideo') private readonly bgVideoRef?: ElementRef<HTMLVideoElement>;

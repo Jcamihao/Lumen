@@ -16,6 +16,8 @@ import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { todayLocalInputValue } from '../../../core/utils/date.utils';
+import { readErrorMessage } from '../../../core/utils/http-error.utils';
+import { formatCurrency } from '../../../core/utils/money.utils';
 import { paymentMethodLabel } from '../../../core/utils/payment-method.utils';
 import { readPlanLimitAction, readPlanLimitMessage } from '../../../core/utils/plan-limit.utils';
 import { PaymentMethodPickerComponent } from '../../../shared/payment-method-picker/payment-method-picker.component';
@@ -140,7 +142,7 @@ export class RecurringTransactionsCardComponent {
         error: (error) => {
           this.saving.set(false);
           const message =
-            readPlanLimitMessage(error) ?? this.errorMessage(error, 'Não foi possível criar a conta fixa.');
+            readPlanLimitMessage(error) ?? readErrorMessage(error, 'Não foi possível criar a conta fixa.');
           const action = readPlanLimitAction(error);
           if (action) {
             this.toast.errorWithAction(message, action);
@@ -167,7 +169,7 @@ export class RecurringTransactionsCardComponent {
         error: (error) => {
           this.busyId.set(null);
           const message =
-            readPlanLimitMessage(error) ?? this.errorMessage(error, 'Não foi possível atualizar a conta.');
+            readPlanLimitMessage(error) ?? readErrorMessage(error, 'Não foi possível atualizar a conta.');
           const action = readPlanLimitAction(error);
           if (action) {
             this.toast.errorWithAction(message, action);
@@ -255,29 +257,12 @@ export class RecurringTransactionsCardComponent {
   }
 
   protected amountText(item: RecurringTransaction) {
-    const formatted = new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: this.currencyCode(),
-    }).format(item.amount);
+    const formatted = formatCurrency(item.amount, this.currencyCode());
 
     return `${item.type === 'INCOME' ? '+' : '-'} ${formatted}`;
   }
 
   protected trackItem(_index: number, item: RecurringTransaction) {
     return item.id;
-  }
-
-  private errorMessage(error: any, fallback: string) {
-    const message = error?.error?.message;
-
-    if (error?.status === 400 && typeof message === 'string') {
-      return message;
-    }
-
-    if (error?.status === 400 && Array.isArray(message) && message.length) {
-      return String(message[0]);
-    }
-
-    return fallback;
   }
 }

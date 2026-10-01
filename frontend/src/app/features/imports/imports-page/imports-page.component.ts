@@ -13,6 +13,7 @@ import {
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { formatDayLabel } from '../../../core/utils/date.utils';
+import { formatCurrency } from '../../../core/utils/money.utils';
 import { ToastService } from '../../../core/services/toast.service';
 
 @Component({
@@ -309,7 +310,7 @@ export class ImportsPageComponent {
 
   protected previewAmount(amount: number) {
     const currency = this.auth.currentUser()?.preferredCurrency ?? 'BRL';
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency, maximumFractionDigits: 2 }).format(Number(amount || 0));
+    return formatCurrency(Number(amount || 0), currency);
   }
 
   protected comparisonHistoryLabel(comparison: ReceiptImportItemPriceComparison) {

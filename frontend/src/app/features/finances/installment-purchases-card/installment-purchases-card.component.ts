@@ -16,6 +16,8 @@ import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { formatDayLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
+import { readErrorMessage } from '../../../core/utils/http-error.utils';
+import { formatCurrency } from '../../../core/utils/money.utils';
 import { paymentMethodLabel } from '../../../core/utils/payment-method.utils';
 import { readPlanLimitAction, readPlanLimitMessage } from '../../../core/utils/plan-limit.utils';
 import { PaymentMethodPickerComponent } from '../../../shared/payment-method-picker/payment-method-picker.component';
@@ -114,7 +116,7 @@ export class InstallmentPurchasesCardComponent {
           this.saving.set(false);
           const message =
             readPlanLimitMessage(error) ??
-            this.errorMessage(error, 'Não foi possível registrar a compra parcelada.');
+            readErrorMessage(error, 'Não foi possível registrar a compra parcelada.');
           const action = readPlanLimitAction(error);
           if (action) {
             this.toast.errorWithAction(message, action);
@@ -191,27 +193,10 @@ export class InstallmentPurchasesCardComponent {
   }
 
   protected money(value: number) {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: this.currencyCode(),
-    }).format(value);
+    return formatCurrency(value, this.currencyCode());
   }
 
   protected trackItem(_index: number, item: InstallmentPurchase) {
     return item.id;
-  }
-
-  private errorMessage(error: any, fallback: string) {
-    const message = error?.error?.message;
-
-    if (error?.status === 400 && typeof message === 'string') {
-      return message;
-    }
-
-    if (error?.status === 400 && Array.isArray(message) && message.length) {
-      return String(message[0]);
-    }
-
-    return fallback;
   }
 }

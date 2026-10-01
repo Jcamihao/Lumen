@@ -7,6 +7,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { formatDayLabel } from '../../../core/utils/date.utils';
+import { formatCurrency } from '../../../core/utils/money.utils';
 
 /**
  * Configuracoes do cartao de credito: fechamento, vencimento, teto do ciclo
@@ -191,9 +192,6 @@ export class CardPageComponent {
   }
 
   protected formatMoney(value: number) {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: this.currencyCode(),
-    }).format(value);
+    return formatCurrency(value, this.currencyCode());
   }
 }

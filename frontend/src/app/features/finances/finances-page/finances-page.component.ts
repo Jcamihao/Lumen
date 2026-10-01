@@ -11,6 +11,7 @@ import { ToastService } from '../../../core/services/toast.service';
 import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
 import { BudgetRow, buildBudgetRows } from '../../../core/utils/budget.utils';
 import { focusField } from '../../../core/utils/focus.utils';
+import { formatCurrency } from '../../../core/utils/money.utils';
 import { paymentMethodLabel } from '../../../core/utils/payment-method.utils';
 import { buildSpendingBreakdown } from '../../../core/utils/spending.utils';
 import { PaymentMethodPickerComponent } from '../../../shared/payment-method-picker/payment-method-picker.component';
@@ -237,10 +238,7 @@ export class FinancesPageComponent {
   }
 
   protected formatMoney(value: number) {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: this.currencyCode(),
-    }).format(value);
+    return formatCurrency(value, this.currencyCode());
   }
 
   protected trackBudgetRow(_index: number, row: BudgetRow) {
@@ -307,10 +305,7 @@ export class FinancesPageComponent {
   }
 
   protected transactionAmount(transaction: Transaction) {
-    const formatted = new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: this.currencyCode(),
-    }).format(transaction.amount);
+    const formatted = formatCurrency(transaction.amount, this.currencyCode());
 
     if (transaction.type === 'TRANSFER') {
       return formatted;

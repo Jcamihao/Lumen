@@ -6,6 +6,7 @@ import { CreditCycle } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { formatDayLabel } from '../../../core/utils/date.utils';
+import { formatCurrency } from '../../../core/utils/money.utils';
 
 /**
  * "Quanto ainda posso gastar no crédito", por ciclo de fechamento (nao pelo
@@ -67,9 +68,6 @@ export class CreditCycleCardComponent {
   }
 
   protected formatMoney(value: number) {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: this.currencyCode(),
-    }).format(value);
+    return formatCurrency(value, this.currencyCode());
   }
 }

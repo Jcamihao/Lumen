@@ -6,6 +6,8 @@ import { Envelope } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
+import { readErrorMessage } from '../../../core/utils/http-error.utils';
+import { formatCurrency } from '../../../core/utils/money.utils';
 import { readPlanLimitAction, readPlanLimitMessage } from '../../../core/utils/plan-limit.utils';
 
 /** Paleta simples: o usuario nao escolhe cor, cicla por aqui na criacao. */
@@ -104,7 +106,7 @@ export class EnvelopesCardComponent {
         error: (error) => {
           this.saving.set(false);
           const message =
-            readPlanLimitMessage(error) ?? this.errorMessage(error, 'Não foi possível criar a reserva agora.');
+            readPlanLimitMessage(error) ?? readErrorMessage(error, 'Não foi possível criar a reserva agora.');
           const action = readPlanLimitAction(error);
           if (action) {
             this.toast.errorWithAction(message, action);
@@ -175,27 +177,10 @@ export class EnvelopesCardComponent {
   }
 
   protected formatMoney(value: number) {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: this.currencyCode(),
-    }).format(value);
+    return formatCurrency(value, this.currencyCode());
   }
 
   protected trackEnvelope(_index: number, envelope: Envelope) {
     return envelope.id;
-  }
-
-  private errorMessage(error: any, fallback: string) {
-    const message = error?.error?.message;
-
-    if (error?.status === 400 && typeof message === 'string') {
-      return message;
-    }
-
-    if (error?.status === 400 && Array.isArray(message) && message.length) {
-      return String(message[0]);
-    }
-
-    return fallback;
   }
 }
