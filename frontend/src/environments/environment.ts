@@ -4,6 +4,5 @@ export const environment = {
   production: true,
   apiBaseUrl: runtimeConfig.apiBaseUrl,
   wsBaseUrl: runtimeConfig.wsBaseUrl,
-  clientLoggingEnabled: runtimeConfig.clientLoggingEnabled,
   mfaEnabled: runtimeConfig.mfaEnabled,
 };

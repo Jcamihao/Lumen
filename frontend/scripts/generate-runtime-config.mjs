@@ -123,19 +123,6 @@ const wsBaseUrl = trimTrailingSlash(
     'http://localhost:3000',
   ),
 );
-const clientLoggingEnabled =
-  (getFirstDefined(
-    process.env.FRONTEND_APP_CLIENT_LOGGING_ENABLED,
-    process.env.FRONTEND_CLIENT_LOGGING_ENABLED,
-    process.env.CLIENT_LOGGING_ENABLED,
-    dotenvFromFrontend.FRONTEND_APP_CLIENT_LOGGING_ENABLED,
-    dotenvFromFrontend.FRONTEND_CLIENT_LOGGING_ENABLED,
-    dotenvFromFrontend.CLIENT_LOGGING_ENABLED,
-    dotenvFromWorkspace.FRONTEND_APP_CLIENT_LOGGING_ENABLED,
-    dotenvFromWorkspace.FRONTEND_CLIENT_LOGGING_ENABLED,
-    dotenvFromWorkspace.CLIENT_LOGGING_ENABLED,
-    'true',
-  ) ?? 'true') === 'true';
 const mfaEnabled =
   (getFirstDefined(
     process.env.FRONTEND_APP_MFA_ENABLED,
@@ -155,7 +142,6 @@ const contents = `window.__APP_CONFIG__ = ${JSON.stringify(
   {
     apiBaseUrl,
     wsBaseUrl,
-    clientLoggingEnabled,
     mfaEnabled,
   },
   null,

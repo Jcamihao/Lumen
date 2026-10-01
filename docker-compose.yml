@@ -92,14 +92,12 @@ services:
         # navegador acessa o frontend dockerizado pela porta mapeada no host.
         FRONTEND_APP_API_BASE_URL: http://localhost:${BACKEND_HOST_PORT:-3001}/api/v1
         FRONTEND_APP_WS_BASE_URL: http://localhost:${BACKEND_HOST_PORT:-3001}
-        FRONTEND_APP_CLIENT_LOGGING_ENABLED: ${FRONTEND_APP_CLIENT_LOGGING_ENABLED:-true}
         FRONTEND_APP_MFA_ENABLED: ${FRONTEND_APP_MFA_ENABLED:-false}
     depends_on:
       - backend
     environment:
       FRONTEND_APP_API_BASE_URL: http://localhost:${BACKEND_HOST_PORT:-3001}/api/v1
       FRONTEND_APP_WS_BASE_URL: http://localhost:${BACKEND_HOST_PORT:-3001}
-      FRONTEND_APP_CLIENT_LOGGING_ENABLED: ${FRONTEND_APP_CLIENT_LOGGING_ENABLED:-true}
     ports:
       - '${FRONTEND_HOST_PORT:-4201}:80'
 
