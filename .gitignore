@@ -11,3 +11,5 @@ backend/dist
 backend/node_modules
 frontend/node_modules
 graphify-out
+.claude/
+brag-output-*/
