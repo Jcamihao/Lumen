@@ -159,6 +159,29 @@ export class RateLimitGuard implements CanActivate {
     message: 'Muitas tentativas de sincronizacao em pouco tempo. Tente novamente mais tarde.',
   };
 
+  private readonly policyByRoute: ReadonlyMap<string, RateLimitPolicy> = new Map([
+    ['POST /api/v1/auth/login', this.authLoginPolicy],
+    ['POST /api/v1/auth/register', this.authRegisterPolicy],
+    ['POST /api/v1/auth/refresh', this.authRefreshPolicy],
+    ['POST /api/v1/auth/mfa/verify-login', this.authMfaVerifyPolicy],
+    ['POST /api/v1/auth/mfa/email-bypass/request', this.authMfaBypassRequestPolicy],
+    ['POST /api/v1/auth/mfa/email-bypass/verify', this.authMfaBypassVerifyPolicy],
+    ['POST /api/v1/auth/mfa/setup', this.authMfaManagePolicy],
+    ['POST /api/v1/auth/mfa/confirm-setup', this.authMfaManagePolicy],
+    ['POST /api/v1/auth/mfa/recovery-codes/regenerate', this.authMfaManagePolicy],
+    ['POST /api/v1/auth/mfa/disable', this.authMfaManagePolicy],
+    ['POST /api/v1/auth/forgot-password', this.authForgotPasswordPolicy],
+    ['POST /api/v1/auth/reset-password', this.authResetPasswordPolicy],
+    ['POST /api/v1/auth/verify-email', this.authVerifyEmailPolicy],
+    ['POST /api/v1/auth/resend-verification', this.authResendVerificationPolicy],
+    ['POST /api/v1/email-preferences/unsubscribe', this.emailUnsubscribePolicy],
+    ['POST /api/v1/support-requests', this.supportCreatePolicy],
+    ['DELETE /api/v1/users/me', this.deleteAccountPolicy],
+    ['POST /api/v1/billing/checkout', this.billingCheckoutPolicy],
+    ['POST /api/v1/billing/webhooks/asaas', this.billingWebhookPolicy],
+    ['POST /api/v1/billing/sync', this.billingSyncPolicy],
+  ]);
+
   constructor(private readonly cacheQueueService: CacheQueueService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -204,82 +227,7 @@ export class RateLimitGuard implements CanActivate {
   }): RateLimitPolicy {
     const method = request.method?.toUpperCase() ?? 'GET';
     const path = this.normalizePath(request.originalUrl);
-
-    if (method === 'POST' && path === '/api/v1/auth/login') {
-      return this.authLoginPolicy;
-    }
-
-    if (method === 'POST' && path === '/api/v1/auth/register') {
-      return this.authRegisterPolicy;
-    }
-
-    if (method === 'POST' && path === '/api/v1/auth/refresh') {
-      return this.authRefreshPolicy;
-    }
-
-    if (method === 'POST' && path === '/api/v1/auth/mfa/verify-login') {
-      return this.authMfaVerifyPolicy;
-    }
-
-    if (method === 'POST' && path === '/api/v1/auth/mfa/email-bypass/request') {
-      return this.authMfaBypassRequestPolicy;
-    }
-
-    if (method === 'POST' && path === '/api/v1/auth/mfa/email-bypass/verify') {
-      return this.authMfaBypassVerifyPolicy;
-    }
-
-    if (
-      method === 'POST' &&
-      (path === '/api/v1/auth/mfa/setup' ||
-        path === '/api/v1/auth/mfa/confirm-setup' ||
-        path === '/api/v1/auth/mfa/recovery-codes/regenerate' ||
-        path === '/api/v1/auth/mfa/disable')
-    ) {
-      return this.authMfaManagePolicy;
-    }
-
-    if (method === 'POST' && path === '/api/v1/auth/forgot-password') {
-      return this.authForgotPasswordPolicy;
-    }
-
-    if (method === 'POST' && path === '/api/v1/auth/reset-password') {
-      return this.authResetPasswordPolicy;
-    }
-
-    if (method === 'POST' && path === '/api/v1/auth/verify-email') {
-      return this.authVerifyEmailPolicy;
-    }
-
-    if (method === 'POST' && path === '/api/v1/auth/resend-verification') {
-      return this.authResendVerificationPolicy;
-    }
-
-    if (method === 'POST' && path === '/api/v1/email-preferences/unsubscribe') {
-      return this.emailUnsubscribePolicy;
-    }
-
-    if (method === 'POST' && path === '/api/v1/support-requests') {
-      return this.supportCreatePolicy;
-    }
-
-    if (method === 'DELETE' && path === '/api/v1/users/me') {
-      return this.deleteAccountPolicy;
-    }
-
-    if (method === 'POST' && path === '/api/v1/billing/checkout') {
-      return this.billingCheckoutPolicy;
-    }
-
-    if (method === 'POST' && path === '/api/v1/billing/webhooks/asaas') {
-      return this.billingWebhookPolicy;
-    }
-
-    if (method === 'POST' && path === '/api/v1/billing/sync') {
-      return this.billingSyncPolicy;
-    }
-
-    return this.defaultPolicy;
+    return this.policyByRoute.get(`${method} ${path}`) ?? this.defaultPolicy;
   }
 
   private resolveActorKey(

@@ -1,4 +1,5 @@
 import { registerAs } from '@nestjs/config';
+import { parseBoolean } from './parse-boolean.util';
 
 const DEFAULT_CORS_ALLOWED_ORIGINS = [
   'http://localhost:4200',
@@ -9,14 +10,6 @@ const DEFAULT_CORS_ALLOWED_ORIGINS = [
   'http://127.0.0.1',
   'capacitor://localhost',
 ];
-
-function parseBoolean(value: string | undefined, fallback: boolean) {
-  if (value === undefined) {
-    return fallback;
-  }
-
-  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
-}
 
 function parseCorsAllowedOrigins() {
   const rawOrigins = process.env.APP_CORS_ALLOWED_ORIGINS;

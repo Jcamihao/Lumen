@@ -5,6 +5,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { UserRole } from '@prisma/client';
 import { AuthenticatedUser } from '../interfaces/authenticated-user.interface';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 
@@ -13,19 +14,19 @@ export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.getAllAndOverride(ROLES_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const requiredRole = this.reflector.getAllAndOverride<UserRole | undefined>(
+      ROLES_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
-    if (!requiredRoles || requiredRoles.length === 0) {
+    if (!requiredRole) {
       return true;
     }
 
     const request = context.switchToHttp().getRequest();
     const user = request.user as AuthenticatedUser | undefined;
 
-    if (!user || !requiredRoles.includes(user.role)) {
+    if (!user || user.role !== requiredRole) {
       throw new ForbiddenException('Você não tem permissão para esta ação.');
     }
 

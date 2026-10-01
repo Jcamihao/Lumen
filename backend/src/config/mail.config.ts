@@ -1,12 +1,5 @@
 import { registerAs } from "@nestjs/config";
-
-const parseBoolean = (value: string | undefined, defaultValue = false) => {
-  if (value === undefined) {
-    return defaultValue;
-  }
-
-  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
-};
+import { parseBoolean } from "./parse-boolean.util";
 
 export const mailConfig = registerAs("mail", () => ({
   enabled: parseBoolean(process.env.RESEND_ENABLED, false),

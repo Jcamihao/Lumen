@@ -1,4 +1,5 @@
 import { registerAs } from '@nestjs/config';
+import { parseBoolean } from './parse-boolean.util';
 
 const DEFAULT_ACCESS_SECRET = 'lumen_access_secret';
 const DEFAULT_REFRESH_SECRET = 'lumen_refresh_secret';
@@ -29,14 +30,6 @@ function resolveSecret(
   }
 
   return fallback;
-}
-
-function parseBoolean(value: string | undefined, fallback: boolean) {
-  if (value === undefined) {
-    return fallback;
-  }
-
-  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
 }
 
 function parseSameSite(value: string | undefined) {

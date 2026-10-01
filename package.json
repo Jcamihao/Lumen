@@ -1,6 +1,6 @@
 {
   "name": "lumen",
-  "version": "1.59.56",
+  "version": "1.59.57",
   "private": true,
   "scripts": {
     "dev": "npm run dev:infra && concurrently -n backend,frontend,selah -c blue,orange,magenta \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:selah\"",

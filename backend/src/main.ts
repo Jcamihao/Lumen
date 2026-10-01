@@ -10,7 +10,6 @@ import { AppModule } from './app.module';
 import { REQUEST_ID_HEADER } from './common/constants/request-trace.constants';
 import { HttpExceptionLoggingFilter } from './common/filters/http-exception-logging.filter';
 import { RequestWithContext } from './common/interfaces/request-with-context.interface';
-import { PrismaService } from './prisma/prisma.service';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -19,7 +18,6 @@ async function bootstrap() {
   });
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
   const configService = app.get(ConfigService);
-  const prismaService = app.get(PrismaService);
   const port = configService.get<number>('app.port', 3000);
   const host = configService.get<string>('app.host', '0.0.0.0');
   const appUrl =
@@ -29,7 +27,7 @@ async function bootstrap() {
   const swaggerEnabled =
     configService.get<boolean>('app.swaggerEnabled') ?? false;
 
-  await prismaService.enableShutdownHooks(app);
+  app.enableShutdownHooks();
 
   app.setGlobalPrefix('api/v1');
   app.use((req: RequestWithContext, res, next) => {
