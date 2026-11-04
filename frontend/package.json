@@ -1,6 +1,6 @@
 {
   "name": "lumen-frontend",
-  "version": "1.59.61",
+  "version": "1.59.62",
   "scripts": {
     "ng": "ng",
     "prestart": "node ./scripts/generate-runtime-config.mjs",
