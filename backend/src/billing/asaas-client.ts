@@ -71,14 +71,35 @@ export class AsaasClient {
           cancelUrl: params.cancelUrl,
           expiredUrl: params.expiredUrl,
         },
+        // Validado no sandbox em 2026-11-13: o Asaas exige `items` (o valor
+        // cobrado e exibido vem daqui; `subscription.value` e ignorado) e
+        // `subscription.nextDueDate`.
+        items: [
+          {
+            name: 'Plano Individual do Lumen',
+            description:
+              params.cycle === 'YEARLY'
+                ? 'Assinatura anual'
+                : 'Assinatura mensal',
+            quantity: 1,
+            value: params.value,
+          },
+        ],
         subscription: {
           cycle: params.cycle,
-          value: params.value,
+          nextDueDate: this.todayInSaoPaulo(),
         },
       },
     );
 
     return { id: result.id, link: result.link };
+  }
+
+  /** Data de hoje (YYYY-MM-DD) no fuso de São Paulo, o que o Asaas espera. */
+  private todayInSaoPaulo(): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+    }).format(new Date());
   }
 
   async getSubscription(id: string): Promise<AsaasSubscription> {
@@ -201,6 +222,8 @@ export class AsaasClient {
       const headers: Record<string, string> = {
         access_token: this.getApiKey(),
         Accept: 'application/json',
+        // O Asaas rejeita (400 user_agent_not_informed) chamada sem User-Agent.
+        'User-Agent': 'Lumen',
       };
       if (payload !== undefined) {
         headers['Content-Type'] = 'application/json';

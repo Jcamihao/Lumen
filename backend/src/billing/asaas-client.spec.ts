@@ -21,6 +21,38 @@ describe('AsaasClient', () => {
     new AsaasClient(buildConfigService(overrides));
 
   describe('métodos públicos (espionando o request privado)', () => {
+    it('createCheckout usa a data de hoje em São Paulo como nextDueDate (21h de SP ainda é o mesmo dia, mesmo já sendo o dia seguinte em UTC)', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-11-14T01:30:00Z'));
+      try {
+        const client = buildClient();
+        const requestSpy = jest
+          .spyOn(client as any, 'request')
+          .mockResolvedValue({ id: 'c', link: 'https://x' });
+
+        await client.createCheckout({
+          value: 149,
+          cycle: 'YEARLY',
+          externalReference: 'ref',
+          successUrl: 'https://a',
+          cancelUrl: 'https://b',
+          expiredUrl: 'https://c',
+          minutesToExpire: 60,
+        });
+
+        const body = requestSpy.mock.calls[0][2] as any;
+        expect(body.subscription).toEqual({
+          cycle: 'YEARLY',
+          nextDueDate: '2026-11-13',
+        });
+        expect(body.items[0]).toMatchObject({
+          description: 'Assinatura anual',
+          value: 149,
+        });
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('createCheckout monta POST /checkouts com o corpo fixo e devolve {id, link}', async () => {
       const client = buildClient();
       const requestSpy = jest.spyOn(client as any, 'request').mockResolvedValue({
@@ -50,9 +82,25 @@ describe('AsaasClient', () => {
             cancelUrl: 'https://app.exemplo.com/plano?checkout=cancelado',
             expiredUrl: 'https://app.exemplo.com/plano?checkout=expirado',
           },
-          subscription: { cycle: 'MONTHLY', value: 14.9 },
+          // O Asaas exige `items` (o valor cobrado vem daqui; subscription.value
+          // é ignorado) e `subscription.nextDueDate` (YYYY-MM-DD, fuso de SP).
+          items: [
+            {
+              name: 'Plano Individual do Lumen',
+              description: 'Assinatura mensal',
+              quantity: 1,
+              value: 14.9,
+            },
+          ],
+          subscription: {
+            cycle: 'MONTHLY',
+            nextDueDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          },
         }),
       );
+      expect(
+        (requestSpy.mock.calls[0][2] as any).subscription,
+      ).not.toHaveProperty('value');
       // Nunca manda customerData (confirmado no spike: parcial dá 400).
       expect(requestSpy.mock.calls[0][2]).not.toHaveProperty('customerData');
       expect(result).toEqual({
@@ -232,6 +280,17 @@ describe('AsaasClient', () => {
       expect(lastRequest.method).toBe('GET');
       expect(lastRequest.headers['access_token']).toBe('minha-chave-sandbox');
       expect(lastRequest.headers.authorization).toBeUndefined();
+    });
+
+    it('manda User-Agent (o Asaas responde 400 user_agent_not_informed sem ele)', async () => {
+      const client = buildClient({
+        'asaas.apiKey': 'minha-chave-sandbox',
+        'asaas.baseUrl': baseUrl,
+      });
+
+      await client.getSubscription('sub-real');
+
+      expect(lastRequest.headers['user-agent']).toBe('Lumen');
     });
   });
 });
