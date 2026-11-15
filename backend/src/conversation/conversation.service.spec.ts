@@ -110,7 +110,14 @@ describe('ConversationService', () => {
   let creditCycle: { getCurrent: jest.Mock };
   let service: ConversationService;
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  // Relógio travado em T0: os rascunhos nascem em T0 e a confirmação compara com o relógio real,
+  // então sem isso os testes passam ou falham conforme a hora em que rodam.
   beforeEach(() => {
+    jest.useFakeTimers({ now: T0 });
     db = buildFakeDb();
     transactions = { create: jest.fn(async () => ({ id: 'tx-1' })) };
     dashboard = {
@@ -482,6 +489,20 @@ describe('ConversationService', () => {
       const reply = await service.handleMessage(msg('A', 'gastos com mercado'));
       expect(reply.kind).toBe('INFO');
       expect(reply.data?.categories?.[0]).toEqual({ name: 'Mercado', amountCents: 30000 });
+    });
+
+    it('gastos com categoria usa o mes do fuso do usuario, do dia 1 UTC ate o fim de hoje', async () => {
+      jest.useFakeTimers({ now: T0 });
+      try {
+        await service.handleMessage(msg('A', 'gastos com mercado'));
+      } finally {
+        jest.useRealTimers();
+      }
+
+      const [args] = db.prisma.transaction.groupBy.mock.calls[0] as any[];
+      expect(args.where.userId).toBe('A');
+      expect(args.where.date.gte).toEqual(new Date('2026-11-01T00:00:00.000Z'));
+      expect(args.where.date.lt).toEqual(new Date('2026-11-16T00:00:00.000Z'));
     });
 
     it('credit_card sem teto responde que nao ha limite definido', async () => {

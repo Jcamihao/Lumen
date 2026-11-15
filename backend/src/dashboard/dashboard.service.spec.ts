@@ -62,6 +62,31 @@ const buildService = (
   return { service, prisma, cache };
 };
 
+describe('DashboardService — mês corrente', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('o mês começa no dia 1 à meia-noite UTC, para não perder lançamentos do dia 1 com o servidor fora de UTC', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-11-15T16:00:00.000Z'));
+    const { service, prisma } = buildService();
+    prisma.user.findUniqueOrThrow.mockResolvedValue({
+      id: 'user-1',
+      name: 'Marina',
+      preferredCurrency: 'BRL',
+      monthlyIncome: 0,
+      timezone: 'America/Sao_Paulo',
+    });
+
+    await service.getSummary('user-1');
+
+    const monthWheres = prisma.transaction.aggregate.mock.calls.map(([args]: any[]) => args.where);
+    expect(monthWheres).toHaveLength(2);
+    for (const where of monthWheres) {
+      expect(where.date.gte).toEqual(new Date('2026-11-01T00:00:00.000Z'));
+      expect(where.date.lt).toEqual(new Date('2026-11-16T00:00:00.000Z'));
+    }
+  });
+});
+
 describe('DashboardService — onboarding', () => {
   it('conta nova: nenhum passo concluido', async () => {
     const { service } = buildService();

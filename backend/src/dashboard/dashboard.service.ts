@@ -4,6 +4,7 @@ import { CacheQueueService } from '../cache-queue/cache-queue.service';
 import { ForecastsService } from '../forecasts/forecasts.service';
 import { InsightsService } from '../insights/insights.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { monthToDateUtc } from '../recurring-transactions/recurrence.util';
 import { RecurringMaterializerService } from '../recurring-transactions/recurring-materializer.service';
 import { InstallmentMaterializerService } from '../installments/installment-materializer.service';
 
@@ -40,7 +41,11 @@ export class DashboardService {
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date(now);
     todayEnd.setHours(23, 59, 59, 999);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const { timezone } = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { timezone: true },
+    });
+    const month = monthToDateUtc(now, timezone);
 
     const [
       user,
@@ -139,8 +144,8 @@ export class DashboardService {
           userId,
           type: 'EXPENSE',
           date: {
-            gte: monthStart,
-            lte: now,
+            gte: month.start,
+            lt: month.end,
           },
         },
         _sum: {
@@ -152,8 +157,8 @@ export class DashboardService {
           userId,
           type: 'INCOME',
           date: {
-            gte: monthStart,
-            lte: now,
+            gte: month.start,
+            lt: month.end,
           },
         },
         _sum: {

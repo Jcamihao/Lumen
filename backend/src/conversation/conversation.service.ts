@@ -7,7 +7,7 @@ import {
   TransactionType,
 } from '@prisma/client';
 import { CreditCycleService } from '../credit-cycle/credit-cycle.service';
-import { localToday } from '../recurring-transactions/recurrence.util';
+import { localToday, monthToDateUtc } from '../recurring-transactions/recurrence.util';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TransactionsService } from '../transactions/transactions.service';
@@ -561,12 +561,15 @@ export class ConversationService {
   }
 
   private async spendByCategory(userId: string, query: string): Promise<ConversationReply> {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const { timezone } = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { timezone: true },
+    });
+    const month = monthToDateUtc(new Date(), timezone);
     const [grouped, categories] = await Promise.all([
       this.prisma.transaction.groupBy({
         by: ['categoryId'],
-        where: { userId, type: TransactionType.EXPENSE, date: { gte: monthStart, lte: now } },
+        where: { userId, type: TransactionType.EXPENSE, date: { gte: month.start, lt: month.end } },
         _sum: { amount: true },
       }),
       this.prisma.financeCategory.findMany({ where: { userId }, select: { id: true, name: true } }),

@@ -2,12 +2,40 @@ import { RecurrenceFrequency } from '@prisma/client';
 import {
   firstOccurrenceOnOrAfter,
   localToday,
+  monthToDateUtc,
   nextOccurrence,
   utcDate,
 } from './recurrence.util';
 
 const iso = (date: Date) => date.toISOString().slice(0, 10);
 const { WEEKLY, MONTHLY, YEARLY } = RecurrenceFrequency;
+
+describe('monthToDateUtc', () => {
+  it('vai do dia 1 a meia-noite UTC até o fim de hoje (exclusivo), no fuso do usuário', () => {
+    const { start, end } = monthToDateUtc(new Date('2026-11-15T16:00:00.000Z'), 'America/Sao_Paulo');
+
+    expect(start.toISOString()).toBe('2026-11-01T00:00:00.000Z');
+    expect(end.toISOString()).toBe('2026-11-16T00:00:00.000Z');
+  });
+
+  it('usa o mês do fuso do usuário na virada: 01:00 UTC de 01/11 ainda é 31/10 em São Paulo', () => {
+    const { start, end } = monthToDateUtc(new Date('2026-11-01T01:00:00.000Z'), 'America/Sao_Paulo');
+
+    expect(start.toISOString()).toBe('2026-10-01T00:00:00.000Z');
+    expect(end.toISOString()).toBe('2026-11-01T00:00:00.000Z');
+  });
+
+  it('inclui um lançamento do dia 1 (data pura à meia-noite UTC), seja qual for o fuso do processo', () => {
+    const { start, end } = monthToDateUtc(new Date('2026-11-15T16:00:00.000Z'), 'America/Sao_Paulo');
+    const firstOfMonth = new Date('2026-11-01T00:00:00.000Z');
+    const today = new Date('2026-11-15T00:00:00.000Z');
+    const tomorrow = new Date('2026-11-16T00:00:00.000Z');
+
+    expect(firstOfMonth >= start && firstOfMonth < end).toBe(true);
+    expect(today >= start && today < end).toBe(true);
+    expect(tomorrow < end).toBe(false);
+  });
+});
 
 describe('localToday', () => {
   it('usa o dia do fuso do usuario, nao o UTC', () => {

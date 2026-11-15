@@ -32,6 +32,20 @@ export function localToday(now: Date, timeZone: string) {
   }
 }
 
+/**
+ * Mês corrente até hoje no fuso do usuário, em datas-puras UTC (o padrão das transações).
+ * `end` é exclusivo e cobre o dia de hoje inteiro. Não usa o fuso do processo: new Date(ano, mês, 1)
+ * cairia às 03:00 UTC num servidor em São Paulo e deixaria de fora os lançamentos do dia 1.
+ */
+export function monthToDateUtc(now: Date, timeZone: string) {
+  const today = localToday(now, timeZone);
+
+  return {
+    start: utcDate(today.getUTCFullYear(), today.getUTCMonth(), 1),
+    end: addDaysUtc(today, 1),
+  };
+}
+
 export function addDaysUtc(date: Date, days: number) {
   return new Date(date.getTime() + days * DAY_MS);
 }
