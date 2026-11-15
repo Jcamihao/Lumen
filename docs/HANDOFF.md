@@ -57,6 +57,8 @@ Armadilhas:
 - Planos de implementação: `docs/superpowers/plans/2026-09-27-billing-fase-0-1.md` e `2026-09-28-billing-fase-2.md`.
 - Decisões do dono já tomadas: freemium; planos Grátis, Individual e Compartilhado (este só como estrutura, "em breve"); Individual R$ 14,90/mês ou R$ 149/ano; Compartilhado R$ 24,90/mês ou R$ 249/ano; limites do Grátis: 2 metas ativas, 1 reserva, 3 contas fixas, 2 parcelados, 5 perguntas ao Selah por mês; checkout hospedado no Asaas; sem trial; contas atuais escolhidas pelo dono ganham Individual "de fundador" sem data de fim.
 - Catálogo e preços ficam em `backend/src/billing/plans.catalog.ts`; preços sobrescrevíveis por `BILLING_PRICE_*`.
+- Nova direção de produto, ainda sem implementação: `docs/superpowers/plans/2026-11-14-assistente-manual-importacao-planos.md`. O lançamento deve desligar a LLM, priorizar assistente determinístico no app e WhatsApp, manter importação/insights sem LLM e revisar a escada de planos antes de ligar billing.
+- Contrato do escopo “Finanças por conversa”: `docs/superpowers/specs/2026-11-14-assistente-manual-financas.md`. O bot deve consultar e operar gastos, limites de cartão, metas, reservas, recorrências, parcelados, contas fixas, orçamentos e importação com revisão obrigatória; app, celular e WhatsApp usam o mesmo motor. Isolamento A/B/C é regra de segurança: identidade só vem de JWT ou vínculo WhatsApp validado, toda consulta fica no escopo do dono e os testes devem tentar acesso cruzado antes de liberar escrita por WhatsApp. A implementação ainda não começou. Contrato do item 1 (rotas, tabelas, estados, confirmação idempotente) aprovado pelo dono em 2026-11-15: `docs/superpowers/specs/2026-11-15-conversa-contrato-item-1.md`. Item 2a (backend do motor, canal APP) implementado e revisado em 2026-11-15, sem commit: `backend/src/conversation/`, migration `20261115120000_conversation_item_2`, 725 testes verdes, 8 mutantes de isolamento mortos, integração real com 2 usuários passou. Briefs e dúvidas em `.superpowers/sdd/conversa-item-2/`. Falta a tela do app (2b). Atenção: o banco local 5433 tem a migration `202604012145_auth_session_hardening` que não existe no repo. Decisão do dono em 2026-11-15: vários cartões nomeados ficam para depois do bot; o v0 usa o cartão único já existente (`CreditCycleService`).
 - Documentação de produto: `docs/architecture.md`, `docs/design-system.md`, `docs/releases/`, `docs/runbooks/`, `docs/legal/`.
 
 ## 6. Onde parou
@@ -105,7 +107,8 @@ Outros pontos:
 ## 9. Decisões abertas do dono (perguntar, não decidir)
 
 - Receber como CPF ou CNPJ/MEI no Asaas.
-- Leitura de nota fiscal e importação de CSV entram nos limites? (custo de IA da nota)
+- Leitura de nota fiscal e importação de CSV entram nos limites? A nova proposta recomenda franquia de nota/imagem no Pro. Auditoria em 14/11 confirmou que `ImportsService.previewReceiptImport()` chama SelahIA; para lançar sem LLM, trocar essa extração por OCR/QR Code e parser estruturado, mantendo a revisão e comparações existentes.
+- Aprovar a substituição futura da escada Grátis/Individual/Compartilhado por Grátis/Controle/Pro (mantendo Compartilhado como projeto separado) e definir preços/franquias depois de medir custo de OCR e WhatsApp.
 - Teto de 300 perguntas/mês do Selah no Individual e tolerância de atraso de 7 dias: ainda são premissas.
 - Quais contas atuais recebem a concessão de fundador.
 - Quando ligar o billing em produção.
