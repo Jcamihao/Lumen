@@ -9,6 +9,7 @@ import { AuthModule } from "./auth/auth.module";
 import { BillingModule } from "./billing/billing.module";
 import { CacheQueueModule } from "./cache-queue/cache-queue.module";
 import { CreditCycleModule } from "./credit-cycle/credit-cycle.module";
+import { ConversationModule } from "./conversation/conversation.module";
 import { EnvelopesModule } from "./envelopes/envelopes.module";
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
 import { RateLimitGuard } from "./common/guards/rate-limit.guard";
@@ -71,6 +72,7 @@ import { UsersModule } from "./users/users.module";
     DashboardModule,
     ImportsModule,
     AssistantModule,
+    ConversationModule,
     LifeEngineModule,
     BillingModule,
   ],

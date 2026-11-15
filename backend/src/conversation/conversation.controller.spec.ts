@@ -1,0 +1,67 @@
+import { BadRequestException, NotFoundException, ValidationPipe } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
+import { ConversationController } from './conversation.controller';
+import { SendConversationMessageDto } from './dto/send-conversation-message.dto';
+import { ConfirmConversationDraftDto } from './dto/confirm-conversation-draft.dto';
+import { ConversationService } from './conversation.service';
+
+/** Mesmas opcoes do ValidationPipe global (main.ts). */
+const globalPipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
+
+describe('ConversationController', () => {
+  const user = { sub: 'user-a', email: 'a@x.com', role: 'USER', sessionId: 's1' } as unknown as AuthenticatedUser;
+  let service: Record<string, jest.Mock>;
+  let controller: ConversationController;
+
+  beforeEach(() => {
+    service = {
+      handleMessage: jest.fn(async () => ({ kind: 'INFO', state: 'IDLE', text: 'ok' })),
+      confirmDraft: jest.fn(async () => null),
+      cancelDraft: jest.fn(async () => null),
+      getSession: jest.fn(async () => ({ state: 'IDLE' })),
+    };
+    controller = new ConversationController(service as unknown as ConversationService);
+  });
+
+  it('userId vem do JWT e o canal APP e fixo', async () => {
+    await controller.message(user, { messageId: randomUUID(), text: 'saldo' });
+    expect(service.handleMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-a', channel: 'APP', text: 'saldo' }),
+    );
+  });
+
+  it('corpo com userId extra e rejeitado com 400 pelo ValidationPipe global', async () => {
+    await expect(
+      globalPipe.transform(
+        { messageId: randomUUID(), text: 'saldo', userId: 'user-b' },
+        { type: 'body', metatype: SendConversationMessageDto },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('confirm com draftVersion 0 e rejeitado (minimo 1)', async () => {
+    await expect(
+      globalPipe.transform(
+        { draftId: randomUUID(), draftVersion: 0 },
+        { type: 'body', metatype: ConfirmConversationDraftDto },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('confirm de rascunho inexistente, de outra conta ou versao antiga vira 404 com a mesma mensagem', async () => {
+    await expect(controller.confirm(user, { draftId: randomUUID(), draftVersion: 1 })).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(service.confirmDraft).toHaveBeenCalledWith('user-a', expect.any(String), 1);
+  });
+
+  it('cancel de rascunho alheio vira 404', async () => {
+    await expect(controller.cancel(user, { draftId: randomUUID() })).rejects.toThrow(NotFoundException);
+  });
+
+  it('session le so a conta do JWT', async () => {
+    await controller.session(user);
+    expect(service.getSession).toHaveBeenCalledWith('user-a');
+  });
+});
