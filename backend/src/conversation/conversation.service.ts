@@ -149,7 +149,10 @@ export class ConversationService {
 
     if (!intent) {
       await this.recordEvent(input, null, ConversationOutcome.UNRECOGNIZED);
-      return this.reply('HELP', 'IDLE', REPLIES.unrecognized);
+      const word = normalize(text);
+      const control = CONFIRM_WORDS.has(word) || CANCEL_WORDS.has(word);
+      const help = this.reply('HELP', 'IDLE', REPLIES.unrecognized);
+      return control ? help : { ...help, unrecognized: true };
     }
     if (intent.intent === 'create_expense' || intent.intent === 'create_income') {
       return this.startDraft({ input, intent });

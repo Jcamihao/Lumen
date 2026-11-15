@@ -330,7 +330,17 @@ describe('ConversationService', () => {
     it('"confirmar" sem rascunho nao faz acao', async () => {
       const reply = await service.handleMessage(msg('A', 'confirmar'));
       expect(reply.kind).toBe('HELP');
+      expect(reply.unrecognized).toBeUndefined();
       expect(transactions.create).not.toHaveBeenCalled();
+    });
+
+    it('texto livre marca unrecognized; "ajuda" nao', async () => {
+      const free = await service.handleMessage(msg('A', 'analise meus gastos do mes'));
+      const help = await service.handleMessage(msg('A', 'ajuda'));
+
+      expect(free).toMatchObject({ kind: 'HELP', unrecognized: true });
+      expect(help.kind).toBe('HELP');
+      expect(help.unrecognized).toBeUndefined();
     });
 
     it('falha em TransactionsService.create devolve o rascunho e nao grava nada', async () => {

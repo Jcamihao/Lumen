@@ -77,4 +77,9 @@ export interface ConversationReply {
   draft?: DraftView;
   data?: ReplyData;
   quickReplies?: string[];
+  /**
+   * true só quando o motor não reconheceu nenhuma intenção (texto livre). Permite ao canal
+   * entregar a mensagem a outro destino (ex.: Selah). "ajuda", "confirmar" sem rascunho etc. não marcam.
+   */
+  unrecognized?: true;
 }
