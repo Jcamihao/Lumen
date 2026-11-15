@@ -18,18 +18,40 @@ import { AssistantPageComponent } from "./assistant-page.component";
 // O app registra o pt-BR no main.ts; o ambiente de teste não passa por lá.
 registerLocaleData(localePt);
 
-const draft = (overrides: Partial<DraftView> = {}): DraftView => ({
-  draftId: "draft-1",
-  draftVersion: 1,
-  type: "EXPENSE",
-  amount: "R$ 50,00",
-  description: "mercado",
-  category: "Alimentação",
-  date: "2026-11-15",
-  paymentMethod: null,
-  pendingField: null,
-  ...overrides,
-});
+/** Rascunho de lançamento. Sem `rows` no override, as linhas saem dos campos (como o backend faz). */
+const draft = (overrides: Partial<DraftView> = {}): DraftView => {
+  const base = {
+    draftId: "draft-1",
+    draftVersion: 1,
+    kind: "TRANSACTION",
+    title: "Lançamento",
+    type: "EXPENSE",
+    amount: "R$ 50,00",
+    description: "mercado",
+    category: "Alimentação",
+    date: "2026-11-15",
+    paymentMethod: null,
+    pendingField: null,
+    ...overrides,
+  } as DraftView;
+
+  return {
+    ...base,
+    rows: overrides.rows ?? [
+      { label: "Valor", value: base.amount ?? "a informar" },
+      { label: "Descrição", value: base.description ?? "não informado" },
+      { label: "Categoria", value: base.category ?? "não informado" },
+      { label: "Data", value: "15/11/2026" },
+      { label: "Forma de pagamento", value: "não informado" },
+    ],
+  };
+};
+
+/** Formato de backend antigo: sem kind, title e rows. */
+const legacyDraft = (overrides: Partial<DraftView> = {}): DraftView => {
+  const { rows: _rows, kind: _kind, title: _title, ...rest } = draft(overrides);
+  return rest as DraftView;
+};
 
 const confirmReply = (): ConversationReply => ({
   kind: "CONFIRM_DRAFT",
@@ -466,5 +488,139 @@ describe("AssistantPageComponent — assistente manual", () => {
 
     expect(conversation.sendMessage).not.toHaveBeenCalled();
     expect(api.askAssistant).toHaveBeenCalledTimes(1);
+  });
+
+  describe("cartão do rascunho com rows (meta, aporte e lançamento)", () => {
+    const goalDraft = (overrides: Partial<DraftView> = {}) =>
+      draft({
+        kind: "GOAL",
+        title: "Meta",
+        amount: null,
+        description: null,
+        category: null,
+        date: null,
+        rows: [
+          { label: "Nome", value: "viagem" },
+          { label: "Alvo", value: "R$ 3.000,00" },
+        ],
+        ...overrides,
+      });
+
+    const contributionDraft = (overrides: Partial<DraftView> = {}) =>
+      draft({
+        kind: "CONTRIBUTION",
+        title: "Aporte",
+        amount: null,
+        description: null,
+        category: null,
+        date: null,
+        rows: [
+          { label: "Meta", value: "Viagem (R$ 1.200,00 de R$ 3.000,00)" },
+          { label: "Valor", value: "R$ 200,00" },
+          { label: "Data", value: "15/11/2026" },
+        ],
+        ...overrides,
+      });
+
+    const card = () => root().querySelector<HTMLElement>(".assistant-manual")!;
+    const rowLabels = () =>
+      Array.from(card().querySelectorAll(".assistant-draft__row dt")).map((dt) => dt.textContent?.trim());
+
+    it("rascunho de meta mostra título Meta, as linhas de rows e os botões", () => {
+      conversation.sendMessage.and.returnValue(
+        of({ kind: "CONFIRM_DRAFT", state: "AWAITING_CONFIRMATION", text: "Confirma a meta?", draft: goalDraft(), quickReplies: ["confirmar", "cancelar"] }),
+      );
+      create();
+
+      typeAndSend("criar meta viagem 3 mil");
+
+      expect(card().querySelector(".assistant-draft__title")?.textContent?.trim()).toBe("Meta");
+      expect(rowLabels()).toEqual(["Nome", "Alvo"]);
+      expect(text()).toContain("R$ 3.000,00");
+      expect(buttonWithText("Confirmar")).toBeDefined();
+      expect(buttonWithText("Cancelar")).toBeDefined();
+    });
+
+    it("rascunho de aporte mostra título Aporte e as três linhas", () => {
+      conversation.sendMessage.and.returnValue(
+        of({ kind: "CONFIRM_DRAFT", state: "AWAITING_CONFIRMATION", text: "Confirma o aporte?", draft: contributionDraft(), quickReplies: [] }),
+      );
+      create();
+
+      typeAndSend("guardar 200 na viagem");
+
+      expect(card().querySelector(".assistant-draft__title")?.textContent?.trim()).toBe("Aporte");
+      expect(rowLabels()).toEqual(["Meta", "Valor", "Data"]);
+      expect(text()).toContain("Viagem (R$ 1.200,00 de R$ 3.000,00)");
+    });
+
+    it("lançamento com rows mostra só as linhas de rows, sem duplicar", () => {
+      conversation.sendMessage.and.returnValue(of(confirmReply()));
+      create();
+
+      typeAndSend("50 mercado");
+
+      expect(card().querySelector(".assistant-draft__title")?.textContent?.trim()).toBe("Lançamento");
+      expect(rowLabels()).toEqual(["Valor", "Descrição", "Categoria", "Data", "Forma de pagamento"]);
+      expect(card().querySelectorAll(".assistant-draft__row").length).toBe(5);
+    });
+
+    it("aviso de conclusão e data futura nas rows ficam visíveis antes de confirmar e ao restaurar", () => {
+      const rows = [...contributionDraft().rows, { label: "Aviso", value: "Este aporte conclui a meta." }];
+      conversation.sendMessage.and.returnValue(of({ ...confirmReply(), draft: contributionDraft({ rows }) }));
+      create();
+      typeAndSend("guardar 1800 na viagem");
+      expect(card().textContent).toContain("Este aporte conclui a meta.");
+      expect(buttonWithText("Confirmar")).toBeDefined();
+      fixture.destroy();
+      conversation.getSession.and.returnValue(of({ state: "AWAITING_CONFIRMATION", draft: draft({ rows: [
+        { label: "Data", value: "20/12/2026" }, { label: "Aviso", value: "Este lançamento tem data futura." },
+      ] }) }));
+      create();
+      expect(card().textContent).toContain("Este lançamento tem data futura.");
+      expect(buttonWithText("Confirmar")).toBeDefined();
+    });
+
+    it("resposta sem rows (formato antigo) continua desenhando os campos antigos, sem título", () => {
+      conversation.sendMessage.and.returnValue(of({ ...confirmReply(), draft: legacyDraft() }));
+      create();
+
+      typeAndSend("50 mercado");
+
+      expect(card().querySelector(".assistant-draft__title")).toBeNull();
+      expect(rowLabels()).toEqual(["Valor", "Descrição", "Categoria", "Data"]);
+      expect(text()).toContain("15/11/2026");
+    });
+
+    it("formato antigo com amount e date nulos não mostra 'null'", () => {
+      conversation.sendMessage.and.returnValue(
+        of({ ...confirmReply(), draft: legacyDraft({ amount: null, date: null }) }),
+      );
+      create();
+
+      typeAndSend("50 mercado");
+
+      expect(card().textContent).not.toContain("null");
+      expect(rowLabels()).toEqual(["Descrição", "Categoria"]);
+    });
+
+    it("ao restaurar rascunho de meta sem alvo, avisa 'Falta informar: valor-alvo.' e não mostra Confirmar", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({
+          state: "COLLECTING_FIELDS",
+          draft: goalDraft({
+            pendingField: "target",
+            rows: [
+              { label: "Nome", value: "viagem" },
+              { label: "Alvo", value: "a informar" },
+            ],
+          }),
+        }),
+      );
+      create();
+
+      expect(text()).toContain("Falta informar: valor-alvo.");
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+    });
   });
 });

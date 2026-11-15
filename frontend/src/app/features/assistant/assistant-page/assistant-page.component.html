@@ -106,35 +106,50 @@
         <!-- Com rascunho para confirmar, o texto do motor repete a lista abaixo: mostra só uma chamada curta. -->
         <p class="assistant-manual__text" *ngIf="!(turn.kind === 'CONFIRM_DRAFT' && turn.draft); else confirmLead">{{ turn.text }}</p>
         <ng-template #confirmLead>
-          <p class="assistant-manual__text">Confira os dados antes de confirmar o lançamento.</p>
+          <p class="assistant-manual__text">Confira os dados antes de confirmar.</p>
         </ng-template>
 
         <p class="proto-muted" *ngIf="turn.kind === 'RESTORED' && turn.draft?.pendingField as pending">
           Falta informar: {{ pendingFieldLabel(pending) }}. Responda no campo de pergunta abaixo.
         </p>
 
-        <dl class="assistant-draft" *ngIf="turn.draft as draft">
-          <div class="assistant-draft__row">
-            <dt>Valor</dt>
-            <dd>{{ draft.amount }}</dd>
-          </div>
-          <div class="assistant-draft__row" *ngIf="draft.description">
-            <dt>Descrição</dt>
-            <dd>{{ draft.description }}</dd>
-          </div>
-          <div class="assistant-draft__row" *ngIf="draft.category">
-            <dt>Categoria</dt>
-            <dd>{{ draft.category }}</dd>
-          </div>
-          <div class="assistant-draft__row">
-            <dt>Data</dt>
-            <dd>{{ draftDateLabel(draft.date) }}</dd>
-          </div>
-          <div class="assistant-draft__row" *ngIf="draftPaymentLabel(draft.paymentMethod) as paymentLabel">
-            <dt>Forma de pagamento</dt>
-            <dd>{{ paymentLabel }}</dd>
-          </div>
-        </dl>
+        <ng-container *ngIf="turn.draft as draft">
+          <strong class="proto-inline-title assistant-draft__title" *ngIf="draft.title">{{ draft.title }}</strong>
+
+          <!-- Formato atual: o backend manda rows prontas (rótulo e valor). -->
+          <dl class="assistant-draft" *ngIf="draft.rows && draft.rows.length; else legacyDraft">
+            <div class="assistant-draft__row" *ngFor="let row of draft.rows">
+              <dt>{{ row.label }}</dt>
+              <dd>{{ row.value }}</dd>
+            </div>
+          </dl>
+
+          <!-- Backend antigo, sem rows: campos soltos. Valor e data nulos não aparecem. -->
+          <ng-template #legacyDraft>
+            <dl class="assistant-draft">
+              <div class="assistant-draft__row" *ngIf="draft.amount">
+                <dt>Valor</dt>
+                <dd>{{ draft.amount }}</dd>
+              </div>
+              <div class="assistant-draft__row" *ngIf="draft.description">
+                <dt>Descrição</dt>
+                <dd>{{ draft.description }}</dd>
+              </div>
+              <div class="assistant-draft__row" *ngIf="draft.category">
+                <dt>Categoria</dt>
+                <dd>{{ draft.category }}</dd>
+              </div>
+              <div class="assistant-draft__row" *ngIf="draft.date">
+                <dt>Data</dt>
+                <dd>{{ draftDateLabel(draft.date) }}</dd>
+              </div>
+              <div class="assistant-draft__row" *ngIf="draftPaymentLabel(draft.paymentMethod) as paymentLabel">
+                <dt>Forma de pagamento</dt>
+                <dd>{{ paymentLabel }}</dd>
+              </div>
+            </dl>
+          </ng-template>
+        </ng-container>
 
         <div class="proto-actions-row" *ngIf="showConfirmButtons(turn)">
           <button type="button" class="proto-button" [disabled]="manualBusy()" (click)="confirmDraft()">

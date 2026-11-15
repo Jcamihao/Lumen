@@ -303,6 +303,11 @@
   gap: 0.6rem;
 }
 
+.assistant-draft__title {
+  display: block;
+  margin-top: 0.75rem;
+}
+
 .assistant-draft {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

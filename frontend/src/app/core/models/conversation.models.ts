@@ -26,17 +26,32 @@ export type ConversationTransactionType = 'INCOME' | 'EXPENSE' | 'TRANSFER';
 
 export type ConversationPaymentMethod = 'PIX' | 'CREDIT' | 'DEBIT';
 
-export type PendingField = 'amount' | 'description' | 'category';
+export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION';
+
+export type PendingField = 'amount' | 'description' | 'category' | 'title' | 'target' | 'goal';
+
+/** Linha do cartão do rascunho, já formatada pelo backend. Valor ausente vem como "a informar". */
+export interface DraftRow {
+  label: string;
+  value: string;
+}
 
 /** Rascunho para a tela: valores formatados, sem ids internos além de draftId/draftVersion. */
 export interface DraftView {
   draftId: string;
   draftVersion: number;
+  /** Sessão antiga sem kind chega como 'TRANSACTION'. */
+  kind: DraftKind;
+  /** 'Lançamento' | 'Meta' | 'Aporte'. */
+  title: string;
+  rows: DraftRow[];
   type: ConversationTransactionType;
-  amount: string;
+  /** Nulo em meta e aporte (sem uso). */
+  amount: string | null;
   description: string | null;
   category: string | null;
-  date: string;
+  /** 'AAAA-MM-DD'. Nulo em meta e aporte. Para exibir, use `rows`. */
+  date: string | null;
   paymentMethod: ConversationPaymentMethod | null;
   pendingField: PendingField | null;
 }
@@ -56,6 +71,10 @@ export interface ReplyData {
     dueDay: number | null;
   };
   transactionId?: string;
+  /** Em `envelopes`: total disponível das reservas ativas. */
+  totalCents?: number;
+  goalId?: string;
+  envelopes?: Array<{ label: string; monthlyCents: number; availableCents: number; spentCents: number }>;
 }
 
 export interface ConversationReply {

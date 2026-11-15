@@ -58,6 +58,9 @@ const PENDING_FIELD_LABELS = {
   amount: "valor",
   description: "descrição",
   category: "categoria",
+  title: "nome",
+  target: "valor-alvo",
+  goal: "meta",
 } as const;
 
 @Component({
@@ -575,7 +578,11 @@ export class AssistantPageComponent {
   }
 
   /** "2026-11-15" vira "15/11/2026". Outro formato passa como veio. */
-  protected draftDateLabel(date: string) {
+  protected draftDateLabel(date: string | null) {
+    if (!date) {
+      return null;
+    }
+
     const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
     return match ? `${match[3]}/${match[2]}/${match[1]}` : date;
   }
