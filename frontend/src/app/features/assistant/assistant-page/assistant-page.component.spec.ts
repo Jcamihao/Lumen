@@ -301,6 +301,19 @@ describe("AssistantPageComponent — assistente manual", () => {
     expect(buttonWithText("Confirmar")).toBeDefined();
   });
 
+  it("ao abrir com rascunho sem valor, avisa que falta o valor e não mostra Confirmar", () => {
+    conversation.getSession.and.returnValue(
+      of<ConversationSessionView>({
+        state: "COLLECTING_FIELDS",
+        draft: draft({ pendingField: "amount", amount: "a informar" }),
+      }),
+    );
+    create();
+
+    expect(text()).toContain("Falta informar: valor.");
+    expect(buttonWithText("Confirmar")).toBeUndefined();
+  });
+
   it("com botões Confirmar e Cancelar, os atalhos de texto repetidos somem e os outros ficam", () => {
     conversation.sendMessage.and.returnValue(
       of({ ...confirmReply(), quickReplies: ["confirmar", "cancelar", "mudar categoria"] }),

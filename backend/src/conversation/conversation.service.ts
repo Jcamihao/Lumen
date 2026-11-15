@@ -176,13 +176,16 @@ export class ConversationService {
     const type = intent.intent === 'create_income' ? TransactionType.INCOME : TransactionType.EXPENSE;
     const today = await this.todayYmd(userId, receivedAt);
 
-    const amount = parseAmountPrefix(intent.body);
-    if (amount.ok === false) {
+    // "gastei mercado" (sem valor): guarda o que veio e pergunta o valor.
+    const amount = intent.missingAmount === true ? null : parseAmountPrefix(intent.body);
+    if (amount && amount.ok === false) {
       await this.recordEvent(input, intent.intent, ConversationOutcome.ERROR);
       return this.reply('ERROR', 'IDLE', amountErrorText(amount.reason));
     }
+    const cents = amount && amount.ok ? amount.cents : 0;
+    const rest = amount && amount.ok ? amount.rest : intent.body;
 
-    const dateResult = extractDate(splitTokens(amount.rest), today);
+    const dateResult = extractDate(splitTokens(rest), today);
     if (dateResult.invalid) {
       await this.recordEvent(input, intent.intent, ConversationOutcome.ERROR);
       return this.reply('ERROR', 'IDLE', REPLIES.invalidDate);
@@ -196,7 +199,7 @@ export class ConversationService {
 
     const draft: ExpenseOrIncomeDraft = {
       type,
-      amountCents: amount.cents,
+      amountCents: cents,
       description: description.length >= DESCRIPTION_MIN ? description : null,
       categoryId: null,
       date: dateResult.ymd,
@@ -205,7 +208,9 @@ export class ConversationService {
       categoryOptions: [],
     };
 
-    if (draft.description === null) {
+    if (intent.missingAmount === true) {
+      draft.pendingField = 'amount';
+    } else if (draft.description === null) {
       draft.pendingField = 'description';
     } else {
       await this.resolveCategory(userId, draft, description);
@@ -272,8 +277,9 @@ export class ConversationService {
       await this.recordEvent(input, session.intent, ConversationOutcome.UNRECOGNIZED);
       return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: REPLIES.collectingReminder });
     }
-    if (!awaiting && isOptionNumber(words, session.draft as unknown as ExpenseOrIncomeDraft)) {
-      // "1".."5" respondem a pergunta de categoria; sem isso o matcher leria como gasto de R$ 1.
+    const pendingDraft = session.draft as unknown as ExpenseOrIncomeDraft;
+    if (!awaiting && (isOptionNumber(words, pendingDraft) || isAmountAnswer(text, pendingDraft))) {
+      // "1".."5" respondem a pergunta de categoria e um número responde "Quanto foi?"; sem isso o matcher leria como novo gasto.
       return this.fillPendingField({ input, session, text });
     }
     if (intent && isReadIntent(intent)) {
@@ -309,7 +315,24 @@ export class ConversationService {
     const today = await this.todayYmd(userId, receivedAt);
     const value = text.trim();
 
-    if (draft.pendingField === 'description') {
+    if (draft.pendingField === 'amount') {
+      const amount = parseAmountPrefix(value);
+      if (amount.ok === false) {
+        await this.recordEvent(input, session.intent, ConversationOutcome.ERROR);
+        return this.reply('ERROR', this.stateView(session), amountErrorText(amount.reason));
+      }
+      draft.amountCents = amount.cents;
+      draft.pendingField = null;
+      const rest = stripConnectors(splitTokens(amount.rest)).join(' ');
+      if (draft.description === null && rest.length >= DESCRIPTION_MIN) {
+        draft.description = rest;
+      }
+      if (draft.description === null) {
+        draft.pendingField = 'description';
+      } else {
+        await this.resolveCategory(userId, draft, draft.description);
+      }
+    } else if (draft.pendingField === 'description') {
       if (value.length < DESCRIPTION_MIN) {
         await this.recordEvent(input, session.intent, ConversationOutcome.UNRECOGNIZED);
         return this.draftReply(session, today, { question: REPLIES.askDescription });
@@ -674,6 +697,9 @@ export class ConversationService {
   }
 
   private async questionFor(userId: string, draft: ExpenseOrIncomeDraft): Promise<string> {
+    if (draft.pendingField === 'amount') {
+      return REPLIES.askAmount;
+    }
     if (draft.pendingField === 'description') {
       return REPLIES.askDescription;
     }
@@ -696,7 +722,7 @@ export class ConversationService {
       draftId: session.id,
       draftVersion: session.version,
       type: draft.type,
-      amount: formatBrl(draft.amountCents),
+      amount: draft.pendingField === 'amount' ? 'a informar' : formatBrl(draft.amountCents),
       description: draft.description,
       category,
       date: draft.date,
@@ -783,6 +809,15 @@ function isReadIntent(match: IntentMatch): match is { intent: ReadIntent } | { i
 }
 
 /** Resposta numérica válida à pergunta de categoria (opção existente no rascunho). */
+/** Número (ou "32,90 padaria") em resposta a "Quanto foi?". Texto sem valor cai no erro de valor. */
+function isAmountAnswer(text: string, draft: ExpenseOrIncomeDraft): boolean {
+  if (draft.pendingField !== 'amount') {
+    return false;
+  }
+  const parsed = parseAmountPrefix(text.trim());
+  return parsed.ok === true || parsed.reason !== 'NOT_AMOUNT';
+}
+
 function isOptionNumber(words: string, draft: ExpenseOrIncomeDraft): boolean {
   return (
     draft.pendingField === 'category' &&

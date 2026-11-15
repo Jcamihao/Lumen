@@ -55,6 +55,7 @@ const PAYMENT_METHOD_LABELS: Record<ConversationPaymentMethod, string> = {
 };
 
 const PENDING_FIELD_LABELS = {
+  amount: "valor",
   description: "descrição",
   category: "categoria",
 } as const;

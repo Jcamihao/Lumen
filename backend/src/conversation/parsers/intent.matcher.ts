@@ -6,9 +6,12 @@ export type ReadIntent = 'balance' | 'month_summary' | 'spend_total' | 'credit_c
 export type IntentMatch =
   | { intent: ReadIntent }
   | { intent: 'spend_by_category'; categoryQuery: string }
-  | { intent: 'create_expense' | 'create_income'; body: string };
+  | { intent: 'create_expense' | 'create_income'; body: string; missingAmount?: true };
 
 const EXPENSE_VERBS = ['gastei', 'paguei', 'comprei'];
+
+/** Verbo sem valor só vira comando curto ("gastei mercado"); frase longa ou pergunta é conversa livre. */
+const MISSING_AMOUNT_MAX_WORDS = 3;
 
 /**
  * Casa a mensagem com uma intencao da tabela do contrato. Devolve null se nada casou.
@@ -60,13 +63,22 @@ function matchIncome(tokens: string[], words: string[]): IntentMatch | null {
     return null;
   }
   const body = tokens.slice(skip).join(' ');
-  return isAmountStart(body) ? { intent: 'create_income', body } : null;
+  return isAmountStart(body) ? { intent: 'create_income', body } : missingAmount('create_income', body);
 }
 
 function matchExpense(tokens: string[], words: string[]): IntentMatch | null {
   const skip = EXPENSE_VERBS.includes(words[0]) ? 1 : 0;
   const body = tokens.slice(skip).join(' ');
-  return isAmountStart(body) ? { intent: 'create_expense', body } : null;
+  if (isAmountStart(body)) return { intent: 'create_expense', body };
+  return skip === 1 ? missingAmount('create_expense', body) : null;
+}
+
+function missingAmount(intent: 'create_expense' | 'create_income', body: string): IntentMatch | null {
+  const wordCount = body.split(/\s+/).filter((word) => word.length > 0).length;
+  if (body.includes('?') || wordCount > MISSING_AMOUNT_MAX_WORDS) {
+    return null;
+  }
+  return { intent, body, missingAmount: true };
 }
 
 function matchSpendByCategory(tokens: string[], words: string[]): IntentMatch | null {

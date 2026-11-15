@@ -38,7 +38,7 @@ export interface DraftView {
   pendingField: PendingField | null;
 }
 
-export type PendingField = 'description' | 'category';
+export type PendingField = 'amount' | 'description' | 'category';
 
 /** Rascunho guardado em ConversationSession.draft. Dinheiro sempre em centavos inteiros. */
 export interface ExpenseOrIncomeDraft {

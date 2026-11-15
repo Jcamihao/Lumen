@@ -256,6 +256,86 @@ describe('ConversationService', () => {
     });
   });
 
+  describe('valor que falta', () => {
+    it('"gastei mercado" pergunta o valor, guarda a descrição e não manda ao Selah', async () => {
+      const reply = await service.handleMessage(msg('A', 'gastei mercado'));
+
+      expect(reply).toMatchObject({ kind: 'ASK_FIELD', state: 'COLLECTING_FIELDS' });
+      expect(reply.unrecognized).toBeUndefined();
+      expect(reply.draft).toMatchObject({ pendingField: 'amount', description: 'mercado' });
+      expect(db.sessions).toHaveLength(1);
+      expect(transactions.create).not.toHaveBeenCalled();
+    });
+
+    it('responder o valor completa o rascunho, com a categoria da descrição', async () => {
+      await service.handleMessage(msg('A', 'gastei mercado'));
+
+      const reply = await service.handleMessage(msg('A', '50'));
+
+      expect(reply.kind).toBe('CONFIRM_DRAFT');
+      expect(reply.draft).toMatchObject({ amount: expect.stringContaining('50,00'), description: 'mercado', category: 'Mercado' });
+      expect(db.sessions[0].state).toBe('AWAITING_CONFIRMATION');
+    });
+
+    it('"recebi freelance" e depois "800" vira receita; categoria desconhecida pergunta uma vez', async () => {
+      await service.handleMessage(msg('A', 'recebi freelance'));
+
+      const afterAmount = await service.handleMessage(msg('A', '800'));
+      expect(afterAmount.kind).toBe('ASK_FIELD');
+      expect(afterAmount.draft).toMatchObject({ type: 'INCOME', description: 'freelance', pendingField: 'category' });
+
+      const final = await service.handleMessage(msg('A', 'sem categoria'));
+      expect(final.kind).toBe('CONFIRM_DRAFT');
+      expect(final.draft).toMatchObject({ type: 'INCOME', amount: expect.stringContaining('800,00') });
+    });
+
+    it('"gastei" sozinho pede o valor; "32,90 padaria" traz valor e descrição de uma vez', async () => {
+      const first = await service.handleMessage(msg('A', 'gastei'));
+      expect(first.draft).toMatchObject({ pendingField: 'amount', description: null });
+
+      const second = await service.handleMessage(msg('A', '32,90 padaria'));
+
+      expect(second.kind).toBe('ASK_FIELD');
+      expect(second.draft).toMatchObject({ description: 'padaria' });
+    });
+
+    it('valor inválido não derruba a conversa: erro claro e o rascunho continua esperando o valor', async () => {
+      await service.handleMessage(msg('A', 'gastei mercado'));
+
+      const text = await service.handleMessage(msg('A', 'abc'));
+      const zero = await service.handleMessage(msg('A', '0'));
+
+      expect(text.kind).toBe('ERROR');
+      expect(zero.kind).toBe('ERROR');
+      expect(db.sessions).toHaveLength(1);
+      expect((db.sessions[0].draft as any).pendingField).toBe('amount');
+
+      const ok = await service.handleMessage(msg('A', '50'));
+      expect(ok.kind).toBe('CONFIRM_DRAFT');
+    });
+
+    it('uma leitura (saldo) durante a espera do valor responde e mantém o rascunho', async () => {
+      await service.handleMessage(msg('A', 'gastei mercado'));
+
+      const reply = await service.handleMessage(msg('A', 'saldo'));
+
+      expect(reply.kind).toBe('INFO');
+      expect((db.sessions[0].draft as any).pendingField).toBe('amount');
+    });
+
+    it('rascunho sem valor não pode ser confirmado por botão nem por texto', async () => {
+      await service.handleMessage(msg('A', 'gastei mercado'));
+      const draft = db.sessions[0];
+
+      const byButton = await service.confirmDraft('A', draft.id, draft.version);
+      const byText = await service.handleMessage(msg('A', 'confirmar'));
+
+      expect(byButton).toBeNull();
+      expect(byText.kind).not.toBe('DONE');
+      expect(transactions.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('confirmar', () => {
     it('botao confirma uma vez e grava com userId da conta', async () => {
       await draftFor('A', 'gastei 32,90 mercado');

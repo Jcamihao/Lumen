@@ -26,7 +26,7 @@ export type ConversationTransactionType = 'INCOME' | 'EXPENSE' | 'TRANSFER';
 
 export type ConversationPaymentMethod = 'PIX' | 'CREDIT' | 'DEBIT';
 
-export type PendingField = 'description' | 'category';
+export type PendingField = 'amount' | 'description' | 'category';
 
 /** Rascunho para a tela: valores formatados, sem ids internos além de draftId/draftVersion. */
 export interface DraftView {

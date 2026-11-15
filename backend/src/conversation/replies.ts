@@ -28,6 +28,7 @@ export const REPLIES = {
     'Valor ambíguo. Escreva com centavos (1234,00 ou 1.234,00) ou sem separador (1234).',
   amountMissing: 'Não encontrei o valor. Ex.: "50 mercado".',
   descriptionTooLong: 'A descrição passa de 120 caracteres.',
+  askAmount: 'Quanto foi? Responda só o valor. Ex.: 50 ou 32,90.',
   askDescription: 'Qual a descrição do lançamento? Ex.: mercado.',
   askCategoryNoOptions: 'Qual a categoria? Responda o nome ou "sem categoria".',
   noCeiling: 'Não há limite definido neste ciclo do cartão.',
