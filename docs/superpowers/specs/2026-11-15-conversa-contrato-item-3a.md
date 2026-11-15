@@ -95,7 +95,7 @@ Esses campos são aditivos: o frontend atual os ignora. O front só precisa de m
 ## 5. Segurança e erros
 
 - `userId` vem só do argumento do motor. Cada consulta passa esse `userId` ao serviço; nenhuma consulta aceita id vindo do texto da mensagem.
-- Falha em qualquer serviço: resposta `ERROR` com texto genérico ("Não consegui consultar agora. Tente de novo."), evento `ERROR` sem texto da mensagem, nenhum detalhe interno na resposta. Mesmo tratamento das leituras atuais.
+- Falha em qualquer serviço: resposta `ERROR` com texto genérico ("Não consegui consultar agora. Tente de novo."), evento `ERROR` sem texto da mensagem, nenhum detalhe interno na resposta. Hoje as leituras do item 2 não tratam falha: a exceção sobe e vira erro 500. Este item passa a tratar **todas** as leituras (as antigas e as novas) do mesmo jeito.
 - Descrições de lançamentos e de metas são texto livre do próprio usuário. Vão para a resposta sem interpretação, mas com limite de 60 caracteres por linha (truncar com "…") para não estourar a mensagem.
 - Eventos: um `ConversationEvent` por consulta com `intent` e `outcome RECOGNIZED`, sem texto.
 
