@@ -1,7 +1,7 @@
 # Finanças por conversa: contrato do item 3b1 (metas e aportes) e correção de "reserva"
 
 Data: 2026-11-15
-Status: contrato escrito para aprovação do dono. Nenhum código foi criado.
+Status: implementado, revisado e commitado em 2026-11-15 (`d1d2fa2` backend e `45604a1` frontend), sem push. Evidências e limites em `.superpowers/sdd/conversa-item-3b1/resultado-revisao.md` e `conferencia-principal.md`.
 
 Item 3b1 da "Ordem de implementação" de `2026-11-14-assistente-manual-financas.md`. Reúne duas coisas que dependem do mesmo vocabulário:
 
@@ -11,6 +11,8 @@ Item 3b1 da "Ordem de implementação" de `2026-11-14-assistente-manual-financas
 Criar reserva (envelope), conta fixa, parcelado e limite do cartão ficam no 3b2.
 
 Base: motor, tabelas e rotas dos itens 1 a 3a não mudam. **Sem tabela, migration, rota nem DTO de entrada novos.** Mexe no backend (`backend/src/conversation/`) e no frontend (só o cartão do rascunho, para mostrar rascunhos que não são lançamentos).
+
+Ampliação autorizada pelo dono durante a revisão em 2026-11-15: incluir `backend/src/goals/goals.service.ts` e `goals.service.spec.ts` para corrigir aporte parcialmente persistido e falhas auxiliares após gravação que induziam repetição. O usuário escolheu explicitamente incluir a correção. A seção abaixo sobre persistência descreve o contrato final, sem nova migration, rota ou dependência.
 
 ## 1. Parte A: reservas são envelopes
 
@@ -54,6 +56,10 @@ Corpo (`<nome>` e `<valor>`, nesta ordem de preferência):
 3. Só nome: `viagem` → pergunta o alvo.
 4. Vazio: pergunta o nome.
 
+Conectores soltos nas pontas do nome saem (`de`, `da`, `do`, `para`, `pra`, `com`, `em`): `criar meta de viagem` → nome "viagem"; `criar meta de emergência com 5000` → nome "emergência", alvo R$ 5.000.
+
+**`criar cofrinho <nome>` nasce sem alvo** (correção da revisão, decisão do agente principal): cofrinho é meta sem alvo, então o rascunho abre direto com `noTarget: true` e o motor **não pergunta o alvo**. O corpo inteiro é o nome (nenhum número vira alvo: `criar cofrinho viagem de 2027` → nome "viagem de 2027"); `sem alvo` no fim é redundante e sai. `criar cofrinho` sozinho pergunta só o nome. `criar meta <nome>` continua perguntando o alvo.
+
 Campos do rascunho `GoalDraft`:
 
 ```ts
@@ -93,8 +99,12 @@ interface ContributionDraft {
 ```
 
 - A meta é buscada entre as metas **ativas** do usuário (`GoalsService.list`), por título sem acento e sem caixa: igualdade primeiro, depois prefixo, depois "contém". Uma só candidata: usa. Várias: pergunta com opções numeradas (até 5), como a categoria. Nenhuma: responde "Não achei uma meta ativa com esse nome." e lista até 5 títulos; não abre rascunho.
+- Os números das opções identificam os ids originalmente oferecidos. Uma meta removida ou desativada aparece como `indisponível`, sem deslocar as demais posições; responder o número indisponível pergunta novamente, sem escolher outra meta.
 - Sem nome de meta e com **uma única** meta ativa: usa essa meta (o rascunho mostra qual). Com várias: pergunta qual (opções numeradas). Com nenhuma: "Você não tem metas ativas."
 - Sem valor (`guardar viagem`): pergunta "Quanto quer guardar?" (`pendingField: 'amount'`).
+- **Sem valor e com nome que não casa com nenhuma meta ativa vai ao Selah** (correção da revisão, decisão do agente principal): `guardar dinheiro é importante`, `colocar o dinheiro no banco`. O motor responde como não reconhecido (`HELP` com `unrecognized: true`, evento `UNRECOGNIZED`), sem abrir rascunho e sem pedir valor. Com valor e meta inexistente, continua recusando e listando as metas. Valor depois do nome (`guardar viagem 200`) só é lido como valor quando o nome inteiro não casa com nenhuma meta (uma meta "Viagem 2027" tem prioridade).
+- Palavras de ligação ignoradas antes do nome: `na`, `no`, `em`, `para`, `pra`, `a`, `o`, `da`, `do`, `de`, `meta`, `cofrinho`, `reais`, `minha`, `meu`.
+- "Este aporte conclui a meta" usa a mesma conta do `GoalsService.contribute` (reais em ponto flutuante, `atual + aporte >= alvo`), para o aviso nunca divergir do status gravado.
 - Valor ≤ 0 ou ambíguo: mesmas regras e mensagens do parser.
 - Confirmação: "Rascunho de aporte:\nMeta: Viagem (R$ 1.200,00 de R$ 3.000,00)\nValor: R$ 200,00\nData: 15/11/2026\nResponda "confirmar" ou "cancelar"." Se `atual + aporte >= alvo` (meta com alvo), acrescenta a linha "Este aporte conclui a meta.".
 - Aplicar: `GoalsService.contribute(userId, goalId, { amount, date: ${date}T00:00:00.000Z, createTransaction: true })`. Isso cria a transferência de aporte, soma ao valor atual e conclui a meta se bater o alvo.
@@ -103,11 +113,17 @@ interface ContributionDraft {
 
 ### Regras comuns às duas
 
-- **Estado e prazos**: iguais aos do item 1 (coleta 15 min, confirmação 5 min). `unrecognized` não se aplica: entrada que casa a frase é sempre tratada pelo bot.
+- **Estado e prazos**: iguais aos do item 1 (coleta 15 min, confirmação 5 min). Entrada que casa a frase é tratada pelo bot, exceto a regra expressa de aporte sem valor e nome sem correspondência, que devolve `unrecognized`.
 - **Durante um rascunho em coleta**, outro comando de escrita não substitui o rascunho em silêncio (mesma regra de hoje); leituras respondem e mantêm o rascunho; um número responde a pergunta pendente (valor ou opção).
 - **Confirmar** segue o algoritmo da seção 7 do contrato do item 1 (reivindicar, registrar `appliedKey`, aplicar). `resultRef` do evento = `goalId`.
 - **Falha ao gravar** (D5): `PlanLimitException` → `ERROR` com a mensagem dela, rascunho descartado. Outro `HttpException` com status < 500 (meta não encontrada, dado inválido) → `ERROR` com "Não foi possível gravar. A meta pode ter sido removida.", rascunho descartado. Qualquer outro erro → comportamento atual (restaura o rascunho).
 - **Log**: só o id da intenção e `error.name`; nunca mensagem, valor ou nome de meta.
+
+### Persistência e efeitos auxiliares (correção autorizada na revisão)
+
+`GoalsService.contribute` bloqueia a linha da meta com consulta SQL parametrizada por `id + userId`, dentro de uma transação Prisma, antes de ler o saldo. A atualização do saldo/status e a transferência são gravadas na mesma transação. Falha na transferência reverte a atualização; aportes distintos simultâneos à mesma meta não perdem incrementos. Meta inexistente ou de outro dono retorna 404 antes de gravar.
+
+Após persistir `create` ou `contribute`, falha de atualização de cache ou notificação não pode transformar o sucesso financeiro em erro para o motor. Esses efeitos são protegidos individualmente e registram apenas operação e nome do erro, sem dados financeiros. Eles não têm repetição automática nesta entrega, portanto podem ficar atrasados após uma falha. Falha financeira que aborta a transação continua permitindo restaurar o rascunho segundo D5. A janela de queda do processo entre reivindicar a sessão e aplicar a ação continua com o limite documentado no item 1.
 
 ## 4. Tipos e resposta
 
@@ -124,6 +140,8 @@ rows: Array<{ label: string; value: string }>;
 ```
 
 `rows` lista, já formatados e sem valores nulos: lançamento (Valor, Descrição, Categoria, Data, Forma de pagamento), meta (Nome, Alvo), aporte (Meta, Valor, Data). Valor não informado ainda aparece como "a informar". Campos antigos de `DraftView` seguem preenchidos para lançamento (compatibilidade); para meta e aporte ficam com `type: 'EXPENSE'` e demais campos nulos, sem uso.
+
+Quando necessário, `rows` também inclui uma linha `Aviso`: aporte que conclui a meta e lançamento com data futura. A tela substitui o texto de confirmação por uma chamada curta, portanto esses avisos devem constar nas linhas para permanecerem visíveis antes da confirmação e ao restaurar a sessão.
 
 `ReplyData` ganha `goalId?: string`, `envelopes?: [...]` (Parte A).
 
@@ -162,6 +180,7 @@ Ponta a ponta (revisor, com backend real e Chrome headless): criar meta, ver o l
 ## 8. Arquivos
 
 Backend, só em `backend/src/conversation/`: `parsers/intent.matcher.ts` (+spec), `conversation.service.ts` (+spec), `replies.ts`, `conversation.types.ts`, `conversation.module.ts` (importa `EnvelopesModule` e `BillingModule` se `EntitlementsService` não vier por `GoalsModule`; conferir).
+Exceção de escopo autorizada na revisão: `backend/src/goals/goals.service.ts` e `goals.service.spec.ts`, exclusivamente para atomicidade de aporte, concorrência e efeitos auxiliares posteriores à persistência.
 Frontend: `core/models/conversation.models.ts`, `features/assistant/assistant-page/assistant-page.component.{ts,html,scss,spec.ts}`.
 
 ## 9. Decisões abertas do dono
