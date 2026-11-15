@@ -1,4 +1,5 @@
 import { ConversationChannel, ConversationOutcome, ConversationState, Prisma } from '@prisma/client';
+import { Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { ConversationInput } from './conversation.types';
 import { ConversationService } from './conversation.service';
@@ -108,16 +109,23 @@ describe('ConversationService', () => {
   let transactions: { create: jest.Mock };
   let dashboard: { getSummary: jest.Mock };
   let creditCycle: { getCurrent: jest.Mock };
+  let recurring: { list: jest.Mock };
+  let installments: { list: jest.Mock };
+  let goals: { list: jest.Mock };
   let service: ConversationService;
+  let warn: jest.SpyInstance;
 
   afterEach(() => {
     jest.useRealTimers();
+    warn.mockRestore();
   });
 
   // Relógio travado em T0: os rascunhos nascem em T0 e a confirmação compara com o relógio real,
   // então sem isso os testes passam ou falham conforme a hora em que rodam.
   beforeEach(() => {
     jest.useFakeTimers({ now: T0 });
+    // O log de falha de leitura não polui a saída dos testes; um teste confere o conteúdo.
+    warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     db = buildFakeDb();
     transactions = { create: jest.fn(async () => ({ id: 'tx-1' })) };
     dashboard = {
@@ -136,11 +144,18 @@ describe('ConversationService', () => {
         dueDay: 12,
       })),
     };
+    // Serviços de leitura: por padrão sem linhas. Cada teste substitui `list` quando precisa.
+    recurring = { list: jest.fn(async () => []) };
+    installments = { list: jest.fn(async () => []) };
+    goals = { list: jest.fn(async () => []) };
     service = new ConversationService(
       db.prisma as unknown as Deps[0],
       dashboard as unknown as Deps[1],
       creditCycle as unknown as Deps[2],
       transactions as unknown as Deps[3],
+      recurring as unknown as Deps[4],
+      installments as unknown as Deps[5],
+      goals as unknown as Deps[6],
     );
   });
 
@@ -611,6 +626,381 @@ describe('ConversationService', () => {
       expect(reply.kind).toBe('INFO');
       expect(reply.state).toBe(ConversationState.AWAITING_CONFIRMATION);
       expect(db.sessions[0].version).toBe(before);
+    });
+  });
+
+  describe('consultas de finanças (item 3a)', () => {
+    const day = (ymd: string) => new Date(`${ymd}T00:00:00.000Z`);
+    /** Conta fixa padrão: aluguel mensal de despesa, ativa, vence em 01/12. */
+    const bill = (o: Row = {}): Row => ({
+      description: 'Aluguel',
+      type: 'EXPENSE',
+      frequency: 'MONTHLY',
+      amount: 1500,
+      isActive: true,
+      nextDueDate: day('2026-12-01'),
+      ...o,
+    });
+    /** Parcelado padrão: notebook, parcela 3 de 10 (2 geradas), 8 restantes. */
+    const inst = (o: Row = {}): Row => ({
+      description: 'Notebook',
+      installmentAmount: 450,
+      installmentsTotal: 10,
+      installmentsGenerated: 2,
+      remainingAmount: 3600,
+      remainingInstallments: 8,
+      isActive: true,
+      nextDueDate: day('2026-12-05'),
+      ...o,
+    });
+    const goal = (o: Row = {}): Row => ({
+      title: 'Viagem',
+      status: 'ACTIVE',
+      targetAmount: 1000,
+      currentAmount: 333.33,
+      targetDate: day('2027-06-30'),
+      ...o,
+    });
+    // Intl pt-BR põe NBSP entre "R$" e o valor; os textos esperados usam espaço comum.
+    const ask = async (text: string, userId = 'A', receivedAt: Date = T0) => {
+      const reply = await service.handleMessage(msg(userId, text, receivedAt));
+      return { ...reply, text: reply.text.replace(/\u00a0/g, ' ') };
+    };
+
+    describe('contas fixas (fixed_bills)', () => {
+      it('caso vazio', async () => {
+        const reply = await ask('contas fixas');
+        expect(reply.kind).toBe('INFO');
+        expect(reply.text).toBe('Você ainda não tem contas fixas ativas.');
+      });
+
+      it('filtra inativas e receitas, ordena por vencimento e soma o total mensal estimado', async () => {
+        recurring.list = jest.fn(async () => [
+          bill({ description: 'Anual', frequency: 'YEARLY', amount: 1200, nextDueDate: day('2027-03-01') }),
+          bill({ description: 'Semanal', frequency: 'WEEKLY', amount: 50, nextDueDate: day('2026-11-18') }),
+          bill({ description: 'Aluguel' }),
+          bill({ description: 'Desativada', isActive: false }),
+          bill({ description: 'Salário', type: 'INCOME', amount: 3000 }),
+        ]);
+        const reply = await ask('contas fixas');
+        // 1500 + 50 x 52 / 12 + 1200 / 12 = 1816,666... -> arredonda uma vez: 1.816,67
+        expect(reply.data?.totalCents).toBe(181667);
+        expect(reply.text).toBe(
+          [
+            'Contas fixas ativas (3):',
+            '• Semanal: R$ 50,00, semanal, próximo em 18/11',
+            '• Aluguel: R$ 1.500,00, mensal, próximo em 01/12',
+            '• Anual: R$ 1.200,00, anual, próximo em 01/03',
+            'Total mensal estimado: R$ 1.816,67.',
+          ].join('\n'),
+        );
+        expect(recurring.list).toHaveBeenCalledWith('A');
+      });
+
+      it('total mensal arredonda uma vez, em meio centavo sobe: anual de R$ 0,42 vale 3,5 centavos por mês', async () => {
+        recurring.list = jest.fn(async () => [bill({ frequency: 'YEARLY', amount: 0.42 })]);
+        const reply = await ask('contas fixas');
+        expect(reply.data?.totalCents).toBe(4);
+      });
+
+      it('mais de 5 itens: mostra 5 e diz quantos ficaram de fora', async () => {
+        recurring.list = jest.fn(async () =>
+          Array.from({ length: 7 }, (_, index) => bill({ description: `Conta ${index}` })),
+        );
+        const reply = await ask('contas fixas');
+        expect(reply.text).toContain('Contas fixas ativas (7):');
+        expect(reply.text.split('\n').filter((line) => line.startsWith('• '))).toHaveLength(5);
+        expect(reply.text).toContain('e mais 2.');
+      });
+
+      it('descrição longa é cortada em 60 caracteres com "…"', async () => {
+        recurring.list = jest.fn(async () => [bill({ description: 'x'.repeat(80) })]);
+        const reply = await ask('contas fixas');
+        expect(reply.text).toContain(`• ${'x'.repeat(59)}…: `);
+      });
+    });
+
+    describe('parcelas (installments)', () => {
+      it('caso vazio', async () => {
+        const reply = await ask('minhas parcelas');
+        expect(reply.text).toBe('Você não tem compras parceladas em aberto.');
+      });
+
+      it('ignora quitadas e inativas; "parcela X de N" e total a pagar', async () => {
+        installments.list = jest.fn(async () => [
+          inst({ description: 'Sofá', installmentAmount: 300, installmentsTotal: 6, installmentsGenerated: 0, remainingAmount: 1800, remainingInstallments: 6, nextDueDate: day('2026-12-20') }),
+          inst({ description: 'Quitada', installmentsTotal: 2, installmentsGenerated: 2, remainingAmount: 0, remainingInstallments: 0, nextDueDate: null }),
+          inst({ description: 'Desativada', isActive: false }),
+          inst(),
+        ]);
+        const reply = await ask('parcelas');
+        expect(reply.text).toBe(
+          [
+            'Parcelas em aberto (2):',
+            '• Notebook: parcela 3 de 10, R$ 450,00, próxima em 05/12',
+            '• Sofá: parcela 1 de 6, R$ 300,00, próxima em 20/12',
+            'A pagar ao todo: R$ 5.400,00. Próximo impacto: R$ 450,00 em 05/12.',
+          ].join('\n'),
+        );
+        expect(reply.data?.totalCents).toBe(540000);
+      });
+
+      it('próximo impacto é a parcela de data mais próxima, mesmo vindo depois na lista', async () => {
+        installments.list = jest.fn(async () => [
+          inst({ description: 'Longe', installmentAmount: 100, nextDueDate: day('2027-01-10') }),
+          inst({ description: 'Perto', installmentAmount: 77, nextDueDate: day('2026-11-25') }),
+        ]);
+        const reply = await ask('parcelas');
+        expect(reply.text).toContain('Próximo impacto: R$ 77,00 em 25/11.');
+      });
+
+      it('última parcela usa o restante (absorve a sobra do arredondamento)', async () => {
+        installments.list = jest.fn(async () => [
+          inst({ installmentAmount: 100, installmentsTotal: 3, installmentsGenerated: 2, remainingAmount: 150, remainingInstallments: 1 }),
+        ]);
+        const reply = await ask('parcelas');
+        expect(reply.data?.installments?.[0].amountCents).toBe(15000);
+        expect(reply.text).toContain('R$ 150,00');
+      });
+
+      it('mais de 5 itens: mostra 5 e diz quantos ficaram de fora; total usa todos', async () => {
+        installments.list = jest.fn(async () =>
+          Array.from({ length: 6 }, (_, index) => inst({ description: `Item ${index}`, remainingAmount: 100, nextDueDate: day('2026-12-05') })),
+        );
+        const reply = await ask('parcelas');
+        expect(reply.text).toContain('Parcelas em aberto (6):');
+        expect(reply.text.split('\n').filter((line) => line.startsWith('• '))).toHaveLength(5);
+        expect(reply.text).toContain('e mais 1.');
+        expect(reply.data?.totalCents).toBe(60000);
+      });
+    });
+
+    describe('vencimentos (upcoming_dues)', () => {
+      it('caso vazio', async () => {
+        const reply = await ask('o que vence');
+        expect(reply.text).toBe('Nada vence nos próximos 30 dias.');
+      });
+
+      it('janela: dia 29 entra, dia 30 não (hoje = 15/11 no fuso do usuário)', async () => {
+        recurring.list = jest.fn(async () => [
+          bill({ description: 'Dia 29', nextDueDate: day('2026-12-14') }),
+          bill({ description: 'Dia 30', nextDueDate: day('2026-12-15') }),
+          bill({ description: 'Hoje', nextDueDate: day('2026-11-15') }),
+          bill({ description: 'Ontem', nextDueDate: day('2026-11-14') }),
+        ]);
+        const reply = await ask('o que vence');
+        expect(reply.text).toContain('Dia 29');
+        expect(reply.text).toContain('Hoje');
+        expect(reply.text).not.toContain('Dia 30');
+        expect(reply.text).not.toContain('Ontem');
+      });
+
+      it('usa o dia do fuso do usuário, não o UTC (23h em São Paulo ainda é o dia 15)', async () => {
+        recurring.list = jest.fn(async () => [bill({ description: 'Dia 30 UTC', nextDueDate: day('2026-12-15') })]);
+        const reply = await ask('o que vence', 'A', new Date('2026-11-16T02:00:00.000Z'));
+        expect(reply.text).toBe('Nada vence nos próximos 30 dias.');
+      });
+
+      it('mistura conta fixa e parcela por data, ordem por data e empate por valor decrescente', async () => {
+        recurring.list = jest.fn(async () => [
+          bill({ description: 'Luz', amount: 200, nextDueDate: day('2026-11-20') }),
+        ]);
+        installments.list = jest.fn(async () => [
+          inst({ description: 'Celular', installmentAmount: 350, installmentsGenerated: 4, installmentsTotal: 12, nextDueDate: day('2026-11-20') }),
+          inst({ description: 'Sofá', installmentAmount: 300, installmentsGenerated: 0, installmentsTotal: 6, nextDueDate: day('2026-11-18') }),
+        ]);
+        const reply = await ask('vencimentos');
+        expect(reply.text).toBe(
+          [
+            'Vencimentos nos próximos 30 dias (3):',
+            '• 18/11: Sofá, R$ 300,00 (parcela 1/6)',
+            '• 20/11: Celular, R$ 350,00 (parcela 5/12)',
+            '• 20/11: Luz, R$ 200,00 (conta fixa)',
+            'Total da janela: R$ 850,00.',
+          ].join('\n'),
+        );
+        expect(reply.data?.totalCents).toBe(85000);
+      });
+
+      it('ignora receita, conta inativa, parcelado inativo e parcelado quitado, mesmo com data na janela', async () => {
+        recurring.list = jest.fn(async () => [
+          bill({ description: 'Luz', amount: 200, nextDueDate: day('2026-11-20') }),
+          bill({ description: 'Salário', type: 'INCOME', amount: 3000, nextDueDate: day('2026-11-20') }),
+          bill({ description: 'Conta parada', isActive: false, nextDueDate: day('2026-11-20') }),
+        ]);
+        installments.list = jest.fn(async () => [
+          inst({ description: 'Sofá', installmentAmount: 300, nextDueDate: day('2026-11-21') }),
+          inst({ description: 'Parcelado parado', isActive: false, nextDueDate: day('2026-11-21') }),
+          inst({ description: 'Quitado', remainingInstallments: 0, remainingAmount: 0, nextDueDate: day('2026-11-21') }),
+        ]);
+        const reply = await ask('o que vence');
+        expect(reply.text).toContain('Luz');
+        expect(reply.text).toContain('Sofá');
+        for (const out of ['Salário', 'Conta parada', 'Parcelado parado', 'Quitado']) {
+          expect(reply.text).not.toContain(out);
+        }
+        expect(reply.data?.totalCents).toBe(50000);
+      });
+
+      it('conta semanal aparece uma vez (só o próximo vencimento)', async () => {
+        recurring.list = jest.fn(async () => [
+          bill({ description: 'Feira', frequency: 'WEEKLY', amount: 80, nextDueDate: day('2026-11-18') }),
+        ]);
+        const reply = await ask('o que vence');
+        expect(reply.text.match(/Feira/g)).toHaveLength(1);
+        expect(reply.data?.totalCents).toBe(8000);
+      });
+
+      it('mais de 8 itens: mostra 8 e diz quantos ficaram de fora', async () => {
+        recurring.list = jest.fn(async () =>
+          Array.from({ length: 9 }, (_, index) => bill({ description: `Conta ${index}`, nextDueDate: day('2026-11-20') })),
+        );
+        const reply = await ask('o que vence');
+        expect(reply.text.split('\n').filter((line) => line.startsWith('• '))).toHaveLength(8);
+        expect(reply.text).toContain('e mais 1.');
+      });
+
+      it('descrição longa é cortada em 60 caracteres com "…"', async () => {
+        recurring.list = jest.fn(async () => [bill({ description: 'y'.repeat(70), nextDueDate: day('2026-11-20') })]);
+        const reply = await ask('o que vence');
+        expect(reply.text).toContain(`${'y'.repeat(59)}…, R$`);
+      });
+    });
+
+    describe('metas (goals)', () => {
+      it('caso vazio', async () => {
+        const reply = await ask('metas');
+        expect(reply.text).toBe('Você ainda não tem metas ativas.');
+      });
+
+      it('mostra só ativas, ordenadas por prazo com sem data por último', async () => {
+        goals.list = jest.fn(async () => [
+          goal({ title: 'Sem prazo', targetDate: null }),
+          goal({ title: 'Tardia', targetDate: day('2027-12-31') }),
+          goal({ title: 'Cedo', targetDate: day('2027-01-31') }),
+          goal({ title: 'Pausada', status: 'PAUSED' }),
+        ]);
+        const reply = await ask('minhas metas');
+        const order = reply.text.split('\n').filter((line) => line.startsWith('• ')).map((line) => line.slice(2, line.indexOf(':')));
+        expect(order).toEqual(['Cedo', 'Tardia', 'Sem prazo']);
+        expect(reply.text).toContain('Você tem 1 meta(s) pausada(s), planejada(s) ou concluída(s).');
+      });
+
+      it('percentual com floor: 333,33 de 1000 vira 33%; 999,99 de 1000 vira 99%', async () => {
+        goals.list = jest.fn(async () => [
+          goal({ title: 'A', currentAmount: 333.33 }),
+          goal({ title: 'B', currentAmount: 999.99 }),
+        ]);
+        const reply = await ask('metas');
+        expect(reply.text).toContain('• A: R$ 333,33 guardados de R$ 1.000,00 (33%)');
+        expect(reply.text).toContain('• B: R$ 999,99 guardados de R$ 1.000,00 (99%)');
+      });
+
+      it('teto de 100% e falta zerada quando já passou do alvo', async () => {
+        goals.list = jest.fn(async () => [goal({ title: 'Cheia', targetAmount: 100, currentAmount: 250, targetDate: null })]);
+        const reply = await ask('metas');
+        expect(reply.text).toBe(
+          [
+            'Metas ativas (1):',
+            '• Cheia: R$ 250,00 guardados de R$ 100,00 (100%), falta R$ 0,00',
+          ].join('\n'),
+        );
+        expect(reply.data?.goals?.[0].percent).toBe(100);
+      });
+
+      it('cofrinho sem alvo mostra o guardado', async () => {
+        goals.list = jest.fn(async () => [goal({ title: 'Reserva', targetAmount: null, currentAmount: 500, targetDate: null })]);
+        const reply = await ask('reservas');
+        expect(reply.text).toContain('• Reserva: R$ 500,00 guardados (sem alvo)');
+      });
+
+      it('aviso de metas fora da lista aparece mesmo sem nenhuma ativa', async () => {
+        goals.list = jest.fn(async () => [goal({ status: 'PLANNED' }), goal({ status: 'ACHIEVED' })]);
+        const reply = await ask('metas');
+        expect(reply.text).toBe(
+          ['Você ainda não tem metas ativas.', 'Você tem 2 meta(s) pausada(s), planejada(s) ou concluída(s).'].join('\n'),
+        );
+      });
+
+      it('mais de 5 metas: mostra 5 e diz quantas ficaram de fora', async () => {
+        goals.list = jest.fn(async () => Array.from({ length: 6 }, (_, index) => goal({ title: `M${index}` })));
+        const reply = await ask('metas');
+        expect(reply.text).toContain('e mais 1.');
+      });
+    });
+
+    describe('isolamento e falha', () => {
+      it('cada consulta usa o userId do motor e nunca mostra item de outra conta', async () => {
+        const forA = (rows: Row[]) => jest.fn(async (userId: string) => (userId === 'A' ? rows : [{ ...rows[0], description: 'DO B' }]));
+        recurring.list = forA([bill({ description: 'DA A', nextDueDate: day('2026-11-20') })]);
+        installments.list = forA([inst({ description: 'DA A' })]);
+        goals.list = forA([goal({ title: 'DA A' })]);
+
+        for (const text of ['contas fixas', 'parcelas', 'o que vence', 'metas']) {
+          const reply = await ask(text, 'A');
+          expect(reply.text).toContain('DA A');
+          expect(reply.text).not.toContain('DO B');
+        }
+        expect(recurring.list.mock.calls.every(([id]) => id === 'A')).toBe(true);
+        expect(installments.list.mock.calls.every(([id]) => id === 'A')).toBe(true);
+        expect(goals.list.mock.calls.every(([id]) => id === 'A')).toBe(true);
+      });
+
+      it('falha de serviço vira ERROR genérico, sem texto interno, e evento ERROR', async () => {
+        recurring.list = jest.fn(async () => {
+          throw new Error('connection to db at 10.0.0.5 refused');
+        });
+        const reply = await ask('contas fixas');
+        expect(reply).toEqual({ kind: 'ERROR', state: 'IDLE', text: 'Não consegui consultar agora. Tente de novo.' });
+        expect(JSON.stringify(reply)).not.toContain('10.0.0.5');
+        expect(db.events.at(-1)).toMatchObject({ intent: 'fixed_bills', outcome: ConversationOutcome.ERROR });
+      });
+
+      it('falha de leitura registra no log só o id da intenção e o nome do erro, nunca a mensagem', async () => {
+        class BancoFora extends Error {
+          name = 'BancoFora';
+        }
+        goals.list = jest.fn(async () => {
+          throw new BancoFora('senha=abc123 saldo R$ 9.999,00 na conta de Fulano');
+        });
+        await ask('minhas metas que Fulano guardou');
+        expect(warn).toHaveBeenCalledTimes(1);
+        const logged = String(warn.mock.calls[0][0]);
+        expect(logged).toContain('goals');
+        expect(logged).toContain('BancoFora');
+        for (const secret of ['abc123', '9.999', 'Fulano', 'metas que']) {
+          expect(logged).not.toContain(secret);
+        }
+      });
+
+      it('falha de leitura antiga (balance) também vira ERROR genérico', async () => {
+        dashboard.getSummary.mockRejectedValueOnce(new Error('segredo interno'));
+        const reply = await ask('saldo');
+        expect(reply.kind).toBe('ERROR');
+        expect(reply.text).toBe('Não consegui consultar agora. Tente de novo.');
+        expect(JSON.stringify(reply)).not.toContain('segredo');
+      });
+
+      it('leitura não grava nada e registra evento RECOGNIZED sem texto', async () => {
+        recurring.list = jest.fn(async () => [bill({ nextDueDate: day('2026-11-20') })]);
+        await ask('o que vence');
+        expect(transactions.create).not.toHaveBeenCalled();
+        expect(db.events.at(-1)).toMatchObject({ intent: 'upcoming_dues', outcome: ConversationOutcome.RECOGNIZED });
+        expect(JSON.stringify(db.events)).not.toContain('Aluguel');
+      });
+
+      it('leitura durante rascunho em coleta mantém o rascunho', async () => {
+        await service.handleMessage(msg('A', 'gastei mercado'));
+        expect((await service.getSession('A')).state).toBe('COLLECTING_FIELDS');
+
+        const reply = await ask('metas');
+        expect(reply.kind).toBe('INFO');
+        expect(reply.state).toBe('COLLECTING_FIELDS');
+
+        const session = await service.getSession('A');
+        expect(session.state).toBe('COLLECTING_FIELDS');
+        expect(session.draft?.pendingField).toBe('amount');
+      });
     });
   });
 

@@ -34,6 +34,11 @@ export const REPLIES = {
   noCeiling: 'Não há limite definido neste ciclo do cartão.',
   futureDate: 'A data é futura. Confira antes de confirmar.',
   noCategoryMatch: (query: string) => `Não encontrei a categoria "${query}" neste mês.`,
+  consultError: 'Não consegui consultar agora. Tente de novo.',
+  noFixedBills: 'Você ainda não tem contas fixas ativas.',
+  noInstallments: 'Você não tem compras parceladas em aberto.',
+  noDues: (days: number) => `Nada vence nos próximos ${days} dias.`,
+  noGoals: 'Você ainda não tem metas ativas.',
 };
 
 export function typeLabel(type: TransactionType): string {
@@ -117,4 +122,101 @@ export function doneText(type: TransactionType, amountCents: number, description
 
 export function categoryOptionsText(names: string[]): string {
   return `Qual a categoria? ${names.map((name, index) => `${index + 1}) ${name}`).join(' ')} ou "sem categoria".`;
+}
+
+/** 'AAAA-MM-DD' -> 'dd/mm' (texto curto da consulta). */
+export function shortDate(ymd: string): string {
+  return `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}`;
+}
+
+const FREQUENCY_LABEL = { WEEKLY: 'semanal', MONTHLY: 'mensal', YEARLY: 'anual' } as const;
+
+/** Linha "e mais N" quando a lista foi cortada no limite; null quando não há corte. */
+function moreLine(hidden: number): string | null {
+  return hidden > 0 ? `e mais ${hidden}.` : null;
+}
+
+export function fixedBillsText(input: {
+  count: number;
+  rows: Array<{ label: string; frequency: keyof typeof FREQUENCY_LABEL; amountCents: number; nextDate: string }>;
+  hidden: number;
+  totalCents: number;
+}): string {
+  const lines = [
+    `Contas fixas ativas (${input.count}):`,
+    ...input.rows.map(
+      (row) =>
+        `• ${row.label}: ${formatBrl(row.amountCents)}, ${FREQUENCY_LABEL[row.frequency]}, próximo em ${shortDate(row.nextDate)}`,
+    ),
+    moreLine(input.hidden),
+    `Total mensal estimado: ${formatBrl(input.totalCents)}.`,
+  ];
+  return lines.filter((line): line is string => line !== null).join('\n');
+}
+
+export function installmentsText(input: {
+  count: number;
+  rows: Array<{ label: string; number: number; total: number; amountCents: number; nextDate: string | null }>;
+  hidden: number;
+  totalCents: number;
+  next: { amountCents: number; date: string } | null;
+}): string {
+  const lines = [
+    `Parcelas em aberto (${input.count}):`,
+    ...input.rows.map((row) => {
+      const next = row.nextDate ? `, próxima em ${shortDate(row.nextDate)}` : '';
+      return `• ${row.label}: parcela ${row.number} de ${row.total}, ${formatBrl(row.amountCents)}${next}`;
+    }),
+    moreLine(input.hidden),
+    input.next
+      ? `A pagar ao todo: ${formatBrl(input.totalCents)}. Próximo impacto: ${formatBrl(input.next.amountCents)} em ${shortDate(input.next.date)}.`
+      : `A pagar ao todo: ${formatBrl(input.totalCents)}.`,
+  ];
+  return lines.filter((line): line is string => line !== null).join('\n');
+}
+
+export function upcomingDuesText(input: {
+  days: number;
+  count: number;
+  rows: Array<{ date: string; label: string; tag: string; amountCents: number }>;
+  hidden: number;
+  totalCents: number;
+}): string {
+  const lines = [
+    `Vencimentos nos próximos ${input.days} dias (${input.count}):`,
+    ...input.rows.map((row) => `• ${shortDate(row.date)}: ${row.label}, ${formatBrl(row.amountCents)} (${row.tag})`),
+    moreLine(input.hidden),
+    `Total da janela: ${formatBrl(input.totalCents)}.`,
+  ];
+  return lines.filter((line): line is string => line !== null).join('\n');
+}
+
+export function goalsText(input: {
+  count: number;
+  rows: Array<{
+    label: string;
+    currentCents: number;
+    targetCents: number | null;
+    percent: number | null;
+    targetDate: string | null;
+  }>;
+  hidden: number;
+  otherCount: number;
+}): string {
+  const goalLine = (row: (typeof input.rows)[number]): string => {
+    if (row.targetCents === null || row.percent === null) {
+      return `• ${row.label}: ${formatBrl(row.currentCents)} guardados (sem alvo)`;
+    }
+    const missing = Math.max(row.targetCents - row.currentCents, 0);
+    const deadline = row.targetDate ? `, prazo ${shortDate(row.targetDate)}` : '';
+    return `• ${row.label}: ${formatBrl(row.currentCents)} guardados de ${formatBrl(row.targetCents)} (${row.percent}%), falta ${formatBrl(missing)}${deadline}`;
+  };
+  const lines: Array<string | null> =
+    input.count === 0
+      ? [REPLIES.noGoals]
+      : [`Metas ativas (${input.count}):`, ...input.rows.map(goalLine), moreLine(input.hidden)];
+  if (input.otherCount > 0) {
+    lines.push(`Você tem ${input.otherCount} meta(s) pausada(s), planejada(s) ou concluída(s).`);
+  }
+  return lines.filter((line): line is string => line !== null).join('\n');
 }

@@ -1,7 +1,33 @@
 import { normalizeWord } from './normalize';
 import { parseAmountPrefix } from './amount.parser';
 
-export type ReadIntent = 'balance' | 'month_summary' | 'spend_total' | 'credit_card' | 'help';
+export type ReadIntent =
+  | 'balance'
+  | 'month_summary'
+  | 'spend_total'
+  | 'upcoming_dues'
+  | 'installments'
+  | 'fixed_bills'
+  | 'goals'
+  | 'credit_card'
+  | 'help';
+
+/**
+ * Depois da frase da consulta, até quantas palavras ainda contam como comando curto
+ * ("o que vence esta semana", "metas de viagem"). Acima disso é pergunta livre e vai ao Selah.
+ */
+const FINANCE_READ_MAX_EXTRA_WORDS = 3;
+
+/** Consultas de finanças por conversa (contrato 3a, secao 2). Ordem da lista = ordem de teste. */
+const FINANCE_READ_PHRASES: Array<{ intent: ReadIntent; phrases: string[] }> = [
+  { intent: 'upcoming_dues', phrases: ['o que vence', 'vencimentos', 'proximos vencimentos', 'contas a vencer'] },
+  { intent: 'installments', phrases: ['minhas parcelas', 'parcelas', 'parcelados', 'compras parceladas'] },
+  { intent: 'fixed_bills', phrases: ['contas fixas', 'despesas fixas', 'gastos recorrentes', 'recorrencias'] },
+  {
+    intent: 'goals',
+    phrases: ['minhas metas', 'metas', 'minhas reservas', 'reservas', 'como esta minha reserva'],
+  },
+];
 
 export type IntentMatch =
   | { intent: ReadIntent }
@@ -42,6 +68,8 @@ export function matchIntent(raw: string): IntentMatch | null {
   if (phrase === 'quanto gastei' || phrase === 'gastos' || startsWithPhrase(phrase, 'gastos do mes')) {
     return { intent: 'spend_total' };
   }
+  const finance = matchFinanceRead(raw, phrase);
+  if (finance) return finance;
   if (
     phrase === 'limite' ||
     startsWithPhrase(phrase, 'limite do cartao') ||
@@ -49,6 +77,23 @@ export function matchIntent(raw: string): IntentMatch | null {
     startsWithPhrase(phrase, 'quanto sobrou no cartao')
   ) {
     return { intent: 'credit_card' };
+  }
+  return null;
+}
+
+/**
+ * A frase sozinha (com ou sem "?") sempre casa. Com palavras depois, só casa se for curto e sem "?":
+ * "minhas metas estão boas?" e "parcelas do carro vale a pena" são conversa e vão ao Selah.
+ */
+function matchFinanceRead(raw: string, phrase: string): IntentMatch | null {
+  for (const { intent, phrases } of FINANCE_READ_PHRASES) {
+    for (const expected of phrases) {
+      if (!startsWithPhrase(phrase, expected)) continue;
+      const extraWords = phrase.slice(expected.length).split(' ').filter((word) => word.length > 0).length;
+      if (extraWords === 0 || (extraWords <= FINANCE_READ_MAX_EXTRA_WORDS && !raw.includes('?'))) {
+        return { intent };
+      }
+    }
   }
   return null;
 }

@@ -68,6 +68,19 @@ export interface ReplyData {
     dueDay: number | null;
   };
   transactionId?: string;
+  /** Consultas do item 3a (contrato secao 4). Centavos; datas 'AAAA-MM-DD'. */
+  dues?: Array<{ date: string; label: string; kind: 'FIXED' | 'INSTALLMENT'; amountCents: number }>;
+  installments?: Array<{ label: string; number: number; total: number; amountCents: number; nextDate: string | null }>;
+  fixedBills?: Array<{ label: string; frequency: 'WEEKLY' | 'MONTHLY' | 'YEARLY'; amountCents: number; nextDate: string }>;
+  goals?: Array<{
+    label: string;
+    currentCents: number;
+    targetCents: number | null;
+    percent: number | null;
+    targetDate: string | null;
+  }>;
+  /** Total a pagar (installments), total da janela (upcoming_dues), total mensal estimado (fixed_bills). */
+  totalCents?: number;
 }
 
 export interface ConversationReply {

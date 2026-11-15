@@ -24,8 +24,36 @@ describe('matchIntent', () => {
     ['limite', { intent: 'credit_card' }],
     ['limite do cartão', { intent: 'credit_card' }],
     ['quanto sobrou no cartão', { intent: 'credit_card' }],
+    ['cartão', { intent: 'credit_card' }],
     ['ajuda', { intent: 'help' }],
     ['o que você faz?', { intent: 'help' }],
+    ['o que vence', { intent: 'upcoming_dues' }],
+    ['Vencimentos', { intent: 'upcoming_dues' }],
+    ['próximos vencimentos', { intent: 'upcoming_dues' }],
+    ['contas a vencer', { intent: 'upcoming_dues' }],
+    ['minhas parcelas', { intent: 'installments' }],
+    ['parcelas', { intent: 'installments' }],
+    ['parcelados', { intent: 'installments' }],
+    ['compras parceladas', { intent: 'installments' }],
+    ['contas fixas', { intent: 'fixed_bills' }],
+    ['despesas fixas', { intent: 'fixed_bills' }],
+    ['gastos recorrentes', { intent: 'fixed_bills' }],
+    ['recorrências', { intent: 'fixed_bills' }],
+    ['minhas metas', { intent: 'goals' }],
+    ['metas', { intent: 'goals' }],
+    ['minhas reservas', { intent: 'goals' }],
+    ['reservas', { intent: 'goals' }],
+    ['como está minha reserva', { intent: 'goals' }],
+    ['metas de viagem', { intent: 'goals' }],
+    ['o que vence?', { intent: 'upcoming_dues' }],
+    ['minhas parcelas?', { intent: 'installments' }],
+    ['contas fixas?', { intent: 'fixed_bills' }],
+    ['metas?', { intent: 'goals' }],
+    ['o que vence esta semana', { intent: 'upcoming_dues' }],
+    ['metas do ano', { intent: 'goals' }],
+    ['metas para o ano', { intent: 'goals' }],
+    // Comando curto com complemento: lista tudo, como "saldo do cartão" já faz.
+    ['recorrências do cartão', { intent: 'fixed_bills' }],
   ])('%s', (text, expected) => {
     expect(matchIntent(text)).toEqual(expected);
   });
@@ -39,6 +67,22 @@ describe('matchIntent', () => {
     'gastei muito?',
     'comprei um carro novo ontem de manha',
     '',
+    // Sugestões prontas da tela do Selah (contrato 2): não podem virar consulta.
+    'Como posso acelerar minhas metas financeiras?',
+    'Qual meta merece aporte agora?',
+    'Analise meus gastos do mês',
+    'Como estou hoje?',
+    // "vencimento" no meio da frase, sem começar pela consulta.
+    'quando vence minha fatura',
+    // Frase da consulta no começo, mas é pergunta livre: vai ao Selah.
+    'minhas metas estão boas?',
+    'metas de emagrecimento do ano',
+    'parcelas do carro: vale a pena?',
+    'parcelas do carro vale a pena',
+    'reservas de emergência: quanto devo ter?',
+    'metas estão boas?',
+    'o que vence na próxima semana?',
+    'contas fixas ou variáveis, o que muda?',
   ])('nao casa: "%s"', (text) => {
     expect(matchIntent(text)).toBeNull();
   });

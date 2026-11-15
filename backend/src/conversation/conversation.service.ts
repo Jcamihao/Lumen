@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   ConversationChannel,
   ConversationOutcome,
@@ -7,7 +7,10 @@ import {
   TransactionType,
 } from '@prisma/client';
 import { CreditCycleService } from '../credit-cycle/credit-cycle.service';
-import { localToday, monthToDateUtc } from '../recurring-transactions/recurrence.util';
+import { GoalsService } from '../goals/goals.service';
+import { InstallmentsService } from '../installments/installments.service';
+import { addDaysUtc, localToday, monthToDateUtc } from '../recurring-transactions/recurrence.util';
+import { RecurringTransactionsService } from '../recurring-transactions/recurring-transactions.service';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TransactionsService } from '../transactions/transactions.service';
@@ -24,8 +27,12 @@ import {
   doneText,
   draftText,
   formatBrl,
+  fixedBillsText,
+  goalsText,
+  installmentsText,
   monthSummaryText,
   spendTotalText,
+  upcomingDuesText,
 } from './replies';
 import {
   ConversationInput,
@@ -49,7 +56,54 @@ const CONNECTORS = new Set(['na', 'no', 'em', 'de', 'do', 'da', 'com', 'pra', 'p
 const MAX_CATEGORY_OPTIONS = 5;
 const DESCRIPTION_MIN = 2;
 const DESCRIPTION_MAX = 120;
-const READ_INTENTS: ReadIntent[] = ['balance', 'month_summary', 'spend_total', 'credit_card'];
+const READ_INTENTS: ReadIntent[] = [
+  'balance',
+  'month_summary',
+  'spend_total',
+  'upcoming_dues',
+  'installments',
+  'fixed_bills',
+  'goals',
+  'credit_card',
+];
+/** Janela de "o que vence" em dias, a partir de hoje no fuso do usuário (contrato D4). */
+const UPCOMING_WINDOW_DAYS = 30;
+/** Limite de linhas na consulta de vencimentos (contrato D5). */
+const UPCOMING_MAX_ITEMS = 8;
+/** Limite de linhas nas demais listas (contrato D5). */
+const LIST_MAX_ITEMS = 5;
+/** Tamanho máximo de descrição/título em uma linha da resposta (contrato secao 5). */
+const LINE_MAX_CHARS = 60;
+const MAX_GOAL_PERCENT = 100;
+const WEEKS_PER_YEAR = 52;
+const MONTHS_PER_YEAR = 12;
+
+/** Linhas lidas dos serviços (só os campos que as consultas usam). */
+interface RecurringRow {
+  description: string;
+  type: TransactionType;
+  frequency: 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+  amount: number;
+  isActive: boolean;
+  nextDueDate: Date;
+}
+interface InstallmentRow {
+  description: string;
+  installmentAmount: number;
+  installmentsTotal: number;
+  installmentsGenerated: number;
+  remainingAmount: number;
+  remainingInstallments: number;
+  isActive: boolean;
+  nextDueDate: Date | null;
+}
+interface GoalRow {
+  title: string;
+  status: 'PLANNED' | 'ACTIVE' | 'ACHIEVED' | 'PAUSED';
+  targetAmount: number | null;
+  currentAmount: number;
+  targetDate: Date | null;
+}
 
 type CategoryRow = { id: string; name: string };
 
@@ -74,11 +128,16 @@ type SessionRow = {
  */
 @Injectable()
 export class ConversationService {
+  private readonly logger = new Logger(ConversationService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly dashboard: DashboardService,
     private readonly creditCycle: CreditCycleService,
     private readonly transactions: TransactionsService,
+    private readonly recurring: RecurringTransactionsService,
+    private readonly installments: InstallmentsService,
+    private readonly goals: GoalsService,
   ) {}
 
   /** Mensagem digitada (canal APP ou WhatsApp). Ordem de decisao: contrato secao 6 e motor. */
@@ -161,9 +220,7 @@ export class ConversationService {
       await this.recordEvent(input, 'help', ConversationOutcome.RECOGNIZED);
       return this.reply('HELP', 'IDLE', REPLIES.help);
     }
-    const read = await this.answerRead({ userId: input.userId, intent });
-    await this.recordEvent(input, intent.intent, ConversationOutcome.RECOGNIZED);
-    return { ...read, state: 'IDLE' };
+    return this.runRead(input, intent, 'IDLE');
   }
 
   /** Cria rascunho novo. Nunca grava na primeira mensagem (contrato secao 6). */
@@ -283,9 +340,8 @@ export class ConversationService {
       return this.fillPendingField({ input, session, text });
     }
     if (intent && isReadIntent(intent)) {
-      const read = await this.answerRead({ userId, intent });
-      await this.recordEvent(input, intent.intent, ConversationOutcome.RECOGNIZED);
-      return { ...read, state: this.stateView(session) };
+      // Leitura não mexe no rascunho: a sessão segue como estava.
+      return this.runRead(input, intent, this.stateView(session));
     }
     if (intent && intent.intent === 'help') {
       await this.recordEvent(input, 'help', ConversationOutcome.RECOGNIZED);
@@ -538,9 +594,35 @@ export class ConversationService {
 
   // ---------- leituras (mesmos numeros das telas) ----------
 
-  private async answerRead(args: { userId: string; intent: IntentMatch }): Promise<ConversationReply> {
-    const { userId, intent } = args;
+  /**
+   * Ponto único de leitura (contrato secao 5): qualquer falha de serviço vira ERROR genérico,
+   * sem texto da mensagem e sem detalhe interno. Evento RECOGNIZED ou ERROR, sem texto.
+   */
+  private async runRead(input: ConversationInput, intent: IntentMatch, state: ConversationStateView): Promise<ConversationReply> {
+    let read: ConversationReply;
+    try {
+      read = await this.answerRead({ userId: input.userId, intent, now: input.receivedAt });
+    } catch (error) {
+      // Só o id da intenção e o nome do erro: nunca a mensagem do erro, o texto do usuário ou valores.
+      this.logger.warn(`Leitura falhou: intent=${intent.intent} erro=${error instanceof Error ? error.name : typeof error}`);
+      await this.recordEvent(input, intent.intent, ConversationOutcome.ERROR);
+      return this.reply('ERROR', state, REPLIES.consultError);
+    }
+    await this.recordEvent(input, intent.intent, ConversationOutcome.RECOGNIZED);
+    return { ...read, state };
+  }
+
+  private async answerRead(args: { userId: string; intent: IntentMatch; now: Date }): Promise<ConversationReply> {
+    const { userId, intent, now } = args;
     switch (intent.intent) {
+      case 'upcoming_dues':
+        return this.upcomingDuesReply(userId, now);
+      case 'installments':
+        return this.installmentsReply(userId);
+      case 'fixed_bills':
+        return this.fixedBillsReply(userId);
+      case 'goals':
+        return this.goalsReply(userId);
       case 'balance': {
         const { finances } = await this.readFinances(userId);
         const balanceCents = toCents(finances.balance);
@@ -610,6 +692,139 @@ export class ConversationService {
     return this.infoReply(categoryTotalText(label, amountCents), {
       categories: [{ name: label, amountCents }],
     });
+  }
+
+  /** Contas fixas de despesa ativas. Total mensal estimado: soma por mês, arredonda uma vez no total. */
+  private async fixedBillsReply(userId: string): Promise<ConversationReply> {
+    const all: RecurringRow[] = await this.recurring.list(userId);
+    const bills = all
+      .filter((row) => row.isActive === true && row.type === TransactionType.EXPENSE)
+      .sort((a, b) => compareYmd(toYmd(a.nextDueDate), toYmd(b.nextDueDate)));
+    if (bills.length === 0) {
+      return this.infoReply(REPLIES.noFixedBills, { fixedBills: [], totalCents: 0 });
+    }
+
+    // Soma em doze avos de centavo (inteiros) e divide por 12 uma vez só: arredonda uma vez, sem erro de float.
+    const totalCents = Math.round(bills.reduce((sum, row) => sum + monthlyTwelfths(row), 0) / MONTHS_PER_YEAR);
+    const rows = bills.map((row) => ({
+      label: truncate(row.description),
+      frequency: row.frequency,
+      amountCents: toCents(row.amount),
+      nextDate: toYmd(row.nextDueDate),
+    }));
+    const shown = rows.slice(0, LIST_MAX_ITEMS);
+    const text = fixedBillsText({ count: rows.length, rows: shown, hidden: rows.length - shown.length, totalCents });
+    return this.infoReply(text, { fixedBills: shown, totalCents });
+  }
+
+  /** Parcelados ativos com parcela em aberto. Próximo impacto = parcela com a data mais próxima. */
+  private async installmentsReply(userId: string): Promise<ConversationReply> {
+    const all: InstallmentRow[] = await this.installments.list(userId);
+    const open = all.filter((row) => row.isActive === true && row.remainingInstallments > 0);
+    if (open.length === 0) {
+      return this.infoReply(REPLIES.noInstallments, { installments: [], totalCents: 0 });
+    }
+
+    const rows = open
+      .map((row) => ({
+        label: truncate(row.description),
+        number: row.installmentsGenerated + 1,
+        total: row.installmentsTotal,
+        amountCents: installmentCents(row),
+        nextDate: row.nextDueDate ? toYmd(row.nextDueDate) : null,
+      }))
+      .sort((a, b) => compareYmdNullable(a.nextDate, b.nextDate));
+    const totalCents = open.reduce((sum, row) => sum + toCents(row.remainingAmount), 0);
+    const nextRow = rows.find((row) => row.nextDate !== null);
+    const next = nextRow && nextRow.nextDate ? { amountCents: nextRow.amountCents, date: nextRow.nextDate } : null;
+    const shown = rows.slice(0, LIST_MAX_ITEMS);
+    const text = installmentsText({ count: rows.length, rows: shown, hidden: rows.length - shown.length, totalCents, next });
+    return this.infoReply(text, { installments: shown, totalCents });
+  }
+
+  /**
+   * Vencimentos da janela [hoje, hoje + 30 dias): contas fixas de despesa e parcelas, por data.
+   * Usa só o próximo vencimento de cada conta, então conta semanal aparece uma vez.
+   */
+  private async upcomingDuesReply(userId: string, now: Date): Promise<ConversationReply> {
+    const { timezone } = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { timezone: true },
+    });
+    const today = localToday(now, timezone);
+    const from = toYmd(today);
+    const until = toYmd(addDaysUtc(today, UPCOMING_WINDOW_DAYS));
+    const [recurring, installments] = await Promise.all([
+      this.recurring.list(userId) as Promise<RecurringRow[]>,
+      this.installments.list(userId) as Promise<InstallmentRow[]>,
+    ]);
+
+    const dues: DueItem[] = [
+      ...recurring
+        .filter((row) => row.isActive === true && row.type === TransactionType.EXPENSE)
+        .map((row) => ({
+          date: toYmd(row.nextDueDate),
+          label: truncate(row.description),
+          kind: 'FIXED' as const,
+          tag: 'conta fixa',
+          amountCents: toCents(row.amount),
+        })),
+      ...installments.flatMap((row) =>
+        row.isActive === true && row.remainingInstallments > 0 && row.nextDueDate
+          ? [
+              {
+                date: toYmd(row.nextDueDate),
+                label: truncate(row.description),
+                kind: 'INSTALLMENT' as const,
+                tag: `parcela ${row.installmentsGenerated + 1}/${row.installmentsTotal}`,
+                amountCents: installmentCents(row),
+              },
+            ]
+          : [],
+      ),
+    ]
+      .filter((item) => item.date >= from && item.date < until)
+      .sort((a, b) => compareYmd(a.date, b.date) || b.amountCents - a.amountCents);
+
+    if (dues.length === 0) {
+      return this.infoReply(REPLIES.noDues(UPCOMING_WINDOW_DAYS), { dues: [], totalCents: 0 });
+    }
+    const totalCents = dues.reduce((sum, item) => sum + item.amountCents, 0);
+    const shown = dues.slice(0, UPCOMING_MAX_ITEMS);
+    const text = upcomingDuesText({
+      days: UPCOMING_WINDOW_DAYS,
+      count: dues.length,
+      rows: shown,
+      hidden: dues.length - shown.length,
+      totalCents,
+    });
+    const data = shown.map(({ date, label, kind, amountCents }) => ({ date, label, kind, amountCents }));
+    return this.infoReply(text, { dues: data, totalCents });
+  }
+
+  /** Metas ativas por data-alvo (sem data por último). Percentual = floor, teto 100%. */
+  private async goalsReply(userId: string): Promise<ConversationReply> {
+    const all: GoalRow[] = await this.goals.list(userId);
+    const active = all
+      .filter((goal) => goal.status === 'ACTIVE')
+      .sort((a, b) => compareYmdNullable(dateOrNull(a.targetDate), dateOrNull(b.targetDate)));
+    const otherCount = all.length - active.length;
+
+    const rows = active.map((goal) => {
+      const targetCents = goal.targetAmount === null ? null : toCents(goal.targetAmount);
+      const hasTarget = targetCents !== null && targetCents > 0;
+      const currentCents = toCents(goal.currentAmount);
+      return {
+        label: truncate(goal.title),
+        currentCents,
+        targetCents: hasTarget ? targetCents : null,
+        percent: hasTarget ? Math.min(MAX_GOAL_PERCENT, Math.floor((currentCents * 100) / targetCents)) : null,
+        targetDate: dateOrNull(goal.targetDate),
+      };
+    });
+    const shown = rows.slice(0, LIST_MAX_ITEMS);
+    const text = goalsText({ count: rows.length, rows: shown, hidden: rows.length - shown.length, otherCount });
+    return this.infoReply(text, { goals: shown });
   }
 
   /** Mesmos numeros da tela inicial: DashboardService.getSummary, sem reescrever a formula. */
@@ -886,6 +1101,66 @@ function violatedField(error: unknown, field: string): boolean {
     return target.includes(field);
   }
   return true;
+}
+
+/** Item de vencimento já com valor em centavos (consulta upcoming_dues). */
+interface DueItem {
+  date: string;
+  label: string;
+  kind: 'FIXED' | 'INSTALLMENT';
+  tag: string;
+  amountCents: number;
+}
+
+/** Data-só do serviço (meia-noite UTC) como 'AAAA-MM-DD'. */
+function toYmd(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function dateOrNull(date: Date | null): string | null {
+  return date ? toYmd(date) : null;
+}
+
+function compareYmd(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** Ordem crescente com nulos por último. */
+function compareYmdNullable(a: string | null, b: string | null): number {
+  if (a === null || b === null) {
+    return a === null && b === null ? 0 : a === null ? 1 : -1;
+  }
+  return compareYmd(a, b);
+}
+
+/**
+ * Valor mensal de uma conta fixa em doze avos de centavo (contrato 3): mensal x 12, anual x 1, semanal x 52.
+ * Dividir a soma por 12 dá o mensal em centavos: semanal x 52 / 12, anual / 12.
+ */
+function monthlyTwelfths(row: RecurringRow): number {
+  const cents = toCents(row.amount);
+  switch (row.frequency) {
+    case 'WEEKLY':
+      return cents * WEEKS_PER_YEAR;
+    case 'YEARLY':
+      return cents;
+    default:
+      return cents * MONTHS_PER_YEAR;
+  }
+}
+
+/**
+ * Valor da parcela em centavos. A última parcela absorve a sobra do arredondamento
+ * (installment-materializer): nesse caso o valor certo é o restante, não installmentAmount.
+ */
+function installmentCents(row: InstallmentRow): number {
+  return toCents(row.remainingInstallments === 1 ? row.remainingAmount : row.installmentAmount);
+}
+
+/** Corta em 60 caracteres (contando code points); o último vira "…". */
+function truncate(text: string): string {
+  const chars = Array.from(text.trim());
+  return chars.length > LINE_MAX_CHARS ? `${chars.slice(0, LINE_MAX_CHARS - 1).join('')}…` : chars.join('');
 }
 
 function isUniqueViolation(error: unknown): boolean {
