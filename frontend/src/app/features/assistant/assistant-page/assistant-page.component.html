@@ -64,6 +64,104 @@
     </button>
   </section>
 
+  <div class="assistant-commands" aria-label="Comandos rápidos">
+    <span class="proto-muted">Comandos rápidos</span>
+    <div class="proto-actions-row">
+      <button
+        type="button"
+        class="proto-button proto-button--ghost"
+        *ngFor="let command of manualCommands"
+        [disabled]="manualBusy()"
+        (click)="usePrompt(command)"
+      >
+        {{ command }}
+      </button>
+    </div>
+  </div>
+
+  <section #manualRegion class="assistant-manual-region" aria-live="polite">
+    <p class="proto-muted" *ngIf="manualSlow()">Consultando seus dados…</p>
+
+    <div class="assistant-manual__error" *ngIf="manualError() as manualErr">
+      <p class="assistant-error">{{ manualErr.text }}</p>
+      <div class="proto-actions-row" *ngIf="manualErr.retry">
+        <button type="button" class="proto-button proto-button--secondary" [disabled]="manualBusy()" (click)="retryManual()">
+          Tentar de novo
+        </button>
+      </div>
+    </div>
+
+    <article class="proto-surface assistant-manual" *ngIf="manualTurn() as turn">
+      <div class="proto-surface__head">
+        <div>
+          <h3>Assistente manual</h3>
+          <p *ngIf="turn.question">Você: {{ turn.question }}</p>
+        </div>
+        <span class="proto-tag" [attr.data-tone]="manualTone(turn)" *ngIf="turn.kind === 'DONE' || turn.kind === 'ERROR'">
+          {{ turn.kind === 'DONE' ? 'Lançado' : 'Erro' }}
+        </span>
+      </div>
+
+      <div class="proto-surface__body assistant-manual__body">
+        <!-- Com rascunho para confirmar, o texto do motor repete a lista abaixo: mostra só uma chamada curta. -->
+        <p class="assistant-manual__text" *ngIf="!(turn.kind === 'CONFIRM_DRAFT' && turn.draft); else confirmLead">{{ turn.text }}</p>
+        <ng-template #confirmLead>
+          <p class="assistant-manual__text">Confira os dados antes de confirmar o lançamento.</p>
+        </ng-template>
+
+        <p class="proto-muted" *ngIf="turn.kind === 'RESTORED' && turn.draft?.pendingField as pending">
+          Falta informar: {{ pendingFieldLabel(pending) }}. Responda no campo de pergunta abaixo.
+        </p>
+
+        <dl class="assistant-draft" *ngIf="turn.draft as draft">
+          <div class="assistant-draft__row">
+            <dt>Valor</dt>
+            <dd>{{ draft.amount }}</dd>
+          </div>
+          <div class="assistant-draft__row" *ngIf="draft.description">
+            <dt>Descrição</dt>
+            <dd>{{ draft.description }}</dd>
+          </div>
+          <div class="assistant-draft__row" *ngIf="draft.category">
+            <dt>Categoria</dt>
+            <dd>{{ draft.category }}</dd>
+          </div>
+          <div class="assistant-draft__row">
+            <dt>Data</dt>
+            <dd>{{ draftDateLabel(draft.date) }}</dd>
+          </div>
+          <div class="assistant-draft__row" *ngIf="draftPaymentLabel(draft.paymentMethod) as paymentLabel">
+            <dt>Forma de pagamento</dt>
+            <dd>{{ paymentLabel }}</dd>
+          </div>
+        </dl>
+
+        <div class="proto-actions-row" *ngIf="showConfirmButtons(turn)">
+          <button type="button" class="proto-button" [disabled]="manualBusy()" (click)="confirmDraft()">
+            Confirmar
+          </button>
+          <button type="button" class="proto-button proto-button--secondary" [disabled]="manualBusy()" (click)="cancelDraft()">
+            Cancelar
+          </button>
+        </div>
+
+        <ng-container *ngIf="visibleQuickReplies(turn) as quickReplies">
+          <div class="proto-actions-row" *ngIf="quickReplies.length">
+            <button
+              type="button"
+              class="proto-button proto-button--ghost"
+              *ngFor="let reply of quickReplies"
+              [disabled]="manualBusy()"
+              (click)="sendQuickReply(reply)"
+            >
+              {{ reply }}
+            </button>
+          </div>
+        </ng-container>
+      </div>
+    </article>
+  </section>
+
   <section class="assistant-grid">
     <article class="proto-surface">
       <div class="proto-surface__head">
@@ -86,7 +184,7 @@
           </div>
 
           <div class="proto-actions-row assistant-actions">
-            <button type="submit" class="proto-button" [disabled]="loading() || form.invalid">
+            <button type="submit" class="proto-button" [disabled]="loading() || manualBusy() || form.invalid">
               <span class="material-symbols-rounded">send</span>
               {{ loading() ? 'Consultando...' : 'Enviar pergunta' }}
             </button>
