@@ -195,6 +195,8 @@ model User {
   tagGroups                     TagGroup[]
   subscriptions                 Subscription[]
   selahUsage                    SelahUsage[]
+  conversationSessions          ConversationSession[]
+  conversationEvents            ConversationEvent[]
 
   @@index([email])
 }
@@ -780,5 +782,67 @@ model SelahUsage {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, createdAt])
+}
+
+enum ConversationChannel {
+  APP
+  WHATSAPP
+}
+
+enum ConversationState {
+  COLLECTING_FIELDS
+  AWAITING_CONFIRMATION
+  AWAITING_IMPORT_FILE
+  AWAITING_IMPORT_REVIEW
+  PROCESSING
+}
+
+enum ConversationOutcome {
+  RECOGNIZED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+  UNRECOGNIZED
+  DUPLICATE
+  ERROR
+}
+
+// Uma sessao ativa por usuario e canal. Nao existe linha = IDLE.
+model ConversationSession {
+  id        String              @id @default(uuid())
+  userId    String
+  channel   ConversationChannel
+  state     ConversationState
+  intent    String              // id da secao 6, ex.: "create_expense"
+  // So campos ja informados ou confirmados. Nunca segredo nem conteudo bruto de documento.
+  draft     Json
+  // Sobe a cada mudanca do rascunho. Confirmar exige a versao que o usuario viu.
+  version   Int                 @default(1)
+  expiresAt DateTime
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channel])
+  @@index([expiresAt])
+}
+
+// Idempotencia e metrica. Nao guarda o texto da mensagem (decisao D6).
+model ConversationEvent {
+  id         String              @id @default(uuid())
+  userId     String
+  channel    ConversationChannel
+  messageId  String?             // preenchido em mensagens; nulo em confirmar/cancelar por botao
+  intent     String?
+  outcome    ConversationOutcome
+  // Preenchido so quando uma acao financeira foi aplicada: `${sessionId}:${version}`.
+  appliedKey String?             @unique
+  // Id do registro criado (ex.: Transaction.id), para auditoria.
+  resultRef  String?
+  createdAt  DateTime            @default(now())
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channel, messageId])
   @@index([userId, createdAt])
 }
