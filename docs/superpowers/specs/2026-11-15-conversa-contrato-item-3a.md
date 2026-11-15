@@ -32,6 +32,8 @@ Ids fixos, todos de leitura (sem confirmação, sem sessão). Mesma regra de nor
 
 Regras do matcher:
 
+- **Ajuste da revisão:** a frase sozinha casa sempre (com ou sem `?`). Com palavras depois dela, só casa se forem no máximo 3 e a mensagem não tiver `?` (constante `FINANCE_READ_MAX_EXTRA_WORDS`). Sem isso, "minhas metas estão boas?" e "parcelas do carro: vale a pena?" seriam sequestradas do Selah. Custo aceito: "o que vence essa semana?" (com `?`) vai ao Selah.
+
 - Entram na tabela de leituras (`ReadIntent`). Ordem: depois de `create_*` e `spend_by_category`, antes de `credit_card`; nenhuma das frases acima pode capturar texto que hoje vai ao Selah. As sugestões prontas da tela do Selah ("Como posso acelerar minhas metas financeiras?", "Qual meta merece aporte agora?") **não** podem casar.
 - `cartao`, `limite` e `quanto sobrou no cartao` continuam sendo `credit_card`.
 - Durante um rascunho em coleta, essas leituras respondem e mantêm o rascunho, como `saldo` já faz.
@@ -50,7 +52,7 @@ Todas as datas: hoje = `localToday(agora, User.timezone)`. Valores em centavos i
 ### `installments`
 - Fonte: `InstallmentsService.list(userId)`.
 - Filtro: `isActive === true` e `remainingInstallments > 0`. Ordem: `nextDueDate` crescente.
-- Cada linha: descrição, "parcela X de N" onde `X = installmentsGenerated + 1`, valor da parcela e data da próxima.
+- Cada linha: descrição, "parcela X de N" onde `X = installmentsGenerated + 1`, valor da parcela e data da próxima. A **última** parcela mostra `remainingAmount`, porque o materializador faz a última absorver a sobra do arredondamento (decisão da revisão; confirmada contra a tela).
 - Fecha com: total ainda a pagar (soma de `remainingAmount`) e o **próximo impacto** (valor e data da parcela mais próxima).
 - Sem nenhuma: "Você não tem compras parceladas em aberto."
 
