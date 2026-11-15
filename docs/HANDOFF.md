@@ -14,7 +14,7 @@ Princípio que mais pesa nas decisões: privacidade e simplicidade. O app nunca 
 - Remoto: `git@github.com:Jcamihao/Lumen.git`
 - Branch: `master`
 - Convenção de commit: Conventional Commits em português (`feat(billing): ...`, `fix(billing): ...`, `docs: ...`, `refactor(backend): ...`).
-- Estado do git em 2026-11-14: working tree limpo. A branch está 1 commit à frente de `origin/master` (o último, `85392c3`, ainda não foi enviado). Esta informação vem do `git status -sb` local, sem `git fetch`.
+- Estado do git em 2026-11-15: working tree limpo depois dos commits do 2b. A branch está 8 commits à frente de `origin/master`; nada foi enviado. Esta informação vem do `git status -sb` local, sem `git fetch`.
 - Últimos commits relevantes:
   - `85392c3` fix(billing): AsaasClient manda User-Agent, items e nextDueDate no checkout
   - `ffe0da2` / `6e318ff` landing de preços e FAQ dinâmica (início da Fase 3)
@@ -42,8 +42,9 @@ Comandos:
 - Migrations: `npm --prefix backend run prisma:migrate` (dev) e `prisma:deploy` (produção). Seed: `npm run db:seed`.
 - Portas padrão no Docker Compose: Postgres 5433, Redis 6380, backend 3001, frontend 4201.
 
-Números verdes verificados em 2026-11-14:
-- Backend `npx jest`: 39 suites, 609 testes, todos passando.
+Números verdes verificados em 2026-11-15:
+- Backend `npx jest`: 44 suites, 726 testes, todos passando.
+- Frontend `npx ng test --watch=false --browsers=ChromeHeadlessCI`: 240 testes passando. `npm run build` sem erro.
 - Backend `npx nest build`: sem erros.
 
 Armadilhas:
@@ -58,7 +59,7 @@ Armadilhas:
 - Decisões do dono já tomadas: freemium; planos Grátis, Individual e Compartilhado (este só como estrutura, "em breve"); Individual R$ 14,90/mês ou R$ 149/ano; Compartilhado R$ 24,90/mês ou R$ 249/ano; limites do Grátis: 2 metas ativas, 1 reserva, 3 contas fixas, 2 parcelados, 5 perguntas ao Selah por mês; checkout hospedado no Asaas; sem trial; contas atuais escolhidas pelo dono ganham Individual "de fundador" sem data de fim.
 - Catálogo e preços ficam em `backend/src/billing/plans.catalog.ts`; preços sobrescrevíveis por `BILLING_PRICE_*`.
 - Nova direção de produto, ainda sem implementação: `docs/superpowers/plans/2026-11-14-assistente-manual-importacao-planos.md`. O lançamento deve desligar a LLM, priorizar assistente determinístico no app e WhatsApp, manter importação/insights sem LLM e revisar a escada de planos antes de ligar billing.
-- Contrato do escopo “Finanças por conversa”: `docs/superpowers/specs/2026-11-14-assistente-manual-financas.md`. O bot deve consultar e operar gastos, limites de cartão, metas, reservas, recorrências, parcelados, contas fixas, orçamentos e importação com revisão obrigatória; app, celular e WhatsApp usam o mesmo motor. Isolamento A/B/C é regra de segurança: identidade só vem de JWT ou vínculo WhatsApp validado, toda consulta fica no escopo do dono e os testes devem tentar acesso cruzado antes de liberar escrita por WhatsApp. A implementação ainda não começou. Contrato do item 1 (rotas, tabelas, estados, confirmação idempotente) aprovado pelo dono em 2026-11-15: `docs/superpowers/specs/2026-11-15-conversa-contrato-item-1.md`. Item 2a (backend do motor, canal APP) implementado e revisado em 2026-11-15, sem commit: `backend/src/conversation/`, migration `20261115120000_conversation_item_2`, 725 testes verdes, 8 mutantes de isolamento mortos, integração real com 2 usuários passou. Briefs e dúvidas em `.superpowers/sdd/conversa-item-2/`. Falta a tela do app (2b). Atenção: o banco local 5433 tem a migration `202604012145_auth_session_hardening` que não existe no repo. Decisão do dono em 2026-11-15: vários cartões nomeados ficam para depois do bot; o v0 usa o cartão único já existente (`CreditCycleService`).
+- Contrato do escopo “Finanças por conversa”: `docs/superpowers/specs/2026-11-14-assistente-manual-financas.md`. O bot deve consultar e operar gastos, limites de cartão, metas, reservas, recorrências, parcelados, contas fixas, orçamentos e importação com revisão obrigatória; app, celular e WhatsApp usam o mesmo motor. Isolamento A/B/C é regra de segurança: identidade só vem de JWT ou vínculo WhatsApp validado, toda consulta fica no escopo do dono e os testes devem tentar acesso cruzado antes de liberar escrita por WhatsApp. A implementação ainda não começou. Contrato do item 1 (rotas, tabelas, estados, confirmação idempotente) aprovado pelo dono em 2026-11-15: `docs/superpowers/specs/2026-11-15-conversa-contrato-item-1.md`. Item 2a (backend do motor, canal APP) implementado e revisado em 2026-11-15, sem commit: `backend/src/conversation/`, migration `20261115120000_conversation_item_2`, 725 testes verdes, 8 mutantes de isolamento mortos, integração real com 2 usuários passou. Briefs e dúvidas em `.superpowers/sdd/conversa-item-2/`. Item 2b (tela dentro do chat do Selah, `assistant-page`) implementado e revisado em 2026-11-15, com teste em Chrome headless contra o backend real: manual primeiro, Selah só quando a resposta vem com `unrecognized: true`. Pendências achadas na revisão, ainda sem correção: (a) `gastei mercado` (sem valor) vai ao Selah em vez de o bot perguntar o valor; (b) `resumo` mostrou "Entradas R$ 0,00" com receita de R$ 1.000 no mês, igual ao dashboard (`monthlyIncome: 0`), causa não investigada; (c) `.proto-button--ghost:hover` pinta o texto de branco no tema claro em outras telas (`frontend/src/styles.scss:806`). Atenção: o banco local 5433 tem a migration `202604012145_auth_session_hardening` que não existe no repo. Decisão do dono em 2026-11-15: vários cartões nomeados ficam para depois do bot; o v0 usa o cartão único já existente (`CreditCycleService`).
 - Documentação de produto: `docs/architecture.md`, `docs/design-system.md`, `docs/releases/`, `docs/runbooks/`, `docs/legal/`.
 
 ## 6. Onde parou
