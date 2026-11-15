@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, Injectable, Logger } from '@nestjs/common';
 import {
   ConversationChannel,
   ConversationOutcome,
@@ -7,6 +7,9 @@ import {
   TransactionType,
 } from '@prisma/client';
 import { CreditCycleService } from '../credit-cycle/credit-cycle.service';
+import { EnvelopesService } from '../envelopes/envelopes.service';
+import { EntitlementsService } from '../billing/entitlements.service';
+import { PlanLimitException } from '../billing/plan-limit.exception';
 import { GoalsService } from '../goals/goals.service';
 import { InstallmentsService } from '../installments/installments.service';
 import { addDaysUtc, localToday, monthToDateUtc } from '../recurring-transactions/recurrence.util';
@@ -16,6 +19,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TransactionsService } from '../transactions/transactions.service';
 import { parseAmountPrefix, AmountFailure } from './parsers/amount.parser';
 import { extractDate } from './parsers/date.parser';
+import {
+  GOAL_TITLE_MAX,
+  GOAL_TITLE_MIN,
+  isNoTargetAnswer,
+  parseCofrinhoBody,
+  parseContributionBody,
+  parseCreateGoalBody,
+  splitTrailingAmount,
+} from './parsers/goal.parser';
 import { normalize } from './parsers/normalize';
 import { IntentMatch, ReadIntent, matchIntent } from './parsers/intent.matcher';
 import {
@@ -24,14 +36,24 @@ import {
   cardText,
   categoryOptionsText,
   categoryTotalText,
+  contributionDoneText,
+  contributionDraftText,
   doneText,
   draftText,
+  envelopesText,
   formatBrl,
   fixedBillsText,
+  goalCreatedText,
+  goalDraftText,
+  goalLabel,
+  goalNotFoundText,
+  goalOptionsText,
   goalsText,
   installmentsText,
+  longDate,
   monthSummaryText,
   spendTotalText,
+  transactionRows,
   upcomingDuesText,
 } from './replies';
 import {
@@ -39,9 +61,13 @@ import {
   ConversationReply,
   ConversationReplyKind,
   ConversationStateView,
+  ContributionDraft,
+  DraftKind,
   DraftView,
   ExpenseOrIncomeDraft,
+  GoalDraft,
   ReplyData,
+  SessionDraft,
 } from './conversation.types';
 
 /** Prazos do contrato (secao 5): coleta 15 min, confirmacao 5 min. */
@@ -54,6 +80,8 @@ const CANCEL_WORDS = new Set(['cancelar', 'parar', 'voltar']);
 const CONFIRM_WORDS = new Set(['confirmar', 'sim', 'ok']);
 const CONNECTORS = new Set(['na', 'no', 'em', 'de', 'do', 'da', 'com', 'pra', 'para']);
 const MAX_CATEGORY_OPTIONS = 5;
+/** Opções numeradas de meta na pergunta de aporte (contrato 3b1, secao 3). */
+const MAX_GOAL_OPTIONS = 5;
 const DESCRIPTION_MIN = 2;
 const DESCRIPTION_MAX = 120;
 const READ_INTENTS: ReadIntent[] = [
@@ -64,6 +92,7 @@ const READ_INTENTS: ReadIntent[] = [
   'installments',
   'fixed_bills',
   'goals',
+  'envelopes',
   'credit_card',
 ];
 /** Janela de "o que vence" em dias, a partir de hoje no fuso do usuário (contrato D4). */
@@ -104,6 +133,47 @@ interface GoalRow {
   currentAmount: number;
   targetDate: Date | null;
 }
+/** Meta com dono e id (escrita por conversa). userId é conferido na leitura, não só no serviço. */
+interface OwnedGoalRow extends GoalRow {
+  id: string;
+  userId: string;
+}
+/** Meta já em centavos, pronta para o motor (id e dono conferidos em listGoals). */
+interface GoalSnap {
+  id: string;
+  title: string;
+  status: GoalRow['status'];
+  targetCents: number | null;
+  currentCents: number;
+}
+/** Resultado de gravar meta ou aporte (GoalsService.create/contribute serializam o Prisma). */
+interface SavedGoal {
+  id: string;
+  title: string;
+  status: string;
+  targetAmount: number | null;
+  currentAmount: number;
+}
+interface EnvelopeRow {
+  name: string;
+  isActive: boolean;
+  monthlyAmount: number;
+  available: number;
+  spent: number;
+}
+
+/** Resposta de preencher um campo: atualizou o rascunho, ou pede de novo, ou erro. */
+type PendingAnswer =
+  | { status: 'UPDATED' }
+  | { status: 'ASK'; outcome: ConversationOutcome; question: string; prefix?: string }
+  | { status: 'ERROR'; text: string };
+
+/** Efeito da confirmação já gravado: texto e dados para a tela. */
+interface AppliedAction {
+  text: string;
+  data: ReplyData;
+  resultRef: string;
+}
 
 type CategoryRow = { id: string; name: string };
 
@@ -138,6 +208,8 @@ export class ConversationService {
     private readonly recurring: RecurringTransactionsService,
     private readonly installments: InstallmentsService,
     private readonly goals: GoalsService,
+    private readonly envelopes: EnvelopesService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   /** Mensagem digitada (canal APP ou WhatsApp). Ordem de decisao: contrato secao 6 e motor. */
@@ -216,6 +288,12 @@ export class ConversationService {
     if (intent.intent === 'create_expense' || intent.intent === 'create_income') {
       return this.startDraft({ input, intent });
     }
+    if (intent.intent === 'create_goal') {
+      return this.startGoalDraft({ input, body: intent.body, cofrinho: intent.cofrinho === true });
+    }
+    if (intent.intent === 'contribute_goal') {
+      return this.startContributionDraft({ input, body: intent.body });
+    }
     if (intent.intent === 'help') {
       await this.recordEvent(input, 'help', ConversationOutcome.RECOGNIZED);
       return this.reply('HELP', 'IDLE', REPLIES.help);
@@ -255,6 +333,7 @@ export class ConversationService {
     }
 
     const draft: ExpenseOrIncomeDraft = {
+      kind: 'TRANSACTION',
       type,
       amountCents: cents,
       description: description.length >= DESCRIPTION_MIN ? description : null,
@@ -276,10 +355,122 @@ export class ConversationService {
     return this.saveNewDraft({ input, intent: intent.intent, draft, today });
   }
 
+  /**
+   * Criar meta. O limite do plano é checado ao abrir (D4): recusa sem abrir rascunho.
+   * Nome e alvo vêm do corpo (parsers/goal.parser.ts) ou das perguntas seguintes.
+   * "criar cofrinho" já nasce sem alvo: só o nome é perguntado, se faltar.
+   */
+  private async startGoalDraft(args: {
+    input: ConversationInput;
+    body: string;
+    cofrinho: boolean;
+  }): Promise<ConversationReply> {
+    const { input, body, cofrinho } = args;
+    const { userId, receivedAt } = input;
+    try {
+      await this.entitlements.assertCanCreate(userId, 'goals');
+    } catch (error) {
+      if (error instanceof PlanLimitException) {
+        await this.recordEvent(input, 'create_goal', ConversationOutcome.ERROR);
+        return this.reply('ERROR', 'IDLE', error.message);
+      }
+      throw error;
+    }
+
+    const parsed: ReturnType<typeof parseCreateGoalBody> = cofrinho
+      ? { ok: true, title: parseCofrinhoBody(body), targetCents: null }
+      : parseCreateGoalBody(body);
+    if (parsed.ok === false) {
+      await this.recordEvent(input, 'create_goal', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', amountErrorText(parsed.reason));
+    }
+    let title = parsed.title;
+    if (title !== null && codePointLength(title) > GOAL_TITLE_MAX) {
+      await this.recordEvent(input, 'create_goal', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', REPLIES.goalTitleTooLong);
+    }
+    if (title !== null && codePointLength(title) < GOAL_TITLE_MIN) {
+      title = null;
+    }
+    if (title !== null && (await this.isGoalNameTaken(userId, title))) {
+      await this.recordEvent(input, 'create_goal', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', REPLIES.goalNameTaken);
+    }
+
+    const draft: GoalDraft = {
+      kind: 'GOAL',
+      title,
+      targetCents: parsed.targetCents ?? null,
+      noTarget: parsed.targetCents === null,
+      pendingField: title === null ? 'title' : parsed.targetCents === undefined ? 'target' : null,
+    };
+    return this.saveNewDraft({ input, intent: 'create_goal', draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  /**
+   * Aporte em meta ativa. Meta única é usada sem perguntar; várias viram opções numeradas.
+   * Não recusa por limite de plano: aporte não cria vaga.
+   */
+  private async startContributionDraft(args: { input: ConversationInput; body: string }): Promise<ConversationReply> {
+    const { input, body } = args;
+    const { userId, receivedAt } = input;
+    const parsed = parseContributionBody(body);
+    if (parsed.ok === false) {
+      await this.recordEvent(input, 'contribute_goal', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', amountErrorText(parsed.reason));
+    }
+
+    const active = await this.activeGoals(userId);
+    let { amountCents, name } = parsed;
+    let candidates = name !== null ? matchGoalByTitle(name, active) : active;
+    // "guardar viagem 200": valor depois do nome. Só vale quando o nome inteiro não casa com meta nenhuma.
+    if (amountCents === null && name !== null && candidates.length === 0) {
+      const trailing = splitTrailingAmount(name);
+      if (trailing?.ok === false) {
+        await this.recordEvent(input, 'contribute_goal', ConversationOutcome.ERROR);
+        return this.reply('ERROR', 'IDLE', amountErrorText(trailing.reason));
+      }
+      if (trailing?.ok === true) {
+        amountCents = trailing.amountCents;
+        name = trailing.name;
+        candidates = name !== null ? matchGoalByTitle(name, active) : active;
+      }
+    }
+    // Sem valor e com um nome que não casa com nenhuma meta ativa ("guardar dinheiro é importante")
+    // é conversa, não comando: vai ao Selah, sem rascunho e sem pedir valor.
+    if (amountCents === null && name !== null && candidates.length === 0) {
+      await this.recordEvent(input, null, ConversationOutcome.UNRECOGNIZED);
+      return { ...this.reply('HELP', 'IDLE', REPLIES.unrecognized), unrecognized: true };
+    }
+    if (active.length === 0) {
+      await this.recordEvent(input, 'contribute_goal', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', REPLIES.noActiveGoals);
+    }
+    if (candidates.length === 0) {
+      await this.recordEvent(input, 'contribute_goal', ConversationOutcome.ERROR);
+      return this.reply(
+        'ERROR',
+        'IDLE',
+        goalNotFoundText(active.slice(0, MAX_GOAL_OPTIONS).map((goal) => truncate(goal.title))),
+      );
+    }
+    const goal = candidates.length === 1 ? candidates[0] : null;
+    const draft: ContributionDraft = {
+      kind: 'CONTRIBUTION',
+      goalId: goal?.id ?? null,
+      goalTitle: goal?.title ?? null,
+      amountCents,
+      date: await this.todayYmd(userId, receivedAt),
+      goalOptions: goal ? [] : candidates.slice(0, MAX_GOAL_OPTIONS).map((candidate) => candidate.id),
+      pendingField: nextContributionPending(goal?.id ?? null, amountCents),
+    };
+    return this.saveNewDraft({ input, intent: 'contribute_goal', draft, today: draft.date });
+  }
+
   private async saveNewDraft(args: {
     input: ConversationInput;
     intent: string;
-    draft: ExpenseOrIncomeDraft;
+    draft: SessionDraft;
     today: string;
   }): Promise<ConversationReply> {
     const { input, intent, draft, today } = args;
@@ -334,9 +525,9 @@ export class ConversationService {
       await this.recordEvent(input, session.intent, ConversationOutcome.UNRECOGNIZED);
       return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: REPLIES.collectingReminder });
     }
-    const pendingDraft = session.draft as unknown as ExpenseOrIncomeDraft;
+    const pendingDraft = session.draft as unknown as SessionDraft;
     if (!awaiting && (isOptionNumber(words, pendingDraft) || isAmountAnswer(text, pendingDraft))) {
-      // "1".."5" respondem a pergunta de categoria e um número responde "Quanto foi?"; sem isso o matcher leria como novo gasto.
+      // "1".."5" respondem a pergunta de categoria ou de meta, e um número responde "Quanto foi?"; sem isso o matcher leria como novo gasto.
       return this.fillPendingField({ input, session, text });
     }
     if (intent && isReadIntent(intent)) {
@@ -359,7 +550,10 @@ export class ConversationService {
     return this.fillPendingField({ input, session, text });
   }
 
-  /** Preenche o campo que falta (descrição ou categoria). */
+  /**
+   * Preenche o campo que falta. A resposta é tratada pelo tipo do rascunho; o salvamento e o
+   * controle de versão são iguais para os três tipos.
+   */
   private async fillPendingField(args: {
     input: ConversationInput;
     session: SessionRow;
@@ -367,43 +561,17 @@ export class ConversationService {
   }): Promise<ConversationReply> {
     const { input, session, text } = args;
     const { userId, receivedAt } = input;
-    const draft = session.draft as unknown as ExpenseOrIncomeDraft;
+    const draft = session.draft as unknown as SessionDraft;
     const today = await this.todayYmd(userId, receivedAt);
-    const value = text.trim();
 
-    if (draft.pendingField === 'amount') {
-      const amount = parseAmountPrefix(value);
-      if (amount.ok === false) {
-        await this.recordEvent(input, session.intent, ConversationOutcome.ERROR);
-        return this.reply('ERROR', this.stateView(session), amountErrorText(amount.reason));
-      }
-      draft.amountCents = amount.cents;
-      draft.pendingField = null;
-      const rest = stripConnectors(splitTokens(amount.rest)).join(' ');
-      if (draft.description === null && rest.length >= DESCRIPTION_MIN) {
-        draft.description = rest;
-      }
-      if (draft.description === null) {
-        draft.pendingField = 'description';
-      } else {
-        await this.resolveCategory(userId, draft, draft.description);
-      }
-    } else if (draft.pendingField === 'description') {
-      if (value.length < DESCRIPTION_MIN) {
-        await this.recordEvent(input, session.intent, ConversationOutcome.UNRECOGNIZED);
-        return this.draftReply(session, today, { question: REPLIES.askDescription });
-      }
-      if (value.length > DESCRIPTION_MAX) {
-        await this.recordEvent(input, session.intent, ConversationOutcome.ERROR);
-        return this.reply('ERROR', this.stateView(session), REPLIES.descriptionTooLong);
-      }
-      draft.description = value;
-      draft.pendingField = null;
-      await this.resolveCategory(userId, draft, value);
-    } else if (draft.pendingField === 'category') {
-      draft.categoryId = await this.pickCategoryAnswer(userId, draft, value);
-      draft.categoryOptions = [];
-      draft.pendingField = null;
+    const answer = await this.answerPending(userId, draft, text.trim());
+    if (answer.status === 'ERROR') {
+      await this.recordEvent(input, session.intent, ConversationOutcome.ERROR);
+      return this.reply('ERROR', this.stateView(session), answer.text);
+    }
+    if (answer.status === 'ASK') {
+      await this.recordEvent(input, session.intent, answer.outcome);
+      return this.draftReply(session, today, { question: answer.question, prefix: answer.prefix });
     }
 
     const nextState = draft.pendingField ? ConversationState.COLLECTING_FIELDS : ConversationState.AWAITING_CONFIRMATION;
@@ -431,6 +599,137 @@ export class ConversationService {
     return this.draftReply(next, today);
   }
 
+  /** Resposta ao campo pendente, por tipo de rascunho. Só muda `draft` no caminho UPDATED. */
+  private async answerPending(userId: string, draft: SessionDraft, value: string): Promise<PendingAnswer> {
+    if (draft.kind === 'GOAL') {
+      return this.answerGoal(userId, draft, value);
+    }
+    if (draft.kind === 'CONTRIBUTION') {
+      return this.answerContribution(userId, draft, value);
+    }
+    return this.answerTransaction(userId, draft, value);
+  }
+
+  private async answerTransaction(userId: string, draft: ExpenseOrIncomeDraft, value: string): Promise<PendingAnswer> {
+    if (draft.pendingField === 'amount') {
+      const amount = parseAmountPrefix(value);
+      if (amount.ok === false) {
+        return { status: 'ERROR', text: amountErrorText(amount.reason) };
+      }
+      draft.amountCents = amount.cents;
+      draft.pendingField = null;
+      const rest = stripConnectors(splitTokens(amount.rest)).join(' ');
+      if (draft.description === null && rest.length >= DESCRIPTION_MIN) {
+        draft.description = rest;
+      }
+      if (draft.description === null) {
+        draft.pendingField = 'description';
+      } else {
+        await this.resolveCategory(userId, draft, draft.description);
+      }
+      return { status: 'UPDATED' };
+    }
+    if (draft.pendingField === 'description') {
+      if (value.length < DESCRIPTION_MIN) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: REPLIES.askDescription };
+      }
+      if (value.length > DESCRIPTION_MAX) {
+        return { status: 'ERROR', text: REPLIES.descriptionTooLong };
+      }
+      draft.description = value;
+      draft.pendingField = null;
+      await this.resolveCategory(userId, draft, value);
+      return { status: 'UPDATED' };
+    }
+    if (draft.pendingField === 'category') {
+      draft.categoryId = await this.pickCategoryAnswer(userId, draft, value);
+      draft.categoryOptions = [];
+      draft.pendingField = null;
+      return { status: 'UPDATED' };
+    }
+    return { status: 'ERROR', text: REPLIES.collectingReminder };
+  }
+
+  /** Nome (2 a 60, sem repetir meta ativa) e depois alvo ("sem alvo" = cofrinho). */
+  private async answerGoal(userId: string, draft: GoalDraft, value: string): Promise<PendingAnswer> {
+    if (draft.pendingField === 'title') {
+      const length = codePointLength(value);
+      if (length < GOAL_TITLE_MIN) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: REPLIES.askGoalTitle };
+      }
+      if (length > GOAL_TITLE_MAX) {
+        return { status: 'ERROR', text: REPLIES.goalTitleTooLong };
+      }
+      if (await this.isGoalNameTaken(userId, value)) {
+        return {
+          status: 'ASK',
+          outcome: ConversationOutcome.ERROR,
+          question: REPLIES.askGoalTitle,
+          prefix: REPLIES.goalNameTaken,
+        };
+      }
+      draft.title = value;
+      draft.pendingField = nextGoalPending(draft);
+      return { status: 'UPDATED' };
+    }
+    if (draft.pendingField === 'target') {
+      if (isNoTargetAnswer(value)) {
+        draft.noTarget = true;
+        draft.targetCents = null;
+        draft.pendingField = null;
+        return { status: 'UPDATED' };
+      }
+      const amount = parseAmountPrefix(value);
+      if (amount.ok === false) {
+        return { status: 'ERROR', text: amountErrorText(amount.reason) };
+      }
+      if (amount.rest !== '') {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: REPLIES.askGoalTarget };
+      }
+      draft.targetCents = amount.cents;
+      draft.pendingField = null;
+      return { status: 'UPDATED' };
+    }
+    return { status: 'ERROR', text: REPLIES.collectingReminder };
+  }
+
+  /** Valor (centavos) e meta (opção numerada ou nome entre as opções oferecidas). */
+  private async answerContribution(userId: string, draft: ContributionDraft, value: string): Promise<PendingAnswer> {
+    if (draft.pendingField === 'amount') {
+      const amount = parseAmountPrefix(value);
+      if (amount.ok === false) {
+        return { status: 'ERROR', text: amountErrorText(amount.reason) };
+      }
+      draft.amountCents = amount.cents;
+      draft.pendingField = nextContributionPending(draft.goalId, draft.amountCents);
+      return { status: 'UPDATED' };
+    }
+    if (draft.pendingField === 'goal') {
+      const pool = await this.optionGoals(userId, draft.goalOptions);
+      const normalized = normalize(value);
+      const isNumber = /^[1-5]$/.test(normalized);
+      const numberedId = isNumber ? draft.goalOptions[Number(normalized) - 1] : undefined;
+      const numbered = pool.find((goal) => goal.id === numberedId);
+      const chosen = isNumber ? (numbered ? [numbered] : []) : matchGoalByTitle(value, pool);
+      if (chosen.length !== 1) {
+        return {
+          status: 'ASK',
+          outcome: ConversationOutcome.UNRECOGNIZED,
+          question: goalOptionsText(draft.goalOptions.map((id) => {
+            const goal = pool.find((candidate) => candidate.id === id);
+            return goal ? truncate(goal.title) : 'indisponível';
+          })),
+        };
+      }
+      draft.goalId = chosen[0].id;
+      draft.goalTitle = chosen[0].title;
+      draft.goalOptions = [];
+      draft.pendingField = nextContributionPending(draft.goalId, draft.amountCents);
+      return { status: 'UPDATED' };
+    }
+    return { status: 'ERROR', text: REPLIES.collectingReminder };
+  }
+
   /** Aplica o rascunho com a regra da secao 7: reivindicar, registrar chave, aplicar. */
   private async applyDraft(args: {
     userId: string;
@@ -441,7 +740,7 @@ export class ConversationService {
   }): Promise<ConversationReply> {
     const { userId, session, messageId, now } = args;
     const channel = args.channel ?? session.channel;
-    const draft = session.draft as unknown as ExpenseOrIncomeDraft;
+    const draft = session.draft as unknown as SessionDraft;
 
     const claim = await this.prisma.conversationSession.deleteMany({
       where: { id: session.id, userId, version: session.version },
@@ -463,45 +762,106 @@ export class ConversationService {
       return this.reply('DUPLICATE', 'IDLE', REPLIES.duplicate);
     }
 
-    let transactionId: string;
+    let applied: AppliedAction;
     try {
-      const created = await this.transactions.create(userId, {
-        type: draft.type,
-        description: draft.description,
-        amount: draft.amountCents / 100,
-        // Meia-noite UTC, igual à tela de Finanças (new Date('YYYY-MM-DD')). O ciclo do cartão
-        // usa `lte` na meia-noite UTC do dia de fechamento: meio-dia deixaria a compra desse dia fora do ciclo.
-        date: `${draft.date}T00:00:00.000Z`,
-        categoryId: draft.categoryId ?? undefined,
-        paymentMethod: draft.paymentMethod ?? undefined,
-      });
-      transactionId = created.id;
-    } catch {
-      // Falha ao gravar: devolve o rascunho, sem lançamento e sem chave aplicada.
+      applied = await this.applyByKind(userId, draft);
+    } catch (error) {
+      // Falha ao gravar: nada foi gravado e a chave aplicada sai do evento.
       await this.prisma.conversationEvent.updateMany({
         where: { id: event.id, userId },
         data: { outcome: ConversationOutcome.ERROR, appliedKey: null },
       });
+      const kind = draftKind(draft);
+      // Erro 4xx (limite do plano, meta apagada, dado recusado) não melhora com nova tentativa: descarta (D5).
+      if (isDiscardError(error)) {
+        return this.reply('ERROR', 'IDLE', discardText(kind, error));
+      }
       const restored = await this.restoreSession({ userId, session, channel, now });
       return this.reply(
         'ERROR',
         restored ? ConversationState.AWAITING_CONFIRMATION : 'IDLE',
-        restored ? REPLIES.saveFailed : REPLIES.saveFailedRestoreLost,
+        saveFailedText(kind, restored),
       );
     }
 
-    // O lançamento já existe: falha só da métrica não pode virar erro 500 (o usuário refaria e duplicaria).
+    // A ação já existe: falha só da métrica não pode virar erro 500 (o usuário refaria e duplicaria).
     await this.prisma.conversationEvent
       .updateMany({
         where: { id: event.id, userId },
-        data: { outcome: ConversationOutcome.COMPLETED, resultRef: transactionId },
+        data: { outcome: ConversationOutcome.COMPLETED, resultRef: applied.resultRef },
       })
       .catch(() => undefined);
+    return { kind: 'DONE', state: 'IDLE', text: applied.text, data: applied.data };
+  }
+
+  /** Um caso por tipo de rascunho. Só este método chama o serviço financeiro ou de metas. */
+  private async applyByKind(userId: string, draft: SessionDraft): Promise<AppliedAction> {
+    if (draft.kind === 'GOAL') {
+      return this.applyGoal(userId, draft);
+    }
+    if (draft.kind === 'CONTRIBUTION') {
+      return this.applyContribution(userId, draft);
+    }
+    return this.applyTransaction(userId, draft);
+  }
+
+  private async applyTransaction(userId: string, draft: ExpenseOrIncomeDraft): Promise<AppliedAction> {
+    const created = await this.transactions.create(userId, {
+      type: draft.type,
+      description: draft.description,
+      amount: draft.amountCents / 100,
+      // Meia-noite UTC, igual à tela de Finanças (new Date('YYYY-MM-DD')). O ciclo do cartão
+      // usa `lte` na meia-noite UTC do dia de fechamento: meio-dia deixaria a compra desse dia fora do ciclo.
+      date: `${draft.date}T00:00:00.000Z`,
+      categoryId: draft.categoryId ?? undefined,
+      paymentMethod: draft.paymentMethod ?? undefined,
+    });
     return {
-      kind: 'DONE',
-      state: 'IDLE',
       text: doneText(draft.type, draft.amountCents, draft.description ?? ''),
-      data: { transactionId },
+      data: { transactionId: created.id },
+      resultRef: created.id,
+    };
+  }
+
+  /** Meta nova nasce ativa, sem data-alvo e sem aporte automático (contrato D6). */
+  private async applyGoal(userId: string, draft: GoalDraft): Promise<AppliedAction> {
+    if (draft.title === null) {
+      throw new Error('rascunho de meta sem nome');
+    }
+    const goal = (await this.goals.create(userId, {
+      title: draft.title,
+      targetAmount: draft.targetCents === null ? undefined : draft.targetCents / 100,
+    })) as SavedGoal;
+    return {
+      text: goalCreatedText({ title: truncate(draft.title), targetCents: draft.targetCents }),
+      data: { goalId: goal.id },
+      resultRef: goal.id,
+    };
+  }
+
+  /** Aporte cria a transferência no extrato, soma ao guardado e conclui a meta se bater o alvo (contrato D1). */
+  private async applyContribution(userId: string, draft: ContributionDraft): Promise<AppliedAction> {
+    if (draft.goalId === null || draft.amountCents === null) {
+      throw new Error('rascunho de aporte incompleto');
+    }
+    const goal = (await this.goals.contribute(userId, draft.goalId, {
+      amount: draft.amountCents / 100,
+      date: `${draft.date}T00:00:00.000Z`,
+      createTransaction: true,
+    })) as SavedGoal;
+    const currentCents = toCents(goal.currentAmount);
+    const targetCents = goal.targetAmount === null ? null : toCents(goal.targetAmount);
+    return {
+      text: contributionDoneText({
+        title: truncate(goal.title),
+        amountCents: draft.amountCents,
+        currentCents,
+        targetCents,
+        percent: percentOf(currentCents, targetCents),
+        achieved: goal.status === 'ACHIEVED',
+      }),
+      data: { goalId: goal.id },
+      resultRef: goal.id,
     };
   }
 
@@ -623,6 +983,8 @@ export class ConversationService {
         return this.fixedBillsReply(userId);
       case 'goals':
         return this.goalsReply(userId);
+      case 'envelopes':
+        return this.envelopesReply(userId, now);
       case 'balance': {
         const { finances } = await this.readFinances(userId);
         const balanceCents = toCents(finances.balance);
@@ -827,6 +1189,31 @@ export class ConversationService {
     return this.infoReply(text, { goals: shown });
   }
 
+  /**
+   * Reservas ativas (envelopes), contrato 3b1 parte A. Usa EnvelopesService.list, que também gera
+   * os depósitos atrasados, como abrir a tela. Total = soma do disponível das ativas (com sinal).
+   */
+  private async envelopesReply(userId: string, now: Date): Promise<ConversationReply> {
+    const all = (await this.envelopes.list(userId, now)) as EnvelopeRow[];
+    const active = all.filter((envelope) => envelope.isActive);
+    const rows = active.map((envelope) => ({
+      label: truncate(envelope.name),
+      monthlyCents: toCents(envelope.monthlyAmount),
+      availableCents: toCents(envelope.available),
+      spentCents: toCents(envelope.spent),
+    }));
+    const totalAvailableCents = rows.reduce((total, row) => total + row.availableCents, 0);
+    const shown = rows.slice(0, LIST_MAX_ITEMS);
+    const text = envelopesText({
+      count: rows.length,
+      rows: shown,
+      hidden: rows.length - shown.length,
+      totalAvailableCents,
+      pausedCount: all.length - active.length,
+    });
+    return this.infoReply(text, { envelopes: shown, totalCents: totalAvailableCents });
+  }
+
   /** Mesmos numeros da tela inicial: DashboardService.getSummary, sem reescrever a formula. */
   private async readFinances(userId: string): Promise<DashboardFinances> {
     return (await this.dashboard.getSummary(userId)) as DashboardFinances;
@@ -882,7 +1269,7 @@ export class ConversationService {
     today: string,
     options: { prefix?: string; question?: string } = {},
   ): Promise<ConversationReply> {
-    const draft = session.draft as unknown as ExpenseOrIncomeDraft;
+    const draft = session.draft as unknown as SessionDraft;
     const view = await this.toDraftView(session);
     if (session.state === ConversationState.COLLECTING_FIELDS) {
       const question = options.question ?? (await this.questionFor(session.userId, draft));
@@ -893,15 +1280,7 @@ export class ConversationService {
         draft: view,
       };
     }
-    const body = draftText({
-      type: draft.type,
-      amountCents: draft.amountCents,
-      description: draft.description ?? '',
-      category: view.category,
-      date: draft.date,
-      paymentMethod: draft.paymentMethod,
-      futureDate: draft.date > today,
-    });
+    const body = await this.confirmationText(session, draft, today, view);
     return {
       kind: 'CONFIRM_DRAFT',
       state: ConversationState.AWAITING_CONFIRMATION,
@@ -911,7 +1290,51 @@ export class ConversationService {
     };
   }
 
-  private async questionFor(userId: string, draft: ExpenseOrIncomeDraft): Promise<string> {
+  /** Texto do rascunho pronto para confirmar, por tipo. */
+  private async confirmationText(
+    session: SessionRow,
+    draft: SessionDraft,
+    today: string,
+    view: DraftView,
+  ): Promise<string> {
+    if (draft.kind === 'GOAL') {
+      return goalDraftText({ title: truncate(draft.title ?? ''), targetCents: draft.targetCents });
+    }
+    if (draft.kind === 'CONTRIBUTION') {
+      const goal = await this.snapshotOf(session.userId, draft.goalId);
+      const amountCents = draft.amountCents ?? 0;
+      return contributionDraftText({
+        meta: this.contributionGoalLabel(draft, goal),
+        amountCents,
+        date: draft.date,
+        concludes: goal !== null && concludesGoal(goal, amountCents),
+      });
+    }
+    return draftText({
+      type: draft.type,
+      amountCents: draft.amountCents,
+      description: draft.description ?? '',
+      category: view.category,
+      date: draft.date,
+      paymentMethod: draft.paymentMethod,
+      futureDate: draft.date > today,
+    });
+  }
+
+  private async questionFor(userId: string, draft: SessionDraft): Promise<string> {
+    if (draft.kind === 'GOAL') {
+      return draft.pendingField === 'title' ? REPLIES.askGoalTitle : REPLIES.askGoalTarget;
+    }
+    if (draft.kind === 'CONTRIBUTION') {
+      if (draft.pendingField === 'amount') {
+        return REPLIES.askContributionAmount;
+      }
+      const pool = await this.optionGoals(userId, draft.goalOptions);
+      return goalOptionsText(draft.goalOptions.map((id) => {
+        const goal = pool.find((candidate) => candidate.id === id);
+        return goal ? truncate(goal.title) : 'indisponível';
+      }));
+    }
     if (draft.pendingField === 'amount') {
       return REPLIES.askAmount;
     }
@@ -925,25 +1348,127 @@ export class ConversationService {
     return categoryOptionsText(names);
   }
 
+  /**
+   * Rascunho para a tela (contrato 3b1, secao 4). Lançamento mantém os campos antigos preenchidos;
+   * meta e aporte deixam os campos de lançamento nulos e a tela lê só `rows`.
+   */
   private async toDraftView(session: SessionRow): Promise<DraftView> {
-    const draft = session.draft as unknown as ExpenseOrIncomeDraft;
+    const draft = session.draft as unknown as SessionDraft;
+    const base = {
+      draftId: session.id,
+      draftVersion: session.version,
+      type: TransactionType.EXPENSE,
+      amount: null,
+      description: null,
+      category: null,
+      date: null,
+      paymentMethod: null,
+    };
+
+    if (draft.kind === 'GOAL') {
+      return {
+        ...base,
+        kind: 'GOAL',
+        title: 'Meta',
+        pendingField: draft.pendingField,
+        rows: [
+          { label: 'Nome', value: draft.title ? truncate(draft.title) : 'a informar' },
+          { label: 'Alvo', value: goalTargetValue(draft) },
+        ],
+      };
+    }
+    if (draft.kind === 'CONTRIBUTION') {
+      const goal = await this.snapshotOf(session.userId, draft.goalId);
+      return {
+        ...base,
+        kind: 'CONTRIBUTION',
+        title: 'Aporte',
+        pendingField: draft.pendingField,
+        rows: [
+          { label: 'Meta', value: this.contributionGoalLabel(draft, goal) },
+          { label: 'Valor', value: draft.amountCents === null ? 'a informar' : formatBrl(draft.amountCents) },
+          { label: 'Data', value: longDate(draft.date) },
+          ...(goal !== null && concludesGoal(goal, draft.amountCents ?? 0)
+            ? [{ label: 'Aviso', value: 'Este aporte conclui a meta.' }]
+            : []),
+        ],
+      };
+    }
+
     const category = draft.categoryId
       ? (await this.prisma.financeCategory.findFirst({
           where: { id: draft.categoryId, userId: session.userId },
           select: { name: true },
         }))?.name ?? null
       : null;
+    const amount = draft.pendingField === 'amount' ? 'a informar' : formatBrl(draft.amountCents);
     return {
-      draftId: session.id,
-      draftVersion: session.version,
+      ...base,
+      kind: 'TRANSACTION',
+      title: 'Lançamento',
       type: draft.type,
-      amount: draft.pendingField === 'amount' ? 'a informar' : formatBrl(draft.amountCents),
+      amount,
       description: draft.description,
       category,
       date: draft.date,
       paymentMethod: draft.paymentMethod,
       pendingField: draft.pendingField,
+      rows: [...transactionRows({
+        amount,
+        description: draft.description ?? 'a informar',
+        category: category ?? (draft.pendingField === 'category' ? 'a informar' : 'sem categoria'),
+        date: draft.date,
+        paymentMethod: draft.paymentMethod,
+      }), ...(draft.date > await this.todayYmd(session.userId, new Date())
+        ? [{ label: 'Aviso', value: 'Este lançamento tem data futura.' }]
+        : [])],
     };
+  }
+
+  /** Nome da meta do aporte com o guardado e o alvo quando a meta ainda existe. */
+  private contributionGoalLabel(draft: ContributionDraft, goal: GoalSnap | null): string {
+    if (goal) {
+      return goalLabel({ title: truncate(goal.title), currentCents: goal.currentCents, targetCents: goal.targetCents });
+    }
+    return draft.goalTitle ? truncate(draft.goalTitle) : 'a informar';
+  }
+
+  /** Estado atual da meta do aporte (lido agora, não congelado no rascunho). */
+  private async snapshotOf(userId: string, goalId: string | null): Promise<GoalSnap | null> {
+    if (goalId === null) {
+      return null;
+    }
+    const goals = await this.listGoals(userId);
+    return goals.find((goal) => goal.id === goalId) ?? null;
+  }
+
+  /** Metas da conta, qualquer status, em centavos. Só as com userId da conta (defesa em profundidade). */
+  private async listGoals(userId: string): Promise<GoalSnap[]> {
+    const all = (await this.goals.list(userId)) as OwnedGoalRow[];
+    return all
+      .filter((goal) => goal.userId === userId)
+      .map((goal) => ({
+        id: goal.id,
+        title: goal.title,
+        status: goal.status,
+        targetCents: goal.targetAmount === null ? null : toCents(goal.targetAmount),
+        currentCents: toCents(goal.currentAmount),
+      }));
+  }
+
+  private async activeGoals(userId: string): Promise<GoalSnap[]> {
+    return (await this.listGoals(userId)).filter((goal) => goal.status === 'ACTIVE');
+  }
+
+  /** Opções da pergunta de meta, na ordem oferecida; meta que deixou de estar ativa sai da lista. */
+  private async optionGoals(userId: string, ids: string[]): Promise<GoalSnap[]> {
+    const active = await this.activeGoals(userId);
+    return ids.map((id) => active.find((goal) => goal.id === id)).filter((goal): goal is GoalSnap => goal !== undefined);
+  }
+
+  private async isGoalNameTaken(userId: string, title: string): Promise<boolean> {
+    const target = normalize(title);
+    return (await this.activeGoals(userId)).some((goal) => normalize(goal.title) === target);
   }
 
   private async categoryNames(userId: string, ids: string[]): Promise<string[]> {
@@ -1019,26 +1544,128 @@ export class ConversationService {
 
 // ---------- funcoes puras do motor ----------
 
-function isReadIntent(match: IntentMatch): match is { intent: ReadIntent } | { intent: 'spend_by_category'; categoryQuery: string } {
+function isReadIntent(match: IntentMatch): boolean {
   return match.intent === 'spend_by_category' || (READ_INTENTS as string[]).includes(match.intent);
 }
 
-/** Resposta numérica válida à pergunta de categoria (opção existente no rascunho). */
-/** Número (ou "32,90 padaria") em resposta a "Quanto foi?". Texto sem valor cai no erro de valor. */
-function isAmountAnswer(text: string, draft: ExpenseOrIncomeDraft): boolean {
-  if (draft.pendingField !== 'amount') {
+/** Número (ou "32,90 padaria") em resposta a "Quanto foi?" / "Quanto quer guardar?". Texto sem valor cai no erro de valor. */
+function isAmountAnswer(text: string, draft: SessionDraft): boolean {
+  // "1500" sozinho casaria create_expense; com o alvo da meta pendente é resposta, não lançamento.
+  const awaitsAmount = draft.pendingField === 'amount' || (draft.kind === 'GOAL' && draft.pendingField === 'target');
+  if (!awaitsAmount) {
     return false;
   }
   const parsed = parseAmountPrefix(text.trim());
   return parsed.ok === true || parsed.reason !== 'NOT_AMOUNT';
 }
 
-function isOptionNumber(words: string, draft: ExpenseOrIncomeDraft): boolean {
-  return (
-    draft.pendingField === 'category' &&
-    /^[1-5]$/.test(words) &&
-    draft.categoryOptions[Number(words) - 1] !== undefined
-  );
+/** Número 1 a 5 que escolhe uma opção oferecida (categoria ou meta do aporte). */
+function isOptionNumber(words: string, draft: SessionDraft): boolean {
+  return /^[1-5]$/.test(words) && numberedOptions(draft)[Number(words) - 1] !== undefined;
+}
+
+function numberedOptions(draft: SessionDraft): string[] {
+  if (draft.kind === 'GOAL') {
+    return [];
+  }
+  if (draft.kind === 'CONTRIBUTION') {
+    return draft.pendingField === 'goal' ? draft.goalOptions : [];
+  }
+  return draft.pendingField === 'category' ? draft.categoryOptions : [];
+}
+
+function draftKind(draft: SessionDraft): DraftKind {
+  return draft.kind ?? 'TRANSACTION';
+}
+
+/** Próximo campo do aporte: meta antes do valor (a meta define o que se guarda). */
+function nextContributionPending(goalId: string | null, amountCents: number | null): 'goal' | 'amount' | null {
+  if (goalId === null) {
+    return 'goal';
+  }
+  return amountCents === null ? 'amount' : null;
+}
+
+/** Depois do nome, falta o alvo se o usuário ainda não respondeu (nem "sem alvo"). */
+function nextGoalPending(draft: GoalDraft): 'target' | null {
+  return draft.targetCents === null && !draft.noTarget ? 'target' : null;
+}
+
+/** Busca meta pelo título: igualdade, depois prefixo, depois "contém" (contrato 3b1, secao 3). Sem acento e caixa. */
+function matchGoalByTitle<T extends { title: string }>(query: string, goals: T[]): T[] {
+  const target = normalize(query);
+  if (target.length === 0) {
+    return [];
+  }
+  const names = goals.map((goal) => normalize(goal.title));
+  const tiers: Array<(name: string) => boolean> = [
+    (name) => name === target,
+    (name) => name.startsWith(target),
+    (name) => name.includes(target),
+  ];
+  for (const tier of tiers) {
+    const found = goals.filter((_, index) => tier(names[index]));
+    if (found.length > 0) {
+      return found;
+    }
+  }
+  return [];
+}
+
+/**
+ * "Este aporte conclui a meta" com a mesma conta do GoalsService.contribute (reais em ponto flutuante:
+ * `atual + aporte >= alvo`). Em centavos inteiros o aviso poderia divergir do status gravado (0,7 + 0,1 < 0,8).
+ */
+function concludesGoal(goal: GoalSnap, amountCents: number): boolean {
+  if (goal.targetCents === null) {
+    return false;
+  }
+  return goal.currentCents / 100 + amountCents / 100 >= goal.targetCents / 100;
+}
+
+/** Meta com alvo: percentual com floor, teto 100%. Sem alvo: null. */
+function percentOf(currentCents: number, targetCents: number | null): number | null {
+  if (targetCents === null || targetCents <= 0) {
+    return null;
+  }
+  return Math.min(MAX_GOAL_PERCENT, Math.floor((currentCents * 100) / targetCents));
+}
+
+/** Valor da linha "Alvo" na tela de meta. */
+function goalTargetValue(draft: GoalDraft): string {
+  if (draft.noTarget) {
+    return 'sem alvo (cofrinho)';
+  }
+  return draft.targetCents === null ? 'a informar' : formatBrl(draft.targetCents);
+}
+
+/** Erro que descarta o rascunho: limite do plano ou erro 4xx do serviço (D5). */
+function isDiscardError(error: unknown): boolean {
+  return error instanceof HttpException && error.getStatus() < 500;
+}
+
+/** Texto do rascunho descartado por erro 4xx. Limite do plano usa a mensagem da própria exceção. */
+function discardText(kind: DraftKind, error: unknown): string {
+  if (error instanceof PlanLimitException) {
+    return error.message;
+  }
+  return kind === 'TRANSACTION' ? REPLIES.transactionRejected : REPLIES.goalGone;
+}
+
+/** Texto do rascunho mantido após falha inesperada, por tipo. */
+function saveFailedText(kind: DraftKind, restored: boolean): string {
+  if (kind === 'GOAL') {
+    return restored ? REPLIES.goalSaveFailed : REPLIES.goalSaveFailedRestoreLost;
+  }
+  if (kind === 'CONTRIBUTION') {
+    return restored ? REPLIES.contributionSaveFailed : REPLIES.contributionSaveFailedRestoreLost;
+  }
+  return restored ? REPLIES.saveFailed : REPLIES.saveFailedRestoreLost;
+}
+
+/** Comprimento em code points (acento e emoji contam um cada). */
+function codePointLength(text: string): number {
+  return Array.from(text.trim()).length;
 }
 
 function ttlFor(state: ConversationState): number {

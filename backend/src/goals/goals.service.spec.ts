@@ -28,7 +28,10 @@ describe('GoalsService', () => {
         ),
       },
       transaction: { create: jest.fn().mockResolvedValue({}) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $transaction: jest.fn(),
     };
+    prisma.$transaction.mockImplementation((work: (tx: unknown) => Promise<unknown>) => work(prisma));
     const lifeEngine = { touchUserData: jest.fn().mockResolvedValue(undefined) };
     const notifications = { createNotification: jest.fn().mockResolvedValue(undefined) };
     const entitlements = { assertCanCreate: jest.fn().mockResolvedValue(undefined) };
@@ -39,10 +42,18 @@ describe('GoalsService', () => {
       entitlements as any,
     );
 
-    return { service, prisma, lifeEngine, entitlements };
+    return { service, prisma, lifeEngine, entitlements, notifications };
   };
 
   describe('create', () => {
+    it('falha no cache após criar não transforma sucesso em erro para o chamador', async () => {
+      const { service, prisma, lifeEngine } = build();
+      lifeEngine.touchUserData.mockRejectedValue(new Error('cache failure'));
+      await expect(service.create('user-1', { title: 'Viagem' })).resolves.toMatchObject({
+        id: 'goal-new',
+      });
+      expect(prisma.goal.create).toHaveBeenCalledTimes(1);
+    });
     it('sem targetAmount, cria a meta como "cofrinho" sem valor-alvo (nao vira 0)', async () => {
       const { service, prisma } = build();
 
@@ -191,6 +202,59 @@ describe('GoalsService', () => {
   });
 
   describe('contribute', () => {
+    it('saldo e transferência usam a mesma transação, com lock limitado ao dono antes de ler', async () => {
+      const { service, prisma } = build();
+      const order: string[] = [];
+      prisma.$queryRaw.mockImplementation(async (...args: unknown[]) => {
+        order.push('lock');
+        expect(args.slice(1)).toEqual(['goal-1', 'user-1']);
+      });
+      prisma.goal.findFirst.mockImplementation(async ({ where }: { where: { id: string; userId: string } }) => {
+        order.push('read');
+        expect(where).toEqual({ id: 'goal-1', userId: 'user-1' });
+        return stored();
+      });
+      await service.contribute('user-1', 'goal-1', { amount: 200 });
+      expect(order).toEqual(['lock', 'read']);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.transaction.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('erro na transferência aborta o bloco financeiro antes dos efeitos auxiliares', async () => {
+      const { service, prisma, lifeEngine, notifications } = build();
+      prisma.transaction.create.mockRejectedValue(new Error('synthetic transfer failure'));
+      await expect(service.contribute('user-1', 'goal-1', { amount: 200 })).rejects.toThrow(
+        'synthetic transfer failure',
+      );
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(lifeEngine.touchUserData).not.toHaveBeenCalled();
+      expect(notifications.createNotification).not.toHaveBeenCalled();
+    });
+
+    it('cache ou notificação falhando após commit não devolvem erro financeiro', async () => {
+      const { service, prisma, lifeEngine, notifications } = build(
+        stored({ currentAmount: decimal(2900) }),
+      );
+      lifeEngine.touchUserData.mockRejectedValue(new Error('cache with sensitive data'));
+      notifications.createNotification.mockRejectedValue(
+        new Error('notification with sensitive data'),
+      );
+      const result = await service.contribute('user-1', 'goal-1', {
+        amount: 200,
+      });
+      expect(result.currentAmount).toBe(3100);
+      expect(result.status).toBe(GoalStatus.ACHIEVED);
+      expect(prisma.transaction.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('meta alheia ou inexistente não grava nada dentro da transação', async () => {
+      const { service, prisma } = build(null);
+      await expect(service.contribute('user-1', 'foreign-goal', { amount: 200 })).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.goal.update).not.toHaveBeenCalled();
+      expect(prisma.transaction.create).not.toHaveBeenCalled();
+    });
     it('meta com alvo: aporte que atinge o valor marca ACHIEVED', async () => {
       const { service, prisma } = build(stored({ currentAmount: decimal(2900) }));
 

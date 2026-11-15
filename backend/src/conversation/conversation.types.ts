@@ -25,23 +25,34 @@ export interface ConversationInput {
   receivedAt: Date;
 }
 
-/** Rascunho para a tela: valores formatados, sem ids internos alem de draftId/draftVersion. */
+export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION';
+
+/**
+ * Rascunho para a tela: valores formatados, sem ids internos alem de draftId/draftVersion.
+ * Para meta e aporte, type fica 'EXPENSE' e os campos de lançamento vêm nulos (sem uso); a tela lê `rows`.
+ */
 export interface DraftView {
   draftId: string;
   draftVersion: number;
+  kind: DraftKind;
+  /** "Lançamento", "Meta" ou "Aporte". */
+  title: string;
+  /** Linhas já formatadas, sem valor nulo ("a informar" quando falta). */
+  rows: Array<{ label: string; value: string }>;
   type: TransactionType;
-  amount: string;
+  amount: string | null;
   description: string | null;
   category: string | null;
-  date: string;
+  date: string | null;
   paymentMethod: PaymentMethod | null;
   pendingField: PendingField | null;
 }
 
-export type PendingField = 'amount' | 'description' | 'category';
+export type PendingField = 'amount' | 'description' | 'category' | 'title' | 'target' | 'goal';
 
-/** Rascunho guardado em ConversationSession.draft. Dinheiro sempre em centavos inteiros. */
+/** Rascunho de lançamento. Sessões antigas não têm `kind`: ausente = TRANSACTION. Dinheiro em centavos. */
 export interface ExpenseOrIncomeDraft {
+  kind?: 'TRANSACTION';
   type: TransactionType;
   amountCents: number;
   description: string | null;
@@ -53,12 +64,45 @@ export interface ExpenseOrIncomeDraft {
   categoryOptions: string[];
 }
 
+/** Rascunho de meta nova (contrato 3b1, secao 3). */
+export interface GoalDraft {
+  kind: 'GOAL';
+  /** 2 a 60 caracteres; null enquanto não informado. */
+  title: string | null;
+  /** Centavos; null = sem alvo ou ainda não informado (pendingField 'target' distingue). */
+  targetCents: number | null;
+  /** true quando o usuário respondeu "sem alvo" (cofrinho). */
+  noTarget: boolean;
+  pendingField: 'title' | 'target' | null;
+}
+
+/** Rascunho de aporte em meta ativa (contrato 3b1, secao 3). */
+export interface ContributionDraft {
+  kind: 'CONTRIBUTION';
+  goalId: string | null;
+  /** Para mostrar; o id é a fonte da verdade. */
+  goalTitle: string | null;
+  amountCents: number | null;
+  /** 'AAAA-MM-DD' no fuso do usuário (hoje, na abertura). */
+  date: string;
+  /** Ids de metas oferecidas quando a escolha é ambígua (max 5). */
+  goalOptions: string[];
+  pendingField: 'amount' | 'goal' | null;
+}
+
+/** Tudo que `ConversationSession.draft` pode guardar. O motor decide pelo `kind`. */
+export type SessionDraft = ExpenseOrIncomeDraft | GoalDraft | ContributionDraft;
+
 /** Dados numericos para a tela (centavos). Presentes em INFO e DONE. */
 export interface ReplyData {
   balanceCents?: number;
   incomeCents?: number;
   expenseCents?: number;
   categories?: Array<{ name: string; amountCents: number }>;
+  /** Meta criada ou aportada (DONE). */
+  goalId?: string;
+  /** Reservas ativas (envelopes), contrato 3b1 parte A. Centavos; available pode ser negativo. */
+  envelopes?: Array<{ label: string; monthlyCents: number; availableCents: number; spentCents: number }>;
   card?: {
     ceilingCents: number | null;
     spentCents: number;
@@ -79,7 +123,7 @@ export interface ReplyData {
     percent: number | null;
     targetDate: string | null;
   }>;
-  /** Total a pagar (installments), total da janela (upcoming_dues), total mensal estimado (fixed_bills). */
+  /** Total a pagar (installments), total da janela (upcoming_dues), total mensal estimado (fixed_bills), total disponivel (envelopes). */
   totalCents?: number;
 }
 

@@ -1,8 +1,10 @@
 import { ConversationChannel, ConversationOutcome, ConversationState, Prisma } from '@prisma/client';
-import { Logger } from '@nestjs/common';
+import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { PlanLimitException } from '../billing/plan-limit.exception';
 import { ConversationInput } from './conversation.types';
 import { ConversationService } from './conversation.service';
+import { REPLIES } from './replies';
 
 type Deps = ConstructorParameters<typeof ConversationService>;
 
@@ -111,7 +113,9 @@ describe('ConversationService', () => {
   let creditCycle: { getCurrent: jest.Mock };
   let recurring: { list: jest.Mock };
   let installments: { list: jest.Mock };
-  let goals: { list: jest.Mock };
+  let goals: { list: jest.Mock; create: jest.Mock; contribute: jest.Mock };
+  let envelopes: { list: jest.Mock };
+  let entitlements: { assertCanCreate: jest.Mock };
   let service: ConversationService;
   let warn: jest.SpyInstance;
 
@@ -147,7 +151,13 @@ describe('ConversationService', () => {
     // Serviços de leitura: por padrão sem linhas. Cada teste substitui `list` quando precisa.
     recurring = { list: jest.fn(async () => []) };
     installments = { list: jest.fn(async () => []) };
-    goals = { list: jest.fn(async () => []) };
+    goals = {
+      list: jest.fn(async () => []),
+      create: jest.fn(async () => ({ id: 'goal-new', title: 'Viagem', status: 'ACTIVE', targetAmount: 3000, currentAmount: 0 })),
+      contribute: jest.fn(async () => ({ id: 'goal-1', title: 'Viagem', status: 'ACTIVE', targetAmount: 3000, currentAmount: 1400 })),
+    };
+    envelopes = { list: jest.fn(async () => []) };
+    entitlements = { assertCanCreate: jest.fn(async () => undefined) };
     service = new ConversationService(
       db.prisma as unknown as Deps[0],
       dashboard as unknown as Deps[1],
@@ -156,6 +166,8 @@ describe('ConversationService', () => {
       recurring as unknown as Deps[4],
       installments as unknown as Deps[5],
       goals as unknown as Deps[6],
+      envelopes as unknown as Deps[7],
+      entitlements as unknown as Deps[8],
     );
   });
 
@@ -197,6 +209,7 @@ describe('ConversationService', () => {
       const reply = await draftFor('A', '50 mercado 10/12');
       expect(reply.draft?.date).toBe('2026-12-10');
       expect(reply.text).toContain('A data é futura');
+      expect(reply.draft?.rows).toContainEqual({ label: 'Aviso', value: 'Este lançamento tem data futura.' });
     });
 
     it('data invalida devolve erro e nao cria sessao', async () => {
@@ -910,7 +923,7 @@ describe('ConversationService', () => {
 
       it('cofrinho sem alvo mostra o guardado', async () => {
         goals.list = jest.fn(async () => [goal({ title: 'Reserva', targetAmount: null, currentAmount: 500, targetDate: null })]);
-        const reply = await ask('reservas');
+        const reply = await ask('metas');
         expect(reply.text).toContain('• Reserva: R$ 500,00 guardados (sem alvo)');
       });
 
@@ -1146,6 +1159,657 @@ describe('ConversationService', () => {
 
       expect(reply?.kind).toBe('DONE');
       expect(transactions.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('metas e aportes por conversa (contrato 3b1)', () => {
+    /** Meta do banco fake. userId padrao = A (dono da conta do teste). */
+    const goalRow = (o: Row = {}): Row => ({
+      id: 'goal-1',
+      userId: 'A',
+      title: 'Viagem',
+      status: 'ACTIVE',
+      targetAmount: 3000,
+      currentAmount: 1200,
+      targetDate: null,
+      ...o,
+    });
+    /** Lista de metas como o serviço devolve. Devolve tudo, mesmo de outra conta: o motor deve filtrar. */
+    const setGoals = (rows: Row[]) => {
+      goals.list = jest.fn(async () => rows);
+    };
+    const text = (reply: { text: string }) => reply.text;
+    const limitError = () =>
+      new PlanLimitException({ resource: 'goals', limit: 2, used: 2, plan: 'FREE' });
+
+    describe('criar meta', () => {
+      it('"criar meta viagem 3 mil" abre rascunho com nome e alvo, sem gravar', async () => {
+        const reply = await service.handleMessage(msg('A', 'criar meta viagem 3 mil'));
+        expect(reply.kind).toBe('CONFIRM_DRAFT');
+        expect(reply.draft).toMatchObject({ kind: 'GOAL', title: 'Meta', pendingField: null });
+        expect(reply.draft?.rows).toEqual([
+          { label: 'Nome', value: 'viagem' },
+          { label: 'Alvo', value: 'R$ 3.000,00' },
+        ]);
+        expect(text(reply)).toContain('Rascunho de meta:\nNome: viagem\nAlvo: R$ 3.000,00');
+        expect(goals.create).not.toHaveBeenCalled();
+        expect(db.sessions[0].draft.targetCents).toBe(300_000);
+      });
+
+      it('confirmar grava com o userId do motor e responde DONE com o id', async () => {
+        await service.handleMessage(msg('A', 'criar meta viagem 3 mil'));
+        const reply = await service.handleMessage(msg('A', 'confirmar'));
+        expect(reply.kind).toBe('DONE');
+        expect(reply.text).toBe('Meta criada: viagem, alvo R$ 3.000,00.');
+        expect(reply.data).toEqual({ goalId: 'goal-new' });
+        expect(goals.create).toHaveBeenCalledTimes(1);
+        expect(goals.create).toHaveBeenCalledWith('A', { title: 'viagem', targetAmount: 3000 });
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('só o nome pergunta o alvo; "sem alvo" fecha como cofrinho', async () => {
+        const ask = await service.handleMessage(msg('A', 'criar meta viagem'));
+        expect(ask.kind).toBe('ASK_FIELD');
+        expect(text(ask)).toContain(REPLIES.askGoalTarget);
+        expect(ask.draft?.pendingField).toBe('target');
+
+        const draft = await service.handleMessage(msg('A', 'sem alvo'));
+        expect(draft.kind).toBe('CONFIRM_DRAFT');
+        expect(text(draft)).toContain('Alvo: sem alvo (cofrinho)');
+        expect(draft.draft?.rows).toContainEqual({ label: 'Alvo', value: 'sem alvo (cofrinho)' });
+
+        await service.handleMessage(msg('A', 'confirmar'));
+        expect(goals.create).toHaveBeenCalledWith('A', { title: 'viagem', targetAmount: undefined });
+      });
+
+      it('"nova meta" pergunta nome, depois alvo; "3 mil" é valor, não nome', async () => {
+        const first = await service.handleMessage(msg('A', 'nova meta'));
+        expect(text(first)).toContain(REPLIES.askGoalTitle);
+        const second = await service.handleMessage(msg('A', 'casa'));
+        expect(second.kind).toBe('ASK_FIELD');
+        expect(text(second)).toContain(REPLIES.askGoalTarget);
+        const third = await service.handleMessage(msg('A', '1500'));
+        expect(third.kind).toBe('CONFIRM_DRAFT');
+        expect(text(third)).toContain('Alvo: R$ 1.500,00');
+      });
+
+      it('"criar cofrinho emergência" já abre o rascunho sem alvo, sem perguntar o alvo', async () => {
+        const reply = await service.handleMessage(msg('A', 'criar cofrinho emergência'));
+        expect(reply.kind).toBe('CONFIRM_DRAFT');
+        expect(text(reply)).toContain('Nome: emergência\nAlvo: sem alvo (cofrinho)');
+        expect(db.sessions[0].draft).toMatchObject({ kind: 'GOAL', title: 'emergência', targetCents: null, noTarget: true, pendingField: null });
+
+        const done = await service.handleMessage(msg('A', 'confirmar'));
+        expect(done.text).toBe('Cofrinho criado: emergência.');
+        expect(goals.create).toHaveBeenCalledWith('A', { title: 'emergência', targetAmount: undefined });
+      });
+
+      it('"criar cofrinho viagem de 2027": o número é parte do nome, não vira alvo', async () => {
+        const reply = await service.handleMessage(msg('A', 'criar cofrinho viagem de 2027'));
+        expect(reply.kind).toBe('CONFIRM_DRAFT');
+        expect(reply.draft?.rows).toEqual([
+          { label: 'Nome', value: 'viagem de 2027' },
+          { label: 'Alvo', value: 'sem alvo (cofrinho)' },
+        ]);
+      });
+
+      it('"criar cofrinho" sozinho pergunta só o nome e depois fecha sem pedir o alvo', async () => {
+        const ask = await service.handleMessage(msg('A', 'criar cofrinho'));
+        expect(ask.draft?.pendingField).toBe('title');
+        const draft = await service.handleMessage(msg('A', 'reserva de emergência'));
+        expect(draft.kind).toBe('CONFIRM_DRAFT');
+        expect(text(draft)).toContain('Alvo: sem alvo (cofrinho)');
+      });
+
+      it('"criar meta casa" continua perguntando o alvo (só cofrinho nasce sem alvo)', async () => {
+        const reply = await service.handleMessage(msg('A', 'criar meta casa'));
+        expect(reply.kind).toBe('ASK_FIELD');
+        expect(reply.draft?.pendingField).toBe('target');
+      });
+
+      it('"criar meta de viagem" tira o conector do nome', async () => {
+        const reply = await service.handleMessage(msg('A', 'criar meta de viagem'));
+        expect(reply.draft?.rows[0]).toEqual({ label: 'Nome', value: 'viagem' });
+      });
+
+      it('nome vazio pergunta o nome (pendingField title)', async () => {
+        const reply = await service.handleMessage(msg('A', 'criar meta'));
+        expect(reply.kind).toBe('ASK_FIELD');
+        expect(text(reply)).toContain(REPLIES.askGoalTitle);
+        expect(reply.draft?.pendingField).toBe('title');
+      });
+
+      it('nome com 1 caractere pede de novo; nome com mais de 60 recusa sem mudar o rascunho', async () => {
+        await service.handleMessage(msg('A', 'criar meta'));
+        const short = await service.handleMessage(msg('A', 'x'));
+        expect(text(short)).toContain(REPLIES.askGoalTitle);
+        const long = await service.handleMessage(msg('A', 'a'.repeat(61)));
+        expect(long.kind).toBe('ERROR');
+        expect(text(long)).toBe(REPLIES.goalTitleTooLong);
+        expect(db.sessions[0].state).toBe(ConversationState.COLLECTING_FIELDS);
+      });
+
+      it('nome igual ao de meta ativa recusa ao abrir e não abre rascunho', async () => {
+        setGoals([goalRow({ title: 'Viagem' })]);
+        const reply = await service.handleMessage(msg('A', 'criar meta viagem 3 mil'));
+        expect(reply.kind).toBe('ERROR');
+        expect(text(reply)).toBe(REPLIES.goalNameTaken);
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('limite do plano recusa ao abrir, com a mensagem da exceção, e não abre rascunho', async () => {
+        entitlements.assertCanCreate.mockRejectedValueOnce(limitError());
+        const reply = await service.handleMessage(msg('A', 'criar meta viagem 3 mil'));
+        expect(reply.kind).toBe('ERROR');
+        expect(text(reply)).toBe(limitError().message);
+        expect(entitlements.assertCanCreate).toHaveBeenCalledWith('A', 'goals');
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('limite surgindo entre abrir e confirmar: recusa, descarta o rascunho e não volta em loop', async () => {
+        await service.handleMessage(msg('A', 'criar meta viagem 3 mil'));
+        goals.create.mockRejectedValueOnce(limitError());
+        const reply = await service.handleMessage(msg('A', 'confirmar'));
+        expect(reply.kind).toBe('ERROR');
+        expect(text(reply)).toBe(limitError().message);
+        expect(db.sessions).toHaveLength(0);
+        const again = await service.handleMessage(msg('A', 'confirmar'));
+        expect(again.kind).toBe('HELP');
+        expect(goals.create).toHaveBeenCalledTimes(1);
+      });
+
+      it('erro 4xx do serviço ao confirmar descarta o rascunho', async () => {
+        await service.handleMessage(msg('A', 'criar meta viagem 3 mil'));
+        goals.create.mockRejectedValueOnce(new NotFoundException('x'));
+        const reply = await service.handleMessage(msg('A', 'confirmar'));
+        expect(reply.kind).toBe('ERROR');
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('valor ambíguo ("1,234") pede correção e não abre rascunho', async () => {
+        const reply = await service.handleMessage(msg('A', 'criar meta viagem 1,234'));
+        expect(reply.kind).toBe('ERROR');
+        expect(text(reply)).toBe(REPLIES.amountAmbiguous);
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('falha inesperada em GoalsService.create restaura o rascunho', async () => {
+        await service.handleMessage(msg('A', 'criar meta viagem 3 mil'));
+        goals.create.mockRejectedValueOnce(new Error('banco caiu'));
+        const reply = await service.handleMessage(msg('A', 'confirmar'));
+        expect(reply.kind).toBe('ERROR');
+        expect(text(reply)).toBe(REPLIES.goalSaveFailed);
+        expect(db.sessions).toHaveLength(1);
+        expect(db.sessions[0].state).toBe(ConversationState.AWAITING_CONFIRMATION);
+      });
+
+      it('evento da confirmação de meta leva appliedKey sessao:versao e o id da meta criada', async () => {
+        const draft = await service.handleMessage(msg('A', 'criar meta viagem 3 mil'));
+        await service.handleMessage(msg('A', 'confirmar'));
+        const event = db.events.find((row) => row.outcome === ConversationOutcome.COMPLETED);
+        expect(event).toMatchObject({ intent: 'create_goal', resultRef: 'goal-new' });
+        expect(event?.appliedKey).toBe(`${draft.draft?.draftId}:${draft.draft?.draftVersion}`);
+      });
+
+      it('rascunho de meta ainda em coleta não confirma por botão nem por texto', async () => {
+        const ask = await service.handleMessage(msg('A', 'criar meta viagem'));
+        expect(ask.kind).toBe('ASK_FIELD');
+        const byButton = await service.confirmDraft('A', ask.draft!.draftId, ask.draft!.draftVersion);
+        expect(byButton).toBeNull();
+        await service.handleMessage(msg('A', 'confirmar'));
+        expect(goals.create).not.toHaveBeenCalled();
+        expect(db.sessions).toHaveLength(1);
+      });
+
+      it('duas confirmações em paralelo chamam GoalsService.create uma vez', async () => {
+        await service.handleMessage(msg('A', 'criar meta viagem 3 mil'));
+        const [first, second] = await Promise.all([
+          service.handleMessage(msg('A', 'confirmar')),
+          service.handleMessage(msg('A', 'confirmar')),
+        ]);
+        expect([first.kind, second.kind].filter((kind) => kind === 'DONE')).toHaveLength(1);
+        expect(goals.create).toHaveBeenCalledTimes(1);
+      });
+
+      it('confirmação com versão antiga é recusada (botão)', async () => {
+        await service.handleMessage(msg('A', 'criar meta viagem 3 mil'));
+        const session = db.sessions[0];
+        const reply = await service.confirmDraft('A', session.id, session.version + 1);
+        expect(reply).toBeNull();
+        expect(goals.create).not.toHaveBeenCalled();
+      });
+
+      it('rascunho de meta expira em 15 minutos sem mensagem', async () => {
+        await service.handleMessage(msg('A', 'criar meta'));
+        const reply = await service.handleMessage(msg('A', 'viagem', new Date(T0.getTime() + 15 * 60_000 + 1000)));
+        expect(reply.kind).toBe('EXPIRED');
+      });
+
+      it('leitura durante rascunho de meta responde e mantém o rascunho', async () => {
+        await service.handleMessage(msg('A', 'criar meta'));
+        const before = db.sessions[0].version;
+        const reply = await service.handleMessage(msg('A', 'saldo'));
+        expect(reply.kind).toBe('INFO');
+        expect(db.sessions[0].version).toBe(before);
+      });
+
+      it('comando de meta com rascunho de lançamento em coleta não substitui o rascunho', async () => {
+        await service.handleMessage(msg('A', 'gastei mercado'));
+        const reply = await service.handleMessage(msg('A', 'criar meta viagem 3 mil'));
+        expect(text(reply)).toContain(REPLIES.collectingReminder);
+        expect(db.sessions[0].intent).toBe('create_expense');
+      });
+    });
+
+    describe('aporte', () => {
+      it('meta única é usada sem perguntar; o rascunho mostra meta, valor e data', async () => {
+        setGoals([goalRow()]);
+        const reply = await service.handleMessage(msg('A', 'guardar 200 na viagem'));
+        expect(reply.kind).toBe('CONFIRM_DRAFT');
+        expect(text(reply)).toContain(
+          'Rascunho de aporte:\nMeta: Viagem (R$ 1.200,00 de R$ 3.000,00)\nValor: R$ 200,00\nData: 15/11/2026',
+        );
+        expect(reply.draft?.rows).toEqual([
+          { label: 'Meta', value: 'Viagem (R$ 1.200,00 de R$ 3.000,00)' },
+          { label: 'Valor', value: 'R$ 200,00' },
+          { label: 'Data', value: '15/11/2026' },
+        ]);
+        expect(goals.contribute).not.toHaveBeenCalled();
+      });
+
+      it('confirmar chama contribute com o userId do motor, o id da meta e a data do dia', async () => {
+        setGoals([goalRow()]);
+        await service.handleMessage(msg('A', 'guardar 200 na viagem'));
+        const reply = await service.handleMessage(msg('A', 'confirmar'));
+        expect(reply.kind).toBe('DONE');
+        expect(goals.contribute).toHaveBeenCalledTimes(1);
+        expect(goals.contribute).toHaveBeenCalledWith('A', 'goal-1', {
+          amount: 200,
+          date: '2026-11-15T00:00:00.000Z',
+          createTransaction: true,
+        });
+        expect(reply.text).toBe('Aporte feito: R$ 200,00 em Viagem. Agora R$ 1.400,00 de R$ 3.000,00 (46%).');
+        expect(reply.data).toEqual({ goalId: 'goal-1' });
+      });
+
+      it('várias metas: pergunta com opções numeradas; "2" escolhe a segunda', async () => {
+        setGoals([goalRow({ id: 'goal-1', title: 'Viagem' }), goalRow({ id: 'goal-2', title: 'Casa', currentAmount: 0 })]);
+        const ask = await service.handleMessage(msg('A', 'guardar 200'));
+        expect(ask.kind).toBe('ASK_FIELD');
+        expect(text(ask)).toContain('Qual meta? 1) Viagem 2) Casa.');
+        expect(ask.draft?.pendingField).toBe('goal');
+
+        const draft = await service.handleMessage(msg('A', '2'));
+        expect(draft.kind).toBe('CONFIRM_DRAFT');
+        expect(text(draft)).toContain('Meta: Casa (R$ 0,00 de R$ 3.000,00)');
+        await service.handleMessage(msg('A', 'confirmar'));
+        expect(goals.contribute).toHaveBeenCalledWith('A', 'goal-2', expect.anything());
+      });
+
+      it('"guardar viagem" com meta única pergunta o valor', async () => {
+        setGoals([goalRow()]);
+        const ask = await service.handleMessage(msg('A', 'guardar viagem'));
+        expect(ask.kind).toBe('ASK_FIELD');
+        expect(text(ask)).toContain(REPLIES.askContributionAmount);
+        const draft = await service.handleMessage(msg('A', '200'));
+        expect(draft.kind).toBe('CONFIRM_DRAFT');
+        expect(draft.draft?.rows).toContainEqual({ label: 'Valor', value: 'R$ 200,00' });
+      });
+
+      it('opção removida não desloca o número para outra meta', async () => {
+        setGoals([goalRow({ id: 'goal-1', title: 'Viagem' }), goalRow({ id: 'goal-2', title: 'Casa' })]);
+        await service.handleMessage(msg('A', 'guardar 200'));
+        setGoals([goalRow({ id: 'goal-2', title: 'Casa' })]);
+        const first = await service.handleMessage(msg('A', '1'));
+        expect(first.kind).toBe('ASK_FIELD');
+        expect(first.text).toContain('1) indisponível 2) Casa');
+        expect(goals.contribute).not.toHaveBeenCalled();
+        const second = await service.handleMessage(msg('A', '2'));
+        expect(second.kind).toBe('CONFIRM_DRAFT');
+        await service.handleMessage(msg('A', 'confirmar'));
+        expect(goals.contribute).toHaveBeenCalledWith('A', 'goal-2', expect.anything());
+      });
+
+      it('sem valor e com nome que não casa com meta ativa vai ao Selah, sem rascunho nem pedir valor', async () => {
+        setGoals([goalRow()]);
+        const reply = await service.handleMessage(msg('A', 'guardar dinheiro é importante'));
+        expect(reply.kind).toBe('HELP');
+        expect(reply.unrecognized).toBe(true);
+        expect(db.sessions).toHaveLength(0);
+        expect(db.events.at(-1)).toMatchObject({ intent: null, outcome: ConversationOutcome.UNRECOGNIZED });
+      });
+
+      it('sem valor, nome que não casa e conta sem metas também vai ao Selah', async () => {
+        const reply = await service.handleMessage(msg('A', 'colocar o dinheiro no banco'));
+        expect(reply.unrecognized).toBe(true);
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('com valor e meta inexistente continua recusando e listando as metas (não vai ao Selah)', async () => {
+        setGoals([goalRow()]);
+        const reply = await service.handleMessage(msg('A', 'guardar 50 dinheiro é importante'));
+        expect(reply.kind).toBe('ERROR');
+        expect(reply.unrecognized).toBeUndefined();
+        expect(text(reply)).toContain('Metas ativas: Viagem.');
+      });
+
+      it('sem valor e sem nome ("guardar") com várias metas pergunta qual, não vai ao Selah', async () => {
+        setGoals([goalRow(), goalRow({ id: 'goal-2', title: 'Casa' })]);
+        const reply = await service.handleMessage(msg('A', 'guardar'));
+        expect(reply.kind).toBe('ASK_FIELD');
+        expect(reply.unrecognized).toBeUndefined();
+      });
+
+      it('"guardar viagem 200": valor depois do nome quando o nome inteiro não casa', async () => {
+        setGoals([goalRow()]);
+        const reply = await service.handleMessage(msg('A', 'guardar viagem 200'));
+        expect(reply.kind).toBe('CONFIRM_DRAFT');
+        expect(db.sessions[0].draft).toMatchObject({ goalId: 'goal-1', amountCents: 20_000 });
+      });
+
+      it('meta "Viagem 2027" tem prioridade sobre ler 2027 como valor', async () => {
+        setGoals([goalRow({ title: 'Viagem 2027' })]);
+        const reply = await service.handleMessage(msg('A', 'guardar viagem 2027'));
+        expect(reply.kind).toBe('ASK_FIELD');
+        expect(reply.draft?.pendingField).toBe('amount');
+      });
+
+      it('"guardar 200 reais na minha viagem" acha a meta', async () => {
+        setGoals([goalRow()]);
+        const reply = await service.handleMessage(msg('A', 'guardar 200 reais na minha viagem'));
+        expect(reply.kind).toBe('CONFIRM_DRAFT');
+      });
+
+      it('aviso "conclui a meta" usa a mesma conta do serviço (0,7 + 0,1 não bate 0,8 em ponto flutuante)', async () => {
+        setGoals([goalRow({ targetAmount: 0.8, currentAmount: 0.7 })]);
+        const draft = await service.handleMessage(msg('A', 'guardar 0,10 na viagem'));
+        expect(text(draft)).not.toContain('conclui a meta');
+        await service.handleMessage(msg('A', 'cancelar'));
+        setGoals([goalRow({ targetAmount: 0.3, currentAmount: 0.1 })]);
+        const draft2 = await service.handleMessage(msg('A', 'guardar 0,20 na viagem'));
+        expect(text(draft2)).toContain('conclui a meta');
+      });
+
+      it('valor zero recusa e mantém a pergunta de valor', async () => {
+        setGoals([goalRow()]);
+        const reply = await service.handleMessage(msg('A', 'guardar 0 viagem'));
+        expect(reply.kind).toBe('ERROR');
+        expect(text(reply)).toBe(REPLIES.amountZero);
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('sem meta ativa responde que não há meta e não abre rascunho', async () => {
+        setGoals([goalRow({ status: 'PAUSED' })]);
+        const reply = await service.handleMessage(msg('A', 'guardar 200 na viagem'));
+        expect(reply.kind).toBe('ERROR');
+        expect(text(reply)).toBe(REPLIES.noActiveGoals);
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('nome que não casa com meta ativa lista as metas ativas', async () => {
+        setGoals([goalRow({ title: 'Viagem' })]);
+        const reply = await service.handleMessage(msg('A', 'guardar 200 na férias'));
+        expect(reply.kind).toBe('ERROR');
+        expect(text(reply)).toBe('Não achei uma meta ativa com esse nome. Metas ativas: Viagem.');
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('meta pausada com o mesmo nome não é escolhida: só as ativas contam', async () => {
+        setGoals([goalRow({ id: 'goal-p', title: 'Viagem', status: 'PAUSED' }), goalRow({ id: 'goal-1', title: 'Viagem casa' })]);
+        await service.handleMessage(msg('A', 'guardar 50 viagem'));
+        await service.handleMessage(msg('A', 'confirmar'));
+        expect(goals.contribute).toHaveBeenCalledWith('A', 'goal-1', expect.anything());
+      });
+
+      it('nome que só aparece no meio do título casa pela terceira regra ("contém")', async () => {
+        setGoals([goalRow({ title: 'Viagem de férias' })]);
+        const reply = await service.handleMessage(msg('A', 'guardar 10 férias'));
+        expect(reply.kind).toBe('CONFIRM_DRAFT');
+        expect(reply.draft?.rows[0]).toEqual({ label: 'Meta', value: 'Viagem de férias (R$ 1.200,00 de R$ 3.000,00)' });
+      });
+
+      it('aporte que atinge o alvo avisa no rascunho e responde "Meta concluída."', async () => {
+        setGoals([goalRow({ currentAmount: 2900 })]);
+        goals.contribute.mockResolvedValueOnce({ id: 'goal-1', title: 'Viagem', status: 'ACHIEVED', targetAmount: 3000, currentAmount: 3100 });
+        const draft = await service.handleMessage(msg('A', 'guardar 200 na viagem'));
+        expect(text(draft)).toContain('Este aporte conclui a meta.');
+        const reply = await service.handleMessage(msg('A', 'confirmar'));
+        expect(reply.text).toContain('Meta concluída.');
+      });
+
+      it('aporte que iguala o alvo exatamente já conclui a meta (>=, não >)', async () => {
+        setGoals([goalRow({ currentAmount: 2900 })]);
+        const draft = await service.handleMessage(msg('A', 'guardar 100 na viagem'));
+        expect(text(draft)).toContain('Este aporte conclui a meta.');
+        expect(draft.draft?.rows).toContainEqual({ label: 'Aviso', value: 'Este aporte conclui a meta.' });
+        await service.handleMessage(msg('A', 'cancelar'));
+        const below = await service.handleMessage(msg('A', 'guardar 99,99 na viagem'));
+        expect(text(below)).not.toContain('conclui a meta');
+      });
+
+      it('evento da confirmação de aporte leva appliedKey sessao:versao e o id da meta', async () => {
+        setGoals([goalRow()]);
+        const draft = await service.handleMessage(msg('A', 'guardar 200 na viagem'));
+        await service.handleMessage(msg('A', 'confirmar'));
+        const event = db.events.find((row) => row.outcome === ConversationOutcome.COMPLETED);
+        expect(event).toMatchObject({ intent: 'contribute_goal', resultRef: 'goal-1' });
+        expect(event?.appliedKey).toBe(`${draft.draft?.draftId}:${draft.draft?.draftVersion}`);
+      });
+
+      it('cofrinho sem alvo mostra o guardado, sem percentual', async () => {
+        setGoals([goalRow({ targetAmount: null, currentAmount: 50 })]);
+        const draft = await service.handleMessage(msg('A', 'guardar 200 na viagem'));
+        expect(text(draft)).toContain('Meta: Viagem (R$ 50,00 guardados)');
+        expect(text(draft)).not.toContain('conclui a meta');
+        goals.contribute.mockResolvedValueOnce({ id: 'goal-1', title: 'Viagem', status: 'ACTIVE', targetAmount: null, currentAmount: 250 });
+        const reply = await service.handleMessage(msg('A', 'confirmar'));
+        expect(reply.text).toBe('Aporte feito: R$ 200,00 em Viagem. Agora R$ 250,00 guardados.');
+      });
+
+      it('meta apagada entre rascunho e confirmação descarta com a mensagem do contrato', async () => {
+        setGoals([goalRow()]);
+        await service.handleMessage(msg('A', 'guardar 200 na viagem'));
+        goals.contribute.mockRejectedValueOnce(new NotFoundException('Meta nao encontrada.'));
+        const reply = await service.handleMessage(msg('A', 'confirmar'));
+        expect(reply.kind).toBe('ERROR');
+        expect(text(reply)).toBe('Não foi possível gravar. A meta pode ter sido removida.');
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('falha inesperada em GoalsService.contribute restaura o rascunho', async () => {
+        setGoals([goalRow()]);
+        await service.handleMessage(msg('A', 'guardar 200 na viagem'));
+        goals.contribute.mockRejectedValueOnce(new Error('banco caiu'));
+        const reply = await service.handleMessage(msg('A', 'confirmar'));
+        expect(text(reply)).toBe(REPLIES.contributionSaveFailed);
+        expect(db.sessions).toHaveLength(1);
+      });
+
+      it('duas confirmações em paralelo chamam GoalsService.contribute uma vez', async () => {
+        setGoals([goalRow()]);
+        await service.handleMessage(msg('A', 'guardar 200 na viagem'));
+        const [first, second] = await Promise.all([
+          service.handleMessage(msg('A', 'confirmar')),
+          service.handleMessage(msg('A', 'confirmar')),
+        ]);
+        expect([first.kind, second.kind].filter((kind) => kind === 'DONE')).toHaveLength(1);
+        expect(goals.contribute).toHaveBeenCalledTimes(1);
+      });
+
+      it('rascunho de aporte expira em 5 minutos na confirmação', async () => {
+        setGoals([goalRow()]);
+        await service.handleMessage(msg('A', 'guardar 200 na viagem'));
+        const reply = await service.handleMessage(msg('A', 'confirmar', new Date(T0.getTime() + 5 * 60_000 + 1000)));
+        expect(reply.kind).toBe('EXPIRED');
+        expect(goals.contribute).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('isolamento entre contas A e B (metas)', () => {
+      it('B não confirma nem responde pela meta de A; nada de A muda', async () => {
+        setGoals([goalRow()]);
+        await service.handleMessage(msg('A', 'guardar 200 na viagem'));
+        const reply = await service.handleMessage(msg('B', 'confirmar'));
+        expect(reply.kind).toBe('HELP');
+        expect(goals.contribute).not.toHaveBeenCalled();
+        expect(db.sessions).toHaveLength(1);
+        expect(db.sessions[0].userId).toBe('A');
+      });
+
+      it('B não grava meta com o rascunho de A', async () => {
+        await service.handleMessage(msg('A', 'criar meta viagem 3 mil'));
+        await service.handleMessage(msg('B', 'confirmar'));
+        expect(goals.create).not.toHaveBeenCalled();
+      });
+
+      it('aporte de A nunca usa meta de B, mesmo que o serviço devolva a meta de B na lista', async () => {
+        setGoals([goalRow({ id: 'goal-b', userId: 'B', title: 'Viagem' })]);
+        const reply = await service.handleMessage(msg('A', 'guardar 100 viagem'));
+        expect(reply.kind).toBe('ERROR');
+        expect(text(reply)).toBe(REPLIES.noActiveGoals);
+        expect(goals.contribute).not.toHaveBeenCalled();
+        expect(goals.list).toHaveBeenCalledWith('A');
+      });
+
+      it('o userId repassado a create e a contribute é o da conta que confirma', async () => {
+        setGoals([goalRow()]);
+        await service.handleMessage(msg('A', 'guardar 200 na viagem'));
+        await service.handleMessage(msg('A', 'confirmar'));
+        await service.handleMessage(msg('B', 'criar meta casa 500'));
+        await service.handleMessage(msg('B', 'confirmar'));
+        expect(goals.contribute.mock.calls.every((call) => call[0] === 'A')).toBe(true);
+        expect(goals.create).toHaveBeenCalledWith('B', expect.objectContaining({ title: 'casa' }));
+      });
+    });
+
+    describe('sessao antiga sem kind', () => {
+      it('rascunho de lançamento sem campo kind continua como lançamento', async () => {
+        db.sessions.push({
+          id: 'old-1',
+          userId: 'A',
+          channel: ConversationChannel.APP,
+          state: ConversationState.AWAITING_CONFIRMATION,
+          intent: 'create_expense',
+          draft: {
+            type: 'EXPENSE',
+            amountCents: 5000,
+            description: 'mercado',
+            categoryId: 'cat-mercado',
+            date: '2026-11-15',
+            paymentMethod: null,
+            pendingField: null,
+            categoryOptions: [],
+          },
+          version: 1,
+          expiresAt: new Date(T0.getTime() + 5 * 60_000),
+        });
+        const view = await service.getSession('A');
+        expect(view.draft).toMatchObject({ kind: 'TRANSACTION', title: 'Lançamento' });
+        const reply = await service.handleMessage(msg('A', 'confirmar'));
+        expect(reply.kind).toBe('DONE');
+        expect(transactions.create).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('erro 4xx ao gravar (regra D5, vale para os tres tipos)', () => {
+      it('lancamento recusado com 400 descarta o rascunho em vez de devolve-lo', async () => {
+        await draftFor('A', '50 mercado');
+        transactions.create.mockRejectedValueOnce(new BadRequestException('Categoria invalida.'));
+        const reply = await service.handleMessage(msg('A', 'confirmar'));
+        expect(reply.kind).toBe('ERROR');
+        expect(text(reply)).toBe(REPLIES.transactionRejected);
+        expect(db.sessions).toHaveLength(0);
+      });
+    });
+
+    describe('reservas (envelopes)', () => {
+      const envelope = (o: Row = {}): Row => ({
+        name: 'Gasolina',
+        isActive: true,
+        monthlyAmount: 400,
+        available: 150.5,
+        spent: 249.5,
+        ...o,
+      });
+
+      it('sem reservas ativas responde que não há', async () => {
+        const reply = await service.handleMessage(msg('A', 'reservas'));
+        expect(reply.kind).toBe('INFO');
+        expect(text(reply)).toBe('Você ainda não tem reservas.');
+      });
+
+      it('lista ativas com mensal, disponível e gasto, e o total disponível com sinal', async () => {
+        envelopes.list = jest.fn(async () => [
+          envelope(),
+          envelope({ name: 'Academia', monthlyAmount: 100, available: -20, spent: 120 }),
+        ]);
+        const reply = await service.handleMessage(msg('A', 'minhas reservas'));
+        expect(text(reply)).toBe(
+          [
+            'Reservas ativas (2):',
+            '• Gasolina: mensal R$ 400,00, disponível R$ 150,50, gasto R$ 249,50',
+            '• Academia: mensal R$ 100,00, disponível -R$ 20,00, gasto R$ 120,00',
+            'Disponível total: R$ 130,50.',
+          ].join('\n'),
+        );
+        expect(reply.data).toMatchObject({
+          envelopes: [
+            { label: 'Gasolina', monthlyCents: 40_000, availableCents: 15_050, spentCents: 24_950 },
+            { label: 'Academia', monthlyCents: 10_000, availableCents: -2000, spentCents: 12_000 },
+          ],
+          totalCents: 13_050,
+        });
+        expect(envelopes.list).toHaveBeenCalledWith('A', T0);
+      });
+
+      it('mais de 5 ativas: mostra 5 e diz quantas ficaram de fora', async () => {
+        envelopes.list = jest.fn(async () =>
+          Array.from({ length: 7 }, (_, index) => envelope({ name: `R${index}`, available: 10 })),
+        );
+        const reply = await service.handleMessage(msg('A', 'reservas'));
+        expect(text(reply).split('\n').filter((line) => line.startsWith('• '))).toHaveLength(5);
+        expect(text(reply)).toContain('e mais 2.');
+        expect(reply.data?.envelopes).toHaveLength(5);
+        expect(reply.data?.totalCents).toBe(7000);
+      });
+
+      it('reservas pausadas viram aviso e não entram na lista', async () => {
+        envelopes.list = jest.fn(async () => [envelope({ isActive: false, name: 'Viagem' })]);
+        const reply = await service.handleMessage(msg('A', 'reservas'));
+        expect(text(reply)).toBe('Você ainda não tem reservas.\nVocê tem 1 reserva(s) pausada(s).');
+      });
+
+      it('"envelopes" e "reservas" são reservas; "metas" continua meta', async () => {
+        envelopes.list = jest.fn(async () => []);
+        expect(text(await service.handleMessage(msg('A', 'envelopes')))).toBe('Você ainda não tem reservas.');
+        setGoals([goalRow({ title: 'Cofrinho X', targetAmount: null, currentAmount: 10 })]);
+        expect(text(await service.handleMessage(msg('A', 'metas')))).toContain('• Cofrinho X');
+        expect(goals.list).toHaveBeenCalledWith('A');
+      });
+
+      it('reservas de A nunca aparecem para B', async () => {
+        envelopes.list = jest.fn(async (userId: string) => (userId === 'A' ? [envelope()] : []));
+        const reply = await service.handleMessage(msg('B', 'reservas'));
+        expect(text(reply)).toBe('Você ainda não tem reservas.');
+        expect(envelopes.list).toHaveBeenCalledWith('B', T0);
+      });
+
+      it('falha do serviço de reservas vira ERROR genérico', async () => {
+        envelopes.list = jest.fn(async () => {
+          throw new Error('banco caiu');
+        });
+        const reply = await service.handleMessage(msg('A', 'reservas'));
+        expect(reply.kind).toBe('ERROR');
+        expect(text(reply)).toBe(REPLIES.consultError);
+      });
+
+      it('leitura de reservas durante rascunho de meta mantém o rascunho', async () => {
+        await service.handleMessage(msg('A', 'criar meta viagem 3 mil'));
+        const before = db.sessions[0].version;
+        const reply = await service.handleMessage(msg('A', 'reservas'));
+        expect(reply.kind).toBe('INFO');
+        expect(db.sessions[0].version).toBe(before);
+      });
     });
   });
 });

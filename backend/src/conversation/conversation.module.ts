@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
+import { BillingModule } from '../billing/billing.module';
 import { CreditCycleModule } from '../credit-cycle/credit-cycle.module';
 import { DashboardModule } from '../dashboard/dashboard.module';
+import { EnvelopesModule } from '../envelopes/envelopes.module';
 import { GoalsModule } from '../goals/goals.module';
 import { InstallmentsModule } from '../installments/installments.module';
 import { RecurringTransactionsModule } from '../recurring-transactions/recurring-transactions.module';
@@ -16,6 +18,8 @@ import { ConversationService } from './conversation.service';
     GoalsModule,
     InstallmentsModule,
     RecurringTransactionsModule,
+    EnvelopesModule,
+    BillingModule,
   ],
   controllers: [ConversationController],
   providers: [ConversationService],

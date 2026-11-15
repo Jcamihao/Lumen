@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { GoalStatus, NotificationType, Prisma, TransactionType } from '@prisma/client';
 import { EntitlementsService } from '../billing/entitlements.service';
 import { LifeEngineService } from '../life-engine/life-engine.service';
@@ -11,6 +11,7 @@ import { WithdrawGoalDto } from './dto/withdraw-goal.dto';
 
 @Injectable()
 export class GoalsService {
+  private readonly logger = new Logger(GoalsService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly lifeEngineService: LifeEngineService,
@@ -51,7 +52,7 @@ export class GoalsService {
       },
     });
 
-    await this.lifeEngineService.touchUserData(userId);
+    await this.afterPersistence('create', () => this.lifeEngineService.touchUserData(userId));
     return this.serializeGoal(goal);
   }
 
@@ -98,45 +99,58 @@ export class GoalsService {
   }
 
   async contribute(userId: string, id: string, dto: ContributeGoalDto) {
-    const goal = await this.findGoal(userId, id);
-    const nextCurrentAmount = Number(goal.currentAmount) + dto.amount;
-    // Meta sem alvo (cofrinho sem proposito) nunca vira ACHIEVED sozinha: nao ha linha de chegada.
-    const nextStatus =
-      goal.targetAmount !== null && nextCurrentAmount >= Number(goal.targetAmount)
-        ? GoalStatus.ACHIEVED
-        : goal.status;
+    const { goal, updatedGoal, nextStatus } = await this.prisma.$transaction(async (tx) => {
+      // Serializa aportes da mesma meta antes de ler o saldo. O filtro de dono também
+      // vale para o lock; saldo e transferência só se tornam visíveis juntos.
+      await tx.$queryRaw`SELECT "id" FROM "Goal" WHERE "id" = ${id} AND "userId" = ${userId} FOR UPDATE`;
+      const goal = await tx.goal.findFirst({ where: { id, userId } });
+      if (!goal) {
+        throw new NotFoundException('Meta nao encontrada.');
+      }
+      const nextCurrentAmount = Number(goal.currentAmount) + dto.amount;
+      // Meta sem alvo (cofrinho sem proposito) nunca vira ACHIEVED sozinha: nao ha linha de chegada.
+      const nextStatus =
+        goal.targetAmount !== null && nextCurrentAmount >= Number(goal.targetAmount)
+          ? GoalStatus.ACHIEVED
+          : goal.status;
 
-    const updatedGoal = await this.prisma.goal.update({
-      where: { id },
-      data: {
-        currentAmount: new Prisma.Decimal(nextCurrentAmount),
-        status: nextStatus,
-      },
-    });
-
-    if (dto.createTransaction ?? true) {
-      await this.prisma.transaction.create({
+      const updatedGoal = await tx.goal.update({
+        where: { id },
         data: {
-          userId,
-          type: TransactionType.TRANSFER,
-          description: dto.description ?? `Aporte para a meta ${goal.title}`,
-          amount: new Prisma.Decimal(dto.amount),
-          date: dto.date ? new Date(dto.date) : new Date(),
-          linkedGoalId: goal.id,
+          currentAmount: new Prisma.Decimal(nextCurrentAmount),
+          status: nextStatus,
         },
       });
-    }
+
+      if (dto.createTransaction ?? true) {
+        await tx.transaction.create({
+          data: {
+            userId,
+            type: TransactionType.TRANSFER,
+            description: dto.description ?? `Aporte para a meta ${goal.title}`,
+            amount: new Prisma.Decimal(dto.amount),
+            date: dto.date ? new Date(dto.date) : new Date(),
+            linkedGoalId: goal.id,
+          },
+        });
+      }
+      return { goal, updatedGoal, nextStatus };
+    });
 
     if (nextStatus === GoalStatus.ACHIEVED && goal.status !== GoalStatus.ACHIEVED) {
-      await this.notificationsService.createNotification(
-        userId,
-        NotificationType.SYSTEM,
-        'Meta concluída',
-        `Parabéns! Você atingiu a meta "${goal.title}".`,
+      await this.afterPersistence('contribute.notification', () =>
+        this.notificationsService.createNotification(
+          userId,
+          NotificationType.SYSTEM,
+          'Meta concluída',
+          `Parabéns! Você atingiu a meta "${goal.title}".`,
+        ),
       );
     }
 
-    await this.lifeEngineService.touchUserData(userId);
+    await this.afterPersistence('contribute.cache', () =>
+      this.lifeEngineService.touchUserData(userId),
+    );
     return this.serializeGoal(updatedGoal);
   }
 
@@ -229,6 +243,18 @@ export class GoalsService {
     }
 
     return goal;
+  }
+
+  /** Efeito auxiliar não pode transformar uma gravação concluída em falha e induzir novo aporte. */
+  private async afterPersistence(operation: string, effect: () => Promise<unknown>): Promise<void> {
+    try {
+      await effect();
+    } catch (error) {
+      this.logger.warn({
+        operation,
+        errorName: error instanceof Error ? error.name : 'Unknown',
+      });
+    }
   }
 
   private serializeGoal(goal: any) {

@@ -39,6 +39,22 @@ export const REPLIES = {
   noInstallments: 'Você não tem compras parceladas em aberto.',
   noDues: (days: number) => `Nada vence nos próximos ${days} dias.`,
   noGoals: 'Você ainda não tem metas ativas.',
+  noEnvelopes: 'Você ainda não tem reservas.',
+  noActiveGoals: 'Você não tem metas ativas.',
+  askGoalTitle: 'Qual o nome da meta? Ex.: viagem.',
+  askGoalTarget: 'Qual o valor-alvo? Responda o valor ou "sem alvo".',
+  askContributionAmount: 'Quanto quer guardar? Responda só o valor. Ex.: 200 ou 32,90.',
+  goalTitleTooLong: 'O nome da meta passa de 60 caracteres.',
+  goalNameTaken: 'Você já tem uma meta ativa com esse nome.',
+  goalNotFound: 'Não achei uma meta ativa com esse nome.',
+  goalSaveFailed: 'Não consegui gravar a meta. O rascunho foi mantido; tente confirmar de novo.',
+  goalSaveFailedRestoreLost:
+    'Não consegui gravar a meta e outro rascunho já foi aberto. Envie o pedido de novo.',
+  contributionSaveFailed: 'Não consegui registrar o aporte. O rascunho foi mantido; tente confirmar de novo.',
+  contributionSaveFailedRestoreLost:
+    'Não consegui registrar o aporte e outro rascunho já foi aberto. Envie o pedido de novo.',
+  goalGone: 'Não foi possível gravar. A meta pode ter sido removida.',
+  transactionRejected: 'Não foi possível gravar o lançamento. Envie o lançamento de novo.',
 };
 
 export function typeLabel(type: TransactionType): string {
@@ -217,6 +233,127 @@ export function goalsText(input: {
       : [`Metas ativas (${input.count}):`, ...input.rows.map(goalLine), moreLine(input.hidden)];
   if (input.otherCount > 0) {
     lines.push(`Você tem ${input.otherCount} meta(s) pausada(s), planejada(s) ou concluída(s).`);
+  }
+  return lines.filter((line): line is string => line !== null).join('\n');
+}
+
+/** 'AAAA-MM-DD' -> 'dd/mm/aaaa'. */
+export function longDate(ymd: string): string {
+  return `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}/${ymd.slice(0, 4)}`;
+}
+
+/** Linhas da tela de lançamento (rótulo e valor já formatados). */
+export function transactionRows(input: {
+  amount: string;
+  description: string;
+  category: string;
+  date: string;
+  paymentMethod: PaymentMethod | null;
+}): Array<{ label: string; value: string }> {
+  return [
+    { label: 'Valor', value: input.amount },
+    { label: 'Descrição', value: input.description },
+    { label: 'Categoria', value: input.category },
+    { label: 'Data', value: longDate(input.date) },
+    { label: 'Forma de pagamento', value: paymentLabel(input.paymentMethod) },
+  ];
+}
+
+/** Rascunho de meta (confirmação). Alvo nulo = sem alvo (cofrinho). */
+export function goalDraftText(input: { title: string; targetCents: number | null }): string {
+  const target = input.targetCents === null ? 'sem alvo (cofrinho)' : formatBrl(input.targetCents);
+  return [
+    'Rascunho de meta:',
+    `Nome: ${input.title}`,
+    `Alvo: ${target}`,
+    'Responda "confirmar" ou "cancelar".',
+  ].join('\n');
+}
+
+/** Nome da meta com o guardado e o alvo: "Viagem (R$ 1.200,00 de R$ 3.000,00)" ou "Cofrinho (R$ 50,00 guardados)". */
+export function goalLabel(input: { title: string; currentCents: number; targetCents: number | null }): string {
+  if (input.targetCents === null) {
+    return `${input.title} (${formatBrl(input.currentCents)} guardados)`;
+  }
+  return `${input.title} (${formatBrl(input.currentCents)} de ${formatBrl(input.targetCents)})`;
+}
+
+/** Rascunho de aporte (confirmação). meta já vem formatada por goalLabel ou pelo nome. */
+export function contributionDraftText(input: {
+  meta: string;
+  amountCents: number;
+  date: string;
+  concludes: boolean;
+}): string {
+  const lines = [
+    'Rascunho de aporte:',
+    `Meta: ${input.meta}`,
+    `Valor: ${formatBrl(input.amountCents)}`,
+    `Data: ${longDate(input.date)}`,
+  ];
+  if (input.concludes) {
+    lines.push('Este aporte conclui a meta.');
+  }
+  lines.push('Responda "confirmar" ou "cancelar".');
+  return lines.join('\n');
+}
+
+/** Pergunta de meta quando a escolha é ambígua (opções numeradas, como a categoria). */
+export function goalOptionsText(names: string[]): string {
+  return `Qual meta? ${names.map((name, index) => `${index + 1}) ${name}`).join(' ')}.`;
+}
+
+/** Não achou meta ativa pelo nome: lista até 5 títulos. */
+export function goalNotFoundText(titles: string[]): string {
+  return [REPLIES.goalNotFound, `Metas ativas: ${titles.join(', ')}.`].join(' ');
+}
+
+export function goalCreatedText(input: { title: string; targetCents: number | null }): string {
+  if (input.targetCents === null) {
+    return `Cofrinho criado: ${input.title}.`;
+  }
+  return `Meta criada: ${input.title}, alvo ${formatBrl(input.targetCents)}.`;
+}
+
+/** DONE do aporte. percent null = sem alvo. Acrescenta "Meta concluída." quando bateu o alvo. */
+export function contributionDoneText(input: {
+  title: string;
+  amountCents: number;
+  currentCents: number;
+  targetCents: number | null;
+  percent: number | null;
+  achieved: boolean;
+}): string {
+  const head = `Aporte feito: ${formatBrl(input.amountCents)} em ${input.title}.`;
+  const body =
+    input.targetCents === null || input.percent === null
+      ? `Agora ${formatBrl(input.currentCents)} guardados.`
+      : `Agora ${formatBrl(input.currentCents)} de ${formatBrl(input.targetCents)} (${input.percent}%).`;
+  return [head, body, input.achieved ? 'Meta concluída.' : null].filter((line) => line !== null).join(' ');
+}
+
+/** Lista de reservas ativas. Valor disponível negativo sai com o sinal (formatBrl). */
+export function envelopesText(input: {
+  count: number;
+  rows: Array<{ label: string; monthlyCents: number; availableCents: number; spentCents: number }>;
+  hidden: number;
+  totalAvailableCents: number;
+  pausedCount: number;
+}): string {
+  const lines: Array<string | null> =
+    input.count === 0
+      ? [REPLIES.noEnvelopes]
+      : [
+          `Reservas ativas (${input.count}):`,
+          ...input.rows.map(
+            (row) =>
+              `• ${row.label}: mensal ${formatBrl(row.monthlyCents)}, disponível ${formatBrl(row.availableCents)}, gasto ${formatBrl(row.spentCents)}`,
+          ),
+          moreLine(input.hidden),
+          `Disponível total: ${formatBrl(input.totalAvailableCents)}.`,
+        ];
+  if (input.pausedCount > 0) {
+    lines.push(`Você tem ${input.pausedCount} reserva(s) pausada(s).`);
   }
   return lines.filter((line): line is string => line !== null).join('\n');
 }
