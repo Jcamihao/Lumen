@@ -25,7 +25,7 @@ export interface ConversationInput {
   receivedAt: Date;
 }
 
-export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION';
+export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION' | 'ENVELOPE' | 'CREDIT_LIMIT';
 
 /**
  * Rascunho para a tela: valores formatados, sem ids internos alem de draftId/draftVersion.
@@ -48,7 +48,7 @@ export interface DraftView {
   pendingField: PendingField | null;
 }
 
-export type PendingField = 'amount' | 'description' | 'category' | 'title' | 'target' | 'goal';
+export type PendingField = 'amount' | 'description' | 'category' | 'title' | 'target' | 'goal' | 'name';
 
 /** Rascunho de lançamento. Sessões antigas não têm `kind`: ausente = TRANSACTION. Dinheiro em centavos. */
 export interface ExpenseOrIncomeDraft {
@@ -91,7 +91,29 @@ export interface ContributionDraft {
 }
 
 /** Tudo que `ConversationSession.draft` pode guardar. O motor decide pelo `kind`. */
-export type SessionDraft = ExpenseOrIncomeDraft | GoalDraft | ContributionDraft;
+export interface EnvelopeDraft {
+  kind: 'ENVELOPE';
+  name: string | null;
+  monthlyCents: number | null;
+  color: string;
+  provisionMonth: string;
+  pendingField: 'name' | 'amount' | null;
+  /** Aviso persistido para permanecer visível também ao restaurar o cartão. */
+  reviewReason?: string;
+}
+
+export interface CreditLimitDraft {
+  kind: 'CREDIT_LIMIT';
+  ceilingCents: number | null;
+  cycleStart: string;
+  cycleEnd: string;
+  previousCeilingCents: number | null;
+  countAllPayments: boolean;
+  pendingField: 'amount' | null;
+  reviewReason?: string;
+}
+
+export type SessionDraft = ExpenseOrIncomeDraft | GoalDraft | ContributionDraft | EnvelopeDraft | CreditLimitDraft;
 
 /** Dados numericos para a tela (centavos). Presentes em INFO e DONE. */
 export interface ReplyData {
@@ -101,6 +123,7 @@ export interface ReplyData {
   categories?: Array<{ name: string; amountCents: number }>;
   /** Meta criada ou aportada (DONE). */
   goalId?: string;
+  envelopeId?: string;
   /** Reservas ativas (envelopes), contrato 3b1 parte A. Centavos; available pode ser negativo. */
   envelopes?: Array<{ label: string; monthlyCents: number; availableCents: number; spentCents: number }>;
   card?: {

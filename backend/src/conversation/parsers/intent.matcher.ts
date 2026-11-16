@@ -36,7 +36,8 @@ export type IntentMatch =
   | { intent: 'spend_by_category'; categoryQuery: string }
   | { intent: 'create_expense' | 'create_income'; body: string; missingAmount?: true }
   | { intent: 'create_goal'; body: string; cofrinho?: true }
-  | { intent: 'contribute_goal'; body: string };
+  | { intent: 'contribute_goal'; body: string }
+  | { intent: 'create_envelope' | 'set_credit_limit'; body: string };
 
 const EXPENSE_VERBS = ['gastei', 'paguei', 'comprei'];
 
@@ -58,6 +59,9 @@ export function matchIntent(raw: string): IntentMatch | null {
   if (words.length === 0) {
     return null;
   }
+
+  const envelopeOrLimit = matchEnvelopeOrLimit(raw, tokens, words);
+  if (envelopeOrLimit) return envelopeOrLimit;
 
   const income = matchIncome(tokens, words);
   if (income) return income;
@@ -89,6 +93,23 @@ export function matchIntent(raw: string): IntentMatch | null {
     startsWithPhrase(phrase, 'quanto sobrou no cartao')
   ) {
     return { intent: 'credit_card' };
+  }
+  return null;
+}
+
+/** As intenções novas têm seu próprio limite; não ampliam o matcher do 3b1. */
+function matchEnvelopeOrLimit(raw: string, tokens: string[], words: string[]): IntentMatch | null {
+  if (raw.length > 500 || tokens.length > 20 || raw.includes('?')) return null;
+  const phrase = words.join(' ');
+  for (const expected of ['criar reserva', 'nova reserva', 'criar envelope']) {
+    if (startsWithPhrase(phrase, expected)) {
+      return { intent: 'create_envelope', body: tokens.slice(expected.split(' ').length).join(' ') };
+    }
+  }
+  for (const expected of ['definir limite do cartao', 'definir limite']) {
+    if (startsWithPhrase(phrase, expected)) {
+      return { intent: 'set_credit_limit', body: tokens.slice(expected.split(' ').length).join(' ') };
+    }
   }
   return null;
 }

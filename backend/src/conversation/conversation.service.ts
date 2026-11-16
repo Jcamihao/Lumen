@@ -1,4 +1,4 @@
-import { HttpException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable, Logger } from '@nestjs/common';
 import {
   ConversationChannel,
   ConversationOutcome,
@@ -8,6 +8,9 @@ import {
 } from '@prisma/client';
 import { CreditCycleService } from '../credit-cycle/credit-cycle.service';
 import { EnvelopesService } from '../envelopes/envelopes.service';
+import { EnvelopeMonthChangedError, EnvelopeWriteUncertainError } from '../envelopes/conversation-write.types';
+import { monthStart } from '../envelopes/envelope.util';
+import { CreditLimitChangedError, CreditLimitWriteUncertainError } from '../credit-cycle/conversation-write.types';
 import { EntitlementsService } from '../billing/entitlements.service';
 import { PlanLimitException } from '../billing/plan-limit.exception';
 import { GoalsService } from '../goals/goals.service';
@@ -29,6 +32,7 @@ import {
   splitTrailingAmount,
 } from './parsers/goal.parser';
 import { normalize } from './parsers/normalize';
+import { parseEnvelopeBody } from './parsers/envelope.parser';
 import { IntentMatch, ReadIntent, matchIntent } from './parsers/intent.matcher';
 import {
   REPLIES,
@@ -38,8 +42,12 @@ import {
   categoryTotalText,
   contributionDoneText,
   contributionDraftText,
+  creditLimitDraftText,
+  creditLimitSetText,
   doneText,
   draftText,
+  envelopeCreatedText,
+  envelopeDraftText,
   envelopesText,
   formatBrl,
   fixedBillsText,
@@ -52,6 +60,7 @@ import {
   installmentsText,
   longDate,
   monthSummaryText,
+  monthYearUtc,
   spendTotalText,
   transactionRows,
   upcomingDuesText,
@@ -62,8 +71,10 @@ import {
   ConversationReplyKind,
   ConversationStateView,
   ContributionDraft,
+  CreditLimitDraft,
   DraftKind,
   DraftView,
+  EnvelopeDraft,
   ExpenseOrIncomeDraft,
   GoalDraft,
   ReplyData,
@@ -80,6 +91,10 @@ const CANCEL_WORDS = new Set(['cancelar', 'parar', 'voltar']);
 const CONFIRM_WORDS = new Set(['confirmar', 'sim', 'ok']);
 const CONNECTORS = new Set(['na', 'no', 'em', 'de', 'do', 'da', 'com', 'pra', 'para']);
 const MAX_CATEGORY_OPTIONS = 5;
+/** Reserva criada pelo bot: cor da primeira opção do formulário; sem ícone (contrato 3b2, seção 4). */
+const ENVELOPE_COLOR = '#f18f01';
+const ENVELOPE_NAME_MIN = 2;
+const ENVELOPE_NAME_MAX = 60;
 /** Opções numeradas de meta na pergunta de aporte (contrato 3b1, secao 3). */
 const MAX_GOAL_OPTIONS = 5;
 const DESCRIPTION_MIN = 2;
@@ -173,6 +188,8 @@ interface AppliedAction {
   text: string;
   data: ReplyData;
   resultRef: string;
+  /** Gravação feita, enriquecimento posterior falhou: a tela precisa ser conferida (contrato 3). */
+  refreshPending?: boolean;
 }
 
 type CategoryRow = { id: string; name: string };
@@ -293,6 +310,12 @@ export class ConversationService {
     }
     if (intent.intent === 'contribute_goal') {
       return this.startContributionDraft({ input, body: intent.body });
+    }
+    if (intent.intent === 'create_envelope') {
+      return this.startEnvelopeDraft({ input, body: intent.body });
+    }
+    if (intent.intent === 'set_credit_limit') {
+      return this.startCreditLimitDraft({ input, body: intent.body });
     }
     if (intent.intent === 'help') {
       await this.recordEvent(input, 'help', ConversationOutcome.RECOGNIZED);
@@ -467,6 +490,103 @@ export class ConversationService {
     return this.saveNewDraft({ input, intent: 'contribute_goal', draft, today: draft.date });
   }
 
+  /**
+   * Criar reserva. O plano é checado ao abrir; a duplicidade é conferida contra o nome exato
+   * (unicidade userId + name do banco). Corpo: valor no início e nome depois (parsers/envelope.parser.ts).
+   */
+  private async startEnvelopeDraft(args: { input: ConversationInput; body: string }): Promise<ConversationReply> {
+    const { input, body } = args;
+    const { userId, receivedAt } = input;
+    try {
+      await this.entitlements.assertCanCreate(userId, 'envelopes');
+    } catch (error) {
+      if (error instanceof PlanLimitException) {
+        await this.recordEvent(input, 'create_envelope', ConversationOutcome.ERROR);
+        return this.reply('ERROR', 'IDLE', error.message);
+      }
+      throw error;
+    }
+
+    const parsed = parseEnvelopeBody(body);
+    if (parsed.ok === false) {
+      await this.recordEvent(input, 'create_envelope', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', amountErrorText(parsed.reason));
+    }
+    let name = parsed.name;
+    if (name !== null && codePointLength(name) > ENVELOPE_NAME_MAX) {
+      await this.recordEvent(input, 'create_envelope', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', REPLIES.envelopeNameTooLong);
+    }
+    if (name !== null && codePointLength(name) < ENVELOPE_NAME_MIN) {
+      name = null;
+    }
+    if (name !== null && (await this.isEnvelopeNameTaken(userId, name))) {
+      await this.recordEvent(input, 'create_envelope', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', REPLIES.envelopeNameTaken);
+    }
+
+    const draft: EnvelopeDraft = {
+      kind: 'ENVELOPE',
+      name,
+      monthlyCents: parsed.monthlyCents,
+      color: ENVELOPE_COLOR,
+      provisionMonth: monthYmd(receivedAt),
+      pendingField: envelopePending(name, parsed.monthlyCents),
+    };
+    return this.saveNewDraft({ input, intent: 'create_envelope', draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  /**
+   * Definir limite do cartão. Corpo vazio pergunta o valor; qualquer texto além de um valor completo
+   * (nome de banco, data, regra) pede reenvio. O ciclo e o teto vigente são lidos agora e conferidos
+   * de novo na confirmação, sob bloqueio (EnvelopesService/CreditCycleService).
+   */
+  private async startCreditLimitDraft(args: { input: ConversationInput; body: string }): Promise<ConversationReply> {
+    const { input, body } = args;
+    const { userId, receivedAt } = input;
+    const text = body.trim();
+
+    let ceilingCents: number | null = null;
+    if (text !== '') {
+      const parsed = parseAmountPrefix(text);
+      if (parsed.ok === false) {
+        await this.recordEvent(input, 'set_credit_limit', ConversationOutcome.ERROR);
+        return this.reply('ERROR', 'IDLE', parsed.reason === 'NOT_AMOUNT' ? REPLIES.creditLimitValueOnly : amountErrorText(parsed.reason));
+      }
+      if (parsed.rest !== '') {
+        await this.recordEvent(input, 'set_credit_limit', ConversationOutcome.ERROR);
+        return this.reply('ERROR', 'IDLE', REPLIES.creditLimitValueOnly);
+      }
+      ceilingCents = parsed.cents;
+    }
+
+    // Leitura do ciclo antes de gravar o rascunho: falha vira ERROR genérico, como nas leituras (runRead).
+    let cycle: Awaited<ReturnType<CreditCycleService['getCurrent']>>;
+    try {
+      cycle = await this.creditCycle.getCurrent(userId);
+    } catch (error) {
+      // Só o id da intenção e o nome do erro: nunca a mensagem, o texto do usuário ou valores.
+      this.logger.warn(`Leitura falhou: intent=set_credit_limit erro=${error instanceof Error ? error.name : typeof error}`);
+      await this.recordEvent(input, 'set_credit_limit', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', REPLIES.consultError);
+    }
+    const draft: CreditLimitDraft = {
+      kind: 'CREDIT_LIMIT',
+      ceilingCents,
+      cycleStart: toYmd(new Date(cycle.cycleStart)),
+      cycleEnd: toYmd(new Date(cycle.cycleEnd)),
+      previousCeilingCents: cycle.ceiling === null ? null : toCents(cycle.ceiling),
+      countAllPayments: cycle.countAllPayments,
+      pendingField: ceilingCents === null ? 'amount' : null,
+    };
+    return this.saveNewDraft({ input, intent: 'set_credit_limit', draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  private async isEnvelopeNameTaken(userId: string, name: string): Promise<boolean> {
+    const found = await this.prisma.envelope.findFirst({ where: { userId, name }, select: { id: true } });
+    return found !== null;
+  }
+
   private async saveNewDraft(args: {
     input: ConversationInput;
     intent: string;
@@ -526,6 +646,10 @@ export class ConversationService {
       return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: REPLIES.collectingReminder });
     }
     const pendingDraft = session.draft as unknown as SessionDraft;
+    // Nome de reserva que começa com número é o nome pedido, não um comando (contrato 4).
+    if (!awaiting && pendingDraft.kind === 'ENVELOPE' && pendingDraft.pendingField === 'name' && /^\d/.test(text)) {
+      return this.fillPendingField({ input, session, text });
+    }
     if (!awaiting && (isOptionNumber(words, pendingDraft) || isAmountAnswer(text, pendingDraft))) {
       // "1".."5" respondem a pergunta de categoria ou de meta, e um número responde "Quanto foi?"; sem isso o matcher leria como novo gasto.
       return this.fillPendingField({ input, session, text });
@@ -606,6 +730,12 @@ export class ConversationService {
     }
     if (draft.kind === 'CONTRIBUTION') {
       return this.answerContribution(userId, draft, value);
+    }
+    if (draft.kind === 'ENVELOPE') {
+      return this.answerEnvelope(userId, draft, value);
+    }
+    if (draft.kind === 'CREDIT_LIMIT') {
+      return this.answerCreditLimit(draft, value);
     }
     return this.answerTransaction(userId, draft, value);
   }
@@ -730,6 +860,61 @@ export class ConversationService {
     return { status: 'ERROR', text: REPLIES.collectingReminder };
   }
 
+  /** Nome (2 a 60, sem repetir reserva do usuário) e depois valor mensal. */
+  private async answerEnvelope(userId: string, draft: EnvelopeDraft, value: string): Promise<PendingAnswer> {
+    if (draft.pendingField === 'name') {
+      const length = codePointLength(value);
+      if (length < ENVELOPE_NAME_MIN) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: REPLIES.askEnvelopeName };
+      }
+      if (length > ENVELOPE_NAME_MAX) {
+        return { status: 'ERROR', text: REPLIES.envelopeNameTooLong };
+      }
+      if (await this.isEnvelopeNameTaken(userId, value)) {
+        return { status: 'ASK', outcome: ConversationOutcome.ERROR, question: REPLIES.askEnvelopeName, prefix: REPLIES.envelopeNameTaken };
+      }
+      draft.name = value;
+      draft.pendingField = draft.monthlyCents === null ? 'amount' : null;
+      return { status: 'UPDATED' };
+    }
+    if (draft.pendingField === 'amount') {
+      const amount = parseAmountPrefix(value);
+      if (amount.ok === false) {
+        if (amount.reason === 'NOT_AMOUNT') {
+          return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: REPLIES.askEnvelopeAmount, prefix: REPLIES.amountOnly };
+        }
+        return { status: 'ERROR', text: amountErrorText(amount.reason) };
+      }
+      if (amount.rest !== '') {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: REPLIES.askEnvelopeAmount, prefix: REPLIES.amountOnly };
+      }
+      draft.monthlyCents = amount.cents;
+      draft.pendingField = draft.name === null ? 'name' : null;
+      return { status: 'UPDATED' };
+    }
+    return { status: 'ERROR', text: REPLIES.collectingReminder };
+  }
+
+  /** Valor do limite: somente um valor completo, sem texto extra (o banco não é ignorado). */
+  private async answerCreditLimit(draft: CreditLimitDraft, value: string): Promise<PendingAnswer> {
+    if (draft.pendingField === 'amount') {
+      const amount = parseAmountPrefix(value);
+      if (amount.ok === false) {
+        if (amount.reason === 'NOT_AMOUNT') {
+          return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: REPLIES.askCreditLimit, prefix: REPLIES.amountOnly };
+        }
+        return { status: 'ERROR', text: amountErrorText(amount.reason) };
+      }
+      if (amount.rest !== '') {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: REPLIES.askCreditLimit, prefix: REPLIES.amountOnly };
+      }
+      draft.ceilingCents = amount.cents;
+      draft.pendingField = null;
+      return { status: 'UPDATED' };
+    }
+    return { status: 'ERROR', text: REPLIES.collectingReminder };
+  }
+
   /** Aplica o rascunho com a regra da secao 7: reivindicar, registrar chave, aplicar. */
   private async applyDraft(args: {
     userId: string;
@@ -766,6 +951,22 @@ export class ConversationService {
     try {
       applied = await this.applyByKind(userId, draft);
     } catch (error) {
+      if (error instanceof EnvelopeWriteUncertainError || error instanceof CreditLimitWriteUncertainError) {
+        // Commit sem confirmação: não restaura, não libera a chave e não oferece nova gravação (contrato 3).
+        await this.prisma.conversationEvent
+          .updateMany({ where: { id: event.id, userId }, data: { outcome: ConversationOutcome.ERROR } })
+          .catch(() => undefined);
+        return this.reply('ERROR', 'IDLE', REPLIES.writeUncertain);
+      }
+      const revision = revisedDraft(draft, error);
+      if (revision) {
+        // Nada gravado: o mês ou o ciclo mudou. Libera a chave e pede nova confirmação com os dados atuais.
+        await this.prisma.conversationEvent.updateMany({
+          where: { id: event.id, userId },
+          data: { outcome: ConversationOutcome.ERROR, appliedKey: null },
+        });
+        return this.reviseDraft({ userId, session, draft: revision.draft, reason: revision.reason, channel, now });
+      }
       // Falha ao gravar: nada foi gravado e a chave aplicada sai do evento.
       await this.prisma.conversationEvent.updateMany({
         where: { id: event.id, userId },
@@ -791,7 +992,35 @@ export class ConversationService {
         data: { outcome: ConversationOutcome.COMPLETED, resultRef: applied.resultRef },
       })
       .catch(() => undefined);
-    return { kind: 'DONE', state: 'IDLE', text: applied.text, data: applied.data };
+    const text = applied.refreshPending ? `${applied.text}\n${REPLIES.refreshPending}` : applied.text;
+    return { kind: 'DONE', state: 'IDLE', text, data: applied.data };
+  }
+
+  /**
+   * Condição revisável (contrato 3): o rascunho volta com os dados atuais, versão + 1 e prazo novo de
+   * confirmação. Nenhuma escrita aconteceu. Se outro rascunho já ocupou o lugar, não sobrescreve.
+   */
+  private async reviseDraft(args: {
+    userId: string;
+    session: SessionRow;
+    draft: SessionDraft;
+    reason: string;
+    channel: ConversationChannel;
+    now: Date;
+  }): Promise<ConversationReply> {
+    const { userId, session, reason, channel, now } = args;
+    const revised = { ...args.draft, reviewReason: reason } as SessionDraft;
+    const next: SessionRow = {
+      ...session,
+      draft: revised as unknown as Prisma.JsonValue,
+      state: ConversationState.AWAITING_CONFIRMATION,
+      version: session.version + 1,
+    };
+    const restored = await this.restoreSession({ userId, session: next, channel, now });
+    if (!restored) {
+      return this.reply('ERROR', 'IDLE', REPLIES.revisionRestoreLost);
+    }
+    return this.draftReply(next, await this.todayYmd(userId, now), { prefix: reason });
   }
 
   /** Um caso por tipo de rascunho. Só este método chama o serviço financeiro ou de metas. */
@@ -802,7 +1031,54 @@ export class ConversationService {
     if (draft.kind === 'CONTRIBUTION') {
       return this.applyContribution(userId, draft);
     }
+    if (draft.kind === 'ENVELOPE') {
+      return this.applyEnvelope(userId, draft);
+    }
+    if (draft.kind === 'CREDIT_LIMIT') {
+      return this.applyCreditLimit(userId, draft);
+    }
     return this.applyTransaction(userId, draft);
+  }
+
+  /** Reserva: envelope e provisão inicial na mesma transação, no serviço (EnvelopesService.createForConversation). */
+  private async applyEnvelope(userId: string, draft: EnvelopeDraft): Promise<AppliedAction> {
+    if (draft.name === null || draft.monthlyCents === null) {
+      throw new Error('rascunho de reserva incompleto');
+    }
+    const receipt = await this.envelopes.createForConversation(
+      userId,
+      { name: draft.name, color: draft.color, monthlyAmount: draft.monthlyCents / 100 },
+      draft.provisionMonth,
+    );
+    return {
+      text: envelopeCreatedText({ name: receipt.name, monthlyCents: receipt.monthlyCents }),
+      data: { envelopeId: receipt.id },
+      resultRef: receipt.id,
+      refreshPending: receipt.refreshPending,
+    };
+  }
+
+  /** Teto do ciclo: o serviço confere ciclo, teto vigente e opção sob bloqueio antes de gravar. */
+  private async applyCreditLimit(userId: string, draft: CreditLimitDraft): Promise<AppliedAction> {
+    if (draft.ceilingCents === null) {
+      throw new Error('rascunho de limite incompleto');
+    }
+    const receipt = await this.creditCycle.setCeilingForConversation(
+      userId,
+      { ceiling: draft.ceilingCents / 100 },
+      {
+        cycleStart: draft.cycleStart,
+        cycleEnd: draft.cycleEnd,
+        previousCeilingCents: draft.previousCeilingCents,
+        countAllPayments: draft.countAllPayments,
+      },
+    );
+    return {
+      text: creditLimitSetText({ ceilingCents: receipt.ceilingCents, cycleEnd: receipt.cycleEnd }),
+      data: {},
+      resultRef: receipt.id,
+      refreshPending: receipt.refreshPending,
+    };
   }
 
   private async applyTransaction(userId: string, draft: ExpenseOrIncomeDraft): Promise<AppliedAction> {
@@ -1297,6 +1573,16 @@ export class ConversationService {
     today: string,
     view: DraftView,
   ): Promise<string> {
+    if (draft.kind === 'ENVELOPE') {
+      return envelopeDraftText({
+        name: draft.name ?? 'a informar',
+        monthlyCents: draft.monthlyCents ?? 0,
+        provisionMonth: draft.provisionMonth,
+      });
+    }
+    if (draft.kind === 'CREDIT_LIMIT') {
+      return creditLimitDraftText({ ceilingCents: draft.ceilingCents ?? 0, cycleEnd: draft.cycleEnd });
+    }
     if (draft.kind === 'GOAL') {
       return goalDraftText({ title: truncate(draft.title ?? ''), targetCents: draft.targetCents });
     }
@@ -1322,6 +1608,12 @@ export class ConversationService {
   }
 
   private async questionFor(userId: string, draft: SessionDraft): Promise<string> {
+    if (draft.kind === 'ENVELOPE') {
+      return draft.pendingField === 'name' ? REPLIES.askEnvelopeName : REPLIES.askEnvelopeAmount;
+    }
+    if (draft.kind === 'CREDIT_LIMIT') {
+      return REPLIES.askCreditLimit;
+    }
     if (draft.kind === 'GOAL') {
       return draft.pendingField === 'title' ? REPLIES.askGoalTitle : REPLIES.askGoalTarget;
     }
@@ -1365,6 +1657,37 @@ export class ConversationService {
       paymentMethod: null,
     };
 
+    if (draft.kind === 'ENVELOPE') {
+      return {
+        ...base,
+        kind: 'ENVELOPE',
+        title: 'Reserva',
+        pendingField: draft.pendingField,
+        rows: [
+          { label: 'Nome', value: draft.name ?? 'a informar' },
+          { label: 'Valor mensal', value: draft.monthlyCents === null ? 'a informar' : formatBrl(draft.monthlyCents) },
+          { label: 'Início', value: `${monthYearUtc(draft.provisionMonth)} (UTC)` },
+          { label: 'Aviso', value: REPLIES.envelopeProvisionWarning },
+          ...reviewRows(draft.reviewReason),
+        ],
+      };
+    }
+    if (draft.kind === 'CREDIT_LIMIT') {
+      return {
+        ...base,
+        kind: 'CREDIT_LIMIT',
+        title: 'Limite do cartão',
+        pendingField: draft.pendingField,
+        rows: [
+          { label: 'Ciclo', value: `${longDate(draft.cycleStart)} a ${longDate(draft.cycleEnd)}` },
+          { label: 'Limite atual', value: draft.previousCeilingCents === null ? 'não definido' : formatBrl(draft.previousCeilingCents) },
+          { label: 'Novo limite', value: draft.ceilingCents === null ? 'a informar' : formatBrl(draft.ceilingCents) },
+          { label: 'Aviso', value: REPLIES.creditLimitCycleWarning },
+          ...(draft.countAllPayments ? [{ label: 'Aviso', value: REPLIES.creditLimitAllPaymentsWarning }] : []),
+          ...reviewRows(draft.reviewReason),
+        ],
+      };
+    }
     if (draft.kind === 'GOAL') {
       return {
         ...base,
@@ -1565,7 +1888,7 @@ function isOptionNumber(words: string, draft: SessionDraft): boolean {
 }
 
 function numberedOptions(draft: SessionDraft): string[] {
-  if (draft.kind === 'GOAL') {
+  if (draft.kind === 'GOAL' || draft.kind === 'ENVELOPE' || draft.kind === 'CREDIT_LIMIT') {
     return [];
   }
   if (draft.kind === 'CONTRIBUTION') {
@@ -1649,11 +1972,26 @@ function discardText(kind: DraftKind, error: unknown): string {
   if (error instanceof PlanLimitException) {
     return error.message;
   }
+  if (kind === 'ENVELOPE') {
+    // Nome repetido (corrida com a tela): o domínio devolve a mensagem conhecida; as demais recusas são genéricas.
+    return error instanceof HttpException && error.message === REPLIES.envelopeNameTaken
+      ? REPLIES.envelopeNameTaken
+      : REPLIES.envelopeRejected;
+  }
+  if (kind === 'CREDIT_LIMIT') {
+    return REPLIES.creditLimitRejected;
+  }
   return kind === 'TRANSACTION' ? REPLIES.transactionRejected : REPLIES.goalGone;
 }
 
 /** Texto do rascunho mantido após falha inesperada, por tipo. */
 function saveFailedText(kind: DraftKind, restored: boolean): string {
+  if (kind === 'ENVELOPE') {
+    return restored ? REPLIES.envelopeSaveFailed : REPLIES.envelopeSaveFailedRestoreLost;
+  }
+  if (kind === 'CREDIT_LIMIT') {
+    return restored ? REPLIES.creditLimitSaveFailed : REPLIES.creditLimitSaveFailedRestoreLost;
+  }
   if (kind === 'GOAL') {
     return restored ? REPLIES.goalSaveFailed : REPLIES.goalSaveFailedRestoreLost;
   }
@@ -1711,6 +2049,45 @@ function amountErrorText(reason: AmountFailure): string {
     default:
       return REPLIES.amountMissing;
   }
+}
+
+/** Próximo campo da reserva: nome antes do valor (quando nenhum dos dois veio, pergunta o nome). */
+function envelopePending(name: string | null, monthlyCents: number | null): 'name' | 'amount' | null {
+  if (name === null) {
+    return 'name';
+  }
+  return monthlyCents === null ? 'amount' : null;
+}
+
+/** Mês UTC da provisão ('AAAA-MM-01'), o mesmo do domínio de reservas. */
+function monthYmd(date: Date): string {
+  return monthStart(date).toISOString().slice(0, 10);
+}
+
+/** Erro de "mudou desde a exibição": devolve o rascunho com os dados atuais e o motivo. Null = outro erro. */
+function revisedDraft(draft: SessionDraft, error: unknown): { draft: SessionDraft; reason: string } | null {
+  if (error instanceof EnvelopeMonthChangedError && draft.kind === 'ENVELOPE') {
+    return { draft: { ...draft, provisionMonth: error.provisionMonth }, reason: REPLIES.envelopeMonthChanged };
+  }
+  if (error instanceof CreditLimitChangedError && draft.kind === 'CREDIT_LIMIT') {
+    const current = error.current;
+    return {
+      draft: {
+        ...draft,
+        cycleStart: current.cycleStart,
+        cycleEnd: current.cycleEnd,
+        previousCeilingCents: current.previousCeilingCents,
+        countAllPayments: current.countAllPayments,
+      },
+      reason: REPLIES.creditLimitChanged,
+    };
+  }
+  return null;
+}
+
+/** Linha "Atenção" quando a confirmação foi refeita por mudança de mês ou ciclo. */
+function reviewRows(reason: string | undefined): Array<{ label: string; value: string }> {
+  return reason ? [{ label: 'Atenção', value: reason }] : [];
 }
 
 /** Reais de float (ex.: soma do Prisma) para centavos inteiros, so na fronteira de leitura. */

@@ -117,11 +117,32 @@ describe('matchIntent', () => {
     'como poupar dinheiro',
     'guardei 200',
     'aporte',
-    'criar reserva viagem',
-    'nova reserva',
     'criar conta fixa',
+    'criar reserva?',
+    'definir limite? 5000',
+    'como definir limite do cartão?',
   ])('nao casa: "%s"', (text) => {
     expect(matchIntent(text)).toBeNull();
+  });
+
+  it.each([
+    ['criar reserva 400 gasolina', { intent: 'create_envelope', body: '400 gasolina' }],
+    ['nova reserva gasolina', { intent: 'create_envelope', body: 'gasolina' }],
+    ['criar envelope 3 mil viagem', { intent: 'create_envelope', body: '3 mil viagem' }],
+    ['criar reserva', { intent: 'create_envelope', body: '' }],
+    ['definir limite do cartão 5 mil', { intent: 'set_credit_limit', body: '5 mil' }],
+    ['definir limite 5000 Nubank', { intent: 'set_credit_limit', body: '5000 Nubank' }],
+    ['definir limite do cartão', { intent: 'set_credit_limit', body: '' }],
+  ])('comando de reserva e limite: "%s"', (text, expected) => {
+    expect(matchIntent(text)).toEqual(expected);
+  });
+
+  it('reserva e limite: 20 palavras casam, 21 não', () => {
+    // 2 palavras do comando + corpo: 20 no total casa; 21 não.
+    const twenty = `criar reserva ${Array(18).fill('a').join(' ')}`;
+    const twentyOne = `criar reserva ${Array(19).fill('a').join(' ')}`;
+    expect(matchIntent(twenty)).toMatchObject({ intent: 'create_envelope' });
+    expect(matchIntent(twentyOne)).toBeNull();
   });
 
   it.each([

@@ -4,7 +4,9 @@ import { randomUUID } from 'crypto';
 import { PlanLimitException } from '../billing/plan-limit.exception';
 import { ConversationInput } from './conversation.types';
 import { ConversationService } from './conversation.service';
-import { REPLIES } from './replies';
+import { REPLIES, formatBrl } from './replies';
+import { EnvelopeMonthChangedError, EnvelopeWriteUncertainError } from '../envelopes/conversation-write.types';
+import { CreditLimitChangedError, CreditLimitWriteUncertainError } from '../credit-cycle/conversation-write.types';
 
 type Deps = ConstructorParameters<typeof ConversationService>;
 
@@ -41,6 +43,10 @@ function buildFakeDb() {
   const timezones: Record<string, string> = { A: 'America/Sao_Paulo', B: 'America/Sao_Paulo' };
 
   const prisma = {
+    envelope: {
+      // Nome exato por dono (unicidade userId + name). Os testes trocam o retorno quando precisam.
+      findFirst: jest.fn(async () => null),
+    },
     user: {
       findUniqueOrThrow: jest.fn(async ({ where }: { where: { id: string } }) => ({
         timezone: timezones[where.id] ?? 'America/Sao_Paulo',
@@ -110,11 +116,11 @@ describe('ConversationService', () => {
   let db: ReturnType<typeof buildFakeDb>;
   let transactions: { create: jest.Mock };
   let dashboard: { getSummary: jest.Mock };
-  let creditCycle: { getCurrent: jest.Mock };
+  let creditCycle: { getCurrent: jest.Mock; setCeilingForConversation?: jest.Mock };
   let recurring: { list: jest.Mock };
   let installments: { list: jest.Mock };
   let goals: { list: jest.Mock; create: jest.Mock; contribute: jest.Mock };
-  let envelopes: { list: jest.Mock };
+  let envelopes: { list: jest.Mock; createForConversation: jest.Mock };
   let entitlements: { assertCanCreate: jest.Mock };
   let service: ConversationService;
   let warn: jest.SpyInstance;
@@ -156,7 +162,7 @@ describe('ConversationService', () => {
       create: jest.fn(async () => ({ id: 'goal-new', title: 'Viagem', status: 'ACTIVE', targetAmount: 3000, currentAmount: 0 })),
       contribute: jest.fn(async () => ({ id: 'goal-1', title: 'Viagem', status: 'ACTIVE', targetAmount: 3000, currentAmount: 1400 })),
     };
-    envelopes = { list: jest.fn(async () => []) };
+    envelopes = { list: jest.fn(async () => []), createForConversation: jest.fn(async () => ({})) };
     entitlements = { assertCanCreate: jest.fn(async () => undefined) };
     service = new ConversationService(
       db.prisma as unknown as Deps[0],
@@ -1809,6 +1815,562 @@ describe('ConversationService', () => {
         const reply = await service.handleMessage(msg('A', 'reservas'));
         expect(reply.kind).toBe('INFO');
         expect(db.sessions[0].version).toBe(before);
+      });
+    });
+  });
+
+  describe('reserva e limite do cartão (3b2a)', () => {
+    const ENV_RECEIPT = { id: 'env-9', name: 'gasolina', monthlyCents: 40000, provisionMonth: '2026-11-01', refreshPending: false };
+    const LIMIT_RECEIPT = { id: 'ceil-1', ceilingCents: 500000, cycleStart: '2026-11-06', cycleEnd: '2026-12-05', refreshPending: false };
+    const CYCLE = {
+      ceiling: 2000, spent: 500, remaining: 1500, percentUsed: 25, status: 'ok', closingDay: 5, dueDay: 12,
+      countAllPayments: false,
+      cycleStart: '2026-11-06T00:00:00.000Z',
+      cycleEnd: '2026-12-05T00:00:00.000Z',
+    };
+
+    let envelopeWrite: jest.Mock;
+    let limitWrite: jest.Mock;
+
+    beforeEach(() => {
+      envelopeWrite = jest.fn(async (_userId: string, dto: { name: string; monthlyAmount: number }, month: string) => ({
+        ...ENV_RECEIPT,
+        name: dto.name,
+        monthlyCents: Math.round(dto.monthlyAmount * 100),
+        provisionMonth: month,
+      }));
+      limitWrite = jest.fn(async (_userId: string, dto: { ceiling: number }, expected: { cycleStart: string; cycleEnd: string }) => ({
+        ...LIMIT_RECEIPT,
+        ceilingCents: Math.round(dto.ceiling * 100),
+        cycleStart: expected.cycleStart,
+        cycleEnd: expected.cycleEnd,
+      }));
+      envelopes.createForConversation = envelopeWrite;
+      (creditCycle as Record<string, unknown>).setCeilingForConversation = limitWrite;
+      creditCycle.getCurrent = jest.fn(async () => CYCLE);
+    });
+
+    const send = (userId: string, text: string, at: Date = T0) => service.handleMessage(msg(userId, text, at));
+    const confirm = (userId: string, draftId: string, version: number) => service.confirmDraft(userId, draftId, version);
+    const rowValue = (reply: { draft?: { rows: Array<{ label: string; value: string }> } }, label: string) =>
+      reply.draft?.rows.filter((row) => row.label === label).map((row) => row.value);
+    const envelopeEvents = () => db.events.filter((row) => row.intent === 'create_envelope');
+    const withinMinutes = (minutes: number) => new Date(T0.getTime() + minutes * 60_000);
+
+    /** Rascunho de reserva completo para A, pronto para confirmar. */
+    async function envelopeDraft(text = 'criar reserva 400 gasolina') {
+      const reply = await send('A', text);
+      expect(reply.kind).toBe('CONFIRM_DRAFT');
+      return reply.draft!;
+    }
+
+    /** Rascunho de limite completo para A. */
+    async function limitDraft(text = 'definir limite do cartão 5000') {
+      const reply = await send('A', text);
+      expect(reply.kind).toBe('CONFIRM_DRAFT');
+      return reply.draft!;
+    }
+
+    describe('abertura e coleta', () => {
+      it('"criar reserva 400 gasolina" vira confirmação com as linhas da tela, sem gravar', async () => {
+        const reply = await send('A', 'criar reserva 400 gasolina');
+
+        expect(reply.kind).toBe('CONFIRM_DRAFT');
+        expect(reply.state).toBe(ConversationState.AWAITING_CONFIRMATION);
+        expect(reply.draft).toMatchObject({ kind: 'ENVELOPE', title: 'Reserva', pendingField: null });
+        expect(rowValue(reply, 'Nome')).toEqual(['gasolina']);
+        expect(rowValue(reply, 'Valor mensal')).toEqual([formatBrl(40000)]);
+        expect(rowValue(reply, 'Início')).toEqual(['11/2026 (UTC)']);
+        expect(envelopeWrite).not.toHaveBeenCalled();
+      });
+
+      it('só o nome pergunta o valor; só o valor pergunta o nome; vazio pergunta o nome primeiro', async () => {
+        const onlyName = await send('A', 'criar reserva gasolina');
+        expect(onlyName).toMatchObject({ kind: 'ASK_FIELD', text: REPLIES.askEnvelopeAmount });
+
+        const onlyValue = await send('B', 'criar reserva 400');
+        expect(onlyValue).toMatchObject({ kind: 'ASK_FIELD', text: REPLIES.askEnvelopeName });
+
+        const empty = await send('C', 'nova reserva');
+        expect(empty).toMatchObject({ kind: 'ASK_FIELD', text: REPLIES.askEnvelopeName });
+      });
+
+      it('nome que começa com número é nome durante a coleta, e depois pede o valor', async () => {
+        await send('A', 'criar reserva');
+
+        const reply = await send('A', '2026 viagem');
+
+        expect(reply).toMatchObject({ kind: 'ASK_FIELD', text: REPLIES.askEnvelopeAmount });
+        expect(db.sessions[0].draft).toMatchObject({ name: '2026 viagem', pendingField: 'amount' });
+      });
+
+      it('resposta ao valor precisa ser só o valor: texto extra pede reenvio e mantém o campo', async () => {
+        await send('A', 'criar reserva gasolina');
+
+        const reply = await send('A', '400 extra');
+
+        expect(reply).toMatchObject({ kind: 'ASK_FIELD', text: `${REPLIES.amountOnly}\n${REPLIES.askEnvelopeAmount}` });
+        expect(db.sessions[0].draft).toMatchObject({ monthlyCents: null, pendingField: 'amount' });
+      });
+
+      it.each([
+        ['criar reserva 0 gasolina', REPLIES.amountZero],
+        ['criar reserva -5 gasolina', REPLIES.amountNegative],
+        ['criar reserva 1,234 gasolina', REPLIES.amountAmbiguous],
+      ])('valor inválido não abre rascunho: "%s"', async (text, message) => {
+        const reply = await send('A', text);
+
+        expect(reply).toMatchObject({ kind: 'ERROR', text: message });
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('nome de 1 caractere não conta: volta a perguntar; 61 recusa; 60 aceita', async () => {
+        const short = await send('A', 'criar reserva 400 a');
+        expect(short).toMatchObject({ kind: 'ASK_FIELD', text: REPLIES.askEnvelopeName });
+        db.sessions.length = 0;
+
+        const tooLong = await send('A', `criar reserva 400 ${'x'.repeat(61)}`);
+        expect(tooLong).toMatchObject({ kind: 'ERROR', text: REPLIES.envelopeNameTooLong });
+
+        const max = await send('A', `criar reserva 400 ${'x'.repeat(60)}`);
+        expect(max.kind).toBe('CONFIRM_DRAFT');
+      });
+
+      it('plano sem vaga: recusa ao abrir, sem rascunho', async () => {
+        entitlements.assertCanCreate.mockRejectedValueOnce(
+          new PlanLimitException({ resource: 'envelopes', limit: 1, used: 1, plan: 'FREE' }),
+        );
+
+        const reply = await send('A', 'criar reserva 400 gasolina');
+
+        expect(reply.kind).toBe('ERROR');
+        expect(reply.text).toMatch(/reservas/);
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('nome já usado pelo mesmo dono: recusa ao abrir, consultando o nome exato', async () => {
+        db.prisma.envelope.findFirst.mockResolvedValueOnce({ id: 'env-old' });
+
+        const reply = await send('A', 'criar reserva 400 gasolina');
+
+        expect(reply).toMatchObject({ kind: 'ERROR', text: REPLIES.envelopeNameTaken });
+        expect(db.prisma.envelope.findFirst).toHaveBeenCalledWith({ where: { userId: 'A', name: 'gasolina' }, select: { id: true } });
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('coleta dura 15 minutos: depois disso a resposta chega como rascunho expirado', async () => {
+        await send('A', 'criar reserva');
+
+        const reply = await send('A', 'gasolina', new Date(withinMinutes(15).getTime() + 1));
+
+        expect(reply.kind).toBe('EXPIRED');
+      });
+
+      it('leitura durante a coleta responde e não altera o rascunho', async () => {
+        await send('A', 'criar reserva gasolina');
+        const before = structuredClone(db.sessions[0]);
+
+        const reply = await send('A', 'saldo');
+
+        expect(reply.kind).toBe('INFO');
+        expect(db.sessions[0]).toEqual(before);
+      });
+    });
+
+    describe('confirmação de reserva', () => {
+      it('confirmar grava com o recibo: DONE com envelopeId, texto e resultRef', async () => {
+        const draft = await envelopeDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply).toMatchObject({
+          kind: 'DONE',
+          state: 'IDLE',
+          text: `Reserva criada: gasolina, ${formatBrl(40000)} por mês.`,
+          data: { envelopeId: 'env-9' },
+        });
+        expect(envelopeWrite).toHaveBeenCalledWith('A', { name: 'gasolina', color: '#f18f01', monthlyAmount: 400 }, '2026-11-01');
+        expect(envelopeEvents().at(-1)).toMatchObject({ outcome: ConversationOutcome.COMPLETED, resultRef: 'env-9' });
+      });
+
+      it('confirmação com refreshPending acrescenta o aviso, sem virar erro', async () => {
+        envelopeWrite.mockResolvedValueOnce({ ...ENV_RECEIPT, refreshPending: true });
+        const draft = await envelopeDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply.kind).toBe('DONE');
+        expect(reply.text).toBe(`Reserva criada: gasolina, ${formatBrl(40000)} por mês.\n${REPLIES.refreshPending}`);
+      });
+
+      it('falha inesperada antes da gravação restaura o rascunho (D5)', async () => {
+        envelopeWrite.mockRejectedValueOnce(new Error('falha de banco'));
+        const draft = await envelopeDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply).toMatchObject({ kind: 'ERROR', state: ConversationState.AWAITING_CONFIRMATION, text: REPLIES.envelopeSaveFailed });
+        expect(db.sessions).toHaveLength(1);
+        expect(db.sessions[0]).toMatchObject({ version: 1, state: ConversationState.AWAITING_CONFIRMATION });
+        expect(envelopeEvents().at(-1)).toMatchObject({ outcome: ConversationOutcome.ERROR, appliedKey: null });
+      });
+
+      it('erro 4xx do serviço descarta o rascunho com orientação segura', async () => {
+        envelopeWrite.mockRejectedValueOnce(new BadRequestException('detalhe interno do domínio'));
+        const draft = await envelopeDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        // Mensagem do domínio nunca vaza: só o texto seguro do motor.
+        expect(reply).toMatchObject({ kind: 'ERROR', state: 'IDLE', text: REPLIES.envelopeRejected });
+        expect(reply.text).not.toContain('domínio');
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('resultado de commit desconhecido: sem restaurar, sem liberar a chave e sem DONE', async () => {
+        envelopeWrite.mockRejectedValueOnce(new EnvelopeWriteUncertainError());
+        const draft = await envelopeDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply).toMatchObject({ kind: 'ERROR', state: 'IDLE', text: REPLIES.writeUncertain });
+        expect(db.sessions).toHaveLength(0);
+        expect(envelopeEvents().at(-1)).toMatchObject({ outcome: ConversationOutcome.ERROR, appliedKey: `${draft.draftId}:1` });
+      });
+
+      it('nome repetido por corrida com a tela: descarta com a mensagem conhecida de duplicidade', async () => {
+        const draft = await envelopeDraft();
+        envelopeWrite.mockRejectedValueOnce(new BadRequestException(REPLIES.envelopeNameTaken));
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply).toMatchObject({ kind: 'ERROR', state: 'IDLE', text: REPLIES.envelopeNameTaken });
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('plano esgotado entre abrir e confirmar: descarta com a mensagem do plano', async () => {
+        const draft = await envelopeDraft();
+        entitlements.assertCanCreate.mockRejectedValueOnce(
+          new PlanLimitException({ resource: 'envelopes', limit: 1, used: 1, plan: 'FREE' }),
+        );
+        envelopeWrite.mockImplementationOnce(async () => {
+          throw new PlanLimitException({ resource: 'envelopes', limit: 1, used: 1, plan: 'FREE' });
+        });
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply.kind).toBe('ERROR');
+        expect(reply.text).toMatch(/reservas/);
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('mês da provisão mudou: nenhuma gravação, nova versão, prazo de 5 minutos e nova confirmação', async () => {
+        const draft = await envelopeDraft();
+        envelopeWrite.mockRejectedValueOnce(new EnvelopeMonthChangedError('2026-12-01'));
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply.kind).toBe('CONFIRM_DRAFT');
+        expect(reply.text.startsWith(REPLIES.envelopeMonthChanged)).toBe(true);
+        expect(reply.draft).toMatchObject({ draftVersion: 2 });
+        expect(rowValue(reply, 'Início')).toEqual(['12/2026 (UTC)']);
+        expect(rowValue(reply, 'Atenção')).toEqual([REPLIES.envelopeMonthChanged]);
+        expect(db.sessions[0]).toMatchObject({ version: 2, expiresAt: withinMinutes(5) });
+        expect(envelopeEvents().at(-1)).toMatchObject({ outcome: ConversationOutcome.ERROR, appliedKey: null });
+      });
+
+      it('GET /session depois da revisão da reserva mostra o mesmo cartão: mês novo, versão 2 e linha "Atenção"', async () => {
+        const draft = await envelopeDraft();
+        envelopeWrite.mockRejectedValueOnce(new EnvelopeMonthChangedError('2026-12-01'));
+        const revised = await confirm('A', draft.draftId, draft.draftVersion);
+
+        const session = await service.getSession('A');
+
+        expect(session.state).toBe(ConversationState.AWAITING_CONFIRMATION);
+        expect(session.draft).toMatchObject({ kind: 'ENVELOPE', draftId: draft.draftId, draftVersion: 2 });
+        expect(session.draft?.rows).toEqual(revised.draft?.rows);
+        expect(session.draft?.rows).toContainEqual({ label: 'Atenção', value: REPLIES.envelopeMonthChanged });
+        expect(session.draft?.rows).toContainEqual({ label: 'Início', value: '12/2026 (UTC)' });
+        // Sem revisão, não existe a linha.
+        const plain = await service.getSession('B');
+        expect(plain).toEqual({ state: 'IDLE' });
+      });
+
+      it('GET /session do rascunho sem revisão não tem linha "Atenção"', async () => {
+        await envelopeDraft();
+
+        const session = await service.getSession('A');
+
+        expect(session.draft?.rows.some((row) => row.label === 'Atenção')).toBe(false);
+      });
+
+      it('depois da revisão, a versão antiga não confirma e a nova grava no mês mostrado', async () => {
+        const draft = await envelopeDraft();
+        envelopeWrite.mockRejectedValueOnce(new EnvelopeMonthChangedError('2026-12-01'));
+        await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(await confirm('A', draft.draftId, 1)).toBeNull();
+        const reply = await confirm('A', draft.draftId, 2);
+
+        expect(reply.kind).toBe('DONE');
+        expect(envelopeWrite).toHaveBeenLastCalledWith('A', expect.anything(), '2026-12-01');
+      });
+
+      it('duas confirmações em paralelo criam uma só reserva', async () => {
+        const draft = await envelopeDraft();
+
+        const [first, second] = await Promise.all([
+          confirm('A', draft.draftId, draft.draftVersion),
+          confirm('A', draft.draftId, draft.draftVersion),
+        ]);
+
+        expect([first?.kind, second?.kind].sort()).toEqual(['DONE', 'DUPLICATE']);
+        expect(envelopeWrite).toHaveBeenCalledTimes(1);
+      });
+
+      it('revisão sem espaço: se outro rascunho foi aberto, não sobrescreve e pede novo pedido', async () => {
+        const draft = await envelopeDraft();
+        envelopeWrite.mockImplementationOnce(async () => {
+          db.sessions.push({
+            id: 'outro', userId: 'A', channel: ConversationChannel.APP, state: ConversationState.COLLECTING_FIELDS,
+            intent: 'create_expense', draft: {}, version: 1, expiresAt: T0,
+          });
+          throw new EnvelopeMonthChangedError('2026-12-01');
+        });
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply).toMatchObject({ kind: 'ERROR', text: REPLIES.revisionRestoreLost });
+        expect(db.sessions).toHaveLength(1);
+        expect(db.sessions[0].id).toBe('outro');
+      });
+    });
+
+    describe('confirmação de limite do cartão', () => {
+      it('mostra ciclo, limite atual e novo; aviso de validade do ciclo', async () => {
+        const reply = await send('A', 'definir limite do cartão 5 mil');
+
+        expect(reply.kind).toBe('CONFIRM_DRAFT');
+        expect(reply.draft).toMatchObject({ kind: 'CREDIT_LIMIT', title: 'Limite do cartão' });
+        expect(rowValue(reply, 'Ciclo')).toEqual(['06/11/2026 a 05/12/2026']);
+        expect(rowValue(reply, 'Limite atual')).toEqual([formatBrl(200000)]);
+        expect(rowValue(reply, 'Novo limite')).toEqual([formatBrl(500000)]);
+        expect(rowValue(reply, 'Aviso')).toEqual([REPLIES.creditLimitCycleWarning]);
+        expect(limitWrite).not.toHaveBeenCalled();
+      });
+
+      it('com a opção de todas as formas ligada, acrescenta o segundo aviso', async () => {
+        creditCycle.getCurrent = jest.fn(async () => ({ ...CYCLE, countAllPayments: true }));
+
+        const reply = await send('A', 'definir limite 5000');
+
+        expect(rowValue(reply, 'Aviso')).toEqual([REPLIES.creditLimitCycleWarning, REPLIES.creditLimitAllPaymentsWarning]);
+      });
+
+      it('sem teto anterior mostra "não definido"', async () => {
+        creditCycle.getCurrent = jest.fn(async () => ({ ...CYCLE, ceiling: null }));
+
+        const reply = await send('A', 'definir limite 5000');
+
+        expect(rowValue(reply, 'Limite atual')).toEqual(['não definido']);
+      });
+
+      it('leitura do ciclo falha ao abrir: ERROR genérico, evento ERROR, sem rascunho e log só com intenção e nome do erro', async () => {
+        creditCycle.getCurrent = jest.fn(async () => {
+          throw Object.assign(new Error('senha=segredo valor 5000 definir limite'), { name: 'PrismaClientKnownRequestError' });
+        });
+
+        const reply = await send('A', 'definir limite 5000');
+
+        expect(reply).toMatchObject({ kind: 'ERROR', state: 'IDLE', text: REPLIES.consultError });
+        expect(reply.draft).toBeUndefined();
+        expect(db.sessions).toHaveLength(0);
+        expect(limitWrite).not.toHaveBeenCalled();
+        expect(db.events).toHaveLength(1);
+        expect(db.events[0]).toMatchObject({ userId: 'A', intent: 'set_credit_limit', outcome: ConversationOutcome.ERROR });
+        expect(warn).toHaveBeenCalledWith('Leitura falhou: intent=set_credit_limit erro=PrismaClientKnownRequestError');
+        const logged = JSON.stringify(warn.mock.calls);
+        expect(logged).not.toContain('segredo');
+        expect(logged).not.toContain('5000');
+        expect(JSON.stringify(db.events)).not.toContain('5000');
+      });
+
+      it('leitura do ciclo falha com corpo vazio: também ERROR genérico, sem 500', async () => {
+        creditCycle.getCurrent = jest.fn(async () => {
+          throw new Error('x');
+        });
+
+        const reply = await send('A', 'definir limite');
+
+        expect(reply).toMatchObject({ kind: 'ERROR', state: 'IDLE', text: REPLIES.consultError });
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('confirmar grava com o ciclo do rascunho e devolve DONE com resultRef do teto', async () => {
+        const draft = await limitDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(limitWrite).toHaveBeenCalledWith(
+          'A',
+          { ceiling: 5000 },
+          { cycleStart: '2026-11-06', cycleEnd: '2026-12-05', previousCeilingCents: 200000, countAllPayments: false },
+        );
+        expect(reply).toMatchObject({
+          kind: 'DONE',
+          text: `Limite de ${formatBrl(500000)} definido para o ciclo com fechamento em 05/12/2026.`,
+          data: {},
+        });
+        expect(db.events.filter((row) => row.intent === 'set_credit_limit').at(-1)).toMatchObject({ resultRef: 'ceil-1' });
+      });
+
+      it('confirmação com refreshPending acrescenta o aviso, sem virar erro nem restaurar', async () => {
+        const draft = await limitDraft();
+        limitWrite.mockResolvedValueOnce({ ...LIMIT_RECEIPT, refreshPending: true });
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply.kind).toBe('DONE');
+        expect(reply.text).toBe(
+          `Limite de ${formatBrl(500000)} definido para o ciclo com fechamento em 05/12/2026.\n${REPLIES.refreshPending}`,
+        );
+        expect(db.sessions).toHaveLength(0);
+        expect(db.events.filter((row) => row.intent === 'set_credit_limit').at(-1)).toMatchObject({
+          outcome: ConversationOutcome.COMPLETED,
+          resultRef: 'ceil-1',
+        });
+      });
+
+      it('ciclo mudou antes da confirmação: nenhuma gravação no novo ciclo, nova confirmação com o ciclo atual', async () => {
+        const draft = await limitDraft();
+        limitWrite.mockRejectedValueOnce(
+          new CreditLimitChangedError({
+            cycleStart: '2026-12-06', cycleEnd: '2027-01-05', previousCeilingCents: null, countAllPayments: false,
+          }),
+        );
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply.kind).toBe('CONFIRM_DRAFT');
+        expect(reply.text.startsWith(REPLIES.creditLimitChanged)).toBe(true);
+        expect(rowValue(reply, 'Ciclo')).toEqual(['06/12/2026 a 05/01/2027']);
+        expect(rowValue(reply, 'Novo limite')).toEqual([formatBrl(500000)]);
+        expect(limitWrite).toHaveBeenCalledTimes(1);
+
+        const done = await confirm('A', draft.draftId, 2);
+        expect(done.kind).toBe('DONE');
+        expect(limitWrite).toHaveBeenLastCalledWith(
+          'A',
+          { ceiling: 5000 },
+          { cycleStart: '2026-12-06', cycleEnd: '2027-01-05', previousCeilingCents: null, countAllPayments: false },
+        );
+      });
+
+      it('GET /session depois da revisão do limite mostra ciclo novo, versão 2 e a linha "Atenção"', async () => {
+        const draft = await limitDraft();
+        limitWrite.mockRejectedValueOnce(
+          new CreditLimitChangedError({
+            cycleStart: '2026-12-06', cycleEnd: '2027-01-05', previousCeilingCents: null, countAllPayments: true,
+          }),
+        );
+        const revised = await confirm('A', draft.draftId, draft.draftVersion);
+
+        const session = await service.getSession('A');
+
+        expect(session.state).toBe(ConversationState.AWAITING_CONFIRMATION);
+        expect(session.draft).toMatchObject({ kind: 'CREDIT_LIMIT', draftId: draft.draftId, draftVersion: 2 });
+        expect(session.draft?.rows).toEqual(revised.draft?.rows);
+        expect(session.draft?.rows).toContainEqual({ label: 'Atenção', value: REPLIES.creditLimitChanged });
+        expect(session.draft?.rows).toContainEqual({ label: 'Ciclo', value: '06/12/2026 a 05/01/2027' });
+        expect(session.draft?.rows).toContainEqual({ label: 'Aviso', value: REPLIES.creditLimitAllPaymentsWarning });
+      });
+
+      it('falha inesperada restaura o rascunho; 4xx descarta; commit desconhecido não restaura', async () => {
+        const restore = await limitDraft();
+        limitWrite.mockRejectedValueOnce(new Error('falha'));
+        expect(await confirm('A', restore.draftId, restore.draftVersion)).toMatchObject({
+          kind: 'ERROR', text: REPLIES.creditLimitSaveFailed, state: ConversationState.AWAITING_CONFIRMATION,
+        });
+        expect(db.sessions).toHaveLength(1);
+        expect(db.sessions[0]).toMatchObject({ version: 1 });
+
+        // Restaurado na mesma versão: pode tentar de novo; agora o plano recusa (4xx) e descarta.
+        limitWrite.mockRejectedValueOnce(new BadRequestException('x'));
+        expect(await confirm('A', restore.draftId, 1)).toMatchObject({ kind: 'ERROR', text: REPLIES.creditLimitRejected });
+        expect(db.sessions).toHaveLength(0);
+
+        const uncertain = await limitDraft();
+        limitWrite.mockRejectedValueOnce(new CreditLimitWriteUncertainError());
+        expect(await confirm('A', uncertain.draftId, uncertain.draftVersion)).toMatchObject({
+          kind: 'ERROR', text: REPLIES.writeUncertain,
+        });
+        expect(db.sessions).toHaveLength(0);
+      });
+    });
+
+    describe('valor do limite', () => {
+      it('corpo vazio pergunta o valor', async () => {
+        const reply = await send('A', 'definir limite do cartão');
+
+        expect(reply).toMatchObject({ kind: 'ASK_FIELD', text: REPLIES.askCreditLimit });
+        expect(db.sessions[0].draft).toMatchObject({ ceilingCents: null, pendingField: 'amount' });
+      });
+
+      it('"definir limite 5000 Nubank" pede reenvio, sem ignorar o banco', async () => {
+        const reply = await send('A', 'definir limite 5000 Nubank');
+
+        expect(reply).toMatchObject({ kind: 'ERROR', text: REPLIES.creditLimitValueOnly });
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it.each([
+        ['definir limite 0', REPLIES.amountZero],
+        ['definir limite 1,234', REPLIES.amountAmbiguous],
+        ['definir limite -100', REPLIES.amountNegative],
+        ['definir limite 1000001', REPLIES.amountTooLarge],
+      ])('valor que não é limite não abre confirmação: "%s"', async (text, message) => {
+        expect(await send('A', text)).toMatchObject({ kind: 'ERROR', text: message });
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('resposta ao pedido de valor precisa ser só o valor', async () => {
+        await send('A', 'definir limite do cartão');
+
+        expect(await send('A', '5000 Nubank')).toMatchObject({
+          kind: 'ASK_FIELD',
+          text: `${REPLIES.amountOnly}\n${REPLIES.askCreditLimit}`,
+        });
+        expect(await send('A', '5000')).toMatchObject({ kind: 'CONFIRM_DRAFT' });
+      });
+
+      it('"cartão" e "limite do cartão" continuam leituras, sem rascunho', async () => {
+        const reply = await send('A', 'limite do cartão');
+
+        expect(reply.kind).toBe('INFO');
+        expect(db.sessions).toHaveLength(0);
+      });
+    });
+
+    describe('isolamento entre donos', () => {
+      it('B não confirma, cancela nem reaproveita o rascunho de A', async () => {
+        const draft = await envelopeDraft();
+
+        expect(await confirm('B', draft.draftId, draft.draftVersion)).toBeNull();
+        expect(await service.cancelDraft('B', draft.draftId)).toBeNull();
+        const bText = await send('B', 'confirmar');
+
+        expect(bText.kind).toBe('HELP');
+        expect(envelopeWrite).not.toHaveBeenCalled();
+        expect(db.sessions).toHaveLength(1);
+        expect(db.sessions[0].userId).toBe('A');
+      });
+
+      it('reserva e teto são sempre do dono autenticado', async () => {
+        const draft = await limitDraft();
+
+        await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(limitWrite.mock.calls[0][0]).toBe('A');
       });
     });
   });

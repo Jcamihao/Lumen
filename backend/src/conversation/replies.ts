@@ -8,6 +8,29 @@ export function formatBrl(cents: number): string {
 }
 
 export const REPLIES = {
+  askEnvelopeName: 'Qual o nome da reserva? Ex.: gasolina.',
+  askEnvelopeAmount: 'Quanto reservar por mês? Responda só o valor.',
+  askCreditLimit: 'Qual o limite para este ciclo do cartão?',
+  amountOnly: 'Responda só o valor, sem outro texto.',
+  envelopeNameTooLong: 'O nome da reserva passa de 60 caracteres.',
+  envelopeRejected: 'Não foi possível criar a reserva. Confira o nome e tente novamente.',
+  creditLimitRejected: 'Não foi possível definir o limite. Confira os dados e envie o pedido novamente.',
+  envelopeSaveFailed: 'Não consegui criar a reserva. O rascunho foi mantido; tente confirmar de novo.',
+  creditLimitSaveFailed: 'Não consegui definir o limite. O rascunho foi mantido; tente confirmar de novo.',
+  writeUncertain: 'Não foi possível confirmar o resultado. Confira a tela de Finanças antes de enviar o pedido novamente.',
+  envelopeMonthChanged: 'O mês da provisão mudou. Confira o início da reserva e confirme novamente.',
+  creditLimitChanged: 'O ciclo ou o limite atual mudou. Confira os dados atualizados e confirme novamente.',
+  envelopeProvisionWarning: 'A reserva recebe a provisão mensal do app. Isso não transfere dinheiro de uma conta bancária nem faz aporte em meta.',
+  creditLimitCycleWarning: 'Este limite vale só para o ciclo mostrado.',
+  creditLimitAllPaymentsWarning: 'Este ciclo considera todas as formas de pagamento.',
+  refreshPending: 'Cadastro salvo. A atualização dos dados está pendente; confira a tela de Finanças.',
+  envelopeNameTaken: 'Você já tem um envelope com este nome.',
+  envelopeSaveFailedRestoreLost:
+    'Não consegui criar a reserva e outro rascunho já foi aberto. Envie o pedido de novo.',
+  creditLimitSaveFailedRestoreLost:
+    'Não consegui definir o limite e outro rascunho já foi aberto. Envie o pedido de novo.',
+  creditLimitValueOnly: 'Envie só o valor do limite, sem nome de banco. Ex.: definir limite 5000.',
+  revisionRestoreLost: 'O pedido mudou e outro rascunho já foi aberto. Envie o pedido de novo.',
   help:
     'Exemplos: "50 mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
     '"quanto gastei", "gastos com mercado", "limite do cartão".',
@@ -301,6 +324,27 @@ export function contributionDraftText(input: {
 /** Pergunta de meta quando a escolha é ambígua (opções numeradas, como a categoria). */
 export function goalOptionsText(names: string[]): string {
   return `Qual meta? ${names.map((name, index) => `${index + 1}) ${name}`).join(' ')}.`;
+}
+
+/** 'AAAA-MM-DD' -> 'MM/AAAA' (mês da provisão, sempre UTC). */
+export function monthYearUtc(ymd: string): string {
+  return `${ymd.slice(5, 7)}/${ymd.slice(0, 4)}`;
+}
+
+export function envelopeDraftText(input: { name: string; monthlyCents: number; provisionMonth: string }): string {
+  return `Reserva ${input.name}: ${formatBrl(input.monthlyCents)} por mês, início em ${monthYearUtc(input.provisionMonth)} (UTC).`;
+}
+
+export function envelopeCreatedText(input: { name: string; monthlyCents: number }): string {
+  return `Reserva criada: ${input.name}, ${formatBrl(input.monthlyCents)} por mês.`;
+}
+
+export function creditLimitDraftText(input: { ceilingCents: number; cycleEnd: string }): string {
+  return `Limite de ${formatBrl(input.ceilingCents)} para o ciclo com fechamento em ${longDate(input.cycleEnd)}.`;
+}
+
+export function creditLimitSetText(input: { ceilingCents: number; cycleEnd: string }): string {
+  return `Limite de ${formatBrl(input.ceilingCents)} definido para o ciclo com fechamento em ${longDate(input.cycleEnd)}.`;
 }
 
 /** Não achou meta ativa pelo nome: lista até 5 títulos. */
