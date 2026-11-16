@@ -77,7 +77,7 @@ type PdfDocument = {
   destroy(): Promise<void> | void;
 };
 export type PdfJsModule = {
-  getDocument(params: Record<string, unknown>): { promise: Promise<PdfDocument> };
+  getDocument(params: Record<string, unknown>): { promise: Promise<PdfDocument>; destroy?(): Promise<void> | void };
 };
 export type PdfJsImporter = (specifier: string) => Promise<PdfJsModule>;
 
@@ -92,12 +92,24 @@ const dynamicImport = new Function('specifier', 'return import(specifier)') as P
  */
 export async function readPdfText(buffer: Buffer, importer: PdfJsImporter = dynamicImport): Promise<string> {
   const pdfjs = await importer('pdfjs-dist/legacy/build/pdf.mjs');
-  const doc = await pdfjs.getDocument({
+  const task = pdfjs.getDocument({
     data: new Uint8Array(buffer),
     useSystemFonts: true,
     isEvalSupported: false,
     disableFontFace: true,
-  }).promise;
+  });
+  let doc: PdfDocument;
+  try {
+    doc = await task.promise;
+  } catch (error) {
+    // PDF corrompido ou com senha: libera a tarefa de carga, senão ela fica retida.
+    try {
+      await task.destroy?.();
+    } catch {
+      // O erro original é o que importa.
+    }
+    throw error;
+  }
 
   try {
     const pages: string[] = [];
@@ -213,20 +225,23 @@ export class OcrPool implements OnModuleDestroy {
 
   private async spawn(): Promise<Worker> {
     this.creating++;
+    let created: Worker | null = null;
     try {
-      const worker = await createWorker('por', 1, {
+      created = await createWorker('por', 1, {
         langPath: LANG_PATH,
         gzip: true,
         // Sem cache em disco: o idioma já vem do pacote local.
         cacheMethod: 'none',
       });
-      await worker.setParameters({
+      await created.setParameters({
         tessedit_pageseg_mode: '6' as PSM,
         preserve_interword_spaces: '1',
       });
-      this.all.add(worker);
-      return worker;
+      this.all.add(created);
+      return created;
     } catch (error) {
+      // Worker criado mas não configurado não entra no pool: termina para não vazar processo/memória.
+      await created?.terminate().catch(() => undefined);
       this.wake();
       throw error;
     } finally {

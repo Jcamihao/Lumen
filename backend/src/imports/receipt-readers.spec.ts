@@ -127,4 +127,14 @@ describe('readPdfText', () => {
     await expect(readPdfText(Buffer.from('x'), importer)).rejects.toThrow('pagina corrompida');
     expect(destroy).toHaveBeenCalledTimes(1);
   });
+
+  it('libera a tarefa de carga quando o PDF nao abre (corrompido ou com senha)', async () => {
+    const taskDestroy = jest.fn();
+    const importer: PdfJsImporter = async () => ({
+      getDocument: () => ({ promise: Promise.reject(new Error('PDF invalido')), destroy: taskDestroy }),
+    });
+
+    await expect(readPdfText(Buffer.from('x'), importer)).rejects.toThrow('PDF invalido');
+    expect(taskDestroy).toHaveBeenCalledTimes(1);
+  });
 });
