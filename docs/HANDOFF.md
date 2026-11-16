@@ -14,7 +14,9 @@ Princípio que mais pesa nas decisões: privacidade e simplicidade. O app nunca 
 
 - Caminho local: `/home/caminhao/coding/codeStage/Lumen`
 - Remoto: `git@github.com:Jcamihao/Lumen.git`
-- Branch: `master`
+- Branch principal: `master`.
+- **Branch de trabalho** (2026-11-16): `fix/analise-gastos-fuso`, tipo correção, base `origin/master` (`2cf5fb2`), enviada ao remoto em 2026-11-16, **merge na `master` aguardando aprovação do dono**. Corrige o item 2e: `analyzeSpending` (`backend/src/assistant/assistant.service.ts`) usava o fuso do processo para o corte de 3 meses e para o índice do mês, o que excluía ou deslocava lançamentos do dia 1 em servidor fora de UTC. Agora usa o fuso do usuário só para o "mês atual" e getters UTC para o resto (mesma convenção do dashboard). Testes novos em `assistant.service.spec.ts`, verdes em UTC, America/Sao_Paulo e Asia/Tokyo e vermelhos com o código antigo. Backend: 45 suites, 966 testes, `tsc` e `nest build` ok. Versão e tag `vX.Y.Z` só depois do merge aprovado.
+- Existe também a branch `feature/financas-por-conversa` (itens 1 a 3b2b do bot financeiro, 13 commits à frente da `origin/master`), com merge aguardando aprovação. O estado detalhado do bot está no HANDOFF dessa branch.
 - Convenção de commit: Conventional Commits em português (`feat(billing): ...`, `fix(billing): ...`, `docs: ...`, `refactor(backend): ...`).
 - Estado do git em 2026-11-16: o 3b2a foi salvo em commits locais separados (backend de domínio, motor, frontend e documentação). O `origin/master` local já aponta para `2cf5fb2` (fim do 3b1): alguém fez push depois do 3b1 (não foi esta sessão); o `git status` mostra a branch alinhada a esse ponto, e os commits do 3b2a ficam à frente dele. Sem `git fetch` nesta etapa, então o estado real do remoto não foi reconferido. Os logs antigos do 2b e os do 3b2a em `.superpowers/sdd/` ficam fora dos commits de propósito.
 - Últimos commits relevantes:
