@@ -131,6 +131,7 @@ Criadas só pelo seed (`backend/prisma/seed.js`) em ambiente local; o formulári
 
 - 🧱 Arquitetura: `docs/architecture.md`
 - 🎨 Design system: `docs/design-system.md`
+- 📝 Release notes 1.6.0: `docs/releases/v1.6.0.md`
 - 📝 Release notes 1.5.0: `docs/releases/v1.5.0.md`
 - 📝 Release notes 1.4.0: `docs/releases/v1.4.0.md`
 - 📝 Release notes 1.3.0: `docs/releases/v1.3.0.md`
