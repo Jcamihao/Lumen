@@ -65,6 +65,9 @@ const WARNING_ORDER: WarningKey[] = [
   'W_NO_TOTAL',
 ];
 
+// Escritos como string para o arquivo nao carregar caracteres invisiveis (U+2028 quebraria a regex literal).
+const ZERO_WIDTH_RE = new RegExp('[\\u200B-\\u200D\\u2060\\uFEFF]', 'g');
+const UNICODE_SPACE_RE = new RegExp('[\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000]', 'g');
 const MAX_INPUT_CHARS = 200000;
 const MAX_LINE_CHARS = 500;
 const MAX_REDACTED_CHARS = 500;
@@ -80,12 +83,22 @@ const CNPJ_CANDIDATE_RE = new RegExp(
   `${OCR_DIGIT}{2}\\.${OCR_DIGIT}{3}\\.${OCR_DIGIT}{3}/${OCR_DIGIT}{4}-${OCR_DIGIT}{2}`,
   'g',
 );
-const DOC_NUMBER_RE = /\bNFC-?e\b[^\n\d]{0,10}(\d{1,9})(?!\d)|\bN[º°]\.?\s*[:.]?\s*(\d{1,9})(?!\d)/i;
+// Numero do documento: so depois de "NFC-e n./nº/numero" ou de "Nº". Aceita milhar com ponto
+// (000.123.456) e recusa numero seguido de "-dd" (pedaco de CPF). "NFC-e Serie 001" nao casa.
+const DOC_DIGITS = '(\\d{1,3}(?:\\.\\d{3})+|\\d{1,9})(?!\\d|\\.\\d|-\\d)';
+const DOC_NUMBER_RE = new RegExp(
+  `\\bNFC-?e\\b[^\\n\\d]{0,6}?\\bN(?:[º°]|\\.|o\\b|[uú]mero|um\\b)\\s*[:.]?\\s*${DOC_DIGITS}|\\bN[º°]\\.?\\s*[:.]?\\s*${DOC_DIGITS}`,
+  'i',
+);
 const DATE_RE = /\b\d{2}\/\d{2}\/(?:\d{4}|\d{2})\b/;
 const TIME_RE = /\b\d{1,2}:\d{2}\b/;
 const TOTAL_LABEL_RE = /VALOR\s+TOTAL|TOTAL\s*R\$|VALOR\s+A\s+PAGAR|TOTAL\s+A\s+PAGAR|\bTOTAL\b/i;
-const TOTAL_SKIP_RE = /QTD|ITENS|DESCONTO|TROCO|TRIBUTOS|SUBTOTAL/i;
-const MONEY_IN_LINE_RE = /(?:R\$\s*)?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}(?!\d)/g;
+// Linhas que parecem total mas nao sao: quantidade, itens, desconto, troco, tributos, subtotal (contrato)
+// e, para nao tomar valor pago ou imposto como total, pago/recebido/imposto/acrescimo.
+const TOTAL_SKIP_RE = /QTD|ITENS|DESCONTO|TROCO|TRIBUTOS|SUBTOTAL|\bPAGO\b|RECEBIDO|IMPOSTO|ACR[EÉ]SCIMO/i;
+// O lookbehind faz a busca comecar so no inicio de cada corrida de digitos (sem ele, uma linha
+// gigante de digitos custa tempo quadratico) e impede ler "1234.567,89" como "234.567,89".
+const MONEY_IN_LINE_RE = /(?<![\d.,])(?:R\$\s*)?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}(?!\d)/g;
 const MERCHANT_SKIP_RE = /\b(CNPJ|CPF|NFC|DANFE|CUPOM|DOCUMENTO|CHAVE|CONSUMIDOR|EMITENTE|TOTAL|VALOR|ITEM|QTD|RUA|AVENIDA|ENDERECO|PRODUTO|CODIGO|DESCRICAO)\b|AV\./i;
 const MONEY_SRC = '(?:\\d{1,3}(?:\\.\\d{3})+|\\d+),\\d{2}';
 const ITEM_LINE_RE = new RegExp(
@@ -124,6 +137,8 @@ export function parseBrQuantity(raw: string): number | null {
 export function parseBrDate(raw: string, today: Date): Date | null {
   const m = /^(\d{2})\/(\d{2})\/(\d{4}|\d{2})$/.exec(typeof raw === 'string' ? raw.trim() : '');
   if (!m) return null;
+  // "Hoje" invalido (NaN) faria qualquer data parecer valida: recusa.
+  if (!(today instanceof Date) || Number.isNaN(today.getTime())) return null;
   const day = Number(m[1]);
   const month = Number(m[2]);
   let year = Number(m[3]);
@@ -199,12 +214,79 @@ export function isValidCnpj(cnpj: string): boolean {
 
 // ---------- Privacidade ----------
 
+const CPF_REMOVED = 'CPF removido';
+// A linha abaixo guarda um unico caractere de uso privado (U+E000), invisivel no editor: marcador provisorio.
+const CPF_MARK = '';
+// Rotulo "CPF" em varias grafias: CPF, cpf, C.P.F., ÇPF/CPÉ (acento de OCR), colado em digitos (CPF123...).
+const CPF_LABEL_SRC = '(?<![A-Za-zÀ-ÿ])[CÇ]\\.?\\s?P\\.?\\s?[FÉ](?![A-Za-zÀ-ÿ])';
+const CPF_LABEL_RE = new RegExp(CPF_LABEL_SRC, 'gi');
+const CPF_OR_CONSUMER_RE = new RegExp(`(?<![A-Za-zÀ-ÿ])CONSUMIDOR(?![A-Za-zÀ-ÿ])|${CPF_LABEL_SRC}`, 'i');
+// CPF solto, sem rotulo: 123.456.789-09, 123 456 789 09, 123.456.789 -09, com O/l/I/S/B no lugar de digito.
+const CPF_SHAPE_RE = new RegExp(
+  `(?<![0-9])${OCR_DIGIT}{3}[. ]${OCR_DIGIT}{3}[. ]${OCR_DIGIT}{3}(?: ?[-.] ?| )${OCR_DIGIT}{2}(?![0-9]|,\\d)`,
+  'g',
+);
+// Preserva a chave (44 digitos) e o CNPJ formatado que apareçam depois do rotulo.
+const KEEP_AFTER_LABEL_RE = new RegExp(
+  `(?<!${OCR_DIGIT})${OCR_DIGIT}(?: ?${OCR_DIGIT}){43}(?!${OCR_DIGIT})|\\d{2}\\.\\d{3}\\.\\d{3}/\\d{4}-\\d{2}`,
+);
+// Resto de um CPF (ate 14 caracteres de digito/separador) logo depois da janela de 30 caracteres.
+const CPF_TAIL_RE = new RegExp(`^[0-9OoIl|SB.\\-]{1,14}(?![0-9OoIl|SB.\\-])`);
+const ELEVEN_DIGITS_RE = /(?<![0-9])[0-9]{11}(?![0-9])/g;
+const CPF_ELEVEN_RE =new RegExp(`^(?:${OCR_DIGIT}[ .\\-]?){10}${OCR_DIGIT}$`);
+
+function realDigits(s: string): number {
+  return (s.match(/[0-9]/g) ?? []).length;
+}
+
+function redactCpfLine(line: string): string {
+  if (line.length < 3) return line;
+  // 1) CPF solto (a pontuacao do rotulo longo, como "CPF/CNPJ do Consumidor:", nao pode sobrar pedaco).
+  // Marcador provisorio: "CPF removido" casaria com o proprio rotulo no passo 2.
+  let out = line.replace(CPF_SHAPE_RE, (m) => (realDigits(m) >= 5 ? CPF_MARK : m));
+  // Linha de "CONSUMIDOR" com 11 digitos soltos (CPF sem pontuacao e sem a palavra CPF).
+  if (/CONSUMIDOR/i.test(out)) out = out.replace(ELEVEN_DIGITS_RE, CPF_MARK);
+  // 2) "CPF" + ate 30 caracteres da mesma linha (contrato), parando antes de chave de 44 digitos
+  //    ou de CNPJ formatado. Se o 30o caractere cortou um CPF no meio, apaga o resto dele.
+  let result = '';
+  let pos = 0;
+  for (const label of out.matchAll(CPF_LABEL_RE)) {
+    const start = label.index as number;
+    if (start < pos) continue;
+    const tailStart = start + label[0].length;
+    const keep = KEEP_AFTER_LABEL_RE.exec(out.slice(tailStart, tailStart + 400));
+    const limit = keep ? Math.min(30, keep.index) : 30;
+    let end = Math.min(out.length, tailStart + limit);
+    if (!keep && end === tailStart + 30) {
+      const rest = CPF_TAIL_RE.exec(out.slice(end, end + 20));
+      if (rest) end += rest[0].length;
+    }
+    // Cortou antes de chave/CNPJ: separa com espaco para o texto nao colar em "CPF removido".
+    const glue = keep && limit === keep.index && end < out.length && out[end] !== ' ' ? ' ' : '';
+    result += out.slice(pos, start) + CPF_REMOVED + glue;
+    pos = end;
+  }
+  return (result + out.slice(pos)).split(CPF_MARK).join(CPF_REMOVED);
+}
+
+/**
+ * Remove CPF do texto. Cobre: CPF com pontuacao (inclusive espacos e O/l no lugar de digito), "CPF" mais
+ * ate 30 caracteres da mesma linha (qualquer grafia: CPF, cpf, C.P.F.), e 11 digitos em linha sozinha
+ * logo abaixo de uma linha com "CPF" ou "CONSUMIDOR". Nao altera chave de 44 digitos, CNPJ nem valores.
+ */
 export function redactCpf(text: string): string {
   if (typeof text !== 'string') return '';
-  // Uma passada so: "CPF" + ate 30 caracteres da mesma linha. Depois, CPF com pontuacao solto.
-  return text
-    .replace(/\bCPF\b[^\n]{0,30}/gi, 'CPF removido')
-    .replace(/(?<!\d)\d{3}\.\d{3}\.\d{3}-\d{2}(?!\d)/g, 'CPF removido');
+  const lines = text.split('\n');
+  const labelAbove = lines.map((l) => CPF_OR_CONSUMER_RE.test(l));
+  return lines
+    .map((line, i) => {
+      if (i > 0 && labelAbove[i - 1]) {
+        const t = line.trim();
+        if (t.length <= 20 && CPF_ELEVEN_RE.test(t) && realDigits(t) >= 5) return CPF_REMOVED;
+      }
+      return redactCpfLine(line);
+    })
+    .join('\n');
 }
 
 // ---------- QR Code ----------
@@ -308,6 +390,8 @@ function parseUnsafe(text: string, options: { today: Date; qrAccessKey?: string 
 
   const source = (typeof text === 'string' ? text.slice(0, MAX_INPUT_CHARS) : '')
     .replace(/\r/g, '')
+    .replace(ZERO_WIDTH_RE, '') // caracteres de largura zero (PDF/OCR) somem
+    .replace(UNICODE_SPACE_RE, ' ') // espacos unicode (NBSP etc.) viram espaco
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ');
   const lines = source.split('\n').map((line) => line.replace(/[ \t]+/g, ' ').trim());
 
@@ -337,13 +421,17 @@ function parseUnsafe(text: string, options: { today: Date; qrAccessKey?: string 
     }
   }
 
-  // Numero do documento.
+  // Numero do documento: da chave; senao do texto (sem pontos de milhar, sem zeros a esquerda, nunca "0").
   let documentNumber: string | null = null;
   if (decoded) {
     documentNumber = stripLeadingZeros(decoded.number);
   } else {
     const m = DOC_NUMBER_RE.exec(source);
-    if (m) documentNumber = stripLeadingZeros(m[1] ?? m[2]);
+    const digits = m ? (m[1] ?? m[2]).replace(/\./g, '') : null;
+    if (digits) {
+      const n = stripLeadingZeros(digits);
+      documentNumber = n === '0' ? null : n;
+    }
   }
 
   // Data: primeira linha com data e horario; senao a primeira data do texto.
@@ -373,14 +461,16 @@ function parseUnsafe(text: string, options: { today: Date; qrAccessKey?: string 
   // Itens: formatos A (uma linha), B (uma linha com x) e C (duas linhas).
   const items: ReceiptTextItem[] = [];
   const itemCents: number[] = [];
-  const addItem = (rawDescription: string, qRaw: string, unitRaw: string, unitPriceRaw: string, totalRaw: string): void => {
+  const itemLineIdx = new Set<number>();
+  const addItem = (rawDescription: string, qRaw: string, unitRaw: string, unitPriceRaw: string, totalRaw: string): boolean => {
     const quantity = parseBrQuantity(qRaw);
     const unitCents = moneyCents(unitPriceRaw);
     const totalC = moneyCents(totalRaw);
-    if (quantity === null || unitCents === null || totalC === null) return;
+    if (quantity === null || unitCents === null || totalC === null) return false;
     const description = redactCpf(rawDescription.replace(/^\d{1,14}\s+/, '').replace(/\s+/g, ' ').trim()).slice(0, 200);
-    if ((description.match(/[A-Za-zÀ-ÿ]/g) ?? []).length < 2) return;
+    if ((description.match(/[A-Za-zÀ-ÿ]/g) ?? []).length < 2) return false;
     // Quantidade em milesimos x unitario (centavos) contra total*1000: tolerancia de 1 centavo = 1000.
+    // Tudo em inteiros. Produto acima de 2^53 perde precisao, mas ai a diferenca ja e enorme (total <= 1e8 centavos).
     const consistent = Math.abs(Math.round(quantity * 1000) * unitCents - totalC * 1000) <= 1000;
     const unit = unitRaw.toUpperCase();
     items.push({
@@ -393,20 +483,22 @@ function parseUnsafe(text: string, options: { today: Date; qrAccessKey?: string 
     });
     itemCents.push(totalC);
     if (!consistent) itemWarnings.push(RECEIPT_WARNINGS.W_ITEM_LINE(items.length));
+    return true;
   };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!line || line.length > MAX_LINE_CHARS) continue;
     const one = ITEM_LINE_RE.exec(line);
     if (one) {
-      addItem(one[1], one[2], one[3], one[4], one[5]);
+      if (addItem(one[1], one[2], one[3], one[4], one[5])) itemLineIdx.add(i);
       continue;
     }
     const next = lines[i + 1];
     if (next && next.length <= MAX_LINE_CHARS && !/\d,\d{2}/.test(line)) {
       const two = ITEM_SECOND_LINE_RE.exec(next);
-      if (two) {
-        addItem(line, two[1], two[2], two[3], two[4]);
+      if (two && addItem(line, two[1], two[2], two[3], two[4])) {
+        itemLineIdx.add(i);
+        itemLineIdx.add(i + 1);
         i++;
       }
     }
@@ -414,7 +506,10 @@ function parseUnsafe(text: string, options: { today: Date; qrAccessKey?: string 
 
   // Total: candidatos rotulados, sem linhas de quantidade, desconto, troco etc.
   const candidates = new Set<number>();
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Linha de item nunca e total (ex.: produto "TOTAL CLEAN"); linha gigante nao e linha de cupom.
+    if (itemLineIdx.has(i) || line.length > MAX_LINE_CHARS) continue;
     if (!TOTAL_LABEL_RE.test(line) || TOTAL_SKIP_RE.test(line)) continue;
     let last: number | null = null;
     for (const m of line.matchAll(MONEY_IN_LINE_RE)) {
