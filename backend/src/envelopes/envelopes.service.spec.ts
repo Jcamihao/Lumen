@@ -1,5 +1,6 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { EnvelopesService } from './envelopes.service';
+import { EnvelopeMonthChangedError, EnvelopeWriteUncertainError } from './conversation-write.types';
 import { utcDate } from '../recurring-transactions/recurrence.util';
 
 const decimal = (value: number) => ({ toString: () => String(value), valueOf: () => value });
@@ -27,7 +28,8 @@ describe('EnvelopesService', () => {
     // no padrao por engano, ja que null e undefined sao ambos nulos por ??.
     const envelopeOrDefault = 'envelope' in options ? options.envelope : stored();
     const topUpState = [...(options.topUps ?? [])];
-    const prisma = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const prisma: any = {
       envelope: {
         findMany: jest.fn().mockResolvedValue([envelopeOrDefault]),
         findFirst: jest.fn().mockResolvedValue(envelopeOrDefault),
@@ -60,6 +62,10 @@ describe('EnvelopesService', () => {
         aggregate: jest.fn().mockResolvedValue({ _sum: { amount: options.spent ?? null } }),
       },
     };
+    // Transação interativa em memória: o callback recebe o mesmo cliente fake.
+    Object.assign(prisma, {
+      $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
+    });
     const lifeEngine = { touchUserData: jest.fn().mockResolvedValue(undefined) };
     const entitlements = { assertCanCreate: jest.fn().mockResolvedValue(undefined) };
     const service = new EnvelopesService(prisma as any, lifeEngine as any, entitlements as any);
@@ -334,6 +340,200 @@ describe('EnvelopesService', () => {
       await expect(
         service.create('user-1', { name: 'Gasolina', color: '#000', monthlyAmount: 700 } as any),
       ).rejects.toThrow('conexao caiu');
+    });
+  });
+
+  describe('createForConversation (recibo do bot, mesma gravação da tela)', () => {
+    const dto = { name: 'Gasolina', color: '#f18f01', monthlyAmount: 400 };
+    // 15/11/2026 UTC: provisão do mês 2026-11-01.
+    beforeEach(() => jest.useFakeTimers({ now: new Date('2026-11-15T12:00:00.000Z') }));
+    afterEach(() => jest.useRealTimers());
+
+    it('cria envelope e provisão do mês UTC na mesma transação e devolve o recibo', async () => {
+      const { service, prisma } = build();
+
+      const receipt = await service.createForConversation('user-1', dto, '2026-11-01');
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.envelopeTopUp.create).toHaveBeenCalledWith({
+        data: { envelopeId: 'env-1', month: utcDate(2026, 10, 1), amount: expect.anything() },
+      });
+      expect(receipt).toEqual({
+        id: 'env-1',
+        name: 'Gasolina',
+        monthlyCents: 40000,
+        provisionMonth: '2026-11-01',
+        refreshPending: false,
+      });
+    });
+
+    it('mês mudou desde a exibição: recusa sem criar nada e informa o mês atual', async () => {
+      const { service, prisma } = build();
+
+      const error = await service.createForConversation('user-1', dto, '2026-10-01').catch((e) => e);
+
+      expect(error).toBeInstanceOf(EnvelopeMonthChangedError);
+      expect(error.provisionMonth).toBe('2026-11-01');
+      expect(prisma.envelope.create).not.toHaveBeenCalled();
+    });
+
+    it('falha na provisão inicial sobe como erro comprovado (não vira resultado desconhecido)', async () => {
+      const { service, prisma } = build();
+      prisma.envelopeTopUp.create.mockRejectedValueOnce(new Error('falha na provisao'));
+
+      const error = await service.createForConversation('user-1', dto, '2026-11-01').catch((e) => e);
+
+      expect(error.message).toBe('falha na provisao');
+      expect(error).not.toBeInstanceOf(EnvelopeWriteUncertainError);
+    });
+
+    it('falha de confirmação do commit depois do callback vira resultado desconhecido', async () => {
+      const { service, prisma } = build();
+      prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+        await fn(prisma);
+        throw new Error('conexao perdida no commit');
+      });
+
+      await expect(service.createForConversation('user-1', dto, '2026-11-01')).rejects.toBeInstanceOf(
+        EnvelopeWriteUncertainError,
+      );
+    });
+
+    it('erro dentro do callback antes do fim é comprovado como não gravado', async () => {
+      const { service, prisma } = build();
+      prisma.envelope.create.mockRejectedValueOnce(new Error('antes do fim'));
+
+      const error = await service.createForConversation('user-1', dto, '2026-11-01').catch((e) => e);
+
+      expect(error).not.toBeInstanceOf(EnvelopeWriteUncertainError);
+      expect(prisma.envelopeTopUp.create).not.toHaveBeenCalled();
+    });
+
+    it('envelope e provisão usam o cliente da transação, nunca o cliente global', async () => {
+      const { service, prisma } = build();
+      const tx = {
+        envelope: {
+          create: jest.fn(async ({ data }: any) => ({ id: 'env-tx', name: data.name, monthlyAmount: data.monthlyAmount })),
+        },
+        envelopeTopUp: { create: jest.fn(async () => ({})) },
+      };
+      prisma.$transaction.mockImplementationOnce(async (fn: (client: unknown) => Promise<unknown>) => fn(tx));
+
+      const receipt = await service.createForConversation('user-1', dto, '2026-11-01');
+
+      expect(receipt.id).toBe('env-tx');
+      expect(tx.envelope.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ userId: 'user-1', name: 'Gasolina', color: '#f18f01' }),
+      });
+      expect(tx.envelopeTopUp.create).toHaveBeenCalledWith({
+        data: { envelopeId: 'env-tx', month: utcDate(2026, 10, 1), amount: expect.anything() },
+      });
+      expect(prisma.envelope.create).not.toHaveBeenCalled();
+      expect(prisma.envelopeTopUp.create).not.toHaveBeenCalled();
+    });
+
+    it('falha na provisão inicial descarta o envelope junto: nada é confirmado fora da transação', async () => {
+      const { service, prisma } = build();
+      const committed: string[] = [];
+      prisma.$transaction.mockImplementationOnce(async (fn: (client: unknown) => Promise<unknown>) => {
+        const staged: string[] = [];
+        const tx = {
+          envelope: {
+            create: jest.fn(async ({ data }: any) => {
+              staged.push('envelope');
+              return { id: 'env-tx', name: data.name, monthlyAmount: data.monthlyAmount };
+            }),
+          },
+          envelopeTopUp: { create: jest.fn(async () => { throw new Error('falha na provisao'); }) },
+        };
+        const result = await fn(tx); // rejeita: o commit abaixo nunca roda (rollback)
+        committed.push(...staged);
+        return result;
+      });
+
+      await expect(service.createForConversation('user-1', dto, '2026-11-01')).rejects.toThrow('falha na provisao');
+
+      expect(committed).toEqual([]);
+      expect(prisma.envelope.create).not.toHaveBeenCalled();
+    });
+
+    it('o recibo não depende de agregação posterior: leituras de saldo falhando não afetam a reserva', async () => {
+      const { service, prisma } = build();
+      prisma.envelopeTopUp.aggregate.mockRejectedValue(new Error('agregacao'));
+      prisma.transaction.aggregate.mockRejectedValue(new Error('agregacao'));
+
+      const receipt = await service.createForConversation('user-1', dto, '2026-11-01');
+
+      expect(receipt).toMatchObject({ id: 'env-1', monthlyCents: 40000, refreshPending: false });
+      expect(prisma.envelopeTopUp.aggregate).not.toHaveBeenCalled();
+      expect(prisma.transaction.aggregate).not.toHaveBeenCalled();
+    });
+
+    it('nome já usado pelo mesmo dono: mensagem conhecida, não o erro cru', async () => {
+      const { service, prisma } = build();
+      prisma.envelope.create.mockRejectedValueOnce(Object.assign(new Error('unique'), { code: 'P2002' }));
+
+      await expect(service.createForConversation('user-1', dto, '2026-11-01')).rejects.toThrow(
+        'Você já tem um envelope com este nome.',
+      );
+      expect(prisma.envelopeTopUp.create).not.toHaveBeenCalled();
+    });
+
+    it('limite do plano é checado antes de abrir a transação', async () => {
+      const { service, prisma, entitlements } = build();
+      entitlements.assertCanCreate.mockRejectedValueOnce(new BadRequestException('limite'));
+
+      await expect(service.createForConversation('user-1', dto, '2026-11-01')).rejects.toThrow('limite');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('valida no domínio: nome de 1 ou 61 caracteres, valor zero e decimais demais são recusados', async () => {
+      const { service, prisma } = build();
+
+      await expect(service.createForConversation('user-1', { ...dto, name: 'a' }, '2026-11-01')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      await expect(
+        service.createForConversation('user-1', { ...dto, name: 'x'.repeat(61) }, '2026-11-01'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.createForConversation('user-1', { ...dto, monthlyAmount: 0 }, '2026-11-01')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      await expect(
+        service.createForConversation('user-1', { ...dto, monthlyAmount: 1.005 }, '2026-11-01'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('nome é aparado e tem 2 ou 60 caracteres aceitos', async () => {
+      // Um build por caso: o fake de provisão guarda o mês e não aceita o segundo do mesmo envelope.
+      const trimmed = await build().service.createForConversation('user-1', { ...dto, name: '  Gas  ' }, '2026-11-01');
+      const longest = await build().service.createForConversation('user-1', { ...dto, name: 'x'.repeat(60) }, '2026-11-01');
+
+      expect(trimmed.name).toBe('Gas');
+      expect(longest.name).toHaveLength(60);
+    });
+
+    it('falha ao atualizar dados derivados não desfaz a reserva: refreshPending true', async () => {
+      const { service, lifeEngine } = build();
+      lifeEngine.touchUserData.mockRejectedValueOnce(new Error('insights'));
+
+      const receipt = await service.createForConversation('user-1', dto, '2026-11-01');
+
+      expect(receipt.id).toBe('env-1');
+      expect(receipt.refreshPending).toBe(true);
+    });
+  });
+
+  describe('create (tela) mantém o formato da resposta', () => {
+    it('devolve os campos de sempre', async () => {
+      const { service } = build();
+
+      const response = await service.create('user-1', { name: 'Gasolina', color: '#f18f01', monthlyAmount: 400 });
+
+      expect(Object.keys(response).sort()).toEqual(
+        ['available', 'color', 'deposited', 'icon', 'id', 'isActive', 'monthlyAmount', 'name', 'spent'].sort(),
+      );
     });
   });
 });

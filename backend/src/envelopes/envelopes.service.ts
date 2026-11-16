@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Envelope, Prisma, TransactionType } from '@prisma/client';
 import { EntitlementsService } from '../billing/entitlements.service';
 import { LifeEngineService } from '../life-engine/life-engine.service';
@@ -6,12 +6,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateEnvelopeDto } from './dto/create-envelope.dto';
 import { UpdateEnvelopeDto } from './dto/update-envelope.dto';
 import { monthsBetween, monthStart } from './envelope.util';
+import { EnvelopeMonthChangedError, EnvelopeWriteReceipt, EnvelopeWriteUncertainError } from './conversation-write.types';
 
 /** Meses seguidos sem abrir o app que ainda geram deposito numa unica leitura. */
 export const MAX_TOPUP_CATCH_UP = 36;
 
 @Injectable()
 export class EnvelopesService {
+  private readonly logger = new Logger(EnvelopesService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly lifeEngineService: LifeEngineService,
@@ -34,25 +36,69 @@ export class EnvelopesService {
   }
 
   async create(userId: string, dto: CreateEnvelopeDto) {
+    const { envelope, now } = await this.persistEnvelope(userId, dto);
+    await this.refreshAfterCreate(userId);
+    return this.toResponse(envelope, now);
+  }
+
+  async createForConversation(
+    userId: string,
+    dto: CreateEnvelopeDto,
+    expectedProvisionMonth: string,
+  ): Promise<EnvelopeWriteReceipt> {
+    const { envelope, now } = await this.persistEnvelope(userId, dto, expectedProvisionMonth);
+    const refreshPending = await this.refreshAfterCreate(userId);
+    return {
+      id: envelope.id,
+      name: envelope.name,
+      monthlyCents: Math.round(Number(envelope.monthlyAmount) * 100),
+      provisionMonth: monthStart(now).toISOString().slice(0, 10),
+      refreshPending,
+    };
+  }
+
+  /** Núcleo compartilhado com a tela: envelope e provisão inicial tornam-se visíveis juntos. */
+  private async persistEnvelope(userId: string, dto: CreateEnvelopeDto, expectedMonth?: string) {
+    const name = typeof dto.name === 'string' ? dto.name.trim() : '';
+    if (Array.from(name).length < 2 || Array.from(name).length > 60 || typeof dto.color !== 'string') {
+      throw new BadRequestException('Informe um nome de reserva de 2 a 60 caracteres e uma cor.');
+    }
+    if (!Number.isFinite(dto.monthlyAmount) || dto.monthlyAmount < 0.01 ||
+      dto.monthlyAmount > 9_999_999_999 || new Prisma.Decimal(dto.monthlyAmount).decimalPlaces() > 2) {
+      throw new BadRequestException('Informe um valor mensal positivo com até duas casas decimais.');
+    }
     await this.entitlements.assertCanCreate(userId, 'envelopes');
-
-    const envelope = await this.prisma.envelope
-      .create({
-        data: {
-          userId,
-          name: dto.name.trim(),
-          color: dto.color,
-          icon: dto.icon,
-          monthlyAmount: new Prisma.Decimal(dto.monthlyAmount),
-        },
-      })
-      .catch((error) => {
-        throw this.friendlyDuplicateNameError(error);
+    let callbackFinished = false;
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const month = monthStart(now);
+        if (expectedMonth !== undefined && month.toISOString().slice(0, 10) !== expectedMonth) {
+          throw new EnvelopeMonthChangedError(month.toISOString().slice(0, 10));
+        }
+        const envelope = await tx.envelope.create({
+          data: { userId, name, color: dto.color, icon: dto.icon, monthlyAmount: new Prisma.Decimal(dto.monthlyAmount) },
+        }).catch((error) => { throw this.friendlyDuplicateNameError(error); });
+        await tx.envelopeTopUp.create({
+          data: { envelopeId: envelope.id, month, amount: envelope.monthlyAmount },
+        });
+        callbackFinished = true;
+        return { envelope, now };
       });
+    } catch (error) {
+      if (callbackFinished) throw new EnvelopeWriteUncertainError();
+      throw error;
+    }
+  }
 
-    await this.ensureTopUps(envelope, new Date());
-    await this.lifeEngineService.touchUserData(userId);
-    return this.toResponse(envelope, new Date());
+  private async refreshAfterCreate(userId: string): Promise<boolean> {
+    try {
+      await this.lifeEngineService.touchUserData(userId);
+      return false;
+    } catch (error) {
+      this.logger.warn({ operation: 'create.refresh', errorName: error instanceof Error ? error.name : 'Unknown' });
+      return true;
+    }
   }
 
   async update(userId: string, id: string, dto: UpdateEnvelopeDto) {

@@ -1,5 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { CreditCycleService } from './credit-cycle.service';
+import { CreditLimitChangedError, CreditLimitWriteUncertainError } from './conversation-write.types';
+import { BadRequestException } from '@nestjs/common';
 
 const decimal = (value: number) => new Prisma.Decimal(value);
 
@@ -13,7 +15,8 @@ describe('CreditCycleService', () => {
     spentSum?: number | null;
     timezone?: string;
   } = {}) => {
-    const prisma = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const prisma: any = {
       user: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({
           timezone: options.timezone ?? 'America/Sao_Paulo',
@@ -32,6 +35,11 @@ describe('CreditCycleService', () => {
         aggregate: jest.fn().mockResolvedValue({ _sum: { amount: options.spentSum ?? null } }),
       },
     };
+    // Transação interativa em memória: o callback recebe o mesmo cliente fake.
+    Object.assign(prisma, {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
+    });
     const lifeEngine = { touchUserData: jest.fn().mockResolvedValue(undefined) };
     const service = new CreditCycleService(prisma as any, lifeEngine as any);
 
@@ -208,6 +216,186 @@ describe('CreditCycleService', () => {
       const result = await service.setCeiling('user-1', { ceiling: 1600 });
 
       expect(result.ceiling).toBe(1600);
+    });
+  });
+
+  describe('setCeilingForConversation (recibo do bot, bloqueio do dono)', () => {
+    // Ciclo com fechamento no dia 5: em 15/11/2026 o ciclo é 06/11/2026 a 05/12/2026.
+    const expected = {
+      cycleStart: '2026-11-06',
+      cycleEnd: '2026-12-05',
+      previousCeilingCents: null,
+      countAllPayments: false,
+    };
+    beforeEach(() => jest.useFakeTimers({ now: new Date('2026-11-15T12:00:00.000Z') }));
+    afterEach(() => jest.useRealTimers());
+
+    it('bloqueia a linha do dono antes de ler o ciclo, grava o teto e devolve o recibo', async () => {
+      const { service, prisma } = build();
+      prisma.creditCycleCeiling.upsert.mockResolvedValueOnce({ id: 'ceil-1', ceiling: decimal(5000) });
+
+      const receipt = await service.setCeilingForConversation('user-1', { ceiling: 5000 }, expected);
+
+      expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.user.findUniqueOrThrow.mock.invocationCallOrder[0],
+      );
+      expect(prisma.creditCycleCeiling.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId_closingDate: { userId: 'user-1', closingDate: new Date('2026-12-05T00:00:00.000Z') } },
+        }),
+      );
+      expect(receipt).toEqual({
+        id: 'ceil-1',
+        ceilingCents: 500000,
+        cycleStart: '2026-11-06',
+        cycleEnd: '2026-12-05',
+        refreshPending: false,
+      });
+    });
+
+    it('escopo do dono: bloqueio, leitura do usuário, leitura e escrita do teto usam só o userId autenticado', async () => {
+      const { service, prisma } = build();
+      prisma.creditCycleCeiling.upsert.mockResolvedValueOnce({ id: 'ceil-1', ceiling: decimal(5000) });
+      const closingDate = new Date('2026-12-05T00:00:00.000Z');
+
+      await service.setCeilingForConversation('user-1', { ceiling: 5000 }, expected);
+
+      const [strings, ...values] = prisma.$queryRaw.mock.calls[0];
+      expect(strings.join('?')).toBe('SELECT "id" FROM "User" WHERE "id" = ? FOR NO KEY UPDATE');
+      expect(values).toEqual(['user-1']);
+      expect(prisma.user.findUniqueOrThrow).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'user-1' } }));
+      expect(prisma.creditCycleCeiling.findUnique).toHaveBeenCalledWith({
+        where: { userId_closingDate: { userId: 'user-1', closingDate } },
+      });
+      expect(prisma.creditCycleCeiling.upsert).toHaveBeenCalledWith({
+        where: { userId_closingDate: { userId: 'user-1', closingDate } },
+        create: { userId: 'user-1', closingDate, ceiling: decimal(5000) },
+        update: { ceiling: decimal(5000) },
+      });
+    });
+
+    it('só o início do ciclo mudou: não grava', async () => {
+      const { service, prisma } = build();
+
+      const error = await service
+        .setCeilingForConversation('user-1', { ceiling: 5000 }, { ...expected, cycleStart: '2026-11-05' })
+        .catch((e) => e);
+
+      expect(error).toBeInstanceOf(CreditLimitChangedError);
+      expect(prisma.creditCycleCeiling.upsert).not.toHaveBeenCalled();
+    });
+
+    it('só o fim do ciclo mudou: não grava', async () => {
+      const { service, prisma } = build();
+
+      const error = await service
+        .setCeilingForConversation('user-1', { ceiling: 5000 }, { ...expected, cycleEnd: '2026-12-04' })
+        .catch((e) => e);
+
+      expect(error).toBeInstanceOf(CreditLimitChangedError);
+      expect(prisma.creditCycleCeiling.upsert).not.toHaveBeenCalled();
+    });
+
+    it('o recibo não depende de leitura posterior: gasto do ciclo falhando não afeta o limite gravado', async () => {
+      const { service, prisma } = build();
+      prisma.creditCycleCeiling.upsert.mockResolvedValueOnce({ id: 'ceil-1', ceiling: decimal(5000) });
+      prisma.transaction.aggregate.mockRejectedValue(new Error('agregacao'));
+
+      const receipt = await service.setCeilingForConversation('user-1', { ceiling: 5000 }, expected);
+
+      expect(receipt).toMatchObject({ id: 'ceil-1', ceilingCents: 500000, refreshPending: false });
+      expect(prisma.transaction.aggregate).not.toHaveBeenCalled();
+    });
+
+    // O snapshot observado na exibição (`expected`) é diferente do que o banco tem agora.
+    it('ciclo mudou desde a exibição: não grava e devolve o ciclo atual', async () => {
+      const { service, prisma } = build();
+
+      const error = await service
+        .setCeilingForConversation('user-1', { ceiling: 5000 }, { ...expected, cycleStart: '2026-10-06', cycleEnd: '2026-11-05' })
+        .catch((e) => e);
+
+      expect(error).toBeInstanceOf(CreditLimitChangedError);
+      expect(error.current).toMatchObject({ cycleStart: '2026-11-06', cycleEnd: '2026-12-05' });
+      expect(prisma.creditCycleCeiling.upsert).not.toHaveBeenCalled();
+    });
+
+    it('teto vigente mudou (tela gravou antes): não grava', async () => {
+      const { service, prisma } = build({ ceilingRow: { ceiling: decimal(2000) } });
+
+      const error = await service.setCeilingForConversation('user-1', { ceiling: 5000 }, expected).catch((e) => e);
+
+      expect(error).toBeInstanceOf(CreditLimitChangedError);
+      expect(error.current.previousCeilingCents).toBe(200000);
+      expect(prisma.creditCycleCeiling.upsert).not.toHaveBeenCalled();
+    });
+
+    it('opção de todas as formas mudou na tela: não grava', async () => {
+      const { service, prisma } = build({ countAllPayments: true });
+
+      const error = await service.setCeilingForConversation('user-1', { ceiling: 5000 }, expected).catch((e) => e);
+
+      expect(error).toBeInstanceOf(CreditLimitChangedError);
+      expect(error.current.countAllPayments).toBe(true);
+      expect(prisma.creditCycleCeiling.upsert).not.toHaveBeenCalled();
+    });
+
+    it('falha de commit depois do callback vira resultado desconhecido', async () => {
+      const { service, prisma } = build();
+      prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+        await fn(prisma);
+        throw new Error('conexao perdida');
+      });
+
+      await expect(service.setCeilingForConversation('user-1', { ceiling: 5000 }, expected)).rejects.toBeInstanceOf(
+        CreditLimitWriteUncertainError,
+      );
+    });
+
+    it('falha antes do upsert é erro comprovado, sem virar resultado desconhecido', async () => {
+      const { service, prisma } = build();
+      prisma.creditCycleCeiling.upsert.mockRejectedValueOnce(new Error('falha no upsert'));
+
+      const error = await service.setCeilingForConversation('user-1', { ceiling: 5000 }, expected).catch((e) => e);
+
+      expect(error.message).toBe('falha no upsert');
+      expect(error).not.toBeInstanceOf(CreditLimitWriteUncertainError);
+    });
+
+    it('valor inválido é recusado antes de abrir a transação', async () => {
+      const { service, prisma } = build();
+
+      for (const ceiling of [0, 0.001, 10_000_000_000]) {
+        await expect(service.setCeilingForConversation('user-1', { ceiling }, expected)).rejects.toBeInstanceOf(
+          BadRequestException,
+        );
+      }
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('falha ao atualizar dados derivados não desfaz o teto: refreshPending true', async () => {
+      const { service, prisma, lifeEngine } = build();
+      prisma.creditCycleCeiling.upsert.mockResolvedValueOnce({ id: 'ceil-2', ceiling: decimal(5000) });
+      lifeEngine.touchUserData.mockRejectedValueOnce(new Error('insights'));
+
+      const receipt = await service.setCeilingForConversation('user-1', { ceiling: 5000 }, expected);
+
+      expect(receipt.refreshPending).toBe(true);
+      expect(receipt.ceilingCents).toBe(500000);
+    });
+  });
+
+  describe('setCeiling (tela) usa o mesmo núcleo', () => {
+    beforeEach(() => jest.useFakeTimers({ now: new Date('2026-11-15T12:00:00.000Z') }));
+    afterEach(() => jest.useRealTimers());
+
+    it('grava dentro da transação e responde o estado atual', async () => {
+      const { service, prisma } = build({ ceilingRow: { ceiling: decimal(5000) } });
+
+      const response = await service.setCeiling('user-1', { ceiling: 5000 });
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(response.ceiling).toBe(5000);
     });
   });
 });
