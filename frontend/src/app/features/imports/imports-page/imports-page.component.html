@@ -209,7 +209,7 @@
               <div class="proto-list">
                 <article class="proto-list-item" *ngFor="let bucket of receipt.categoryBreakdown">
                   <div class="proto-list-item__top">
-                    <strong>{{ bucket.label }}</strong>
+                    <strong>{{ bucketLabel(bucket.label) }}</strong>
                     <span class="proto-tag">{{ bucket.itemCount }} item(ns)</span>
                   </div>
                   <p>{{ previewAmount(bucket.totalAmount) }}</p>
@@ -249,7 +249,7 @@
               <span class="proto-tag">{{ item.categoryHint || 'Sem sugestão' }}</span>
             </div>
 
-            <p>Qtd. {{ item.quantity }} · {{ item.unitPrice !== null ? previewAmount(item.unitPrice) : 'Sem valor unitário' }}</p>
+            <p>Qtd. {{ item.quantity | number: '1.0-3' }} · {{ item.unitPrice !== null ? previewAmount(item.unitPrice) : 'Sem valor unitário' }}</p>
 
             <div
               class="imports-item-comparison"

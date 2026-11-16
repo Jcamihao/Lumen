@@ -517,6 +517,28 @@ describe("ImportsPageComponent — nota fiscal sem IA", () => {
       expect(text()).toContain("Mercearia");
     });
 
+    it("quantidade de peso aparece com vírgula, não como milhar", () => {
+      api.previewReceiptImport.and.returnValue(
+        of(receipt({ items: [{ description: "Frango", quantity: 1.331, unitPrice: 17.5, totalPrice: 23.29 }], totalAmount: 23.29 })),
+      );
+      create();
+      selectGroupAndUpload();
+
+      expect(text()).toContain("Qtd. 1,331");
+      expect(text()).not.toContain("Qtd. 1.331");
+    });
+
+    it("rótulo 'Sem sugestao' do backend aparece com acento", () => {
+      api.previewReceiptImport.and.returnValue(
+        of(receipt({ categoryBreakdown: [{ label: "Sem sugestao", totalAmount: 10, itemCount: 1 }] })),
+      );
+      create();
+      selectGroupAndUpload();
+
+      expect(text()).toContain("Sem sugestão");
+      expect(text()).not.toContain("Sem sugestao");
+    });
+
     it("sem sinais nem quebra por categoria o Resumo da compra fica escondido", () => {
       create();
       selectGroupAndUpload();

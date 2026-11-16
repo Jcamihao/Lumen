@@ -143,6 +143,12 @@
   gap: 1rem;
 }
 
+// Em 360 px o rótulo da categoria e a etiqueta de itens não cabem na mesma linha
+// ("Alimentacao" quebrava no meio da palavra); a etiqueta desce em vez disso.
+.imports-preview-stack .proto-list-item__top {
+  flex-wrap: wrap;
+}
+
 .import-error {
   margin: 0;
   color: var(--danger);

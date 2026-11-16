@@ -421,6 +421,11 @@ export class ImportsPageComponent {
     return 'accent';
   }
 
+  // O backend manda o rótulo sem acento; a tela mostra com acento, como no resto da nota.
+  protected bucketLabel(label: string) {
+    return label === 'Sem sugestao' ? 'Sem sugestão' : label;
+  }
+
   protected merchantLabel(merchantName: string | null) {
     return merchantName || 'Estabelecimento sem nome';
   }
