@@ -8,7 +8,11 @@ const truth = JSON.parse(fs.readFileSync(path.join(FIXTURES, 'truth.json'), 'utf
 const n1 = truth[0];
 const TODAY = new Date(Date.UTC(2026, 10, 16));
 
-jest.setTimeout(120_000);
+// OCR real em máquina saturada (suíte inteira com vários workers) chegou a passar de 90 s e
+// derrubava o teste por tempo. Os prazos abaixo são folgados de propósito; a regra de prazo
+// é testada com 1 ms.
+jest.setTimeout(300_000);
+const PATIENT_OCR_MS = 250_000;
 
 describe('decodeQr', () => {
   it('le o QR da nota sintetica e a chave bate com o gabarito', async () => {
@@ -44,7 +48,7 @@ describe('OcrPool', () => {
 
   it('reconhece o texto da nota com VALOR TOTAL e o total do gabarito', async () => {
     const png = fs.readFileSync(path.join(FIXTURES, 'nota-n1.png'));
-    const { text, confidence } = await pool.recognize(png, 90_000);
+    const { text, confidence } = await pool.recognize(png, PATIENT_OCR_MS);
     const parsed = parseReceiptText(text, { today: TODAY });
 
     expect(text).toContain('VALOR TOTAL');
@@ -54,13 +58,13 @@ describe('OcrPool', () => {
 
   it('com prazo de 1 ms rejeita, tira o worker do pool e a proxima chamada funciona', async () => {
     const png = fs.readFileSync(path.join(FIXTURES, 'nota-n1.png'));
-    await pool.recognize(png, 90_000);
+    await pool.recognize(png, PATIENT_OCR_MS);
     expect(pool.size).toBe(1);
 
     await expect(pool.recognize(png, 1)).rejects.toBeInstanceOf(OcrTimeoutError);
     expect(pool.size).toBe(0);
 
-    const again = await pool.recognize(png, 90_000);
+    const again = await pool.recognize(png, PATIENT_OCR_MS);
     expect(again.text).toContain('VALOR TOTAL');
     expect(pool.size).toBe(1);
   });

@@ -17,7 +17,7 @@ const n1 = truth[0];
 const n2 = truth[1];
 const TODAY = new Date(Date.UTC(2026, 10, 16));
 
-jest.setTimeout(120_000);
+jest.setTimeout(300_000);
 
 const money = (value: number) => value.toFixed(2).replace('.', ',');
 
@@ -269,6 +269,14 @@ describe('ReceiptExtractorService (leitores simulados)', () => {
       expect(error.getResponse()).toMatchObject({ message: RECEIPT_TIMEOUT_MESSAGE });
     });
 
+    it('o prazo do OCR em producao e de 30 s', async () => {
+      await service.extract(imageInput());
+
+      const timeoutMs = (service.readers.recognize as jest.Mock).mock.calls[0][1];
+      expect(timeoutMs).toBeLessThanOrEqual(30_000);
+      expect(timeoutMs).toBeGreaterThan(29_000);
+    });
+
     it('PDF com texto: method PDF_TEXT, ocrConfidence null, sem QR nem OCR', async () => {
       const result = await service.extract(pdfInput());
 
@@ -343,12 +351,25 @@ describe('ReceiptExtractorService (bibliotecas reais, nota sintetica)', () => {
 
   beforeAll(() => {
     service = new ReceiptExtractorService(pool);
+    // Com a máquina saturada (suíte inteira, vários workers) o OCR real pode passar de 30 s e o
+    // teste falhava por tempo, não por regra. O limite de 30 s do código é testado com leitor simulado.
+    service.ocrBudgetMs = 200_000;
   });
 
   afterAll(() => pool.onModuleDestroy());
 
   it('nota-n1.png: total, data, CNPJ e chave iguais ao gabarito, sem criar arquivo em disco', async () => {
-    const before = fs.readdirSync(os.tmpdir()).sort();
+    // Listar o /tmp inteiro antes e depois falhava quando outro processo da máquina (ou outro
+    // worker do jest) criava um arquivo durante a leitura. Em vez disso, o os.tmpdir() do código
+    // aponta para uma pasta só deste teste e as escritas em disco feitas pelo código são espiadas.
+    const privateTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-leitura-'));
+    const tmpdirSpy = jest.spyOn(os, 'tmpdir').mockReturnValue(privateTmp);
+    const writeSpies = [
+      jest.spyOn(fs, 'writeFileSync'),
+      jest.spyOn(fs, 'createWriteStream'),
+      jest.spyOn(fs, 'appendFileSync'),
+      jest.spyOn(fs.promises, 'writeFile'),
+    ];
     const logSpy = jest.spyOn(Logger.prototype, 'log');
     try {
       const result = await service.extract({
@@ -366,12 +387,14 @@ describe('ReceiptExtractorService (bibliotecas reais, nota sintetica)', () => {
       expect(result.extraction.method).toBe('OCR');
       expect(result.extraction.qrDetected).toBe(true);
       expect(logged).not.toContain('ARROZ');
+      expect(fs.readdirSync(privateTmp)).toEqual([]);
+      writeSpies.forEach((spy) => expect(spy).not.toHaveBeenCalled());
     } finally {
       logSpy.mockRestore();
+      writeSpies.forEach((spy) => spy.mockRestore());
+      tmpdirSpy.mockRestore();
+      fs.rmSync(privateTmp, { recursive: true, force: true });
     }
-
-    const after = fs.readdirSync(os.tmpdir()).sort();
-    expect(after).toEqual(before);
   });
 
   it('nota-n1-jpeg.jpg: ou acerta o total, ou tem aviso, ou e recusada (sem erro silencioso)', async () => {

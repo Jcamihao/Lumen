@@ -62,6 +62,10 @@ export class ReceiptExtractorService {
   // Leitores ficam em um campo para os testes trocarem por simulados.
   readers: ReceiptReaders;
 
+  // Prazo do OCR (as duas passadas). Em produção fica em 30 s; só os testes com OCR real
+  // o aumentam, para não falharem quando a máquina está saturada por outros testes.
+  ocrBudgetMs = OCR_BUDGET_MS;
+
   constructor(ocrPool: OcrPool) {
     this.readers = {
       decodeQr,
@@ -137,7 +141,7 @@ export class ReceiptExtractorService {
     const qrAccessKey = qrRaw ? extractAccessKeyFromQr(qrRaw) : null;
     const qrCodeText = qrRaw ? sanitizeQrUrl(qrRaw) : null;
 
-    const deadline = Date.now() + OCR_BUDGET_MS;
+    const deadline = Date.now() + this.ocrBudgetMs;
     const first = await this.runOcr(rotated, qrAccessKey, input.today, deadline);
 
     let chosen = first;
