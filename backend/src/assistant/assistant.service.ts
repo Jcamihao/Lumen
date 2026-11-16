@@ -10,6 +10,7 @@ import { CreateGoalDto } from "../goals/dto/create-goal.dto";
 import { GoalsService } from "../goals/goals.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateReminderDto } from "../reminders/dto/create-reminder.dto";
+import { localToday, utcDate } from "../recurring-transactions/recurrence.util";
 import { RemindersService } from "../reminders/reminders.service";
 import { CreateTaskDto } from "../tasks/dto/create-task.dto";
 import { TasksService } from "../tasks/tasks.service";
@@ -1029,8 +1030,18 @@ export class AssistantService {
    * usuario (em vez de "8 meses fixo" pra qualquer divida).
    */
   private async analyzeSpending(userId: string): Promise<SpendingAnalysis> {
-    const now = new Date();
-    const since = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    // Lancamentos ficam gravados como data pura a meia-noite UTC. Por isso o
+    // corte e o indice do mes usam getters UTC, e so o "mes atual" depende do
+    // fuso do usuario (mesma convencao do dashboard). Usar o fuso do processo
+    // exclui ou desloca de mes tudo que cai no dia 1 quando o servidor nao
+    // esta em UTC.
+    const { timezone } = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { timezone: true },
+    });
+    const today = localToday(new Date(), timezone ?? "America/Sao_Paulo");
+    const currentMonthNumber = today.getUTCFullYear() * 12 + today.getUTCMonth();
+    const since = utcDate(today.getUTCFullYear(), today.getUTCMonth() - 2, 1);
 
     const transactions = await this.prisma.transaction.findMany({
       where: {
@@ -1047,7 +1058,7 @@ export class AssistantService {
     });
 
     const monthIndexOf = (date: Date) =>
-      (now.getFullYear() - date.getFullYear()) * 12 + (now.getMonth() - date.getMonth());
+      currentMonthNumber - (date.getUTCFullYear() * 12 + date.getUTCMonth());
 
     // Sobra media mensal real (entradas - saidas - transferencias), mesma
     // convencao de sinal usada no resto do app (ForecastsService, saldo do

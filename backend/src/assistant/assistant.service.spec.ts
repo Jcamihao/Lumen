@@ -68,12 +68,14 @@ describe("AssistantService", () => {
       aiAssistantEnabled?: boolean;
       aiAssistantConsentAt?: Date | null;
       transactions?: unknown[];
+      timezone?: string;
     } = {},
   ) =>
     ({
       user: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({
           name: "Marina Costa",
+          timezone: overrides.timezone ?? "America/Sao_Paulo",
           privacyNoticeAcceptedAt:
             overrides.privacyNoticeAcceptedAt ??
             new Date("2026-03-26T12:00:00.000Z"),
@@ -423,6 +425,114 @@ describe("AssistantService", () => {
       const debtSim = response.simulations.find((sim) => sim.id === "debt-personalized");
       expect(debtSim?.title).toBe("Parcelamento em 3 meses");
       expect(debtSim?.monthlyDelta).toBe(-3500);
+    });
+
+    describe("meses da analise nao dependem do fuso do servidor", () => {
+      // Lancamentos sao gravados como data pura a meia-noite UTC. Rode este
+      // arquivo com TZ=UTC, TZ=America/Sao_Paulo e TZ=Asia/Tokyo.
+      beforeEach(() => {
+        jest.useFakeTimers();
+      });
+
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      const askDebt = async (
+        transactions: unknown[],
+        timezone: string,
+        now: string,
+      ) => {
+        jest.setSystemTime(new Date(now));
+        const prisma = buildPrismaService({
+          privacyNoticeAcceptedAt: null,
+          aiAssistantEnabled: false,
+          aiAssistantConsentAt: null,
+          transactions,
+          timezone,
+        });
+        const service = new AssistantService(
+          buildDashboardService(),
+          buildConfigService(),
+          prisma,
+          { create: jest.fn() } as any,
+          { create: jest.fn() } as any,
+          { create: jest.fn() } as any,
+          buildEntitlements(),
+        );
+        const response = await service.ask(
+          "user-1",
+          "Tenho uma dívida de R$ 9.000, como organizo isso?",
+        );
+
+        return { response, prisma };
+      };
+      const income = (date: string) => ({ type: "INCOME", amount: 3000, date, category: null });
+
+      it("lancamentos do dia 1 entram no mes certo e o corte e o dia 1 UTC", async () => {
+        const { response, prisma } = await askDebt(
+          [
+            income("2026-09-01T00:00:00.000Z"),
+            income("2026-10-01T00:00:00.000Z"),
+            income("2026-11-01T00:00:00.000Z"),
+          ],
+          "America/Sao_Paulo",
+          "2026-11-16T15:00:00.000Z",
+        );
+
+        expect(prisma.transaction.findMany.mock.calls[0][0].where.date.gte).toEqual(
+          new Date("2026-09-01T00:00:00.000Z"),
+        );
+        // 3 meses de 3.000: sobra media 3.000 -> 9.000 / 3.000 = 3 meses.
+        const debtSim = response.simulations.find((sim) => sim.id === "debt-personalized");
+        expect(debtSim?.title).toBe("Parcelamento em 3 meses");
+        expect(debtSim?.monthlyDelta).toBe(-3000);
+      });
+
+      it("o mes atual segue o fuso do usuario, nao o do servidor", async () => {
+        // 01/12 01:00Z = 30/11 22:00 em Sao Paulo: ainda e novembro.
+        const transactions = [
+          income("2026-09-05T00:00:00.000Z"),
+          income("2026-10-05T00:00:00.000Z"),
+          income("2026-11-05T00:00:00.000Z"),
+        ];
+        const saoPaulo = await askDebt(transactions, "America/Sao_Paulo", "2026-12-01T01:00:00.000Z");
+        expect(saoPaulo.prisma.transaction.findMany.mock.calls[0][0].where.date.gte).toEqual(
+          new Date("2026-09-01T00:00:00.000Z"),
+        );
+        expect(
+          saoPaulo.response.simulations.find((sim) => sim.id === "debt-personalized")?.monthlyDelta,
+        ).toBe(-3000);
+
+        // Em UTC o mesmo instante ja e dezembro: setembro sai da janela, a sobra
+        // media cai para 2.000 e a divida de 9.000 vira 5 parcelas de 1.800.
+        const utc = await askDebt(transactions, "UTC", "2026-12-01T01:00:00.000Z");
+        expect(utc.prisma.transaction.findMany.mock.calls[0][0].where.date.gte).toEqual(
+          new Date("2026-10-01T00:00:00.000Z"),
+        );
+        expect(
+          utc.response.simulations.find((sim) => sim.id === "debt-personalized")?.monthlyDelta,
+        ).toBe(-1800);
+      });
+
+      it("virada de ano: janela de 3 meses cruza dezembro", async () => {
+        const { response, prisma } = await askDebt(
+          [
+            income("2025-11-01T00:00:00.000Z"),
+            income("2025-12-01T00:00:00.000Z"),
+            income("2026-01-01T00:00:00.000Z"),
+          ],
+          "America/Sao_Paulo",
+          "2026-01-20T15:00:00.000Z",
+        );
+
+        expect(prisma.transaction.findMany.mock.calls[0][0].where.date.gte).toEqual(
+          new Date("2025-11-01T00:00:00.000Z"),
+        );
+        expect(
+          response.simulations.find((sim) => sim.id === "debt-personalized")?.monthlyDelta,
+        ).toBe(-3000);
+      });
     });
 
     it("falls back to the flat 10% cut and 8-month split without transaction history", async () => {
