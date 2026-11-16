@@ -1,6 +1,6 @@
 # Contrato do item 4: importar nota fiscal sem IA
 
-Data: 2026-11-16. Status: **proposta, aguardando aprovação do dono**. Nenhum código foi escrito. Branch de trabalho: `feature/importar-nota-fiscal` (base `master` em `bbd8b49`, tag `v1.6.0`).
+Data: 2026-11-16. Status: **aprovado pelo dono em 2026-11-16**. D1 (notas reais) segue sem resposta: a fase 4.0 começa com notas sintéticas. Decisões D2, D3, D5, D6 e D8 valem como recomendadas; D4 e D7 continuam abertas. Nenhum código de produção foi escrito. Branch de trabalho: `feature/importar-nota-fiscal` (base `master` em `bbd8b49`, tag `v1.6.0`).
 
 Fonte da ordem de trabalho: `docs/superpowers/specs/2026-11-14-assistente-manual-financas.md`, seção "Ordem de implementação", item 4 ("Trocar extração de nota por OCR/QR e conectar prévia/revisão ao roteador"), e a seção "Importação de nota sem LLM" do mesmo arquivo. Direção de produto: `docs/superpowers/plans/2026-11-14-assistente-manual-importacao-planos.md`.
 
