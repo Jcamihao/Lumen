@@ -2,6 +2,8 @@
 
 Última atualização: 2026-11-15. Escrito para quem nunca viu o projeto.
 
+**Ponto de retomada imediato:** o 3b2a (reserva e limite do cartão por conversa) está implementado, revisado e commitado. O próximo item é o 3b2b (conta fixa e compra parcelada), ainda sem código. O contrato do 3b2 já foi validado pelo dono; não pedir essa validação de novo. Antes de começar o 3b2b, ler `.superpowers/sdd/conversa-item-3b2a/resultado-revisao.md` (padrões de gravação em três resultados e de condição revisável, que o 3b2b reaproveita) e o contrato `docs/superpowers/specs/2026-11-15-conversa-contrato-item-3b2.md`.
+
 ## 1. Projeto
 
 Lumen é um SaaS de organização de vida, feito pela codeStage Soluções. Junta tarefas, dinheiro (lançamentos, metas, reservas, contas fixas, parcelados), lembretes e um assistente de IA (Selah) numa experiência só, mobile-first e offline-first. O público é pessoa física que quer clareza sobre o próprio dia e dinheiro.
@@ -14,7 +16,7 @@ Princípio que mais pesa nas decisões: privacidade e simplicidade. O app nunca 
 - Remoto: `git@github.com:Jcamihao/Lumen.git`
 - Branch: `master`
 - Convenção de commit: Conventional Commits em português (`feat(billing): ...`, `fix(billing): ...`, `docs: ...`, `refactor(backend): ...`).
-- Estado do git em 2026-11-15: o dono pediu os commits após a revisão. Backend e frontend do 3b1 foram commitados separadamente, e a documentação acompanha o commit de fechamento desta rodada. Restam fora dos commits apenas os logs antigos `.superpowers/sdd/conversa-item-2b/build-run.log` e `test-run.log`. Não houve push, deploy ou `git fetch`; a referência remota local não confirma o estado atual do servidor.
+- Estado do git em 2026-11-16: o 3b2a foi salvo em commits locais separados (backend de domínio, motor, frontend e documentação). O `origin/master` local já aponta para `2cf5fb2` (fim do 3b1): alguém fez push depois do 3b1 (não foi esta sessão); o `git status` mostra a branch alinhada a esse ponto, e os commits do 3b2a ficam à frente dele. Sem `git fetch` nesta etapa, então o estado real do remoto não foi reconferido. Os logs antigos do 2b e os do 3b2a em `.superpowers/sdd/` ficam fora dos commits de propósito.
 - Últimos commits relevantes:
   - `d1d2fa2` criação de metas e aportes confirmados com gravação atômica, incluindo testes do backend.
   - `45604a1` cartões genéricos de meta/aporte no chat, tipos e testes do frontend.
@@ -47,20 +49,23 @@ Comandos:
 - Migrations: `npm --prefix backend run prisma:migrate` (dev) e `prisma:deploy` (produção). Seed: `npm run db:seed`.
 - Portas padrão no Docker Compose: Postgres 5433, Redis 6380, backend 3001, frontend 4201.
 
-Números verdes verificados em 2026-11-15:
-- Backend `npx jest`: 45 suites, 963 testes passando em UTC, America/Sao_Paulo e Asia/Tokyo na revisão do item 3b1. Conferência independente do agente principal: 7 suites, 381 testes de conversation e goals passando.
-- Frontend `npx ng test --watch=false --browsers=ChromeHeadlessCI`: 248 testes passando na revisão do item 3b1.
-- Backend `npx nest build`: sem erros.
-- Frontend `npm run build`: sem erros.
-- Mutantes de segurança/contrato: 14 variantes detectadas pelos testes, com fontes restauradas após cada uma.
-- Lint recomendado temporário: 40 usos legados de `any` em conversation/goals, mesma quantidade do HEAD; sem essa regra, nenhum outro erro. O backend não tem configuração ESLint própria no repo; não foi criada uma nesta revisão.
+Últimos números verdes verificados em 2026-11-16, no fechamento do 3b2a (conferência independente do agente principal depois da revisão):
+- Backend `npx tsc --noEmit`: limpo. `npx jest`: 46 suites, 1056 testes passando. `npx nest build`: sem erros.
+- Backend `src/conversation`, `src/envelopes`, `src/credit-cycle` e `src/dashboard`: 500 testes passando em UTC, America/Sao_Paulo e Asia/Tokyo.
+- Frontend `npx ng test --watch=false --browsers=ChromeHeadlessCI`: 259 testes passando. `npm run build`: sem erros.
+- Mutantes: 14 do roteiro do 3b2a, todos mortos por asserção, mais 5 extras da revisão. Detalhes em `.superpowers/sdd/conversa-item-3b2a/resultado-revisao.md`.
+- Lint recomendado temporário (3b1): 40 usos legados de `any` em conversation/goals, mesma quantidade do HEAD; o backend não tem configuração ESLint própria no repo e o script `lint` aponta para um arquivo que não existe. Nenhuma configuração foi criada.
 
 Armadilhas:
 - O `postinstall` do backend roda `prisma generate` lendo `../.env`. Sem `.env` na raiz a instalação falha.
 - Existem containers `agilis-postgres` e `agilis-redis` rodando na máquina. São de outro projeto, não do Lumen.
 - Versões desencontradas: `package.json` raiz 1.59.62, backend e frontend 1.59.63, README fala em 1.5.0. Não há fonte única de versão.
 
-Na revisão de 15/11, Docker Desktop não oferecia engine utilizável e não havia Postgres/Redis do Lumen nas portas padrão. Foram usados serviços descartáveis em `/tmp/lumen-review-3b1.ugN48X`, com Postgres 16 em 55439, Redis em 56389, backend em 3999 e frontend em 4399. As 26 migrations do repositório foram aplicadas em banco novo e não houve diferença para o schema Prisma. Nunca confundir esse ambiente de teste com o banco local antigo em 5433.
+Ambiente de teste: a integração real do 3b2a rodou em contêineres descartáveis (`docker run --rm`: Postgres 16 em 55459 e Redis em 56409), com banco novo, as 26 migrations do repositório aplicadas e `prisma migrate diff` sem diferença. Backend de teste em 3999, front estático em 4399 (cópia do `dist` com `app-config.js` apontando para a API de teste), billing ligado só ali e sem checkout. Tudo foi removido no fim e as portas ficaram sem listener. Nunca confundir esse ambiente com o banco local antigo da porta 5433 (tem a migration `202604012145_auth_session_hardening`, ausente do repo).
+
+A porta **55439 pertence ao Postgres do Bora** (dados reais em `coding/Leke/Bora/.git/codex-backups/new-modules-nest/postgres-data`) e a **3001 é de outro projeto**. Não parar, reutilizar nem migrar. Para integrações futuras, subir contêineres próprios em portas livres (conferir com `ss -ltn`) e usar banco novo, em vez do volume antigo. Falhas controladas (provisão, efeito auxiliar, commit desconhecido) foram injetadas por um bootstrap fora do repositório, sem derrubar serviços compartilhados.
+
+Os scripts de `/tmp/lumen-3b2a.ZMPCGI` do handoff anterior não foram usados e podem ser descartados. Manter valores de credenciais fora dos documentos.
 
 ## 5. Planos
 
@@ -73,13 +78,24 @@ Na revisão de 15/11, Docker Desktop não oferecia engine utilizável e não hav
 - Itens 2a/2b/2c: motor APP, integração ao chat e coleta de valor implementados e commitados. O chat tenta o motor determinístico primeiro e só encaminha ao Selah quando recebe `unrecognized: true`.
 - Item 3a: consultas de vencimentos, parcelas, contas fixas e metas implementadas e commitadas; contrato `docs/superpowers/specs/2026-11-15-conversa-contrato-item-3a.md`. Leituras reutilizam os serviços existentes; as materializações de recorrências/parcelas têm o mesmo efeito de abrir a tela. Janela de vencimentos de 30 dias, somente despesas.
 - Item 3b1: metas/cofrinhos, aportes confirmados, reservas como envelopes e cartões genéricos implementados, revisados e commitados; contrato `docs/superpowers/specs/2026-11-15-conversa-contrato-item-3b1.md`. Detalhes na seção 6 e em `.superpowers/sdd/conversa-item-3b1/`.
+- Item 3b2: contrato em `docs/superpowers/specs/2026-11-15-conversa-contrato-item-3b2.md`, validado explicitamente pelo dono em 15/11. Divide 3b2a (reservas e teto do ciclo) e 3b2b (contas fixas e compras parceladas), com vencimentos explícitos hoje/futuro e proteção pós-persistência antes das novas intenções. O **3b2a está implementado, revisado e commitado** (briefs, tipos, decisões e relatório em `.superpowers/sdd/conversa-item-3b2a/`, com `resultado-revisao.md`). O 3b2b ainda não começou.
 - Isolamento A/B/C continua obrigatório: identidade vem do JWT ou vínculo WhatsApp validado; consultas e escritas usam o dono autenticado. O v0 usa o cartão único existente (`CreditCycleService`); vários cartões nomeados ficam para depois do bot, por decisão do dono em 15/11.
 - Pendências históricas fora desta revisão: padrão de cálculo de mês em `assistant.service.ts` (o motor já usa `monthToDateUtc`), hover global de botão ghost no tema claro e migration `202604012145_auth_session_hardening` presente no banco antigo 5433 mas ausente do repo. A revisão atual não usou esse banco antigo.
 - Documentação de produto: `docs/architecture.md`, `docs/design-system.md`, `docs/releases/`, `docs/runbooks/`, `docs/legal/`.
 
 ## 6. Onde parou
 
-O foco atual é o bot financeiro, não o billing. O item 3a foi concluído no commit `05b4062`. O item 3b1 está implementado e passou pela revisão técnica: criar metas/cofrinhos, aportar com rascunho e confirmação, consultar reservas como envelopes e exibir os cartões genéricos no frontend. O código foi salvo nos commits `d1d2fa2` e `45604a1`, a pedido do dono após a revisão. O próximo item funcional é o contrato do 3b2.
+O foco atual é o bot financeiro, não o billing. O 3b1 está concluído nos commits `d1d2fa2`, `45604a1` e `2cf5fb2`. O **3b2a** (criar reserva = envelope, e definir o limite do cartão do ciclo atual) está concluído e commitado em 2026-11-16, com revisão e integração real. O próximo trabalho é o 3b2b.
+
+O que o 3b2a entregou e deve ser reaproveitado no 3b2b:
+- Cada ação nova grava por um método interno do serviço de domínio que devolve um **recibo** do que foi persistido (`EnvelopesService.createForConversation`, `CreditCycleService.setCeilingForConversation`), compartilhando o núcleo de gravação com o método da tela. O bot nunca depende de uma agregação posterior para confirmar.
+- Três resultados de gravação, que não se confundem: persistiu (`DONE`, com aviso se o efeito auxiliar pendente falhou); não persistiu comprovadamente (4xx descarta o rascunho, erro inesperado restaura); **commit de resultado desconhecido** (`ERROR`/`IDLE`, sem restaurar, sem liberar a `appliedKey`, orienta conferir a tela de Finanças). Mais a **condição revisável** (mês da reserva ou ciclo/teto/opção do cartão mudou): sem gravar, `version + 1`, 5 minutos novos e nova confirmação, com o motivo na linha "Atenção" de `rows`.
+- O limite do cartão grava dentro de uma transação que bloqueia a linha do dono com `SELECT ... FOR NO KEY UPDATE`. A revisão tinha medido `FOR UPDATE` funcionando, e a troca para `FOR NO KEY UPDATE` foi feita pelo agente principal e conferida num Postgres descartável: serializa os escritores do teto e os `UPDATE` do usuário, e não bloqueia inserts de filhos do mesmo usuário.
+- Cinco mudanças de comportamento HTTP nas telas, aceitas pelo agente principal: (A) `POST /envelopes` apara e valida o nome em 2 a 60 caracteres; (B) a provisão inicial entra na mesma transação do envelope; (C) `PUT /credit-cycle/ceiling` não vira 500 se a atualização de dados derivados falhar depois de gravar; (D) o teto grava em transação com bloqueio; (E) `POST /envelopes` também não vira 500 pela mesma falha auxiliar (responde 201). O formato das respostas das telas não regrediu (conferido na revisão).
+
+Pendências e limites do 3b2a: o commit de resultado desconhecido não tem recuperação automática (só orienta conferir a tela); o rótulo "Lançado" do cartão aparece também para reserva e limite (texto de UX, `assistant-page.component.html:101`); a linha "Atenção" não tem destaque visual; a leitura `reservas` mostra envelopes e `metas` mostra metas (vocabulário corrigido no 3b1).
+
+Próximo trabalho concreto: 3b2b. Ler `resultado-revisao.md` do 3b2a, escrever o brief e o contrato de tipos do 3b2b em `.superpowers/sdd/conversa-item-3b2b/` e seguir a ordem: backend (serviços de recorrências e parcelados com recibo e proteção pós-persistência; rejeitar divisão de compra que gere parcela zero ou negativa também no serviço compartilhado), depois frontend, depois revisão com integração real. Não há decisão de produto pendente para isso.
 
 Foram corrigidos na revisão: aviso de conclusão escondido no cartão; seleção numérica mudando de destino quando uma meta ficava indisponível; lacuna de teste do limite de cinco reservas no payload; gravação parcial do aporte. O dono autorizou ampliar a revisão para `GoalsService`: saldo e transferência agora usam a mesma transação com bloqueio da meta do dono, e falhas auxiliares após o commit não provocam erro financeiro nem nova tentativa do aporte.
 
@@ -111,7 +127,7 @@ NÃO verificado:
 
 Ordem atual do bot, conforme `docs/superpowers/specs/2026-11-14-assistente-manual-financas.md` e o recorte 3b1:
 1. Revisão do 3b1 concluída e código commitado a pedido do dono; documentação incluída no fechamento desta rodada. Push continua dependendo de pedido explícito.
-2. Definir e implementar o 3b2: criação de reservas/envelopes, contas fixas, parcelados e limite do cartão. Vários cartões nomeados ficam para depois do bot.
+2. 3b2a (reserva e limite do cartão) concluído e commitado. Próximo: 3b2b (conta fixa e compra parcelada), com os mesmos três resultados de gravação e a mesma revisão de segurança. Vários cartões nomeados ficam para depois do bot.
 3. Item 4: substituir extração de nota por OCR/QR, com prévia e revisão.
 4. Itens 5/6: adaptador WhatsApp, vínculo validado e testes de isolamento A/B/C antes de habilitar escrita.
 5. Item 7: fallback de IA por entitlement/crédito, sem escrita por IA.
@@ -129,6 +145,8 @@ Pendências de billing, a retomar depois da prioridade atual e das decisões do 
 
 ## 8. Desafios e riscos
 
+Na preparação do contrato 3b2, foram verificados riscos de falha em etapas posteriores à gravação nos serviços de envelopes, recorrências, parcelados e teto do ciclo; repetir um rascunho como se nada tivesse sido persistido pode duplicar o cadastro. Envelopes e teto do ciclo estão corrigidos e revisados (3b2a). **Recorrências e parcelados continuam como estavam**: materializam vencimentos já devidos ao criar, e a criação da regra/compra não faz parte dessas transações. O contrato exige tratar esses resultados no 3b2b, revalidar a data e rejeitar divisões de compra que gerariam parcela zero ou negativa pelo arredondamento vigente (exemplo: R$ 1,00 em 60 parcelas). Não considerar esses requisitos entregues antes da revisão do 3b2b.
+
 Limitações aceitas da Fase 2 (spec, seção 16), para não serem redescobertas:
 - Se `createCheckout` falhar depois de o Asaas já ter criado o checkout, o retry cria um checkout órfão lá. O checkout hospedado não aceita chave de idempotência.
 - Se a `Subscription` local for criada mas `createCheckout` falhar, sobra uma linha `PENDING` órfã. É inerte: não concede nem bloqueia nada.
@@ -144,6 +162,8 @@ Outros pontos:
 
 ## 9. Decisões abertas do dono (perguntar, não decidir)
 
+- O contrato do 3b2 foi validado pelo dono em 15/11: duas entregas, vencimento explícito somente hoje/futuro, despesa recorrente mensal como padrão visível e categoria/pagamento pela tela no primeiro recorte. Essas escolhas não estão mais abertas; não pedir aprovação novamente. Mudança de escopo ou produto fora desse contrato deve voltar ao dono.
+
 - Receber como CPF ou CNPJ/MEI no Asaas.
 - Leitura de nota fiscal e importação de CSV entram nos limites? A nova proposta recomenda franquia de nota/imagem no Pro. Auditoria em 14/11 confirmou que `ImportsService.previewReceiptImport()` chama SelahIA; para lançar sem LLM, trocar essa extração por OCR/QR Code e parser estruturado, mantendo a revisão e comparações existentes.
 - Aprovar a substituição futura da escada Grátis/Individual/Compartilhado por Grátis/Controle/Pro (mantendo Compartilhado como projeto separado) e definir preços/franquias depois de medir custo de OCR e WhatsApp.
@@ -158,11 +178,15 @@ Outros pontos:
 - Commits separados, com caminhos explícitos, nunca amend ou reset. Se aparecer `index.lock`, esperar e repetir.
 - Respostas ao dono: curtas, objetivas, com recomendação clara (o dono tem TDAH).
 - Subagentes: implementação com `haiku`, revisão e correção com `sonnet`, um por vez. Itens de segurança (auth, sessão, criptografia, dado clínico) exigem revisor.
+- Modelos nesta rodada: o 3b2a foi iniciado por outra sessão em que Haiku/Sonnet não estavam disponíveis (o backend parcial daquela etapa foi escrito por outro modelo e não validado). Na retomada de 2026-11-16, o fechamento do backend e o frontend foram desenvolvidos por subagentes `haiku` e a revisão por um subagente `sonnet`, com conferência independente do agente principal. O `sonnet` tem limite de uso de 5 horas: se um subagente parar por limite, ele avisa onde parou e a retomada continua dali.
 - Depois de alterar código, rodar `graphify update .`. Há grafo em `graphify-out/`.
-- Nesta revisão, `graphify update .` foi concluído em modo AST, sem LLM: 4.003 nós e 9.292 arestas. Documentos não foram reprocessados semanticamente; os relatórios e este handoff são a fonte do estado atual da entrega.
+- `graphify update .` foi rodado em modo AST (sem LLM) no fechamento do 3b2a, depois do código final. Documentos não foram reprocessados semanticamente; os relatórios e este handoff são a fonte do estado da entrega.
 - Backend usa o padrão de espionar o método privado de request para testar clientes externos (`AsaasClient`, `MailService`).
 
 ## 11. Onde estão os detalhes
+
+- Contrato 3b2 aprovado: `docs/superpowers/specs/2026-11-15-conversa-contrato-item-3b2.md`.
+- 3b2a: briefs `.superpowers/sdd/conversa-item-3b2a/{brief-backend,brief-frontend,retomada-backend,revisao}.md`, tipos finais em `contrato-tipos.md`, decisões em `duvidas.md` e o relatório da revisão em `resultado-revisao.md` (mutantes, integração real, capturas). Logs de teste e de build dessa pasta e de `conversa-item-2b/` não são fonte e ficam fora dos commits.
 
 - Desenho e decisões do billing: `docs/superpowers/specs/2026-09-27-billing-design.md`
 - Planos de implementação: `docs/superpowers/plans/`
