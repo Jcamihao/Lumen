@@ -93,6 +93,8 @@ export const RECEIPT_WARNINGS = {
   W_DATE_INVALID: 'Não consegui ler a data da compra. Informe a data.',
   W_DATE_KEY_MISMATCH: 'O mês da data lida é diferente do mês da chave de acesso. Confira a data.',
   W_TOTAL_AMBIGUOUS: 'Encontrei mais de um valor total e nenhum bate com a soma dos itens. Confira o total.',
+  W_TOTAL_MULTIPLE: 'Encontrei mais de um valor total na nota (por exemplo, valor bruto e valor a pagar). Confira quanto você pagou.', // acrescentado após a revisão da 4a-1: um candidato bate com a soma, mas existe outro
+  // Linhas ignoradas no total (revisão 4a-1): QTD, ITENS, DESCONTO, TROCO, TRIBUTOS, SUBTOTAL, PAGO, RECEBIDO, IMPOSTO, ACRÉSCIMO.
   W_TOTAL_MISMATCH: 'A soma dos itens é diferente do total da nota. Confira cada linha.',
   W_NO_ITEMS: 'Não consegui ler os itens da nota. Confira o total.',
   W_NO_TOTAL: 'Não consegui ler o total da nota.',

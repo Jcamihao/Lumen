@@ -31,6 +31,10 @@ Outros padrões que o parser também não lê, sem teste próprio (previstos pel
 | Desconto por item em linha separada (`Desconto item -2,00`) | Itens lidos com o valor bruto; o total da nota já tem o desconto. Soma dos itens maior que o total: `totalMismatch` e `W_TOTAL_MISMATCH`. |
 | Subtotal, desconto geral e total no estilo SAT | Idem: `totalAmount = 35,00` (certo), `itemsSum = 37,44`, `W_TOTAL_MISMATCH`. |
 
+## Resolvido pelo agente principal em 2026-11-16: bruto contra a pagar
+
+O caso abaixo agora gera o aviso `W_TOTAL_MULTIPLE` (o parser continua devolvendo o candidato que bate com a soma dos itens, mas avisa que existe outro total). Teste: "valor bruto bate com os itens e ha outro total". A preferência por "valor a pagar" fica para o portão com notas reais. Texto original do risco:
+
 ## Risco a decidir com o dono (contrato manda, mas pode surpreender)
 
 Nota com desconto geral que imprime `Valor total R$ 49,01` (bruto) e `Valor a pagar R$ 45,00` (líquido). A regra 6 do contrato escolhe o candidato que **bate com a soma dos itens**, então o parser devolve 49,01 **sem aviso**, e o gasto lançado ficaria R$ 4,01 acima do que a pessoa pagou. O parser segue o contrato; a decisão (preferir "valor a pagar", ou avisar quando os candidatos divergem mesmo havendo um que bate com a soma) é do dono e deve ser testada no portão com notas reais.

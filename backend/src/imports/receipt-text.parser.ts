@@ -45,6 +45,8 @@ export const RECEIPT_WARNINGS = {
   W_DATE_INVALID: 'Não consegui ler a data da compra. Informe a data.',
   W_DATE_KEY_MISMATCH: 'O mês da data lida é diferente do mês da chave de acesso. Confira a data.',
   W_TOTAL_AMBIGUOUS: 'Encontrei mais de um valor total e nenhum bate com a soma dos itens. Confira o total.',
+  W_TOTAL_MULTIPLE:
+    'Encontrei mais de um valor total na nota (por exemplo, valor bruto e valor a pagar). Confira quanto você pagou.',
   W_TOTAL_MISMATCH: 'A soma dos itens é diferente do total da nota. Confira cada linha.',
   W_NO_ITEMS: 'Não consegui ler os itens da nota. Confira o total.',
   W_NO_TOTAL: 'Não consegui ler o total da nota.',
@@ -60,6 +62,7 @@ const WARNING_ORDER: WarningKey[] = [
   'W_DATE_INVALID',
   'W_DATE_KEY_MISMATCH',
   'W_TOTAL_AMBIGUOUS',
+  'W_TOTAL_MULTIPLE',
   'W_TOTAL_MISMATCH',
   'W_NO_ITEMS',
   'W_NO_TOTAL',
@@ -215,8 +218,8 @@ export function isValidCnpj(cnpj: string): boolean {
 // ---------- Privacidade ----------
 
 const CPF_REMOVED = 'CPF removido';
-// A linha abaixo guarda um unico caractere de uso privado (U+E000), invisivel no editor: marcador provisorio.
-const CPF_MARK = '';
+// Marcador provisorio: caractere de uso privado (U+E000), que nao aparece em nota fiscal.
+const CPF_MARK = '\uE000';
 // Rotulo "CPF" em varias grafias: CPF, cpf, C.P.F., ÇPF/CPÉ (acento de OCR), colado em digitos (CPF123...).
 const CPF_LABEL_SRC = '(?<![A-Za-zÀ-ÿ])[CÇ]\\.?\\s?P\\.?\\s?[FÉ](?![A-Za-zÀ-ÿ])';
 const CPF_LABEL_RE = new RegExp(CPF_LABEL_SRC, 'gi');
@@ -526,7 +529,10 @@ function parseUnsafe(text: string, options: { today: Date; qrAccessKey?: string 
   } else if (totalOptions.length > 1) {
     const equal = itemsSumCents === null ? undefined : totalOptions.find((c) => c === itemsSumCents);
     if (equal !== undefined) {
+      // O valor bruto bate com os itens, mas a nota imprime outro total (desconto geral):
+      // o usuario pagou o outro. Nao escolhemos sozinhos; avisamos.
       totalCents = equal;
+      flags.add('W_TOTAL_MULTIPLE');
     } else {
       totalCents = totalOptions.reduce((a, b) => Math.max(a, b), 0);
       flags.add('W_TOTAL_AMBIGUOUS');

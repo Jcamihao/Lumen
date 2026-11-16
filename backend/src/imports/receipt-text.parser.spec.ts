@@ -283,6 +283,12 @@ describe("parseReceiptText: total", () => {
     expect(r.warnings).not.toContain(RECEIPT_WARNINGS.W_TOTAL_AMBIGUOUS);
   });
 
+  it("valor bruto bate com os itens e ha outro total (desconto geral): avisa, nao fica calado", () => {
+    const r = parse(receipt({ tail: ["VALOR TOTAL R$ 31,03", "VALOR A PAGAR R$ 28,00", ...tailWith(null)] }));
+    expect(r.totalAmount).toBe(31.03);
+    expect(r.warnings).toContain(RECEIPT_WARNINGS.W_TOTAL_MULTIPLE);
+  });
+
   it("nenhum candidato bate: maior e aviso de ambiguidade", () => {
     const r = parse(receipt({ tail: ["VALOR TOTAL R$ 40,00", "VALOR A PAGAR R$ 45,00", ...tailWith(null)] }));
     expect(r.totalAmount).toBe(45);
