@@ -117,8 +117,14 @@ describe('matchIntent', () => {
     'como poupar dinheiro',
     'guardei 200',
     'aporte',
-    'criar conta fixa',
     'criar reserva?',
+    // Conta fixa e parcelado: pergunta ou frase longa não vira escrita (contrato 3b2, secao 4).
+    'criar conta fixa internet?',
+    'como criar conta fixa?',
+    'criar parcelado 1200 geladeira em 12x?',
+    'quero criar um parcelado para a geladeira',
+    'contas fixas do mes que vem',
+    'parcelas do carro valem a pena',
     'definir limite? 5000',
     'como definir limite do cartão?',
   ])('nao casa: "%s"', (text) => {
@@ -133,7 +139,11 @@ describe('matchIntent', () => {
     ['definir limite do cartão 5 mil', { intent: 'set_credit_limit', body: '5 mil' }],
     ['definir limite 5000 Nubank', { intent: 'set_credit_limit', body: '5000 Nubank' }],
     ['definir limite do cartão', { intent: 'set_credit_limit', body: '' }],
-  ])('comando de reserva e limite: "%s"', (text, expected) => {
+    ['criar conta fixa 120 internet mensal primeiro 20/11/2026', { intent: 'create_recurring', body: '120 internet mensal primeiro 20/11/2026' }],
+    ['nova conta fixa', { intent: 'create_recurring', body: '' }],
+    ['criar parcelado 1200 geladeira em 12x primeiro 20/11/2026', { intent: 'create_installment', body: '1200 geladeira em 12x primeiro 20/11/2026' }],
+    ['novo parcelado', { intent: 'create_installment', body: '' }],
+  ])('comando de reserva, limite, conta fixa e parcelado: "%s"', (text, expected) => {
     expect(matchIntent(text)).toEqual(expected);
   });
 
@@ -143,6 +153,22 @@ describe('matchIntent', () => {
     const twentyOne = `criar reserva ${Array(19).fill('a').join(' ')}`;
     expect(matchIntent(twenty)).toMatchObject({ intent: 'create_envelope' });
     expect(matchIntent(twentyOne)).toBeNull();
+  });
+
+  it('conta fixa e parcelado: 20 palavras casam, 21 não', () => {
+    // "criar conta fixa" são 3 palavras; "criar parcelado" são 2.
+    const twenty = `criar conta fixa ${Array(17).fill('a').join(' ')}`;
+    const twentyOne = `criar conta fixa ${Array(18).fill('a').join(' ')}`;
+    const parcelado = `criar parcelado ${Array(18).fill('a').join(' ')}`;
+    expect(matchIntent(parcelado)).toMatchObject({ intent: 'create_installment' });
+    expect(matchIntent(twenty)).toMatchObject({ intent: 'create_recurring' });
+    expect(matchIntent(twentyOne)).toBeNull();
+  });
+
+  it('leituras de contas fixas e parcelas continuam leituras', () => {
+    expect(matchIntent('contas fixas')).toEqual({ intent: 'fixed_bills' });
+    expect(matchIntent('parcelas')).toEqual({ intent: 'installments' });
+    expect(matchIntent('parcelados')).toEqual({ intent: 'installments' });
   });
 
   it.each([

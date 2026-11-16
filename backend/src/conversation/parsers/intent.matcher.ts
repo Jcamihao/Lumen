@@ -37,7 +37,7 @@ export type IntentMatch =
   | { intent: 'create_expense' | 'create_income'; body: string; missingAmount?: true }
   | { intent: 'create_goal'; body: string; cofrinho?: true }
   | { intent: 'contribute_goal'; body: string }
-  | { intent: 'create_envelope' | 'set_credit_limit'; body: string };
+  | { intent: 'create_envelope' | 'set_credit_limit' | 'create_recurring' | 'create_installment'; body: string };
 
 const EXPENSE_VERBS = ['gastei', 'paguei', 'comprei'];
 
@@ -97,9 +97,13 @@ export function matchIntent(raw: string): IntentMatch | null {
   return null;
 }
 
-/** As intenções novas têm seu próprio limite; não ampliam o matcher do 3b1. */
+/** Comandos de escrita novos (reserva, limite, conta fixa, parcelado): até 20 palavras e 500 caracteres. Não ampliam o matcher do 3b1. */
+const NEW_WRITE_MAX_WORDS = 20;
+const RAW_MAX_CHARS = 500;
+
+/** As intenções novas (reserva, limite, conta fixa, parcelado) têm seu próprio limite de 20 palavras; não ampliam o matcher do 3b1. */
 function matchEnvelopeOrLimit(raw: string, tokens: string[], words: string[]): IntentMatch | null {
-  if (raw.length > 500 || tokens.length > 20 || raw.includes('?')) return null;
+  if (raw.length > RAW_MAX_CHARS || tokens.length > NEW_WRITE_MAX_WORDS || raw.includes('?')) return null;
   const phrase = words.join(' ');
   for (const expected of ['criar reserva', 'nova reserva', 'criar envelope']) {
     if (startsWithPhrase(phrase, expected)) {
@@ -109,6 +113,16 @@ function matchEnvelopeOrLimit(raw: string, tokens: string[], words: string[]): I
   for (const expected of ['definir limite do cartao', 'definir limite']) {
     if (startsWithPhrase(phrase, expected)) {
       return { intent: 'set_credit_limit', body: tokens.slice(expected.split(' ').length).join(' ') };
+    }
+  }
+  for (const expected of ['criar conta fixa', 'nova conta fixa']) {
+    if (startsWithPhrase(phrase, expected)) {
+      return { intent: 'create_recurring', body: tokens.slice(expected.split(' ').length).join(' ') };
+    }
+  }
+  for (const expected of ['criar parcelado', 'novo parcelado']) {
+    if (startsWithPhrase(phrase, expected)) {
+      return { intent: 'create_installment', body: tokens.slice(expected.split(' ').length).join(' ') };
     }
   }
   return null;

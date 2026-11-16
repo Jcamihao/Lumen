@@ -7,6 +7,8 @@ import { ConversationService } from './conversation.service';
 import { REPLIES, formatBrl } from './replies';
 import { EnvelopeMonthChangedError, EnvelopeWriteUncertainError } from '../envelopes/conversation-write.types';
 import { CreditLimitChangedError, CreditLimitWriteUncertainError } from '../credit-cycle/conversation-write.types';
+import { RecurringFirstDueChangedError, RecurringWriteUncertainError } from '../recurring-transactions/conversation-write.types';
+import { InstallmentFirstDueChangedError, InstallmentWriteUncertainError } from '../installments/conversation-write.types';
 
 type Deps = ConstructorParameters<typeof ConversationService>;
 
@@ -117,8 +119,8 @@ describe('ConversationService', () => {
   let transactions: { create: jest.Mock };
   let dashboard: { getSummary: jest.Mock };
   let creditCycle: { getCurrent: jest.Mock; setCeilingForConversation?: jest.Mock };
-  let recurring: { list: jest.Mock };
-  let installments: { list: jest.Mock };
+  let recurring: { list: jest.Mock; createForConversation: jest.Mock };
+  let installments: { list: jest.Mock; createForConversation: jest.Mock };
   let goals: { list: jest.Mock; create: jest.Mock; contribute: jest.Mock };
   let envelopes: { list: jest.Mock; createForConversation: jest.Mock };
   let entitlements: { assertCanCreate: jest.Mock };
@@ -155,8 +157,32 @@ describe('ConversationService', () => {
       })),
     };
     // Serviços de leitura: por padrão sem linhas. Cada teste substitui `list` quando precisa.
-    recurring = { list: jest.fn(async () => []) };
-    installments = { list: jest.fn(async () => []) };
+    recurring = {
+      list: jest.fn(async () => []),
+      createForConversation: jest.fn(async (_userId: string, dto: any, _rules: unknown) => ({
+        id: 'rec-9',
+        description: dto.description,
+        amountCents: Math.round(dto.amount * 100),
+        frequency: dto.frequency,
+        firstDueDate: dto.firstDueDate,
+        materializationPending: false,
+        refreshPending: false,
+      })),
+    };
+    installments = {
+      list: jest.fn(async () => []),
+      createForConversation: jest.fn(async (_userId: string, dto: any, _rules: unknown) => ({
+        id: 'inst-9',
+        description: dto.description,
+        totalCents: Math.round(dto.totalAmount * 100),
+        installmentsTotal: dto.installmentsTotal,
+        installmentCents: Math.round((dto.totalAmount / dto.installmentsTotal) * 100),
+        lastInstallmentCents: 0,
+        firstDueDate: dto.firstDueDate,
+        materializationPending: false,
+        refreshPending: false,
+      })),
+    };
     goals = {
       list: jest.fn(async () => []),
       create: jest.fn(async () => ({ id: 'goal-new', title: 'Viagem', status: 'ACTIVE', targetAmount: 3000, currentAmount: 0 })),
@@ -2192,7 +2218,8 @@ describe('ConversationService', () => {
         const logged = JSON.stringify(warn.mock.calls);
         expect(logged).not.toContain('segredo');
         expect(logged).not.toContain('5000');
-        expect(JSON.stringify(db.events)).not.toContain('5000');
+        // Ids são UUIDs aleatórios: fora da checagem de conteúdo.
+        expect(JSON.stringify(db.events, (key, value) => (['id', 'messageId', 'appliedKey'].includes(key) ? undefined : value))).not.toContain('5000');
       });
 
       it('leitura do ciclo falha com corpo vazio: também ERROR genérico, sem 500', async () => {
@@ -2371,6 +2398,517 @@ describe('ConversationService', () => {
         await confirm('A', draft.draftId, draft.draftVersion);
 
         expect(limitWrite.mock.calls[0][0]).toBe('A');
+      });
+    });
+  });
+
+  describe('conta fixa e compra parcelada (3b2b)', () => {
+    const send = (userId: string, text: string, at: Date = T0) => service.handleMessage(msg(userId, text, at));
+    const confirm = (userId: string, draftId: string, version: number) => service.confirmDraft(userId, draftId, version);
+    // Aceita a resposta do motor ou só o rascunho (DraftView): ambos têm `rows`.
+    const rowValue = (source: { draft?: { rows: Array<{ label: string; value: string }> }; rows?: Array<{ label: string; value: string }> }, label: string) =>
+      (source.draft ?? source).rows?.filter((row) => row.label === label).map((row) => row.value);
+    const recurringEvents = () => db.events.filter((row) => row.intent === 'create_recurring');
+    const installmentEvents = () => db.events.filter((row) => row.intent === 'create_installment');
+    const withinMinutes = (minutes: number) => new Date(T0.getTime() + minutes * 60_000);
+
+    async function recurringDraft(text = 'criar conta fixa 120 internet mensal primeiro 20/11/2026') {
+      const reply = await send('A', text);
+      expect(reply.kind).toBe('CONFIRM_DRAFT');
+      return reply.draft!;
+    }
+
+    async function installmentDraft(text = 'criar parcelado 1200 geladeira em 12x primeiro 20/11/2026') {
+      const reply = await send('A', text);
+      expect(reply.kind).toBe('CONFIRM_DRAFT');
+      return reply.draft!;
+    }
+
+    describe('abertura e rascunho da conta fixa', () => {
+      it('comando completo vira confirmação com as linhas da tela, sem gravar', async () => {
+        const reply = await send('A', 'criar conta fixa 120 internet mensal primeiro 20/11/2026');
+
+        expect(reply.kind).toBe('CONFIRM_DRAFT');
+        expect(reply.state).toBe(ConversationState.AWAITING_CONFIRMATION);
+        expect(reply.draft).toMatchObject({ kind: 'RECURRING', title: 'Conta fixa', pendingField: null, type: 'EXPENSE', amount: null });
+        expect(rowValue(reply, 'Descrição')).toEqual(['internet']);
+        expect(rowValue(reply, 'Valor por vencimento')).toEqual([formatBrl(12000)]);
+        expect(rowValue(reply, 'Frequência')).toEqual(['Mensal']);
+        expect(rowValue(reply, 'Primeiro vencimento')).toEqual(['20/11/2026']);
+        expect(rowValue(reply, 'Categoria')).toEqual(['não informada']);
+        expect(rowValue(reply, 'Forma de pagamento')).toEqual(['não informada']);
+        expect(rowValue(reply, 'Aviso')).toEqual([REPLIES.futureDueWarning, REPLIES.catchUpWarning]);
+        expect(reply.text).toBe(`Conta fixa internet: ${formatBrl(12000)} por vencimento, mensal, primeiro vencimento em 20/11/2026.`);
+        expect(recurring.createForConversation).not.toHaveBeenCalled();
+      });
+
+      it('sem frequência vira mensal e aparece no cartão; "semanal" e "anual" são aceitos', async () => {
+        const padrao = await recurringDraft('criar conta fixa 120 internet primeiro 20/11/2026');
+        expect(rowValue(padrao, 'Frequência')).toEqual(['Mensal']);
+
+        db.sessions.length = 0;
+        const semanal = await recurringDraft('criar conta fixa 120 internet semanal primeiro 20/11/2026');
+        expect(rowValue(semanal, 'Frequência')).toEqual(['Semanal']);
+
+        db.sessions.length = 0;
+        const anual = await recurringDraft('criar conta fixa 120 internet anual primeiro 20/11/2026');
+        expect(rowValue(anual, 'Frequência')).toEqual(['Anual']);
+      });
+
+      it('palavra de frequência no meio da descrição não é removida', async () => {
+        const draft = await recurringDraft('criar conta fixa 120 mensal de teste primeiro 20/11/2026');
+
+        expect(rowValue(draft, 'Descrição')).toEqual(['mensal de teste']);
+        expect(rowValue(draft, 'Frequência')).toEqual(['Mensal']);
+      });
+
+      it('ordem de coleta: descrição, valor e vencimento, cada um perguntado quando falta', async () => {
+        const vazio = await send('A', 'criar conta fixa');
+        expect(vazio).toMatchObject({ kind: 'ASK_FIELD', state: ConversationState.COLLECTING_FIELDS });
+        expect(vazio.draft).toMatchObject({ pendingField: 'description' });
+        expect(vazio.text).toBe(REPLIES.askDraftDescription);
+
+        // Texto que começa com número é a descrição pedida, não um valor de lançamento.
+        const comNumero = await send('A', '2026 viagem');
+        expect(comNumero.draft).toMatchObject({ pendingField: 'amount' });
+        expect(rowValue(comNumero, 'Descrição')).toEqual(['2026 viagem']);
+
+        const valor = await send('A', '120');
+        expect(valor).toMatchObject({ kind: 'ASK_FIELD', text: REPLIES.askFirstDue });
+        expect(valor.draft).toMatchObject({ pendingField: 'firstDueDate' });
+
+        const pronto = await send('A', 'hoje');
+        expect(pronto.kind).toBe('CONFIRM_DRAFT');
+        expect(rowValue(pronto, 'Primeiro vencimento')).toEqual(['15/11/2026']);
+        expect(rowValue(pronto, 'Aviso')?.[0]).toBe(REPLIES.recurringTodayWarning);
+      });
+
+      it('valor sem descrição pergunta a descrição antes do valor', async () => {
+        const reply = await send('A', 'criar conta fixa 120');
+
+        expect(reply.draft).toMatchObject({ pendingField: 'description', amount: null });
+        expect(reply.text).toBe(REPLIES.askDraftDescription);
+      });
+
+      it('resposta de valor com texto extra pede reenvio, sem trocar o campo', async () => {
+        await send('A', 'criar conta fixa internet');
+        const reply = await send('A', '12 internet');
+
+        expect(reply).toMatchObject({ kind: 'ASK_FIELD', text: `${REPLIES.amountOnly}\n${REPLIES.askRecurringAmount}` });
+        expect(reply.draft).toMatchObject({ pendingField: 'amount' });
+      });
+
+      it('data passada é recusada na abertura, sem rascunho e com a orientação da tela', async () => {
+        const reply = await send('A', 'criar conta fixa 120 internet primeiro 14/11/2026');
+
+        expect(reply).toMatchObject({ kind: 'ERROR', state: 'IDLE', text: REPLIES.firstDuePast });
+        expect(db.sessions).toHaveLength(0);
+        expect(recurringEvents().at(-1)).toMatchObject({ outcome: ConversationOutcome.ERROR });
+      });
+
+      it('data inexistente (31/02) e mais de dois anos são recusadas sem rascunho', async () => {
+        expect(await send('A', 'criar conta fixa 120 internet primeiro 31/02/2027')).toMatchObject({ kind: 'ERROR', text: REPLIES.invalidDate });
+        expect(await send('A', 'criar conta fixa 120 internet primeiro 16/11/2028')).toMatchObject({ kind: 'ERROR', text: REPLIES.firstDueTooFar });
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('data que não é dd/mm nem dd/mm/aaaa (amanhã, dia 5, ISO) pede data completa, sem gravar', async () => {
+        for (const due of ['amanhã', 'dia 5', '2026-11-20']) {
+          const reply = await send('A', `criar conta fixa 120 internet primeiro ${due}`);
+          expect(reply).toMatchObject({ kind: 'ASK_FIELD', text: REPLIES.askFirstDue });
+          db.sessions.length = 0;
+        }
+      });
+
+      it('"primeiro" sem data pede a data; "primeiro curso" continua descrição', async () => {
+        const semData = await send('A', 'criar conta fixa 120 internet primeiro');
+        expect(semData.draft).toMatchObject({ pendingField: 'firstDueDate' });
+        db.sessions.length = 0;
+
+        const curso = await send('A', 'criar conta fixa 120 primeiro curso de inglês');
+        expect(rowValue(curso, 'Descrição')).toEqual(['primeiro curso de inglês']);
+        expect(curso.draft).toMatchObject({ pendingField: 'firstDueDate' });
+      });
+
+      it('valor zero recusado na abertura; valor com sinal recusado', async () => {
+        expect(await send('A', 'criar conta fixa 0 internet')).toMatchObject({ kind: 'ERROR', text: REPLIES.amountZero });
+        expect(await send('A', 'criar conta fixa -5 internet')).toMatchObject({ kind: 'ERROR', text: REPLIES.amountNegative });
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('plano sem vaga recusa ao abrir, com a mensagem da exceção, sem rascunho', async () => {
+        const { PlanLimitException: Limit } = await import('../billing/plan-limit.exception');
+        const error = new Limit({ resource: 'recurringTransactions', limit: 3, used: 3, plan: 'FREE' as never });
+        entitlements.assertCanCreate.mockRejectedValueOnce(error);
+
+        const reply = await send('A', 'criar conta fixa 120 internet primeiro 20/11/2026');
+
+        expect(reply).toMatchObject({ kind: 'ERROR', state: 'IDLE', text: error.message });
+        expect(db.sessions).toHaveLength(0);
+        expect(entitlements.assertCanCreate).toHaveBeenLastCalledWith('A', 'recurringTransactions');
+      });
+
+      it('comando novo com rascunho em andamento não substitui o rascunho', async () => {
+        await send('A', 'criar reserva 400 gasolina');
+        const reply = await send('A', 'criar conta fixa 120 internet primeiro 20/11/2026');
+
+        expect(reply.text).toContain(REPLIES.confirmReminder);
+        expect(db.sessions).toHaveLength(1);
+        expect(db.sessions[0]).toMatchObject({ intent: 'create_envelope' });
+      });
+    });
+
+    describe('confirmação da conta fixa', () => {
+      it('confirmar grava uma vez com o recibo: DONE, texto e data em recurringTransactionId', async () => {
+        const draft = await recurringDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(recurring.createForConversation).toHaveBeenCalledTimes(1);
+        expect(recurring.createForConversation).toHaveBeenCalledWith(
+          'A',
+          { type: 'EXPENSE', description: 'internet', amount: 120, frequency: 'MONTHLY', firstDueDate: '2026-11-20' },
+          { notBefore: 'today' },
+        );
+        expect(reply).toEqual({
+          kind: 'DONE',
+          state: 'IDLE',
+          text: `Conta fixa criada: internet, ${formatBrl(12000)}, mensal, primeiro vencimento em 20/11/2026.`,
+          data: { recurringTransactionId: 'rec-9' },
+        });
+        expect(recurringEvents().at(-1)).toMatchObject({ outcome: ConversationOutcome.COMPLETED, resultRef: 'rec-9' });
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('materialização pendente: DONE com o aviso da tela de Finanças', async () => {
+        recurring.createForConversation.mockResolvedValueOnce({
+          id: 'rec-9', description: 'internet', amountCents: 12000, frequency: 'MONTHLY',
+          firstDueDate: '2026-11-20', materializationPending: true, refreshPending: false,
+        });
+        const draft = await recurringDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply.kind).toBe('DONE');
+        expect(reply.text).toBe(`Conta fixa criada: internet, ${formatBrl(12000)}, mensal, primeiro vencimento em 20/11/2026.\n${REPLIES.materializationPending}`);
+      });
+
+      it('atualização pendente: DONE com o aviso de dados, sem erro', async () => {
+        recurring.createForConversation.mockResolvedValueOnce({
+          id: 'rec-9', description: 'internet', amountCents: 12000, frequency: 'MONTHLY',
+          firstDueDate: '2026-11-20', materializationPending: false, refreshPending: true,
+        });
+        const draft = await recurringDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply.kind).toBe('DONE');
+        expect(reply.text.endsWith(REPLIES.refreshPending)).toBe(true);
+      });
+
+      it('commit de resultado desconhecido: ERROR, sem restaurar, sem liberar a chave', async () => {
+        recurring.createForConversation.mockRejectedValueOnce(new RecurringWriteUncertainError());
+        const draft = await recurringDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply).toEqual({ kind: 'ERROR', state: 'IDLE', text: REPLIES.writeUncertain });
+        expect(db.sessions).toHaveLength(0);
+        expect(recurringEvents().at(-1)).toMatchObject({ outcome: ConversationOutcome.ERROR, appliedKey: `${draft.draftId}:1` });
+        expect(await confirm('A', draft.draftId, draft.draftVersion)).toBeNull();
+      });
+
+      it('falha comprovada antes da gravação restaura o rascunho (D5)', async () => {
+        recurring.createForConversation.mockRejectedValueOnce(new Error('falha de banco'));
+        const draft = await recurringDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply).toMatchObject({ kind: 'ERROR', state: ConversationState.AWAITING_CONFIRMATION, text: REPLIES.recurringSaveFailed });
+        expect(db.sessions[0]).toMatchObject({ version: 1, state: ConversationState.AWAITING_CONFIRMATION });
+        expect(recurringEvents().at(-1)).toMatchObject({ appliedKey: null });
+      });
+
+      it('erro 4xx do serviço descarta o rascunho com texto seguro, sem vazar a mensagem', async () => {
+        recurring.createForConversation.mockRejectedValueOnce(new BadRequestException('detalhe interno do domínio'));
+        const draft = await recurringDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply).toMatchObject({ kind: 'ERROR', state: 'IDLE', text: REPLIES.recurringRejected });
+        expect(reply.text).not.toContain('domínio');
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('vencimento que ficou no passado entre rascunho e confirmação: sem gravar, pede nova data em 15 minutos', async () => {
+        recurring.createForConversation.mockRejectedValueOnce(new RecurringFirstDueChangedError('2026-11-20'));
+        const draft = await recurringDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply).toMatchObject({
+          kind: 'ASK_FIELD',
+          state: ConversationState.COLLECTING_FIELDS,
+          text: `${REPLIES.firstDueChanged}\n${REPLIES.askFirstDue}`,
+        });
+        expect(reply.draft).toMatchObject({ draftVersion: 2, pendingField: 'firstDueDate' });
+        expect(rowValue(reply, 'Primeiro vencimento')).toEqual(['a informar']);
+        expect(rowValue(reply, 'Atenção')).toEqual([REPLIES.firstDueChanged]);
+        expect(db.sessions[0]).toMatchObject({ version: 2, state: ConversationState.COLLECTING_FIELDS });
+        expect(new Date(db.sessions[0].expiresAt).getTime()).toBe(withinMinutes(15).getTime());
+        expect(await confirm('A', draft.draftId, draft.draftVersion)).toBeNull();
+      });
+
+      it('nova data depois da revisão grava uma vez com a data nova', async () => {
+        recurring.createForConversation.mockRejectedValueOnce(new RecurringFirstDueChangedError('2026-11-16'));
+        const draft = await recurringDraft();
+        await confirm('A', draft.draftId, draft.draftVersion);
+
+        const asked = await send('A', 'amanhã');
+        expect(asked).toMatchObject({ kind: 'ASK_FIELD', text: `${REPLIES.firstDueFormat}\n${REPLIES.askFirstDue}` });
+
+        const revised = await send('A', '17/11/2026');
+        expect(revised.kind).toBe('CONFIRM_DRAFT');
+        expect(revised.draft).toMatchObject({ draftVersion: 3 });
+        // O motivo da revisão foi atendido pela nova data: não fica no cartão novo.
+        expect(rowValue(revised, 'Atenção')).toEqual([]);
+
+        await confirm('A', draft.draftId, 3);
+        expect(recurring.createForConversation).toHaveBeenCalledTimes(2);
+        expect(recurring.createForConversation.mock.calls[1][1]).toMatchObject({ firstDueDate: '2026-11-17' });
+      });
+
+      it('data passada na tela de revisão não grava: a data antiga nunca é aplicada', async () => {
+        recurring.createForConversation.mockRejectedValueOnce(new RecurringFirstDueChangedError('2026-11-16'));
+        const draft = await recurringDraft();
+        await confirm('A', draft.draftId, draft.draftVersion);
+
+        const reply = await send('A', '15/11/2026');
+        expect(reply).toMatchObject({ kind: 'CONFIRM_DRAFT' });
+        // 15/11 é hoje (aceito pelo núcleo), mas o núcleo confere de novo na confirmação.
+        expect(rowValue(reply, 'Primeiro vencimento')).toEqual(['15/11/2026']);
+      });
+
+      it('duas confirmações em paralelo criam uma só conta fixa', async () => {
+        const draft = await recurringDraft();
+
+        const [first, second] = await Promise.all([
+          confirm('A', draft.draftId, draft.draftVersion),
+          confirm('A', draft.draftId, draft.draftVersion),
+        ]);
+
+        expect([first?.kind, second?.kind].sort()).toEqual(['DONE', 'DUPLICATE']);
+        expect(recurring.createForConversation).toHaveBeenCalledTimes(1);
+      });
+
+      it('versão antiga e "confirmar" de quem não é dono não gravam', async () => {
+        const draft = await recurringDraft();
+
+        expect(await confirm('A', draft.draftId, draft.draftVersion + 1)).toBeNull();
+        expect(await confirm('B', draft.draftId, draft.draftVersion)).toBeNull();
+        expect((await send('B', 'confirmar')).kind).toBe('HELP');
+        expect(recurring.createForConversation).not.toHaveBeenCalled();
+      });
+
+      it('o id do dono vem do motor (argumento), nunca do texto', async () => {
+        const draft = await recurringDraft();
+        await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(recurring.createForConversation.mock.calls[0][0]).toBe('A');
+      });
+
+      it('evento não guarda a descrição nem o valor', async () => {
+        const draft = await recurringDraft();
+        await confirm('A', draft.draftId, draft.draftVersion);
+
+        // Os ids são UUIDs aleatórios e podem conter '120': só os campos de conteúdo entram na checagem.
+        const serialized = JSON.stringify(db.events, (key, value) =>
+          ['id', 'messageId', 'appliedKey'].includes(key) ? undefined : value,
+        );
+        expect(serialized).not.toContain('internet');
+        expect(serialized).not.toContain('120');
+        expect(serialized).not.toContain('12000');
+      });
+
+      it('GET /session mostra o cartão e a linha Atenção depois da revisão', async () => {
+        recurring.createForConversation.mockRejectedValueOnce(new RecurringFirstDueChangedError('2026-11-16'));
+        const draft = await recurringDraft();
+        await confirm('A', draft.draftId, draft.draftVersion);
+
+        const session = await service.getSession('A');
+
+        expect(session.state).toBe(ConversationState.COLLECTING_FIELDS);
+        expect(session.draft).toMatchObject({ kind: 'RECURRING', pendingField: 'firstDueDate', draftVersion: 2 });
+        expect(session.draft?.rows.map((row) => row.label)).toContain('Atenção');
+      });
+    });
+
+    describe('abertura e confirmação da compra parcelada', () => {
+      it('total, quantidade e divisão aparecem no cartão; categoria e pagamento não informados', async () => {
+        const reply = await send('A', 'criar parcelado 1200 geladeira em 12x primeiro 20/11/2026');
+
+        expect(reply.kind).toBe('CONFIRM_DRAFT');
+        expect(reply.draft).toMatchObject({ kind: 'INSTALLMENT', title: 'Compra parcelada', pendingField: null });
+        expect(rowValue(reply, 'Total da compra')).toEqual([formatBrl(120000)]);
+        expect(rowValue(reply, 'Quantidade')).toEqual(['12']);
+        expect(rowValue(reply, 'Valor por parcela')).toEqual([formatBrl(10000)]);
+        expect(rowValue(reply, 'Última parcela')).toEqual([formatBrl(10000)]);
+        expect(rowValue(reply, 'Categoria')).toEqual(['não informada']);
+        expect(rowValue(reply, 'Forma de pagamento')).toEqual(['não informada']);
+        expect(installments.createForConversation).not.toHaveBeenCalled();
+      });
+
+      it('divisão com sobra: 100 em 3 vezes mostra 33,33 e última 33,34', async () => {
+        const reply = await send('A', 'criar parcelado 100 geladeira em 3x primeiro 20/11/2026');
+
+        expect(rowValue(reply, 'Valor por parcela')).toEqual([formatBrl(3333)]);
+        expect(rowValue(reply, 'Última parcela')).toEqual([formatBrl(3334)]);
+      });
+
+      it('regressão: R$ 1,00 em 60 vezes é recusado na abertura, sem rascunho', async () => {
+        const reply = await send('A', 'criar parcelado 1 geladeira em 60x primeiro 20/11/2026');
+
+        expect(reply).toMatchObject({ kind: 'ERROR', state: 'IDLE', text: REPLIES.installmentTooSmall });
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('"12x de 100" não vira total de R$ 100: pede o total', async () => {
+        const reply = await send('A', 'criar parcelado 12x de 100');
+
+        expect(reply).toMatchObject({ kind: 'ERROR', text: REPLIES.installmentTotalOnly });
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('quantidade 1, 61 e fracionária são recusadas na abertura', async () => {
+        for (const quantity of ['1x', '61x', '1,5x']) {
+          expect(await send('A', `criar parcelado 1200 geladeira em ${quantity}`)).toMatchObject({ kind: 'ERROR', text: REPLIES.installmentsRange });
+        }
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('sem quantidade, pergunta a quantidade; resposta "12" e "12x" são aceitas', async () => {
+        const reply = await send('A', 'criar parcelado 1200 geladeira');
+        expect(reply).toMatchObject({ kind: 'ASK_FIELD', text: REPLIES.askInstallmentsTotal });
+        expect(reply.draft).toMatchObject({ pendingField: 'installmentsTotal' });
+
+        const doze = await send('A', '12');
+        expect(doze.draft).toMatchObject({ pendingField: 'firstDueDate' });
+        expect(rowValue(doze, 'Quantidade')).toEqual(['12']);
+
+        db.sessions.length = 0;
+        await send('A', 'criar parcelado 1200 geladeira');
+        const dozeX = await send('A', '12x');
+        expect(dozeX.draft).toMatchObject({ pendingField: 'firstDueDate' });
+        expect(rowValue(dozeX, 'Quantidade')).toEqual(['12']);
+      });
+
+      it('resposta de quantidade fora de 2 a 60 pede de novo, sem trocar o campo', async () => {
+        await send('A', 'criar parcelado 1200 geladeira');
+
+        const reply = await send('A', '1');
+
+        expect(reply).toMatchObject({ kind: 'ASK_FIELD', text: `${REPLIES.installmentsRange}\n${REPLIES.askInstallmentsTotal}` });
+        expect(reply.draft).toMatchObject({ pendingField: 'installmentsTotal' });
+        expect(rowValue(reply, 'Quantidade')).toEqual(['a informar']);
+      });
+
+      it('quantidade que deixa uma parcela abaixo de R$ 0,01 é recusada antes de guardar', async () => {
+        await send('A', 'criar parcelado 1 geladeira');
+
+        const reply = await send('A', '60');
+
+        expect(reply.text).toBe(`${REPLIES.installmentTooSmall}\n${REPLIES.askInstallmentsTotal}`);
+        expect(reply.draft).toMatchObject({ pendingField: 'installmentsTotal' });
+        expect(rowValue(reply, 'Quantidade')).toEqual(['a informar']);
+      });
+
+      it('valor total depois da quantidade também é conferido (preço que não fecha a divisão)', async () => {
+        await send('A', 'criar parcelado geladeira em 60x');
+
+        const reply = await send('A', '1');
+
+        expect(reply.text).toBe(`${REPLIES.installmentTooSmall}\n${REPLIES.askInstallmentTotal}`);
+        expect(reply.draft).toMatchObject({ pendingField: 'amount' });
+        expect(rowValue(reply, 'Total da compra')).toEqual(['a informar']);
+      });
+
+      it('confirmar grava uma vez com total em reais e recibo; DONE com a compra', async () => {
+        const draft = await installmentDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(installments.createForConversation).toHaveBeenCalledTimes(1);
+        expect(installments.createForConversation).toHaveBeenCalledWith(
+          'A',
+          { description: 'geladeira', totalAmount: 1200, installmentsTotal: 12, firstDueDate: '2026-11-20' },
+          { notBefore: 'today' },
+        );
+        expect(reply).toEqual({
+          kind: 'DONE',
+          state: 'IDLE',
+          text: `Compra parcelada criada: geladeira, total ${formatBrl(120000)} em 12 parcelas, primeira em 20/11/2026.`,
+          data: { installmentPurchaseId: 'inst-9' },
+        });
+        expect(installmentEvents().at(-1)).toMatchObject({ outcome: ConversationOutcome.COMPLETED, resultRef: 'inst-9' });
+      });
+
+      it('parcela mínima recusada pelo serviço descarta com texto seguro', async () => {
+        installments.createForConversation.mockRejectedValueOnce(new BadRequestException('detalhe do domínio'));
+        const draft = await installmentDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply).toMatchObject({ kind: 'ERROR', state: 'IDLE', text: REPLIES.installmentRejected });
+        expect(reply.text).not.toContain('domínio');
+      });
+
+      it('commit de resultado desconhecido não restaura nem libera a chave', async () => {
+        installments.createForConversation.mockRejectedValueOnce(new InstallmentWriteUncertainError());
+        const draft = await installmentDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply).toEqual({ kind: 'ERROR', state: 'IDLE', text: REPLIES.writeUncertain });
+        expect(db.sessions).toHaveLength(0);
+        expect(installmentEvents().at(-1)).toMatchObject({ appliedKey: `${draft.draftId}:1` });
+      });
+
+      it('falha comprovada antes da gravação restaura o rascunho do parcelado', async () => {
+        installments.createForConversation.mockRejectedValueOnce(new Error('falha de banco'));
+        const draft = await installmentDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply).toMatchObject({ kind: 'ERROR', state: ConversationState.AWAITING_CONFIRMATION, text: REPLIES.installmentSaveFailed });
+        expect(db.sessions).toHaveLength(1);
+      });
+
+      it('primeiro vencimento passado depois da confirmação volta a pedir data', async () => {
+        installments.createForConversation.mockRejectedValueOnce(new InstallmentFirstDueChangedError('2026-11-16'));
+        const draft = await installmentDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply).toMatchObject({ kind: 'ASK_FIELD', state: ConversationState.COLLECTING_FIELDS, text: `${REPLIES.firstDueChanged}\n${REPLIES.askFirstDue}` });
+        expect(reply.draft).toMatchObject({ draftVersion: 2, pendingField: 'firstDueDate' });
+      });
+
+      it('plano de compras parceladas sem vaga recusa ao abrir', async () => {
+        const { PlanLimitException: Limit } = await import('../billing/plan-limit.exception');
+        const error = new Limit({ resource: 'installmentPurchases', limit: 2, used: 2, plan: 'FREE' as never });
+        entitlements.assertCanCreate.mockRejectedValueOnce(error);
+
+        const reply = await send('A', 'criar parcelado 1200 geladeira em 12x primeiro 20/11/2026');
+
+        expect(reply).toMatchObject({ kind: 'ERROR', text: error.message });
+        expect(db.sessions).toHaveLength(0);
+        expect(entitlements.assertCanCreate).toHaveBeenLastCalledWith('A', 'installmentPurchases');
+      });
+
+      it('leituras "contas fixas" e "parcelas" continuam leituras, sem rascunho', async () => {
+        expect((await send('A', 'contas fixas')).kind).toBe('INFO');
+        expect((await send('A', 'parcelas')).kind).toBe('INFO');
+        expect(db.sessions).toHaveLength(0);
       });
     });
   });

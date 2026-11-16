@@ -25,7 +25,7 @@ export interface ConversationInput {
   receivedAt: Date;
 }
 
-export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION' | 'ENVELOPE' | 'CREDIT_LIMIT';
+export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION' | 'ENVELOPE' | 'CREDIT_LIMIT' | 'RECURRING' | 'INSTALLMENT';
 
 /**
  * Rascunho para a tela: valores formatados, sem ids internos alem de draftId/draftVersion.
@@ -48,7 +48,16 @@ export interface DraftView {
   pendingField: PendingField | null;
 }
 
-export type PendingField = 'amount' | 'description' | 'category' | 'title' | 'target' | 'goal' | 'name';
+export type PendingField =
+  | 'amount'
+  | 'description'
+  | 'category'
+  | 'title'
+  | 'target'
+  | 'goal'
+  | 'name'
+  | 'installmentsTotal'
+  | 'firstDueDate';
 
 /** Rascunho de lançamento. Sessões antigas não têm `kind`: ausente = TRANSACTION. Dinheiro em centavos. */
 export interface ExpenseOrIncomeDraft {
@@ -113,7 +122,37 @@ export interface CreditLimitDraft {
   reviewReason?: string;
 }
 
-export type SessionDraft = ExpenseOrIncomeDraft | GoalDraft | ContributionDraft | EnvelopeDraft | CreditLimitDraft;
+/** Conta fixa (contrato 3b2b, secao 5): só despesa; categoria e pagamento ficam não informados. */
+export interface RecurringDraft {
+  kind: 'RECURRING';
+  description: string | null;
+  amountCents: number | null;
+  frequency: 'MONTHLY' | 'WEEKLY' | 'YEARLY';
+  /** 'AAAA-MM-DD', data-só; null enquanto não informado. */
+  firstDueDate: string | null;
+  pendingField: 'description' | 'amount' | 'firstDueDate' | null;
+  reviewReason?: string;
+}
+
+/** Compra parcelada (contrato 3b2b, secao 5): totalCents é o total da compra, nunca o valor da parcela. */
+export interface InstallmentDraft {
+  kind: 'INSTALLMENT';
+  description: string | null;
+  totalCents: number | null;
+  installmentsTotal: number | null;
+  firstDueDate: string | null;
+  pendingField: 'description' | 'amount' | 'installmentsTotal' | 'firstDueDate' | null;
+  reviewReason?: string;
+}
+
+export type SessionDraft =
+  | ExpenseOrIncomeDraft
+  | GoalDraft
+  | ContributionDraft
+  | EnvelopeDraft
+  | CreditLimitDraft
+  | RecurringDraft
+  | InstallmentDraft;
 
 /** Dados numericos para a tela (centavos). Presentes em INFO e DONE. */
 export interface ReplyData {
@@ -124,6 +163,9 @@ export interface ReplyData {
   /** Meta criada ou aportada (DONE). */
   goalId?: string;
   envelopeId?: string;
+  /** Conta fixa e compra parcelada criadas por conversa (3b2b). */
+  recurringTransactionId?: string;
+  installmentPurchaseId?: string;
   /** Reservas ativas (envelopes), contrato 3b1 parte A. Centavos; available pode ser negativo. */
   envelopes?: Array<{ label: string; monthlyCents: number; availableCents: number; spentCents: number }>;
   card?: {

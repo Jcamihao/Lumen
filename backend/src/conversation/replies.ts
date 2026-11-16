@@ -31,6 +31,30 @@ export const REPLIES = {
     'Não consegui definir o limite e outro rascunho já foi aberto. Envie o pedido de novo.',
   creditLimitValueOnly: 'Envie só o valor do limite, sem nome de banco. Ex.: definir limite 5000.',
   revisionRestoreLost: 'O pedido mudou e outro rascunho já foi aberto. Envie o pedido de novo.',
+  askDraftDescription: 'Qual a descrição? Ex.: internet ou geladeira.',
+  askRecurringAmount: 'Qual o valor de cada vencimento?',
+  askInstallmentTotal: 'Qual o valor total da compra, antes de dividir em parcelas?',
+  askInstallmentsTotal: 'Em quantas parcelas? Responda um número de 2 a 60.',
+  askFirstDue: 'Qual o primeiro vencimento? Responda hoje ou uma data, como 20/11/2026.',
+  firstDueFormat: 'Use hoje, dd/mm ou dd/mm/aaaa.',
+  firstDuePast: 'O primeiro vencimento não pode ser anterior a hoje. Para cadastrar o histórico, use a tela de Finanças.',
+  firstDueTooFar: 'O primeiro vencimento está longe demais (máximo 2 anos).',
+  firstDueChanged: 'O primeiro vencimento ficou no passado. Informe uma nova data.',
+  installmentsRange: 'A quantidade de parcelas vai de 2 a 60.',
+  installmentTooSmall: 'Com essa quantidade, uma parcela ficaria abaixo de R$ 0,01. Escolha menos parcelas ou aumente o valor.',
+  installmentTotalOnly: 'Informe o valor total da compra, não o valor da parcela. Ex.: criar parcelado 1200 geladeira em 12x.',
+  recurringRejected: 'Não foi possível criar a conta fixa. Confira os dados e envie o pedido de novo.',
+  installmentRejected: 'Não foi possível criar a compra parcelada. Confira os dados e envie o pedido de novo.',
+  recurringSaveFailed: 'Não consegui criar a conta fixa. O rascunho foi mantido; tente confirmar de novo.',
+  recurringSaveFailedRestoreLost: 'Não consegui criar a conta fixa e outro rascunho já foi aberto. Envie o pedido de novo.',
+  installmentSaveFailed: 'Não consegui criar a compra parcelada. O rascunho foi mantido; tente confirmar de novo.',
+  installmentSaveFailedRestoreLost:
+    'Não consegui criar a compra parcelada e outro rascunho já foi aberto. Envie o pedido de novo.',
+  materializationPending: 'Cadastro salvo. A atualização dos lançamentos está pendente; confira a tela de Finanças.',
+  recurringTodayWarning: 'Ao confirmar, será gerado o lançamento de hoje.',
+  installmentTodayWarning: 'Ao confirmar, será gerada a parcela de hoje.',
+  futureDueWarning: 'Os lançamentos serão gerados nos vencimentos.',
+  catchUpWarning: 'Outros cadastros já vencidos também podem ser atualizados junto, como na tela.',
   help:
     'Exemplos: "50 mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
     '"quanto gastei", "gastos com mercado", "limite do cartão".',
@@ -400,4 +424,46 @@ export function envelopesText(input: {
     lines.push(`Você tem ${input.pausedCount} reserva(s) pausada(s).`);
   }
   return lines.filter((line): line is string => line !== null).join('\n');
+}
+
+/** Nome da frequência em português, como na tela de contas fixas. */
+export function frequencyText(frequency: 'WEEKLY' | 'MONTHLY' | 'YEARLY'): string {
+  return FREQUENCY_LABEL[frequency];
+}
+
+export function recurringDraftText(input: {
+  description: string;
+  amountCents: number;
+  frequency: 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+  firstDueDate: string;
+}): string {
+  return `Conta fixa ${input.description}: ${formatBrl(input.amountCents)} por vencimento, ${FREQUENCY_LABEL[input.frequency]}, primeiro vencimento em ${longDate(input.firstDueDate)}.`;
+}
+
+export function recurringCreatedText(input: {
+  description: string;
+  amountCents: number;
+  frequency: 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+  firstDueDate: string;
+}): string {
+  return `Conta fixa criada: ${input.description}, ${formatBrl(input.amountCents)}, ${FREQUENCY_LABEL[input.frequency]}, primeiro vencimento em ${longDate(input.firstDueDate)}.`;
+}
+
+/** Rascunho de parcelado: o total é o da compra; o valor por parcela vem da divisão do motor. */
+export function installmentDraftText(input: {
+  description: string;
+  totalCents: number;
+  installmentsTotal: number;
+  firstDueDate: string;
+}): string {
+  return `Compra parcelada ${input.description}: total ${formatBrl(input.totalCents)} em ${input.installmentsTotal} parcelas, primeira em ${longDate(input.firstDueDate)}.`;
+}
+
+export function installmentCreatedText(input: {
+  description: string;
+  totalCents: number;
+  installmentsTotal: number;
+  firstDueDate: string;
+}): string {
+  return `Compra parcelada criada: ${input.description}, total ${formatBrl(input.totalCents)} em ${input.installmentsTotal} parcelas, primeira em ${longDate(input.firstDueDate)}.`;
 }

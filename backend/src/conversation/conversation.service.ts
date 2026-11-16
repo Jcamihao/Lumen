@@ -11,6 +11,25 @@ import { EnvelopesService } from '../envelopes/envelopes.service';
 import { EnvelopeMonthChangedError, EnvelopeWriteUncertainError } from '../envelopes/conversation-write.types';
 import { monthStart } from '../envelopes/envelope.util';
 import { CreditLimitChangedError, CreditLimitWriteUncertainError } from '../credit-cycle/conversation-write.types';
+import {
+  ConversationWriteRules,
+  RecurringFirstDueChangedError,
+  RecurringWriteUncertainError,
+} from '../recurring-transactions/conversation-write.types';
+import {
+  InstallmentFirstDueChangedError,
+  InstallmentWriteUncertainError,
+  splitInstallments,
+} from '../installments/conversation-write.types';
+import {
+  BodyFailure,
+  DueResolution,
+  parseInstallmentBody,
+  INSTALLMENTS_MAX,
+  INSTALLMENTS_MIN,
+  parseRecurringBody,
+  resolveFirstDue,
+} from './parsers/write-body.parser';
 import { EntitlementsService } from '../billing/entitlements.service';
 import { PlanLimitException } from '../billing/plan-limit.exception';
 import { GoalsService } from '../goals/goals.service';
@@ -45,6 +64,10 @@ import {
   creditLimitDraftText,
   creditLimitSetText,
   doneText,
+  installmentCreatedText,
+  installmentDraftText,
+  recurringCreatedText,
+  recurringDraftText,
   draftText,
   envelopeCreatedText,
   envelopeDraftText,
@@ -77,6 +100,8 @@ import {
   EnvelopeDraft,
   ExpenseOrIncomeDraft,
   GoalDraft,
+  InstallmentDraft,
+  RecurringDraft,
   ReplyData,
   SessionDraft,
 } from './conversation.types';
@@ -95,6 +120,10 @@ const MAX_CATEGORY_OPTIONS = 5;
 const ENVELOPE_COLOR = '#f18f01';
 const ENVELOPE_NAME_MIN = 2;
 const ENVELOPE_NAME_MAX = 60;
+/** Conta fixa e parcelado: frequência padrão visível no cartão (contrato 3b2, secao 4). */
+const DEFAULT_RECURRING_FREQUENCY = 'MONTHLY';
+/** Conta fixa e parcelado criados pelo bot: vencimento anterior a hoje não grava (núcleo do serviço). */
+const RECURRING_WRITE_RULES: ConversationWriteRules = { notBefore: 'today' };
 /** Opções numeradas de meta na pergunta de aporte (contrato 3b1, secao 3). */
 const MAX_GOAL_OPTIONS = 5;
 const DESCRIPTION_MIN = 2;
@@ -177,6 +206,9 @@ interface EnvelopeRow {
   spent: number;
 }
 
+/** Frequências em maiúscula para o cartão da conta fixa. */
+const FREQUENCY_ROW_LABEL = { WEEKLY: 'Semanal', MONTHLY: 'Mensal', YEARLY: 'Anual' } as const;
+
 /** Resposta de preencher um campo: atualizou o rascunho, ou pede de novo, ou erro. */
 type PendingAnswer =
   | { status: 'UPDATED' }
@@ -190,6 +222,8 @@ interface AppliedAction {
   resultRef: string;
   /** Gravação feita, enriquecimento posterior falhou: a tela precisa ser conferida (contrato 3). */
   refreshPending?: boolean;
+  /** Gravação feita, materialização dos lançamentos falhou (conta fixa e parcelado). */
+  materializationPending?: boolean;
 }
 
 type CategoryRow = { id: string; name: string };
@@ -316,6 +350,12 @@ export class ConversationService {
     }
     if (intent.intent === 'set_credit_limit') {
       return this.startCreditLimitDraft({ input, body: intent.body });
+    }
+    if (intent.intent === 'create_recurring') {
+      return this.startRecurringDraft({ input, body: intent.body });
+    }
+    if (intent.intent === 'create_installment') {
+      return this.startInstallmentDraft({ input, body: intent.body });
     }
     if (intent.intent === 'help') {
       await this.recordEvent(input, 'help', ConversationOutcome.RECOGNIZED);
@@ -582,6 +622,104 @@ export class ConversationService {
     return this.saveNewDraft({ input, intent: 'set_credit_limit', draft, today: await this.todayYmd(userId, receivedAt) });
   }
 
+  /**
+   * Criar conta fixa (contrato 3b2b, secao 4). Plano checado ao abrir; despesa, sem categoria nem
+   * pagamento. Frequência ausente vira mensal. Data passada ou longe demais recusa sem rascunho.
+   */
+  private async startRecurringDraft(args: { input: ConversationInput; body: string }): Promise<ConversationReply> {
+    const { input, body } = args;
+    const { userId, receivedAt } = input;
+    const refusal = await this.refuseIfPlanFull(userId, input, 'recurringTransactions', 'create_recurring');
+    if (refusal) return refusal;
+
+    const parsed = parseRecurringBody(body);
+    if (parsed.ok === false) {
+      await this.recordEvent(input, 'create_recurring', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', bodyErrorText(parsed.reason));
+    }
+    const { description, amountCents, frequency, dueText } = parsed.value;
+    const today = await this.todayYmd(userId, receivedAt);
+    const dueError = description !== null && description.length > DESCRIPTION_MAX
+      ? REPLIES.descriptionTooLong
+      : null;
+    const due = openingDue(dueText, today);
+    if (dueError !== null || due.error !== null) {
+      await this.recordEvent(input, 'create_recurring', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', dueError ?? due.error ?? REPLIES.collectingReminder);
+    }
+
+    const draft: RecurringDraft = {
+      kind: 'RECURRING',
+      description,
+      amountCents,
+      frequency: frequency ?? DEFAULT_RECURRING_FREQUENCY,
+      firstDueDate: due.ymd,
+      pendingField: nextRecurringPending({ description, amountCents, firstDueDate: due.ymd }),
+    };
+    return this.saveNewDraft({ input, intent: 'create_recurring', draft, today });
+  }
+
+  /**
+   * Criar compra parcelada. O valor é sempre o total. Quantidade de 2 a 60 e parcela não menor
+   * que R$ 0,01 (regra do serviço, conferida também aqui para não abrir rascunho que será recusado).
+   */
+  private async startInstallmentDraft(args: { input: ConversationInput; body: string }): Promise<ConversationReply> {
+    const { input, body } = args;
+    const { userId, receivedAt } = input;
+    const refusal = await this.refuseIfPlanFull(userId, input, 'installmentPurchases', 'create_installment');
+    if (refusal) return refusal;
+
+    const parsed = parseInstallmentBody(body);
+    if (parsed.ok === false) {
+      await this.recordEvent(input, 'create_installment', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', bodyErrorText(parsed.reason));
+    }
+    const { description, totalCents, installmentsTotal, dueText } = parsed.value;
+    const today = await this.todayYmd(userId, receivedAt);
+    const descriptionError = description !== null && description.length > DESCRIPTION_MAX
+      ? REPLIES.descriptionTooLong
+      : null;
+    const splitError = totalCents !== null && installmentsTotal !== null &&
+      splitInstallments(totalCents, installmentsTotal) === null
+      ? REPLIES.installmentTooSmall
+      : null;
+    const due = openingDue(dueText, today);
+    const error = descriptionError ?? splitError ?? due.error;
+    if (error !== null) {
+      await this.recordEvent(input, 'create_installment', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', error);
+    }
+
+    const draft: InstallmentDraft = {
+      kind: 'INSTALLMENT',
+      description,
+      totalCents,
+      installmentsTotal,
+      firstDueDate: due.ymd,
+      pendingField: nextInstallmentPending({ description, totalCents, installmentsTotal, firstDueDate: due.ymd }),
+    };
+    return this.saveNewDraft({ input, intent: 'create_installment', draft, today });
+  }
+
+  /** Recusa ao abrir por limite do plano: sem rascunho, com a mensagem do domínio (contrato 6). */
+  private async refuseIfPlanFull(
+    userId: string,
+    input: ConversationInput,
+    resource: 'recurringTransactions' | 'installmentPurchases',
+    intent: string,
+  ): Promise<ConversationReply | null> {
+    try {
+      await this.entitlements.assertCanCreate(userId, resource);
+      return null;
+    } catch (error) {
+      if (error instanceof PlanLimitException) {
+        await this.recordEvent(input, intent, ConversationOutcome.ERROR);
+        return this.reply('ERROR', 'IDLE', error.message);
+      }
+      throw error;
+    }
+  }
+
   private async isEnvelopeNameTaken(userId: string, name: string): Promise<boolean> {
     const found = await this.prisma.envelope.findFirst({ where: { userId, name }, select: { id: true } });
     return found !== null;
@@ -646,8 +784,8 @@ export class ConversationService {
       return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: REPLIES.collectingReminder });
     }
     const pendingDraft = session.draft as unknown as SessionDraft;
-    // Nome de reserva que começa com número é o nome pedido, não um comando (contrato 4).
-    if (!awaiting && pendingDraft.kind === 'ENVELOPE' && pendingDraft.pendingField === 'name' && /^\d/.test(text)) {
+    // Texto que começa com número é a resposta pedida (nome, descrição, quantidade, data), não um comando (contrato 4).
+    if (!awaiting && startsWithNumericAnswer(pendingDraft) && /^\d/.test(text)) {
       return this.fillPendingField({ input, session, text });
     }
     if (!awaiting && (isOptionNumber(words, pendingDraft) || isAmountAnswer(text, pendingDraft))) {
@@ -688,7 +826,7 @@ export class ConversationService {
     const draft = session.draft as unknown as SessionDraft;
     const today = await this.todayYmd(userId, receivedAt);
 
-    const answer = await this.answerPending(userId, draft, text.trim());
+    const answer = await this.answerPending(userId, draft, text.trim(), today);
     if (answer.status === 'ERROR') {
       await this.recordEvent(input, session.intent, ConversationOutcome.ERROR);
       return this.reply('ERROR', this.stateView(session), answer.text);
@@ -698,6 +836,8 @@ export class ConversationService {
       return this.draftReply(session, today, { question: answer.question, prefix: answer.prefix });
     }
 
+    // Campo respondido: o motivo da revisão anterior já foi atendido e não pode ficar no cartão novo.
+    delete (draft as { reviewReason?: string }).reviewReason;
     const nextState = draft.pendingField ? ConversationState.COLLECTING_FIELDS : ConversationState.AWAITING_CONFIRMATION;
     const updated = await this.prisma.conversationSession.updateMany({
       where: { id: session.id, userId, version: session.version },
@@ -724,7 +864,7 @@ export class ConversationService {
   }
 
   /** Resposta ao campo pendente, por tipo de rascunho. Só muda `draft` no caminho UPDATED. */
-  private async answerPending(userId: string, draft: SessionDraft, value: string): Promise<PendingAnswer> {
+  private async answerPending(userId: string, draft: SessionDraft, value: string, today: string): Promise<PendingAnswer> {
     if (draft.kind === 'GOAL') {
       return this.answerGoal(userId, draft, value);
     }
@@ -736,6 +876,12 @@ export class ConversationService {
     }
     if (draft.kind === 'CREDIT_LIMIT') {
       return this.answerCreditLimit(draft, value);
+    }
+    if (draft.kind === 'RECURRING') {
+      return this.answerRecurring(draft, value, today);
+    }
+    if (draft.kind === 'INSTALLMENT') {
+      return this.answerInstallment(draft, value, today);
     }
     return this.answerTransaction(userId, draft, value);
   }
@@ -915,6 +1061,80 @@ export class ConversationService {
     return { status: 'ERROR', text: REPLIES.collectingReminder };
   }
 
+  /** Conta fixa: descrição, valor por vencimento e primeiro vencimento, nessa ordem (contrato 4). */
+  private answerRecurring(draft: RecurringDraft, value: string, today: string): PendingAnswer {
+    if (draft.pendingField === 'description') {
+      const refusal = descriptionRefusal(value, REPLIES.askDraftDescription);
+      if (refusal) return refusal;
+      draft.description = value;
+      draft.pendingField = nextRecurringPending(draft);
+      return { status: 'UPDATED' };
+    }
+    if (draft.pendingField === 'amount') {
+      const amount = amountAnswer(value, REPLIES.askRecurringAmount);
+      if (amount.ok === false) return amount.answer;
+      draft.amountCents = amount.cents;
+      draft.pendingField = nextRecurringPending(draft);
+      return { status: 'UPDATED' };
+    }
+    if (draft.pendingField === 'firstDueDate') {
+      const due = resolveFirstDue(value, today);
+      if (due.kind !== 'DATE') return dueRefusal(due);
+      draft.firstDueDate = due.ymd;
+      draft.pendingField = nextRecurringPending(draft);
+      return { status: 'UPDATED' };
+    }
+    return { status: 'ERROR', text: REPLIES.collectingReminder };
+  }
+
+  /**
+   * Compra parcelada: descrição, total, quantidade e primeiro vencimento. Quantidade e total são
+   * conferidos juntos antes de guardar: nenhuma parcela pode ficar abaixo de R$ 0,01.
+   */
+  private answerInstallment(draft: InstallmentDraft, value: string, today: string): PendingAnswer {
+    if (draft.pendingField === 'description') {
+      const refusal = descriptionRefusal(value, REPLIES.askDraftDescription);
+      if (refusal) return refusal;
+      draft.description = value;
+      draft.pendingField = nextInstallmentPending(draft);
+      return { status: 'UPDATED' };
+    }
+    if (draft.pendingField === 'amount') {
+      const amount = amountAnswer(value, REPLIES.askInstallmentTotal);
+      if (amount.ok === false) return amount.answer;
+      if (draft.installmentsTotal !== null && splitInstallments(amount.cents, draft.installmentsTotal) === null) {
+        return { status: 'ASK', outcome: ConversationOutcome.ERROR, question: REPLIES.askInstallmentTotal, prefix: REPLIES.installmentTooSmall };
+      }
+      draft.totalCents = amount.cents;
+      draft.pendingField = nextInstallmentPending(draft);
+      return { status: 'UPDATED' };
+    }
+    if (draft.pendingField === 'installmentsTotal') {
+      const match = /^(\d+)x?$/.exec(normalize(value));
+      if (match === null) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: REPLIES.askInstallmentsTotal };
+      }
+      const installmentsTotal = Number(match[1]);
+      if (installmentsTotal < INSTALLMENTS_MIN || installmentsTotal > INSTALLMENTS_MAX) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: REPLIES.askInstallmentsTotal, prefix: REPLIES.installmentsRange };
+      }
+      if (draft.totalCents !== null && splitInstallments(draft.totalCents, installmentsTotal) === null) {
+        return { status: 'ASK', outcome: ConversationOutcome.ERROR, question: REPLIES.askInstallmentsTotal, prefix: REPLIES.installmentTooSmall };
+      }
+      draft.installmentsTotal = installmentsTotal;
+      draft.pendingField = nextInstallmentPending(draft);
+      return { status: 'UPDATED' };
+    }
+    if (draft.pendingField === 'firstDueDate') {
+      const due = resolveFirstDue(value, today);
+      if (due.kind !== 'DATE') return dueRefusal(due);
+      draft.firstDueDate = due.ymd;
+      draft.pendingField = nextInstallmentPending(draft);
+      return { status: 'UPDATED' };
+    }
+    return { status: 'ERROR', text: REPLIES.collectingReminder };
+  }
+
   /** Aplica o rascunho com a regra da secao 7: reivindicar, registrar chave, aplicar. */
   private async applyDraft(args: {
     userId: string;
@@ -951,7 +1171,7 @@ export class ConversationService {
     try {
       applied = await this.applyByKind(userId, draft);
     } catch (error) {
-      if (error instanceof EnvelopeWriteUncertainError || error instanceof CreditLimitWriteUncertainError) {
+      if (isWriteUncertain(error)) {
         // Commit sem confirmação: não restaura, não libera a chave e não oferece nova gravação (contrato 3).
         await this.prisma.conversationEvent
           .updateMany({ where: { id: event.id, userId }, data: { outcome: ConversationOutcome.ERROR } })
@@ -992,7 +1212,12 @@ export class ConversationService {
         data: { outcome: ConversationOutcome.COMPLETED, resultRef: applied.resultRef },
       })
       .catch(() => undefined);
-    const text = applied.refreshPending ? `${applied.text}\n${REPLIES.refreshPending}` : applied.text;
+    const pendingText = applied.materializationPending
+      ? REPLIES.materializationPending
+      : applied.refreshPending
+        ? REPLIES.refreshPending
+        : null;
+    const text = pendingText ? `${applied.text}\n${pendingText}` : applied.text;
     return { kind: 'DONE', state: 'IDLE', text, data: applied.data };
   }
 
@@ -1010,10 +1235,11 @@ export class ConversationService {
   }): Promise<ConversationReply> {
     const { userId, session, reason, channel, now } = args;
     const revised = { ...args.draft, reviewReason: reason } as SessionDraft;
+    // Campo que voltou a faltar (vencimento no passado) pede a coleta de novo; o resto volta à confirmação.
     const next: SessionRow = {
       ...session,
       draft: revised as unknown as Prisma.JsonValue,
-      state: ConversationState.AWAITING_CONFIRMATION,
+      state: revised.pendingField ? ConversationState.COLLECTING_FIELDS : ConversationState.AWAITING_CONFIRMATION,
       version: session.version + 1,
     };
     const restored = await this.restoreSession({ userId, session: next, channel, now });
@@ -1036,6 +1262,12 @@ export class ConversationService {
     }
     if (draft.kind === 'CREDIT_LIMIT') {
       return this.applyCreditLimit(userId, draft);
+    }
+    if (draft.kind === 'RECURRING') {
+      return this.applyRecurring(userId, draft);
+    }
+    if (draft.kind === 'INSTALLMENT') {
+      return this.applyInstallment(userId, draft);
     }
     return this.applyTransaction(userId, draft);
   }
@@ -1077,6 +1309,65 @@ export class ConversationService {
       text: creditLimitSetText({ ceilingCents: receipt.ceilingCents, cycleEnd: receipt.cycleEnd }),
       data: {},
       resultRef: receipt.id,
+      refreshPending: receipt.refreshPending,
+    };
+  }
+
+  /** Conta fixa: a gravação e a materialização vêm do núcleo do serviço; o texto sai do recibo. */
+  private async applyRecurring(userId: string, draft: RecurringDraft): Promise<AppliedAction> {
+    if (draft.description === null || draft.amountCents === null || draft.firstDueDate === null) {
+      throw new Error('rascunho de conta fixa incompleto');
+    }
+    const receipt = await this.recurring.createForConversation(
+      userId,
+      {
+        type: TransactionType.EXPENSE,
+        description: draft.description,
+        amount: draft.amountCents / 100,
+        frequency: draft.frequency,
+        firstDueDate: draft.firstDueDate,
+      },
+      RECURRING_WRITE_RULES,
+    );
+    return {
+      text: recurringCreatedText({
+        description: receipt.description,
+        amountCents: receipt.amountCents,
+        frequency: receipt.frequency,
+        firstDueDate: receipt.firstDueDate,
+      }),
+      data: { recurringTransactionId: receipt.id },
+      resultRef: receipt.id,
+      materializationPending: receipt.materializationPending,
+      refreshPending: receipt.refreshPending,
+    };
+  }
+
+  /** Compra parcelada: o serviço divide o total e confere a parcela mínima; o motor não divide. */
+  private async applyInstallment(userId: string, draft: InstallmentDraft): Promise<AppliedAction> {
+    if (draft.description === null || draft.totalCents === null || draft.installmentsTotal === null || draft.firstDueDate === null) {
+      throw new Error('rascunho de compra parcelada incompleto');
+    }
+    const receipt = await this.installments.createForConversation(
+      userId,
+      {
+        description: draft.description,
+        totalAmount: draft.totalCents / 100,
+        installmentsTotal: draft.installmentsTotal,
+        firstDueDate: draft.firstDueDate,
+      },
+      RECURRING_WRITE_RULES,
+    );
+    return {
+      text: installmentCreatedText({
+        description: receipt.description,
+        totalCents: receipt.totalCents,
+        installmentsTotal: receipt.installmentsTotal,
+        firstDueDate: receipt.firstDueDate,
+      }),
+      data: { installmentPurchaseId: receipt.id },
+      resultRef: receipt.id,
+      materializationPending: receipt.materializationPending,
       refreshPending: receipt.refreshPending,
     };
   }
@@ -1188,11 +1479,11 @@ export class ConversationService {
           id: session.id,
           userId,
           channel,
-          state: ConversationState.AWAITING_CONFIRMATION,
+          state: session.state,
           intent: session.intent,
           draft: session.draft as Prisma.InputJsonValue,
           version: session.version,
-          expiresAt: new Date(now.getTime() + TTL_MS.AWAITING_CONFIRMATION),
+          expiresAt: new Date(now.getTime() + ttlFor(session.state)),
         },
       });
       return true;
@@ -1583,6 +1874,22 @@ export class ConversationService {
     if (draft.kind === 'CREDIT_LIMIT') {
       return creditLimitDraftText({ ceilingCents: draft.ceilingCents ?? 0, cycleEnd: draft.cycleEnd });
     }
+    if (draft.kind === 'RECURRING') {
+      return recurringDraftText({
+        description: draft.description ?? 'a informar',
+        amountCents: draft.amountCents ?? 0,
+        frequency: draft.frequency,
+        firstDueDate: draft.firstDueDate ?? today,
+      });
+    }
+    if (draft.kind === 'INSTALLMENT') {
+      return installmentDraftText({
+        description: draft.description ?? 'a informar',
+        totalCents: draft.totalCents ?? 0,
+        installmentsTotal: draft.installmentsTotal ?? 0,
+        firstDueDate: draft.firstDueDate ?? today,
+      });
+    }
     if (draft.kind === 'GOAL') {
       return goalDraftText({ title: truncate(draft.title ?? ''), targetCents: draft.targetCents });
     }
@@ -1608,6 +1915,17 @@ export class ConversationService {
   }
 
   private async questionFor(userId: string, draft: SessionDraft): Promise<string> {
+    if (draft.kind === 'RECURRING') {
+      if (draft.pendingField === 'description') return REPLIES.askDraftDescription;
+      if (draft.pendingField === 'amount') return REPLIES.askRecurringAmount;
+      return REPLIES.askFirstDue;
+    }
+    if (draft.kind === 'INSTALLMENT') {
+      if (draft.pendingField === 'description') return REPLIES.askDraftDescription;
+      if (draft.pendingField === 'amount') return REPLIES.askInstallmentTotal;
+      if (draft.pendingField === 'installmentsTotal') return REPLIES.askInstallmentsTotal;
+      return REPLIES.askFirstDue;
+    }
     if (draft.kind === 'ENVELOPE') {
       return draft.pendingField === 'name' ? REPLIES.askEnvelopeName : REPLIES.askEnvelopeAmount;
     }
@@ -1684,6 +2002,49 @@ export class ConversationService {
           { label: 'Novo limite', value: draft.ceilingCents === null ? 'a informar' : formatBrl(draft.ceilingCents) },
           { label: 'Aviso', value: REPLIES.creditLimitCycleWarning },
           ...(draft.countAllPayments ? [{ label: 'Aviso', value: REPLIES.creditLimitAllPaymentsWarning }] : []),
+          ...reviewRows(draft.reviewReason),
+        ],
+      };
+    }
+    if (draft.kind === 'RECURRING') {
+      const today = await this.todayYmd(session.userId, new Date());
+      return {
+        ...base,
+        kind: 'RECURRING',
+        title: 'Conta fixa',
+        pendingField: draft.pendingField,
+        rows: [
+          { label: 'Descrição', value: draft.description ?? 'a informar' },
+          { label: 'Valor por vencimento', value: draft.amountCents === null ? 'a informar' : formatBrl(draft.amountCents) },
+          { label: 'Frequência', value: FREQUENCY_ROW_LABEL[draft.frequency] },
+          { label: 'Primeiro vencimento', value: draft.firstDueDate === null ? 'a informar' : longDate(draft.firstDueDate) },
+          { label: 'Categoria', value: 'não informada' },
+          { label: 'Forma de pagamento', value: 'não informada' },
+          ...dueWarningRows(draft.firstDueDate, today, REPLIES.recurringTodayWarning),
+          ...reviewRows(draft.reviewReason),
+        ],
+      };
+    }
+    if (draft.kind === 'INSTALLMENT') {
+      const today = await this.todayYmd(session.userId, new Date());
+      const split = draft.totalCents !== null && draft.installmentsTotal !== null
+        ? splitInstallments(draft.totalCents, draft.installmentsTotal)
+        : null;
+      return {
+        ...base,
+        kind: 'INSTALLMENT',
+        title: 'Compra parcelada',
+        pendingField: draft.pendingField,
+        rows: [
+          { label: 'Descrição', value: draft.description ?? 'a informar' },
+          { label: 'Total da compra', value: draft.totalCents === null ? 'a informar' : formatBrl(draft.totalCents) },
+          { label: 'Quantidade', value: draft.installmentsTotal === null ? 'a informar' : String(draft.installmentsTotal) },
+          { label: 'Valor por parcela', value: split ? formatBrl(split.installmentCents) : 'a informar' },
+          { label: 'Última parcela', value: split ? formatBrl(split.lastInstallmentCents) : 'a informar' },
+          { label: 'Primeiro vencimento', value: draft.firstDueDate === null ? 'a informar' : longDate(draft.firstDueDate) },
+          { label: 'Categoria', value: 'não informada' },
+          { label: 'Forma de pagamento', value: 'não informada' },
+          ...dueWarningRows(draft.firstDueDate, today, REPLIES.installmentTodayWarning),
           ...reviewRows(draft.reviewReason),
         ],
       };
@@ -1888,7 +2249,7 @@ function isOptionNumber(words: string, draft: SessionDraft): boolean {
 }
 
 function numberedOptions(draft: SessionDraft): string[] {
-  if (draft.kind === 'GOAL' || draft.kind === 'ENVELOPE' || draft.kind === 'CREDIT_LIMIT') {
+  if (draft.kind === 'GOAL' || draft.kind === 'ENVELOPE' || draft.kind === 'CREDIT_LIMIT' || draft.kind === 'RECURRING' || draft.kind === 'INSTALLMENT') {
     return [];
   }
   if (draft.kind === 'CONTRIBUTION') {
@@ -1962,6 +2323,125 @@ function goalTargetValue(draft: GoalDraft): string {
   return draft.targetCents === null ? 'a informar' : formatBrl(draft.targetCents);
 }
 
+/** Texto que começa com número é a resposta pedida (nome, descrição, quantidade ou data), não um comando (contrato 4). */
+function startsWithNumericAnswer(draft: SessionDraft): boolean {
+  if (draft.kind === 'ENVELOPE') return draft.pendingField === 'name';
+  if (draft.kind === 'RECURRING') return draft.pendingField === 'description' || draft.pendingField === 'firstDueDate';
+  if (draft.kind === 'INSTALLMENT') {
+    return draft.pendingField === 'description' || draft.pendingField === 'installmentsTotal' || draft.pendingField === 'firstDueDate';
+  }
+  return false;
+}
+
+/** Ordem da conta fixa: descrição, valor e primeiro vencimento (contrato 3b2, secao 4). */
+function nextRecurringPending(draft: {
+  description: string | null;
+  amountCents: number | null;
+  firstDueDate: string | null;
+}): 'description' | 'amount' | 'firstDueDate' | null {
+  if (draft.description === null) return 'description';
+  if (draft.amountCents === null) return 'amount';
+  if (draft.firstDueDate === null) return 'firstDueDate';
+  return null;
+}
+
+/** Ordem do parcelado: descrição, total, quantidade e primeiro vencimento. */
+function nextInstallmentPending(draft: {
+  description: string | null;
+  totalCents: number | null;
+  installmentsTotal: number | null;
+  firstDueDate: string | null;
+}): 'description' | 'amount' | 'installmentsTotal' | 'firstDueDate' | null {
+  if (draft.description === null) return 'description';
+  if (draft.totalCents === null) return 'amount';
+  if (draft.installmentsTotal === null) return 'installmentsTotal';
+  if (draft.firstDueDate === null) return 'firstDueDate';
+  return null;
+}
+
+/** Vencimento vindo do texto de abertura: null = ainda não informado (pergunta depois); erro = recusa sem rascunho. */
+function openingDue(dueText: string | null, today: string): { ymd: string | null; error: string | null } {
+  if (dueText === null || dueText === '') return { ymd: null, error: null };
+  const due = resolveFirstDue(dueText, today);
+  if (due.kind === 'DATE') return { ymd: due.ymd, error: null };
+  if (due.kind === 'UNSUPPORTED') return { ymd: null, error: null };
+  return { ymd: null, error: dueProblem(due) };
+}
+
+/** Texto da recusa de data (passada, longe demais ou inválida). UNSUPPORTED pede o formato aceito. */
+function dueProblem(due: DueResolution): string {
+  if (due.kind === 'INVALID') return REPLIES.invalidDate;
+  if (due.kind === 'PAST') return REPLIES.firstDuePast;
+  if (due.kind === 'TOO_FAR') return REPLIES.firstDueTooFar;
+  return REPLIES.firstDueFormat;
+}
+
+/** Resposta de campo de data recusada: mantém o rascunho e pergunta de novo, com o motivo. */
+function dueRefusal(due: DueResolution): PendingAnswer {
+  return {
+    status: 'ASK',
+    outcome: due.kind === 'UNSUPPORTED' ? ConversationOutcome.UNRECOGNIZED : ConversationOutcome.ERROR,
+    question: REPLIES.askFirstDue,
+    prefix: dueProblem(due),
+  };
+}
+
+/** Descrição de conta fixa ou parcelado: 2 a 120 caracteres. */
+function descriptionRefusal(value: string, question: string): PendingAnswer | null {
+  if (value.length < DESCRIPTION_MIN) {
+    return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question };
+  }
+  if (value.length > DESCRIPTION_MAX) {
+    return { status: 'ERROR', text: REPLIES.descriptionTooLong };
+  }
+  return null;
+}
+
+/** Valor que deve ocupar a resposta inteira (sobra pede reenvio, como na reserva e no limite). */
+function amountAnswer(value: string, question: string): { ok: true; cents: number } | { ok: false; answer: PendingAnswer } {
+  const amount = parseAmountPrefix(value);
+  if (amount.ok === false) {
+    if (amount.reason === 'NOT_AMOUNT') {
+      return { ok: false, answer: { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question, prefix: REPLIES.amountOnly } };
+    }
+    return { ok: false, answer: { status: 'ERROR', text: amountErrorText(amount.reason) } };
+  }
+  if (amount.rest !== '') {
+    return { ok: false, answer: { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question, prefix: REPLIES.amountOnly } };
+  }
+  return { ok: true, cents: amount.cents };
+}
+
+/** Texto de recusa do corpo de abertura (valor, quantidade ou total dado como parcela). */
+function bodyErrorText(reason: BodyFailure): string {
+  if (reason === 'QUANTITY') return REPLIES.installmentsRange;
+  if (reason === 'TOTAL_ONLY') return REPLIES.installmentTotalOnly;
+  return amountErrorText(reason);
+}
+
+/** Avisos do cartão de conta fixa e parcelado: geração de hoje ou nos vencimentos, e cadastros já vencidos. */
+function dueWarningRows(firstDueDate: string | null, today: string, todayWarning: string): Array<{ label: string; value: string }> {
+  if (firstDueDate === null) return [];
+  const rows: Array<{ label: string; value: string }> = [];
+  if (firstDueDate === today) {
+    rows.push({ label: 'Aviso', value: todayWarning });
+  } else if (firstDueDate > today) {
+    rows.push({ label: 'Aviso', value: REPLIES.futureDueWarning });
+  }
+  rows.push({ label: 'Aviso', value: REPLIES.catchUpWarning });
+  return rows;
+}
+
+/** Erro de commit desconhecido, vindo de qualquer um dos quatro domínios de gravação. */
+function isWriteUncertain(error: unknown): boolean {
+  return (
+    error instanceof EnvelopeWriteUncertainError ||
+    error instanceof CreditLimitWriteUncertainError ||
+    error instanceof RecurringWriteUncertainError ||
+    error instanceof InstallmentWriteUncertainError
+  );
+}
+
 /** Erro que descarta o rascunho: limite do plano ou erro 4xx do serviço (D5). */
 function isDiscardError(error: unknown): boolean {
   return error instanceof HttpException && error.getStatus() < 500;
@@ -1981,6 +2461,12 @@ function discardText(kind: DraftKind, error: unknown): string {
   if (kind === 'CREDIT_LIMIT') {
     return REPLIES.creditLimitRejected;
   }
+  if (kind === 'RECURRING') {
+    return REPLIES.recurringRejected;
+  }
+  if (kind === 'INSTALLMENT') {
+    return REPLIES.installmentRejected;
+  }
   return kind === 'TRANSACTION' ? REPLIES.transactionRejected : REPLIES.goalGone;
 }
 
@@ -1991,6 +2477,12 @@ function saveFailedText(kind: DraftKind, restored: boolean): string {
   }
   if (kind === 'CREDIT_LIMIT') {
     return restored ? REPLIES.creditLimitSaveFailed : REPLIES.creditLimitSaveFailedRestoreLost;
+  }
+  if (kind === 'RECURRING') {
+    return restored ? REPLIES.recurringSaveFailed : REPLIES.recurringSaveFailedRestoreLost;
+  }
+  if (kind === 'INSTALLMENT') {
+    return restored ? REPLIES.installmentSaveFailed : REPLIES.installmentSaveFailedRestoreLost;
   }
   if (kind === 'GOAL') {
     return restored ? REPLIES.goalSaveFailed : REPLIES.goalSaveFailedRestoreLost;
@@ -2066,6 +2558,8 @@ function monthYmd(date: Date): string {
 
 /** Erro de "mudou desde a exibição": devolve o rascunho com os dados atuais e o motivo. Null = outro erro. */
 function revisedDraft(draft: SessionDraft, error: unknown): { draft: SessionDraft; reason: string } | null {
+  const recurring = revisedRecurringDue(draft, error);
+  if (recurring) return recurring;
   if (error instanceof EnvelopeMonthChangedError && draft.kind === 'ENVELOPE') {
     return { draft: { ...draft, provisionMonth: error.provisionMonth }, reason: REPLIES.envelopeMonthChanged };
   }
@@ -2081,6 +2575,17 @@ function revisedDraft(draft: SessionDraft, error: unknown): { draft: SessionDraf
       },
       reason: REPLIES.creditLimitChanged,
     };
+  }
+  return null;
+}
+
+/** Vencimento que ficou no passado entre rascunho e confirmação: o campo volta a ser pedido. */
+function revisedRecurringDue(draft: SessionDraft, error: unknown): { draft: SessionDraft; reason: string } | null {
+  if (error instanceof RecurringFirstDueChangedError && draft.kind === 'RECURRING') {
+    return { draft: { ...draft, firstDueDate: null, pendingField: 'firstDueDate' }, reason: REPLIES.firstDueChanged };
+  }
+  if (error instanceof InstallmentFirstDueChangedError && draft.kind === 'INSTALLMENT') {
+    return { draft: { ...draft, firstDueDate: null, pendingField: 'firstDueDate' }, reason: REPLIES.firstDueChanged };
   }
   return null;
 }
