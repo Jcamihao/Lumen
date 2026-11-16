@@ -12,6 +12,7 @@ import {
   ConversationSessionView,
   ConversationStateView,
   DraftView,
+  ReplyData,
 } from "../../../core/models/conversation.models";
 import { AuthService } from "../../../core/services/auth.service";
 import { ConversationApiService } from "../../../core/services/conversation-api.service";
@@ -36,6 +37,8 @@ type ManualTurn = {
   text: string;
   draft: DraftView | null;
   quickReplies: string[];
+  /** Dados do DONE (ids criados). Usados só para o rótulo "Criado" de conta fixa e parcelado. */
+  data: ReplyData | null;
 };
 
 type ManualError = { text: string; retry: (() => void) | null };
@@ -62,6 +65,8 @@ const PENDING_FIELD_LABELS = {
   name: "nome",
   target: "valor-alvo",
   goal: "meta",
+  installmentsTotal: "quantidade de parcelas",
+  firstDueDate: "primeiro vencimento",
 } as const;
 
 @Component({
@@ -592,6 +597,15 @@ export class AssistantPageComponent {
     return field ? PENDING_FIELD_LABELS[field] : null;
   }
 
+  /** Conta fixa e parcelado são cadastros: o rótulo é "Criado", não "Lançado". Os demais DONE seguem como antes. */
+  protected doneTagLabel(turn: ManualTurn) {
+    if (turn.kind !== "DONE") {
+      return "Erro";
+    }
+
+    return turn.data?.recurringTransactionId || turn.data?.installmentPurchaseId ? "Criado" : "Lançado";
+  }
+
   protected manualTone(turn: ManualTurn) {
     if (turn.kind === "DONE") {
       return "success";
@@ -697,6 +711,7 @@ export class AssistantPageComponent {
       text: reply.text,
       draft: reply.draft ?? null,
       quickReplies: reply.quickReplies ?? [],
+      data: reply.data ?? null,
     });
 
     // Mensagem já processada: o estado real está no servidor. Atualiza o cartão com ele.
@@ -750,6 +765,7 @@ export class AssistantPageComponent {
       text: "Você tem um rascunho em andamento.",
       draft: session.draft,
       quickReplies: [],
+      data: null,
     });
   }
 

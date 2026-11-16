@@ -919,4 +919,322 @@ describe("AssistantPageComponent — assistente manual", () => {
       expect(text()).toContain("Registrado: gasto de R$ 50,00");
     });
   });
+
+  describe("conta fixa e compra parcelada (item 3b2b)", () => {
+    const AVISO_MATERIALIZACAO =
+      "Cadastro salvo. A atualização dos lançamentos está pendente; confira a tela de Finanças.";
+    const AVISO_VENCIMENTO = "Os lançamentos serão gerados nos vencimentos.";
+    const AVISO_ATUALIZACAO = "Outros cadastros já vencidos também podem ser atualizados junto, como na tela.";
+    const CONTA_CRIADA = "Conta fixa criada: internet, R$ 120,00, mensal, primeiro vencimento em 20/11/2026.";
+    const PARCELADO_CRIADO = "Compra parcelada criada: geladeira, total R$ 1.200,00 em 12 parcelas, primeira em 20/11/2026.";
+
+    const recurringRows = (): Array<{ label: string; value: string }> => [
+      { label: "Descrição", value: "internet" },
+      { label: "Valor por vencimento", value: "R$ 120,00" },
+      { label: "Frequência", value: "Mensal" },
+      { label: "Primeiro vencimento", value: "20/11/2026" },
+      { label: "Categoria", value: "não informada" },
+      { label: "Forma de pagamento", value: "não informada" },
+      { label: "Aviso", value: AVISO_VENCIMENTO },
+      { label: "Aviso", value: AVISO_ATUALIZACAO },
+    ];
+
+    const installmentRows = (): Array<{ label: string; value: string }> => [
+      { label: "Descrição", value: "geladeira" },
+      { label: "Total da compra", value: "R$ 1.200,00" },
+      { label: "Quantidade", value: "12" },
+      { label: "Valor por parcela", value: "R$ 100,00" },
+      { label: "Última parcela", value: "R$ 100,00" },
+      { label: "Primeiro vencimento", value: "20/11/2026" },
+      { label: "Categoria", value: "não informada" },
+      { label: "Forma de pagamento", value: "não informada" },
+      { label: "Aviso", value: AVISO_VENCIMENTO },
+      { label: "Aviso", value: AVISO_ATUALIZACAO },
+    ];
+
+    const recurringDraft = (overrides: Partial<DraftView> = {}) =>
+      draft({
+        kind: "RECURRING",
+        title: "Conta fixa",
+        amount: null,
+        description: null,
+        category: null,
+        date: null,
+        rows: recurringRows(),
+        ...overrides,
+      });
+
+    const installmentDraft = (overrides: Partial<DraftView> = {}) =>
+      draft({
+        kind: "INSTALLMENT",
+        title: "Compra parcelada",
+        amount: null,
+        description: null,
+        category: null,
+        date: null,
+        rows: installmentRows(),
+        ...overrides,
+      });
+
+    const recurringConfirm = (): ConversationReply => ({
+      kind: "CONFIRM_DRAFT",
+      state: "AWAITING_CONFIRMATION",
+      text: "Conta fixa internet: R$ 120,00 por vencimento, mensal, primeiro vencimento em 20/11/2026.",
+      draft: recurringDraft(),
+      quickReplies: ["confirmar", "cancelar"],
+    });
+
+    const installmentConfirm = (): ConversationReply => ({
+      kind: "CONFIRM_DRAFT",
+      state: "AWAITING_CONFIRMATION",
+      text: "Compra parcelada geladeira: total R$ 1.200,00 em 12 parcelas, primeira em 20/11/2026.",
+      draft: installmentDraft(),
+      quickReplies: ["confirmar", "cancelar"],
+    });
+
+    const card = () => root().querySelector<HTMLElement>(".assistant-manual")!;
+    const rowLabels = () =>
+      Array.from(card().querySelectorAll(".assistant-draft__row dt")).map((dt) => dt.textContent?.trim());
+    const rowValues = () =>
+      Array.from(card().querySelectorAll(".assistant-draft__row dd")).map((dd) => dd.textContent?.trim());
+
+    it("conta fixa completa mostra título, linhas, dois avisos e botões, sem null nem campos de lançamento", () => {
+      conversation.sendMessage.and.returnValue(of(recurringConfirm()));
+      create();
+
+      typeAndSend("criar conta fixa 120 internet mensal primeiro 20/11/2026");
+
+      expect(card().querySelector(".assistant-draft__title")?.textContent?.trim()).toBe("Conta fixa");
+      expect(rowLabels()).toEqual([
+        "Descrição",
+        "Valor por vencimento",
+        "Frequência",
+        "Primeiro vencimento",
+        "Categoria",
+        "Forma de pagamento",
+        "Aviso",
+        "Aviso",
+      ]);
+      expect(rowValues()).toContain("não informada");
+      expect(rowValues()).toContain(AVISO_VENCIMENTO);
+      expect(rowValues()).toContain(AVISO_ATUALIZACAO);
+      expect(card().textContent).not.toContain("null");
+      expect(rowLabels()).not.toContain("Valor");
+      expect(rowLabels()).not.toContain("Data");
+      expect(buttonWithText("Confirmar")).toBeDefined();
+      expect(buttonWithText("Cancelar")).toBeDefined();
+    });
+
+    it("compra parcelada completa mostra título, linhas e os dois avisos com o mesmo rótulo", () => {
+      conversation.sendMessage.and.returnValue(of(installmentConfirm()));
+      create();
+
+      typeAndSend("criar parcelado 1200 geladeira em 12x primeiro 20/11/2026");
+
+      expect(card().querySelector(".assistant-draft__title")?.textContent?.trim()).toBe("Compra parcelada");
+      expect(rowLabels()).toEqual([
+        "Descrição",
+        "Total da compra",
+        "Quantidade",
+        "Valor por parcela",
+        "Última parcela",
+        "Primeiro vencimento",
+        "Categoria",
+        "Forma de pagamento",
+        "Aviso",
+        "Aviso",
+      ]);
+      expect(rowValues()).toContain("R$ 1.200,00");
+      expect(rowValues()).toContain(AVISO_VENCIMENTO);
+      expect(rowValues()).toContain(AVISO_ATUALIZACAO);
+      expect(card().textContent).not.toContain("null");
+      expect(buttonWithText("Confirmar")).toBeDefined();
+    });
+
+    it("conta fixa restaurada sem vencimento mostra 'Falta informar: primeiro vencimento.' e nenhum Confirmar", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({
+          state: "COLLECTING_FIELDS",
+          draft: recurringDraft({
+            pendingField: "firstDueDate",
+            rows: recurringRows().map((row) =>
+              row.label === "Primeiro vencimento" ? { ...row, value: "a informar" } : row,
+            ),
+          }),
+        }),
+      );
+      create();
+
+      expect(text()).toContain("Falta informar: primeiro vencimento.");
+      expect(rowValues()).toContain("a informar");
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+    });
+
+    it("compra parcelada restaurada sem quantidade mostra 'Falta informar: quantidade de parcelas.' e valores 'a informar'", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({
+          state: "COLLECTING_FIELDS",
+          draft: installmentDraft({
+            pendingField: "installmentsTotal",
+            rows: [
+              { label: "Descrição", value: "geladeira" },
+              { label: "Total da compra", value: "R$ 1.200,00" },
+              { label: "Quantidade", value: "a informar" },
+              { label: "Valor por parcela", value: "a informar" },
+              { label: "Última parcela", value: "a informar" },
+              { label: "Primeiro vencimento", value: "a informar" },
+              { label: "Categoria", value: "não informada" },
+              { label: "Forma de pagamento", value: "não informada" },
+            ],
+          }),
+        }),
+      );
+      create();
+
+      expect(text()).toContain("Falta informar: quantidade de parcelas.");
+      expect(rowValues().filter((value) => value === "a informar").length).toBe(4);
+      expect(card().textContent).not.toContain("null");
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+    });
+
+    it("revisão por data passada: ASK_FIELD com versão maior mostra Atenção sem Confirmar; a confirmação seguinte envia a versão nova", () => {
+      conversation.sendMessage.and.returnValues(
+        of(recurringConfirm()),
+        of<ConversationReply>({
+          kind: "CONFIRM_DRAFT",
+          state: "AWAITING_CONFIRMATION",
+          text: "Conta fixa internet: R$ 120,00 por vencimento, mensal, primeiro vencimento em 20/11/2026.",
+          draft: recurringDraft({ draftVersion: 3 }),
+          quickReplies: ["confirmar", "cancelar"],
+        }),
+      );
+      conversation.confirmDraft.and.returnValues(
+        of<ConversationReply>({
+          kind: "ASK_FIELD",
+          state: "COLLECTING_FIELDS",
+          text: "O primeiro vencimento ficou no passado. Informe uma nova data.\nQual o primeiro vencimento? Responda hoje ou uma data, como 20/11/2026.",
+          draft: recurringDraft({
+            draftVersion: 2,
+            pendingField: "firstDueDate",
+            rows: [
+              { label: "Descrição", value: "internet" },
+              { label: "Valor por vencimento", value: "R$ 120,00" },
+              { label: "Frequência", value: "Mensal" },
+              { label: "Primeiro vencimento", value: "a informar" },
+              { label: "Categoria", value: "não informada" },
+              { label: "Forma de pagamento", value: "não informada" },
+              { label: "Atenção", value: "O primeiro vencimento ficou no passado. Informe uma nova data." },
+            ],
+          }),
+        }),
+        of<ConversationReply>({
+          kind: "DONE",
+          state: "IDLE",
+          text: CONTA_CRIADA,
+          data: { recurringTransactionId: "rec-9" },
+        }),
+      );
+      create();
+      typeAndSend("criar conta fixa 120 internet mensal primeiro 20/11/2026");
+
+      buttonWithText("Confirmar")!.click();
+      fixture.detectChanges();
+
+      expect(rowLabels()).toContain("Atenção");
+      expect(rowValues()).toContain("O primeiro vencimento ficou no passado. Informe uma nova data.");
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      expect(buttonWithText("Cancelar")).toBeUndefined();
+
+      typeAndSend("20/11/2026");
+
+      expect(rowLabels()).not.toContain("Atenção");
+      buttonWithText("Confirmar")!.click();
+      fixture.detectChanges();
+
+      expect(conversation.confirmDraft.calls.argsFor(0)).toEqual(["draft-1", 1]);
+      expect(conversation.confirmDraft.calls.argsFor(1)).toEqual(["draft-1", 3]);
+    });
+
+    const doneCases: Array<{
+      name: string;
+      kind: "recurring" | "installment";
+      data: NonNullable<ConversationReply["data"]>;
+      text: string;
+      withWarning: boolean;
+    }> = [
+      { name: "conta fixa", kind: "recurring", data: { recurringTransactionId: "rec-9" }, text: CONTA_CRIADA, withWarning: false },
+      { name: "conta fixa", kind: "recurring", data: { recurringTransactionId: "rec-9" }, text: CONTA_CRIADA, withWarning: true },
+      { name: "compra parcelada", kind: "installment", data: { installmentPurchaseId: "inst-9" }, text: PARCELADO_CRIADO, withWarning: false },
+      { name: "compra parcelada", kind: "installment", data: { installmentPurchaseId: "inst-9" }, text: PARCELADO_CRIADO, withWarning: true },
+    ];
+
+    doneCases.forEach(({ name, kind, data, text: textoCriado, withWarning }) => {
+      const warningSuffix = withWarning ? " com aviso de materialização pendente" : "";
+
+      it(`DONE de ${name} mostra sucesso, rótulo Criado e sem depender de data.card${warningSuffix}`, () => {
+        conversation.sendMessage.and.returnValue(of(kind === "recurring" ? recurringConfirm() : installmentConfirm()));
+        conversation.confirmDraft.and.returnValue(
+          of<ConversationReply>({
+            kind: "DONE",
+            state: "IDLE",
+            text: withWarning ? `${textoCriado}\n${AVISO_MATERIALIZACAO}` : textoCriado,
+            data,
+          }),
+        );
+        create();
+        typeAndSend(kind === "recurring" ? "criar conta fixa 120 internet mensal primeiro 20/11/2026" : "criar parcelado 1200 geladeira em 12x primeiro 20/11/2026");
+
+        buttonWithText("Confirmar")!.click();
+        fixture.detectChanges();
+
+        expect(text()).toContain(textoCriado);
+        expect(card().querySelector(".proto-tag")?.textContent?.trim()).toBe("Criado");
+        expect(text()).not.toContain("Lançado");
+        expect(card().querySelector(".assistant-draft")).toBeNull();
+        expect(card().textContent).not.toContain("null");
+        expect(buttonWithText("Confirmar")).toBeUndefined();
+        expect(buttonWithText("Tentar de novo")).toBeUndefined();
+        expect(text().includes(AVISO_MATERIALIZACAO)).toBe(withWarning);
+      });
+    });
+
+    it("commit desconhecido de conta fixa (ERROR com IDLE e sem draft) remove o cartão e não oferece nova tentativa", () => {
+      conversation.sendMessage.and.returnValue(of(recurringConfirm()));
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({
+          kind: "ERROR",
+          state: "IDLE",
+          text: "Não foi possível confirmar o resultado. Confira a tela de Finanças antes de enviar o pedido novamente.",
+        }),
+      );
+      create();
+      typeAndSend("criar conta fixa 120 internet mensal primeiro 20/11/2026");
+
+      buttonWithText("Confirmar")!.click();
+      fixture.detectChanges();
+
+      expect(text()).toContain("Não foi possível confirmar o resultado");
+      expect(card().querySelector(".assistant-draft")).toBeNull();
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      expect(buttonWithText("Cancelar")).toBeUndefined();
+      expect(buttonWithText("Tentar de novo")).toBeUndefined();
+      expect(conversation.confirmDraft).toHaveBeenCalledTimes(1);
+    });
+
+    it("regressão: DONE de lançamento continua com rótulo Lançado", () => {
+      conversation.sendMessage.and.returnValue(
+        of<ConversationReply>({
+          kind: "DONE",
+          state: "IDLE",
+          text: "Registrado: gasto de R$ 50,00 (mercado).",
+          data: { transactionId: "t-1" },
+        }),
+      );
+      create();
+
+      typeAndSend("50 mercado");
+
+      expect(card().querySelector(".proto-tag")?.textContent?.trim()).toBe("Lançado");
+    });
+  });
 });

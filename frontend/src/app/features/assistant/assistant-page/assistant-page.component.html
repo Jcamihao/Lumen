@@ -98,7 +98,7 @@
           <p *ngIf="turn.question">Você: {{ turn.question }}</p>
         </div>
         <span class="proto-tag" [attr.data-tone]="manualTone(turn)" *ngIf="turn.kind === 'DONE' || turn.kind === 'ERROR'">
-          {{ turn.kind === 'DONE' ? 'Lançado' : 'Erro' }}
+          {{ doneTagLabel(turn) }}
         </span>
       </div>
 
