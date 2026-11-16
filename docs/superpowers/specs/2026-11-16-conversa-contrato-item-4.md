@@ -1,6 +1,6 @@
 # Contrato do item 4: importar nota fiscal sem IA
 
-Data: 2026-11-16. Status: **aprovado pelo dono em 2026-11-16**. D1 (notas reais) segue sem resposta: a fase 4.0 começa com notas sintéticas. Decisões D2, D3, D5, D6 e D8 valem como recomendadas; D4 e D7 continuam abertas. Nenhum código de produção foi escrito. Branch de trabalho: `feature/importar-nota-fiscal` (base `master` em `bbd8b49`, tag `v1.6.0`).
+Data: 2026-11-16. Status: **aprovado pelo dono em 2026-11-16**. D1 (notas reais) segue sem resposta: a fase 4.0 começa com notas sintéticas. Decisões D2, D3, D5, D6 e D8 valem como recomendadas; D4 foi aprovada em 2026-11-16 junto com os ajustes da seção 13; D7 continua aberta. Nenhum código de produção foi escrito. Branch de trabalho: `feature/importar-nota-fiscal` (base `master` em `bbd8b49`, tag `v1.6.0`).
 
 Fonte da ordem de trabalho: `docs/superpowers/specs/2026-11-14-assistente-manual-financas.md`, seção "Ordem de implementação", item 4 ("Trocar extração de nota por OCR/QR e conectar prévia/revisão ao roteador"), e a seção "Importação de nota sem LLM" do mesmo arquivo. Direção de produto: `docs/superpowers/plans/2026-11-14-assistente-manual-importacao-planos.md`.
 
@@ -157,3 +157,18 @@ Este item é de segurança (dado pessoal e arquivo enviado por usuário). O revi
 - 4a e 4b: `tsc`, `jest`, `nest build`, `ng test` e `npm run build` verdes (números reais colados); matriz da seção 10 coberta; mutantes mortos; integração real com duas contas; capturas no Chrome em tema claro e escuro, 360 px e desktop.
 - Nenhuma chamada de rede e nenhum arquivo persistido durante a leitura (provado por teste e por inspeção na integração real).
 - HANDOFF atualizado; merge na `master` só com aprovação do dono; versão e tag só depois do merge.
+
+## 13. Ajustes aprovados após a fase 4.0 (2026-11-16)
+
+Fonte: `.superpowers/sdd/conversa-item-4/relatorio-4-0.md`. As medições usaram só notas sintéticas; por isso existe o portão do ajuste 9. Estes ajustes **prevalecem** sobre as seções 5 a 7 quando houver diferença.
+
+1. **Fonte de verdade em camadas:** chave pelo QR > chave pelo OCR (só com dígito verificador válido) > texto livre. CNPJ, mês e ano e número da nota vêm da chave quando ela é válida; o CNPJ lido do texto só preenche se não houver chave válida.
+2. **Sem pré-processamento de imagem por padrão.** Segunda passada (tons de cinza, normalização, largura de 1400 px) só quando a primeira não passa na conferência (total ausente ou soma dos itens diferente do total).
+3. **Limite de tempo:** QR com teto de 800 ms no total (todas as tentativas); OCR com 30 s, como na seção 6.
+4. **Confusões de OCR em campo numérico** (`O`/`o` para 0, `I`/`l`/`|` para 1, `S` para 5, `B` para 8) são corrigidas antes de validar chave e CNPJ. Texto livre (descrição de item) não é corrigido.
+5. **PDF:** `pdfjs-dist` 4.10.38, build `legacy` (a linha 6.x exige Node 22; o backend roda Node 20).
+6. **Recusas com mensagem clara (HTTP 400):** HEIC/HEIF ("Formato HEIC não é lido. Envie a foto em JPG ou PNG, ou tire um print da nota.") e PDF sem camada de texto ("Este PDF é uma imagem digitalizada e não pode ser lido. Envie a foto da nota em JPG ou PNG.").
+7. **Peso:** cerca de 110 MB a mais na imagem do backend, aceito.
+8. **D4, bibliotecas aprovadas, versões exatas, sem faixa `^`:** `tesseract.js` 7.0.0, `@tesseract.js-data/por` 1.0.0, `jsqr` 1.4.0, `sharp` 0.35.5, `pdfjs-dist` 4.10.38. Nenhuma outra dependência nova.
+9. **Portão antes do merge:** o dono fotografa 10 a 20 notas reais pela tela de importação num ambiente de teste. Total correto em pelo menos 80% e nenhum erro sem aviso; abaixo disso a 4a não vai para a `master` e o desenho muda. Fotos reais não entram no Git e são apagadas ao fim.
+10. **Fatiamento da 4a por tamanho:** 4a-1 = parser e validações puros, sem biblioteca e sem banco; 4a-2 = leitura de QR, PDF e OCR, `ReceiptExtractorService`, integração no `ImportsService`, migration e controle de duplicata. Contratos de tipos em `.superpowers/sdd/conversa-item-4/contrato-tipos.md`.
