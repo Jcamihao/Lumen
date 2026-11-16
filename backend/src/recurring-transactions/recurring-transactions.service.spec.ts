@@ -512,6 +512,20 @@ describe('RecurringTransactionsService.createForConversation (recibo do bot, mes
     expect(prisma.recurringTransaction.findFirst).not.toHaveBeenCalled();
   });
 
+  it('lê o fuso e confere o plano só do dono informado (bot e tela)', async () => {
+    const bot = build(stored(), { timezone: 'America/Sao_Paulo' });
+    await bot.service.createForConversation('user-1', botDto(), rules);
+    expect(bot.prisma.user.findUnique).toHaveBeenCalledTimes(1);
+    expect(bot.prisma.user.findUnique).toHaveBeenCalledWith({ where: { id: 'user-1' }, select: { timezone: true } });
+    expect(bot.entitlements.assertCanCreate).toHaveBeenCalledWith('user-1', 'recurringTransactions');
+
+    const tela = build(stored());
+    await tela.service.create('user-2', validCreate());
+    expect(tela.prisma.user.findUnique).toHaveBeenCalledWith({ where: { id: 'user-2' }, select: { timezone: true } });
+    expect(tela.entitlements.assertCanCreate).toHaveBeenCalledWith('user-2', 'recurringTransactions');
+    expect(tela.prisma.recurringTransaction.create).toHaveBeenCalledWith({ data: expect.objectContaining({ userId: 'user-2' }) });
+  });
+
   it('a tela mantém o formato: materialização falhando não vira erro depois do cadastro', async () => {
     const { service, materializer } = build(stored());
     materializer.materializeDue.mockRejectedValueOnce(new Error('falha'));

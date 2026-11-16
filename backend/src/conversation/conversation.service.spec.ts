@@ -2483,6 +2483,17 @@ describe('ConversationService', () => {
         expect(rowValue(pronto, 'Aviso')?.[0]).toBe(REPLIES.recurringTodayWarning);
       });
 
+      it('resposta de vencimento que começa com número é a resposta pedida, não um comando de lançamento', async () => {
+        await send('A', 'criar conta fixa 120 internet');
+
+        // "20 mercado" seria um gasto novo se o estado pendente não decidisse antes do matcher.
+        const reply = await send('A', '20 mercado');
+
+        expect(reply).toMatchObject({ kind: 'ASK_FIELD', text: `${REPLIES.firstDueFormat}\n${REPLIES.askFirstDue}` });
+        expect(reply.draft).toMatchObject({ kind: 'RECURRING', pendingField: 'firstDueDate' });
+        expect(transactions.create).not.toHaveBeenCalled();
+      });
+
       it('valor sem descrição pergunta a descrição antes do valor', async () => {
         const reply = await send('A', 'criar conta fixa 120');
 
@@ -2850,6 +2861,38 @@ describe('ConversationService', () => {
           data: { installmentPurchaseId: 'inst-9' },
         });
         expect(installmentEvents().at(-1)).toMatchObject({ outcome: ConversationOutcome.COMPLETED, resultRef: 'inst-9' });
+      });
+
+      it('materialização pendente: DONE do parcelado com o aviso da tela de Finanças, sem novo rascunho', async () => {
+        installments.createForConversation.mockResolvedValueOnce({
+          id: 'inst-9', description: 'geladeira', totalCents: 120000, installmentsTotal: 12, installmentCents: 10000,
+          lastInstallmentCents: 10000, firstDueDate: '2026-11-20', materializationPending: true, refreshPending: false,
+        });
+        const draft = await installmentDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply.kind).toBe('DONE');
+        expect(reply.text).toBe(
+          `Compra parcelada criada: geladeira, total ${formatBrl(120000)} em 12 parcelas, primeira em 20/11/2026.\n${REPLIES.materializationPending}`,
+        );
+        expect(reply.data).toEqual({ installmentPurchaseId: 'inst-9' });
+        expect(db.sessions).toHaveLength(0);
+      });
+
+      it('atualização pendente: DONE do parcelado com o aviso de dados, sem erro nem restauração', async () => {
+        installments.createForConversation.mockResolvedValueOnce({
+          id: 'inst-9', description: 'geladeira', totalCents: 120000, installmentsTotal: 12, installmentCents: 10000,
+          lastInstallmentCents: 10000, firstDueDate: '2026-11-20', materializationPending: false, refreshPending: true,
+        });
+        const draft = await installmentDraft();
+
+        const reply = await confirm('A', draft.draftId, draft.draftVersion);
+
+        expect(reply.kind).toBe('DONE');
+        expect(reply.text.endsWith(REPLIES.refreshPending)).toBe(true);
+        expect(reply.text).not.toContain(REPLIES.materializationPending);
+        expect(db.sessions).toHaveLength(0);
       });
 
       it('parcela mínima recusada pelo serviço descarta com texto seguro', async () => {

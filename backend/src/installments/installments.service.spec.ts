@@ -415,6 +415,30 @@ describe('InstallmentsService.createForConversation (recibo do bot, mesma grava�
     expect(error).not.toBeInstanceOf(InstallmentWriteUncertainError);
   });
 
+  it('o recibo não depende de leitura posterior (findFirst depois da gravação falhando não afeta o bot)', async () => {
+    const { service, prisma } = build(stored());
+    prisma.installmentPurchase.findFirst.mockRejectedValue(new Error('leitura'));
+
+    const receipt = await service.createForConversation('user-1', botDto(), rules);
+
+    expect(receipt).toMatchObject({ id: 'plan-new', totalCents: 120000, installmentCents: 10000 });
+    expect(prisma.installmentPurchase.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('lê o fuso e confere o plano só do dono informado (bot e tela)', async () => {
+    const bot = build(stored(), { timezone: 'America/Sao_Paulo' });
+    await bot.service.createForConversation('user-1', botDto(), rules);
+    expect(bot.prisma.user.findUnique).toHaveBeenCalledTimes(1);
+    expect(bot.prisma.user.findUnique).toHaveBeenCalledWith({ where: { id: 'user-1' }, select: { timezone: true } });
+    expect(bot.entitlements.assertCanCreate).toHaveBeenCalledWith('user-1', 'installmentPurchases');
+
+    const tela = build(stored());
+    await tela.service.create('user-2', validCreate());
+    expect(tela.prisma.user.findUnique).toHaveBeenCalledWith({ where: { id: 'user-2' }, select: { timezone: true } });
+    expect(tela.entitlements.assertCanCreate).toHaveBeenCalledWith('user-2', 'installmentPurchases');
+    expect(tela.prisma.installmentPurchase.create).toHaveBeenCalledWith({ data: expect.objectContaining({ userId: 'user-2' }) });
+  });
+
   it('a tela mantém o formato: materialização falhando não vira erro depois do cadastro', async () => {
     const { service, materializer } = build(stored());
     materializer.materializeDue.mockRejectedValueOnce(new Error('falha'));

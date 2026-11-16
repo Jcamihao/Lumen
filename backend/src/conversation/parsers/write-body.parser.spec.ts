@@ -86,6 +86,16 @@ describe('parseInstallmentBody', () => {
     });
   });
 
+  it('número no fim da descrição sem "em" não vira quantidade de parcelas', () => {
+    expect(parseInstallmentBody('3500 notebook 2024')).toEqual({
+      ok: true,
+      value: { description: 'notebook 2024', totalCents: 350000, installmentsTotal: null, dueText: null },
+    });
+    expect(parseInstallmentBody('1200 geladeira 12')).toMatchObject({
+      value: { description: 'geladeira 12', installmentsTotal: null },
+    });
+  });
+
   it('sem valor e sem quantidade: ambos null', () => {
     expect(parseInstallmentBody('geladeira')).toMatchObject({ value: { totalCents: null, installmentsTotal: null } });
   });

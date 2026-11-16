@@ -124,6 +124,11 @@ describe('matchIntent', () => {
     'criar parcelado 1200 geladeira em 12x?',
     'quero criar um parcelado para a geladeira',
     'contas fixas do mes que vem',
+    // Sem o verbo "criar/nova/novo" o texto não é comando de escrita (o prefixo é explícito).
+    'conta fixa',
+    'conta fixa 120 internet',
+    'parcelado',
+    'parcelado 1200 geladeira em 12x',
     'parcelas do carro valem a pena',
     'definir limite? 5000',
     'como definir limite do cartão?',
