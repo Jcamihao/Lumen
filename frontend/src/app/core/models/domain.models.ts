@@ -460,6 +460,20 @@ export type ReceiptImportPreview = {
   suggestedCategoryName: string | null;
   descriptionSuggestion: string;
   items: ReceiptImportItem[];
+  itemsSum?: number | null;
+  totalMismatch?: {
+    itemsSum: number;
+    total: number;
+    difference: number;
+  } | null;
+  extraction?: {
+    method: "PDF_TEXT" | "OCR";
+    ocrConfidence: number | null;
+    warnings: string[];
+    qrDetected: boolean;
+    secondPass: boolean;
+  } | null;
+  accessKeyValid?: boolean;
 };
 
 export type ReceiptImportCommitResponse = {

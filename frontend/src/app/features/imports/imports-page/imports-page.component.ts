@@ -61,9 +61,25 @@ export class ImportsPageComponent {
     () => this.auth.currentUser()?.financeCategories.filter((c) => c.type === 'EXPENSE') || [],
   );
   protected readonly tagGroups = computed(() => this.auth.currentUser()?.tagGroups ?? []);
-  protected readonly canUseReceiptAi = computed(() => {
-    const user = this.auth.currentUser();
-    return !!(user?.privacyNoticeAcceptedAt && user?.aiAssistantEnabled && user?.aiAssistantConsentAt);
+
+  // Caixa de duplicata: aberta pela prévia (possibleDuplicate) ou pelo 409 do commit.
+  protected readonly duplicateDecisionOpen = signal(false);
+  protected readonly duplicateBoxVisible = computed(
+    () => this.duplicateDecisionOpen() || !!this.receiptPreview()?.possibleDuplicate,
+  );
+
+  protected readonly receiptWarnings = computed(() => this.receiptPreview()?.extraction?.warnings ?? []);
+
+  // Recalculado com os valores editados: o aviso só some quando a divergência deixa de existir.
+  protected readonly localTotalMismatch = computed(() => {
+    const preview = this.receiptPreview();
+    if (!preview?.totalMismatch) return null;
+
+    const itemsSum = Math.round(
+      preview.items.reduce((sum, item) => sum + this.toNumber(item.totalPrice, 0), 0) * 100,
+    ) / 100;
+    const total = this.receiptTotalAmount();
+    return Math.abs(itemsSum - total) > 0.01 ? { itemsSum, total } : null;
   });
 
   protected handleFile(event: Event) {
@@ -114,6 +130,7 @@ export class ImportsPageComponent {
       .subscribe({
         next: (preview) => {
           this.receiptPreview.set(preview);
+          this.duplicateDecisionOpen.set(false);
           this.editingReceiptItemIndex.set(null);
           this.receiptMerchantName.set(preview.merchantName || '');
           this.receiptPurchaseDate.set(preview.purchaseDate ? preview.purchaseDate.slice(0, 10) : '');
@@ -124,7 +141,11 @@ export class ImportsPageComponent {
         },
         error: (error) => {
           this.receiptLoading.set(false);
-          this.receiptError.set(error?.error?.message || 'Nao foi possivel ler a nota fiscal com o SelahIA.');
+          // Erro novo não pode deixar a prévia anterior na tela.
+          this.receiptPreview.set(null);
+          this.receiptError.set(
+            error?.error?.message || 'Não consegui ler esta nota. Tente outra foto ou lance o gasto pelo chat.',
+          );
         },
       });
   }
@@ -194,6 +215,9 @@ export class ImportsPageComponent {
     const preview = this.receiptPreview();
     if (!preview) return;
 
+    // Só vai true quando a caixa de duplicata está visível e o usuário clicou no botão dela.
+    const acknowledgeDuplicate = this.duplicateBoxVisible();
+
     this.receiptSaving.set(true);
     this.receiptError.set(null);
 
@@ -211,12 +235,14 @@ export class ImportsPageComponent {
           unitPrice: this.toNullableNumber(item.unitPrice),
           totalPrice: this.toNumber(item.totalPrice, 0),
         })),
+        ...(acknowledgeDuplicate ? { acknowledgeDuplicate: true } : {}),
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
           this.receiptSaving.set(false);
           this.receiptPreview.set(null);
+          this.duplicateDecisionOpen.set(false);
           this.editingReceiptItemIndex.set(null);
           this.receiptMerchantName.set('');
           this.receiptPurchaseDate.set('');
@@ -230,6 +256,11 @@ export class ImportsPageComponent {
         },
         error: (error) => {
           this.receiptSaving.set(false);
+          // 409: a chave foi importada no meio-tempo. Abre a caixa e deixa o usuário decidir.
+          if (error?.status === 409 && error?.error?.code === 'RECEIPT_DUPLICATE_UNCONFIRMED') {
+            this.duplicateDecisionOpen.set(true);
+            return;
+          }
           this.receiptError.set(error?.error?.message || 'Nao foi possivel registrar a compra no financeiro.');
           this.toast.error(error?.error?.message || 'Não foi possível registrar a compra.');
         },
