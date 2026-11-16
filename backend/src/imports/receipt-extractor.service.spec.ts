@@ -98,7 +98,13 @@ describe('ReceiptExtractorService (leitores simulados)', () => {
 
       const first = service.extract(pdfInput());
       const second = service.extract(pdfInput());
-      const busy = await captureError(service.extract(pdfInput()));
+      // Sem o limite, a 3ª leitura ficaria pendurada: o prazo curto faz o teste falhar na hora.
+      let hangTimer: NodeJS.Timeout | undefined;
+      const hang = new Promise<never>((_, reject) => {
+        hangTimer = setTimeout(() => reject(new Error('a terceira leitura ficou pendurada')), 1_000);
+      });
+      const busy = await captureError(Promise.race([service.extract(pdfInput()), hang]));
+      clearTimeout(hangTimer);
 
       expect(busy).toBeInstanceOf(ReceiptBusyError);
       expect(busy.getStatus()).toBe(429);

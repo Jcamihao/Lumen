@@ -298,6 +298,13 @@ describe('nota fiscal: previa sem IA e sem rede', () => {
     expect(created.accessKey).toBe(N1.key);
     expect(created.rawText).not.toContain('123.456.789-09');
     expect(created.rawText).not.toContain('12345678909');
+    // O mesmo texto redigido vai para o excerto do previewData e para a resposta; nenhum dos dois pode ter CPF.
+    for (const stored of [created.previewData.rawTextExcerpt, response.rawTextExcerpt, JSON.stringify(created.previewData)]) {
+      expect(stored).not.toContain('123.456.789-09');
+      expect(stored).not.toContain('12345678909');
+    }
+    expect(created.previewData.rawTextExcerpt).toBe(created.rawText);
+    expect(created.rawText.length).toBeLessThanOrEqual(500);
     expect(created.previewData.provider).toBe('LUMEN_LOCAL');
     expect(response.itemsSum).toBeCloseTo(N1.total, 2);
     expect(response.totalMismatch).toBeNull();
