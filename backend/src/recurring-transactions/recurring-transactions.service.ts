@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, RecurringTransaction } from '@prisma/client';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma, RecurrenceFrequency, RecurringTransaction } from '@prisma/client';
 import { EntitlementsService } from '../billing/entitlements.service';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,6 +12,15 @@ import {
   utcDate,
 } from './recurrence.util';
 import { RecurringMaterializerService } from './recurring-materializer.service';
+import {
+  ConversationWriteRules,
+  RecurringFirstDueChangedError,
+  RecurringWriteReceipt,
+  RecurringWriteUncertainError,
+} from './conversation-write.types';
+
+const DESCRIPTION_MIN = 2;
+const DESCRIPTION_MAX = 120;
 
 /** Decimal do Prisma vira string no JSON; o front espera numero. */
 export function toRecurringResponse<T extends RecurringTransaction>(item: T) {
@@ -24,8 +33,20 @@ function parseDateOnly(value: string) {
   return utcDate(year, month - 1, day);
 }
 
+/** Data-só UTC como 'AAAA-MM-DD'. */
+function toYmd(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+/** Só o nome do erro vai para log: nunca mensagem, valor ou descrição. */
+function errorName(error: unknown) {
+  return error instanceof Error ? error.name : 'Unknown';
+}
+
 @Injectable()
 export class RecurringTransactionsService {
+  private readonly logger = new Logger(RecurringTransactionsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly materializer: RecurringMaterializerService,
@@ -50,7 +71,53 @@ export class RecurringTransactionsService {
   }
 
   async create(userId: string, dto: CreateRecurringTransactionDto) {
+    const created = await this.persist(userId, dto);
+
+    // Pós-gravação: falha de materialização ou de atualização não desfaz o cadastro (tela segue 201).
+    await this.afterCommit(userId, 'recurring.create');
+
+    const fresh = await this.findOwned(userId, created.id);
+    return toRecurringResponse(fresh);
+  }
+
+  /** Mesma gravação da tela, para o bot. Devolve só o que foi persistido e as flags pós-commit. */
+  async createForConversation(
+    userId: string,
+    dto: CreateRecurringTransactionDto,
+    rules: ConversationWriteRules,
+  ): Promise<RecurringWriteReceipt> {
+    const created = await this.persist(userId, dto, rules);
+    const flags = await this.afterCommit(userId, 'recurring.conversation');
+
+    return {
+      id: created.id,
+      description: created.description,
+      amountCents: Math.round(Number(created.amount) * 100),
+      frequency: created.frequency,
+      firstDueDate: created.nextDueDate.toISOString().slice(0, 10),
+      ...flags,
+    };
+  }
+
+  /** Núcleo compartilhado com a tela: validação, plano, datas e uma única escrita em transação. */
+  private async persist(
+    userId: string,
+    dto: CreateRecurringTransactionDto,
+    rules?: ConversationWriteRules,
+  ) {
     await this.entitlements.assertCanCreate(userId, 'recurringTransactions');
+
+    const description = typeof dto.description === 'string' ? dto.description.trim() : '';
+    if (description.length < DESCRIPTION_MIN || description.length > DESCRIPTION_MAX) {
+      throw new BadRequestException('Informe uma descrição de 2 a 120 caracteres.');
+    }
+    if (!Number.isFinite(dto.amount) || dto.amount < 0.01 || dto.amount > 9_999_999_999 ||
+      new Prisma.Decimal(dto.amount).decimalPlaces() > 2) {
+      throw new BadRequestException('Informe um valor positivo com até duas casas decimais.');
+    }
+    if (!(Object.values(RecurrenceFrequency) as string[]).includes(dto.frequency)) {
+      throw new BadRequestException('Frequência inválida.');
+    }
 
     await this.validateCategory(userId, dto.categoryId, dto.type);
 
@@ -58,9 +125,14 @@ export class RecurringTransactionsService {
       where: { id: userId },
       select: { timezone: true },
     });
+    // Um único relógio para hoje e para as datas desta gravação.
     const today = localToday(new Date(), user?.timezone ?? 'UTC');
     const firstDue = parseDateOnly(dto.firstDueDate);
     const endDate = dto.endDate ? parseDateOnly(dto.endDate) : null;
+
+    if (rules?.notBefore === 'today' && firstDue < today) {
+      throw new RecurringFirstDueChangedError(toYmd(today));
+    }
 
     // Sem historico retroativo em massa: no maximo desde o mes passado.
     const earliest = utcDate(today.getUTCFullYear(), today.getUTCMonth() - 1, 1);
@@ -80,27 +152,54 @@ export class RecurringTransactionsService {
       throw new BadRequestException('A data final nao pode ser anterior ao primeiro vencimento.');
     }
 
-    const created = await this.prisma.recurringTransaction.create({
-      data: {
-        userId,
-        type: dto.type,
-        description: dto.description.trim(),
-        amount: new Prisma.Decimal(dto.amount),
-        categoryId: dto.categoryId ?? null,
-        paymentMethod: dto.paymentMethod ?? null,
-        frequency: dto.frequency,
-        anchorDay: firstDue.getUTCDate(),
-        nextDueDate: firstDue,
-        endDate,
-      },
-    });
+    let callbackFinished = false;
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const row = await tx.recurringTransaction.create({
+          data: {
+            userId,
+            type: dto.type,
+            description,
+            amount: new Prisma.Decimal(dto.amount),
+            categoryId: dto.categoryId ?? null,
+            paymentMethod: dto.paymentMethod ?? null,
+            frequency: dto.frequency,
+            anchorDay: firstDue.getUTCDate(),
+            nextDueDate: firstDue,
+            endDate,
+          },
+        });
+        callbackFinished = true;
+        return row;
+      });
+    } catch (error) {
+      // Callback concluiu e o commit falhou: não dá para afirmar que não gravou.
+      if (callbackFinished) throw new RecurringWriteUncertainError();
+      throw error;
+    }
+  }
 
-    // Se o primeiro vencimento ja passou (ou e hoje), o lancamento sai agora.
-    await this.materializer.materializeDue(userId);
-    await this.lifeEngineService.touchUserData(userId);
-
-    const fresh = await this.findOwned(userId, created.id);
-    return toRecurringResponse(fresh);
+  /**
+   * Materialização e atualização dos dados derivados depois do cadastro. Cada etapa tem a sua falha:
+   * o cadastro já existe e nunca é desfeito por aqui. Só nomes de erro são registrados.
+   */
+  private async afterCommit(userId: string, operation: string): Promise<{ materializationPending: boolean; refreshPending: boolean }> {
+    let materializationPending = false;
+    try {
+      // Se o primeiro vencimento ja passou (ou e hoje), o lancamento sai agora.
+      await this.materializer.materializeDue(userId);
+    } catch (error) {
+      materializationPending = true;
+      this.logger.warn({ operation: `${operation}.materialize`, errorName: errorName(error) });
+    }
+    let refreshPending = false;
+    try {
+      await this.lifeEngineService.touchUserData(userId);
+    } catch (error) {
+      refreshPending = true;
+      this.logger.warn({ operation: `${operation}.refresh`, errorName: errorName(error) });
+    }
+    return { materializationPending, refreshPending };
   }
 
   async update(userId: string, id: string, dto: UpdateRecurringTransactionDto) {

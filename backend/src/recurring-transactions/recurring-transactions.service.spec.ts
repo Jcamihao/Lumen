@@ -1,7 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { RecurrenceFrequency, TransactionType } from '@prisma/client';
 import { utcDate } from './recurrence.util';
 import { RecurringTransactionsService } from './recurring-transactions.service';
+import { RecurringFirstDueChangedError, RecurringWriteUncertainError } from './conversation-write.types';
 
 const iso = (date: Date) => date.toISOString().slice(0, 10);
 
@@ -22,7 +23,9 @@ const stored = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const build = (existing: any = stored(), options: { category?: any; timezone?: string } = {}) => {
-  const prisma = {
+  const prisma: any = {
+    // Transação interativa em memória: o callback recebe o mesmo cliente fake.
+    $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
     recurringTransaction: {
       findFirst: jest.fn().mockResolvedValue(existing),
       findMany: jest.fn().mockResolvedValue([]),
@@ -340,5 +343,182 @@ describe('RecurringTransactionsService', () => {
       await expect(service.remove('user-1', 'rec-alheia')).rejects.toThrow(NotFoundException);
       expect(prisma.recurringTransaction.delete).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('RecurringTransactionsService.createForConversation (recibo do bot, mesma gravação da tela)', () => {
+  // 15/11/2026 12:00 UTC: em São Paulo e em UTC é 15/11.
+  const NOW = new Date('2026-11-15T12:00:00.000Z');
+  const botDto = (overrides: Record<string, unknown> = {}) => ({
+    type: TransactionType.EXPENSE,
+    description: '  Internet  ',
+    amount: 120,
+    frequency: RecurrenceFrequency.MONTHLY,
+    firstDueDate: '2026-11-20',
+    ...overrides,
+  }) as any;
+  const rules = { notBefore: 'today' as const };
+
+  beforeEach(() => jest.useFakeTimers({ now: NOW }));
+  afterEach(() => jest.useRealTimers());
+
+  it('grava uma vez na transação e devolve o recibo do que foi persistido', async () => {
+    const { service, prisma, materializer, lifeEngine } = build(stored(), { timezone: 'America/Sao_Paulo' });
+
+    const receipt = await service.createForConversation('user-1', botDto(), rules);
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.recurringTransaction.create).toHaveBeenCalledTimes(1);
+    expect(prisma.recurringTransaction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'user-1',
+        type: TransactionType.EXPENSE,
+        description: 'Internet',
+        categoryId: null,
+        paymentMethod: null,
+        endDate: null,
+        anchorDay: 20,
+        nextDueDate: utcDate(2026, 10, 20),
+      }),
+    });
+    expect(receipt).toEqual({
+      id: 'rec-new',
+      description: 'Internet',
+      amountCents: 12000,
+      frequency: RecurrenceFrequency.MONTHLY,
+      firstDueDate: '2026-11-20',
+      materializationPending: false,
+      refreshPending: false,
+    });
+    expect(materializer.materializeDue).toHaveBeenCalledWith('user-1');
+    expect(lifeEngine.touchUserData).toHaveBeenCalledWith('user-1');
+  });
+
+  it('primeiro vencimento anterior a hoje não grava e informa o dia de hoje do núcleo', async () => {
+    const { service, prisma } = build(stored(), { timezone: 'America/Sao_Paulo' });
+
+    const error = await service
+      .createForConversation('user-1', botDto({ firstDueDate: '2026-11-14' }), rules)
+      .catch((e) => e);
+
+    expect(error).toBeInstanceOf(RecurringFirstDueChangedError);
+    expect(error.today).toBe('2026-11-15');
+    expect(prisma.recurringTransaction.create).not.toHaveBeenCalled();
+  });
+
+  it('vencimento de hoje é aceito pelo bot (gera o lançamento na materialização)', async () => {
+    const { service, prisma } = build(stored(), { timezone: 'America/Sao_Paulo' });
+
+    const receipt = await service.createForConversation('user-1', botDto({ firstDueDate: '2026-11-15' }), rules);
+
+    expect(receipt.firstDueDate).toBe('2026-11-15');
+    expect(prisma.recurringTransaction.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('o "hoje" é o do fuso do dono: 16/11 01:00 UTC ainda é 15/11 em São Paulo e 16/11 em Tóquio', async () => {
+    jest.setSystemTime(new Date('2026-11-16T01:00:00.000Z'));
+    const sp = build(stored(), { timezone: 'America/Sao_Paulo' });
+    await expect(
+      sp.service.createForConversation('user-1', botDto({ firstDueDate: '2026-11-15' }), rules),
+    ).resolves.toMatchObject({ firstDueDate: '2026-11-15' });
+
+    const tokyo = build(stored(), { timezone: 'Asia/Tokyo' });
+    const error = await tokyo.service
+      .createForConversation('user-1', botDto({ firstDueDate: '2026-11-15' }), rules)
+      .catch((e) => e);
+    expect(error).toBeInstanceOf(RecurringFirstDueChangedError);
+    expect(error.today).toBe('2026-11-16');
+  });
+
+  it('valida no domínio: descrição de 1 caractere, valor zero e frequência inválida não gravam', async () => {
+    const { service, prisma } = build(stored());
+
+    await expect(service.createForConversation('user-1', botDto({ description: ' a ' }), rules)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.createForConversation('user-1', botDto({ amount: 0 }), rules)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.createForConversation('user-1', botDto({ amount: 1.005 }), rules)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.createForConversation('user-1', botDto({ frequency: 'DAILY' }), rules)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.recurringTransaction.create).not.toHaveBeenCalled();
+  });
+
+  it('checa o limite do plano antes de gravar; recusa sem escrita', async () => {
+    const { service, prisma, entitlements } = build(stored());
+    entitlements.assertCanCreate.mockRejectedValueOnce(new BadRequestException('sem vaga'));
+
+    await expect(service.createForConversation('user-1', botDto(), rules)).rejects.toThrow('sem vaga');
+    expect(prisma.recurringTransaction.create).not.toHaveBeenCalled();
+  });
+
+  it('falha na materialização depois do commit: cadastro persistido, materializationPending true, sem relançar', async () => {
+    const { service, materializer, lifeEngine } = build(stored());
+    materializer.materializeDue.mockRejectedValueOnce(Object.assign(new Error('falha com 120 reais'), { name: 'PrismaClientKnownRequestError' }));
+
+    const receipt = await service.createForConversation('user-1', botDto(), rules);
+
+    expect(receipt).toMatchObject({ id: 'rec-new', materializationPending: true, refreshPending: false });
+    expect(lifeEngine.touchUserData).toHaveBeenCalledTimes(1);
+  });
+
+  it('falha na atualização dos dados derivados: refreshPending true, cadastro mantido', async () => {
+    const { service, lifeEngine } = build(stored());
+    lifeEngine.touchUserData.mockRejectedValueOnce(new Error('falha'));
+
+    const receipt = await service.createForConversation('user-1', botDto(), rules);
+
+    expect(receipt).toMatchObject({ id: 'rec-new', materializationPending: false, refreshPending: true });
+  });
+
+  it('o log do erro leva só o nome do erro: nem descrição nem valor', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { service, materializer } = build(stored());
+    materializer.materializeDue.mockRejectedValueOnce(new Error('Internet 120 vazou aqui'));
+
+    await service.createForConversation('user-1', botDto(), rules);
+
+    const logged = JSON.stringify(warn.mock.calls);
+    expect(logged).not.toContain('Internet');
+    expect(logged).not.toContain('120');
+    expect(logged).not.toContain('vazou');
+    expect(logged).toContain('"errorName":"Error"');
+    warn.mockRestore();
+  });
+
+  it('commit de resultado desconhecido (callback concluiu, commit falhou) vira RecurringWriteUncertainError', async () => {
+    const { service, prisma } = build(stored());
+    prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+      await fn(prisma);
+      throw new Error('conexao perdida no commit');
+    });
+
+    await expect(service.createForConversation('user-1', botDto(), rules)).rejects.toBeInstanceOf(RecurringWriteUncertainError);
+  });
+
+  it('erro dentro do callback antes do fim é rollback conhecido, não resultado desconhecido', async () => {
+    const { service, prisma } = build(stored());
+    prisma.recurringTransaction.create.mockRejectedValueOnce(new Error('antes do fim'));
+
+    const error = await service.createForConversation('user-1', botDto(), rules).catch((e) => e);
+
+    expect(error.message).toBe('antes do fim');
+    expect(error).not.toBeInstanceOf(RecurringWriteUncertainError);
+  });
+
+  it('o recibo não depende de leitura posterior (findFirst depois da gravação falhando não afeta o bot)', async () => {
+    const { service, prisma } = build(stored());
+    prisma.recurringTransaction.findFirst.mockRejectedValue(new Error('leitura'));
+
+    const receipt = await service.createForConversation('user-1', botDto(), rules);
+
+    expect(receipt).toMatchObject({ id: 'rec-new', amountCents: 12000 });
+    expect(prisma.recurringTransaction.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('a tela mantém o formato: materialização falhando não vira erro depois do cadastro', async () => {
+    const { service, materializer } = build(stored());
+    materializer.materializeDue.mockRejectedValueOnce(new Error('falha'));
+
+    const item = await service.create('user-1', validCreate());
+
+    // Resposta lida depois da gravação (findOwned): o formato da tela não muda.
+    expect(item).toMatchObject({ id: 'rec-1', amount: 1200, isActive: true });
   });
 });

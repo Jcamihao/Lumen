@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma, TransactionType } from '@prisma/client';
 import { utcDate } from '../recurring-transactions/recurrence.util';
 import { InstallmentsService } from './installments.service';
+import { InstallmentFirstDueChangedError, InstallmentWriteUncertainError } from './conversation-write.types';
 
 const iso = (date: Date) => date.toISOString().slice(0, 10);
 const decimal = (value: number) => new Prisma.Decimal(value);
@@ -24,7 +25,9 @@ const stored = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const build = (existing: any = stored(), options: { category?: any; timezone?: string } = {}) => {
-  const prisma = {
+  const prisma: any = {
+    // Transação interativa em memória: o callback recebe o mesmo cliente fake.
+    $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
     installmentPurchase: {
       findFirst: jest.fn().mockResolvedValue(existing),
       findMany: jest.fn().mockResolvedValue([]),
@@ -241,5 +244,183 @@ describe('InstallmentsService', () => {
       await expect(service.remove('user-1', 'plan-alheia')).rejects.toThrow(NotFoundException);
       expect(prisma.installmentPurchase.delete).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('InstallmentsService.createForConversation (recibo do bot, mesma gravação da tela)', () => {
+  // 15/11/2026 12:00 UTC: em São Paulo e em UTC é 15/11.
+  const NOW = new Date('2026-11-15T12:00:00.000Z');
+  const botDto = (overrides: Record<string, unknown> = {}) => ({
+    description: '  Geladeira  ',
+    totalAmount: 1200,
+    installmentsTotal: 12,
+    firstDueDate: '2026-11-20',
+    ...overrides,
+  }) as any;
+  const rules = { notBefore: 'today' as const };
+
+  beforeEach(() => jest.useFakeTimers({ now: NOW }));
+  afterEach(() => jest.useRealTimers());
+
+  it('grava uma vez na transação, sem categoria nem pagamento, e devolve o recibo', async () => {
+    const { service, prisma } = build(stored(), { timezone: 'America/Sao_Paulo' });
+
+    const receipt = await service.createForConversation('user-1', botDto(), rules);
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.installmentPurchase.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'user-1',
+        description: 'Geladeira',
+        categoryId: null,
+        paymentMethod: null,
+        anchorDay: 20,
+        nextDueDate: utcDate(2026, 10, 20),
+        installmentsTotal: 12,
+      }),
+    });
+    expect(receipt).toEqual({
+      id: 'plan-new',
+      description: 'Geladeira',
+      totalCents: 120000,
+      installmentsTotal: 12,
+      installmentCents: 10000,
+      lastInstallmentCents: 10000,
+      firstDueDate: '2026-11-20',
+      materializationPending: false,
+      refreshPending: false,
+    });
+  });
+
+  it('divisão: parcela comum arredondada e última absorvendo a sobra (100 em 3 = 33,33 + 33,34)', async () => {
+    const { service } = build(stored());
+
+    const receipt = await service.createForConversation('user-1', botDto({ totalAmount: 100, installmentsTotal: 3 }), rules);
+
+    expect(receipt).toMatchObject({ installmentCents: 3333, lastInstallmentCents: 3334 });
+    expect(receipt.lastInstallmentCents + receipt.installmentCents * 2).toBe(10000);
+  });
+
+  it('regressão: R$ 1,00 em 60 vezes é recusado (parcela comum 0,02 e última negativa), sem gravar', async () => {
+    const { service, prisma } = build(stored());
+
+    await expect(
+      service.createForConversation('user-1', botDto({ totalAmount: 1, installmentsTotal: 60 }), rules),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.installmentPurchase.create).not.toHaveBeenCalled();
+  });
+
+  it('a última parcela zerada também é recusada (R$ 0,01 em 2 vezes)', async () => {
+    const { service, prisma } = build(stored());
+
+    await expect(
+      service.createForConversation('user-1', botDto({ totalAmount: 0.01, installmentsTotal: 2 }), rules),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.installmentPurchase.create).not.toHaveBeenCalled();
+  });
+
+  it('a tela recusa a mesma divisão (regra no serviço, não só no bot)', async () => {
+    const { service, prisma } = build(stored());
+
+    await expect(service.create('user-1', botDto({ totalAmount: 1, installmentsTotal: 60 }))).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.installmentPurchase.create).not.toHaveBeenCalled();
+  });
+
+  it('quantidade fora de 2 a 60 e fracionária não gravam', async () => {
+    const { service, prisma } = build(stored());
+
+    for (const installmentsTotal of [1, 61, 2.5]) {
+      await expect(
+        service.createForConversation('user-1', botDto({ installmentsTotal }), rules),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    }
+    expect(prisma.installmentPurchase.create).not.toHaveBeenCalled();
+  });
+
+  it('primeiro vencimento anterior a hoje não grava e informa o dia de hoje do núcleo', async () => {
+    const { service, prisma } = build(stored(), { timezone: 'America/Sao_Paulo' });
+
+    const error = await service
+      .createForConversation('user-1', botDto({ firstDueDate: '2026-11-14' }), rules)
+      .catch((e) => e);
+
+    expect(error).toBeInstanceOf(InstallmentFirstDueChangedError);
+    expect(error.today).toBe('2026-11-15');
+    expect(prisma.installmentPurchase.create).not.toHaveBeenCalled();
+  });
+
+  it('o "hoje" do rascunho vem do fuso do dono (Tóquio já em 16/11)', async () => {
+    jest.setSystemTime(new Date('2026-11-16T01:00:00.000Z'));
+    const { service } = build(stored(), { timezone: 'Asia/Tokyo' });
+
+    const error = await service
+      .createForConversation('user-1', botDto({ firstDueDate: '2026-11-15' }), rules)
+      .catch((e) => e);
+
+    expect(error).toBeInstanceOf(InstallmentFirstDueChangedError);
+    expect(error.today).toBe('2026-11-16');
+  });
+
+  it('vencimento de hoje é aceito pelo bot', async () => {
+    const { service, prisma } = build(stored(), { timezone: 'America/Sao_Paulo' });
+
+    const receipt = await service.createForConversation('user-1', botDto({ firstDueDate: '2026-11-15' }), rules);
+
+    expect(receipt.firstDueDate).toBe('2026-11-15');
+    expect(prisma.installmentPurchase.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('checa o limite do plano antes de gravar', async () => {
+    const { service, prisma, entitlements } = build(stored());
+    entitlements.assertCanCreate.mockRejectedValueOnce(new BadRequestException('sem vaga'));
+
+    await expect(service.createForConversation('user-1', botDto(), rules)).rejects.toThrow('sem vaga');
+    expect(prisma.installmentPurchase.create).not.toHaveBeenCalled();
+  });
+
+  it('falha na materialização depois do commit: materializationPending true, sem relançar', async () => {
+    const { service, materializer } = build(stored());
+    materializer.materializeDue.mockRejectedValueOnce(new Error('falha'));
+
+    const receipt = await service.createForConversation('user-1', botDto(), rules);
+
+    expect(receipt).toMatchObject({ id: 'plan-new', materializationPending: true, refreshPending: false });
+  });
+
+  it('falha na atualização dos dados derivados: refreshPending true, cadastro mantido', async () => {
+    const { service, lifeEngine } = build(stored());
+    lifeEngine.touchUserData.mockRejectedValueOnce(new Error('falha'));
+
+    const receipt = await service.createForConversation('user-1', botDto(), rules);
+
+    expect(receipt).toMatchObject({ id: 'plan-new', materializationPending: false, refreshPending: true });
+  });
+
+  it('commit de resultado desconhecido vira InstallmentWriteUncertainError', async () => {
+    const { service, prisma } = build(stored());
+    prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+      await fn(prisma);
+      throw new Error('conexao perdida no commit');
+    });
+
+    await expect(service.createForConversation('user-1', botDto(), rules)).rejects.toBeInstanceOf(InstallmentWriteUncertainError);
+  });
+
+  it('erro dentro do callback antes do fim é rollback conhecido', async () => {
+    const { service, prisma } = build(stored());
+    prisma.installmentPurchase.create.mockRejectedValueOnce(new Error('antes do fim'));
+
+    const error = await service.createForConversation('user-1', botDto(), rules).catch((e) => e);
+
+    expect(error).not.toBeInstanceOf(InstallmentWriteUncertainError);
+  });
+
+  it('a tela mantém o formato: materialização falhando não vira erro depois do cadastro', async () => {
+    const { service, materializer } = build(stored());
+    materializer.materializeDue.mockRejectedValueOnce(new Error('falha'));
+
+    const item = await service.create('user-1', validCreate());
+
+    expect(item).toMatchObject({ id: 'plan-1', installmentsTotal: 10 });
   });
 });
