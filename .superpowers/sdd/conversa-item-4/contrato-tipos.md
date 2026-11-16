@@ -104,11 +104,94 @@ export const RECEIPT_WARNINGS = {
 
 Aviso `W_NO_TOTAL` entra quando `totalAmount` for `null`. Ordem dos avisos: a da lista acima; sem repetição.
 
-## Parte 4a-2: extrator e integração (detalhar depois da revisão da 4a-1)
+## Parte 4a-2: extrator e integração
 
-Esboço, sujeito a revisão pelo agente principal antes do brief da 4a-2:
+Dependências já instaladas e commitadas pelo agente principal (versões exatas, sem `^`): `tesseract.js` 7.0.0, `@tesseract.js-data/por` 1.0.0, `jsqr` 1.4.0, `sharp` 0.35.5, `pdfjs-dist` 4.10.38. Verificado: `npm ci --ignore-scripts` limpo instala todas e `sharp`, `jsqr` e `tesseract.js` carregam em Node 20. Não adicione outra dependência.
 
-- `ReceiptExtractorService.extract({ buffer, mimeType, fileName, today })` devolve `ParsedReceiptText & { extraction: { method: 'QR' | 'PDF_TEXT' | 'OCR'; ocrConfidence: number | null; warnings: string[] }; qrCodeText: string | null }`.
-- Erros tipados: `ReceiptUnreadableError` (422 `RECEIPT_UNREADABLE`), `ReceiptBusyError` (429 `RECEIPT_BUSY`), recusa de HEIC e de PDF sem texto (400 com as mensagens da seção 13 do contrato).
-- Migration aditiva `ReceiptScan.accessKey String?` com índice `(userId, accessKey)`; commit com `acknowledgeDuplicate` e 409 `RECEIPT_DUPLICATE_UNCONFIRMED`.
-- Dependências, versões exatas: `tesseract.js` 7.0.0, `@tesseract.js-data/por` 1.0.0, `jsqr` 1.4.0, `sharp` 0.35.5, `pdfjs-dist` 4.10.38.
+### Arquivos (todos em `backend/src/imports/` salvo indicação)
+
+| Arquivo | O que tem |
+|---|---|
+| `receipt-extractor.types.ts` | tipos e erros abaixo |
+| `receipt-readers.ts` | leitores finos: `decodeQr`, `readPdfText`, `OcrPool` |
+| `receipt-extractor.service.ts` | `ReceiptExtractorService` (Nest `@Injectable`), orquestra os leitores e o parser da 4a-1 |
+| `imports.service.ts` | troca da fonte do `previewReceiptImport`; checagem de duplicata no `commitReceiptImport` |
+| `imports.module.ts` | registra `ReceiptExtractorService` e `OcrPool` |
+| `imports.controller.ts` | só textos do Swagger (sem "por IA") |
+| `dto/commit-receipt-import.dto.ts` | campo `acknowledgeDuplicate` |
+| `backend/prisma/schema.prisma` e `backend/prisma/migrations/20261116120000_receipt_scan_access_key/migration.sql` | coluna e índice |
+| `backend/test/receipt-extractor.smoke.ts` | script manual (fora do jest) que lê todas as fixtures reais e imprime o resultado |
+
+Fixtures sintéticas já commitadas em `backend/test/fixtures/receipts/` (`truth.json` tem o gabarito: estabelecimento, CNPJ, data `dd/mm/aaaa`, itens, total, chave): `nota-n1.png` (QR + texto limpo), `nota-n1-jpeg.jpg` (JPEG de baixa qualidade, o QR pode não ser lido), `nota-n2-texto.pdf` (PDF com camada de texto), `nota-n1-digitalizada.pdf` (PDF só com imagem).
+
+### Tipos (`receipt-extractor.types.ts`)
+
+```ts
+import type { ParsedReceiptText } from './receipt-text.parser';
+
+export type ReceiptExtractionMethod = 'PDF_TEXT' | 'OCR';
+
+export type ReceiptExtraction = ParsedReceiptText & {
+  extraction: {
+    method: ReceiptExtractionMethod;   // imagem = 'OCR' (o QR só complementa a chave); PDF com texto = 'PDF_TEXT'
+    ocrConfidence: number | null;      // 0 a 1 (confiança do tesseract dividida por 100), null em PDF_TEXT
+    warnings: string[];                // = parsed.warnings (mesmos textos do parser) + avisos de extração abaixo
+    qrDetected: boolean;               // achou QR legível na imagem
+    secondPass: boolean;               // usou a segunda passada com pré-processamento
+  };
+  qrCodeText: string | null;           // saída de sanitizeQrUrl, ou null
+};
+
+export type ReceiptExtractInput = { buffer: Buffer; mimeType: string; fileName: string; today: Date };
+
+// Erros. Todos estendem HttpException do Nest com corpo { statusCode, code, message }.
+export class ReceiptUnreadableError  // 422, code 'RECEIPT_UNREADABLE'
+export class ReceiptBusyError        // 429, code 'RECEIPT_BUSY',  message 'Muitas leituras agora, tente em instantes.'
+// Recusas com BadRequestException (400, sem code): HEIC e PDF digitalizado (mensagens da seção 13 do contrato do item).
+```
+
+Mensagem de `ReceiptUnreadableError` (fixa): `Não consegui ler esta nota. Lance o gasto pelo chat ("50 mercado") ou pela tela de Finanças.` Para estouro de tempo do OCR use a mesma classe com a mensagem: `A leitura demorou demais. Tente uma foto mais nítida, ou lance o gasto pelo chat ("50 mercado") ou pela tela de Finanças.`
+
+### Fluxo de `ReceiptExtractorService.extract`
+
+1. **Vaga:** contador de leituras em andamento por processo. Se já houver 2, lança `ReceiptBusyError` **sem esperar** (nada de fila). A vaga é tomada no início e liberada em `finally`, inclusive em erro e em timeout.
+2. **Tipo:** `mimeType` vem de `sniffMime` (já validado pelo `ensureReceiptFile`). `image/heic` (HEIC/HEIF) → `BadRequestException('Formato HEIC não é lido. Envie a foto em JPG ou PNG, ou tire um print da nota.')`.
+3. **PDF (`application/pdf`):** `readPdfText` (no máximo 3 páginas). Se o texto tiver menos de 40 caracteres entre letras e dígitos → `BadRequestException('Este PDF é uma imagem digitalizada e não pode ser lido. Envie a foto da nota em JPG ou PNG.')`. Senão `parseReceiptText(text, { today })`, `method = 'PDF_TEXT'`, `qrDetected = false`, `qrCodeText = null`. PDF protegido por senha, corrompido ou que faça o `pdfjs` lançar → `ReceiptUnreadableError`.
+4. **Imagem:**
+   1. `sharp(buffer, { limitInputPixels: 25_000_000 }).metadata()`; largura × altura acima de 25 milhões de pixels → `BadRequestException('Imagem muito grande. Envie uma foto com até 25 megapixels.')`. Arquivo que o `sharp` não abre → `BadRequestException('Não consegui abrir esta imagem. Envie a foto em JPG ou PNG.')`. Sempre `limitInputPixels` em toda chamada do `sharp`.
+   2. **Orientação:** aplicar `.rotate()` sem argumento (respeita EXIF; foto de celular vem deitada) e converter para PNG sem outra alteração. Essa é a imagem da primeira passada.
+   3. **QR:** `decodeQr` com teto total de 800 ms (tentativas em largura original, 900, 1400 e 600; antes de cada tentativa conferir o tempo gasto e parar se passou de 800 ms). `extractAccessKeyFromQr(raw)` vira `qrAccessKey`; `qrCodeText = sanitizeQrUrl(raw)`; `qrDetected = raw != null`.
+   4. **OCR, 1ª passada:** `OcrPool` com `tessedit_pageseg_mode: '6'` e `preserve_interword_spaces: '1'`, idioma `por`, dado local (ver abaixo). `parseReceiptText(texto, { today, qrAccessKey })`.
+   5. **2ª passada** só se a 1ª tiver `totalAmount === null` ou `totalMismatch !== null`: imagem em tons de cinza, `normalise()`, largura 1400 px (`resize({ width: 1400 })`), `sharpen()`, PNG; novo OCR e novo parse. Escolher o resultado com esta pontuação, o maior vence, empate fica com a 1ª: `(total != null ? 4 : 0) + (itens > 0 ? 2 : 0) + (totalMismatch == null ? 2 : 0) - warnings.length * 0.1`. `secondPass = true` se a 2ª foi usada.
+   6. **Prazo:** o OCR todo (as duas passadas) tem 30 s. Estourou → terminar o worker, descartá-lo do pool e lançar o `ReceiptUnreadableError` de tempo.
+5. **Ilegível:** depois de qualquer leitura, `totalAmount === null` (mesmo havendo itens: o total é obrigatório no banco e não se inventa) → `ReceiptUnreadableError`. Total lido e sem itens é aceito (aviso `W_NO_ITEMS` do parser).
+6. **Nada sai do processo:** sem chamada de rede, sem arquivo temporário, sem log do texto lido. Pode logar (nível `log`) só: método, `secondPass`, tempo em ms, número de itens, quantidade de avisos.
+
+### `receipt-readers.ts`
+
+- `decodeQr(png: Buffer, deadlineMs = 800): Promise<string | null>`: `sharp(...).flatten({ background: '#ffffff' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true })` e `jsQR(new Uint8ClampedArray(data), width, height, { inversionAttempts: 'attemptBoth' })`.
+- `readPdfText(buffer: Buffer, importer?): Promise<string>`: `pdfjs-dist/legacy/build/pdf.mjs` é ESM e o backend é CommonJS; o TypeScript trocaria `import()` por `require()` e quebraria. Use `const dynamicImport = new Function('specifier', 'return import(specifier)')` (comentar o motivo). `getDocument({ data: new Uint8Array(buffer), useSystemFonts: true, isEvalSupported: false, disableFontFace: true })`, até 3 páginas, `getTextContent()`, juntar `item.str` e quebrar linha onde `item.hasEOL`; páginas separadas por `\n`. Parâmetro `importer` opcional para teste. Liberar o documento (`pdf.destroy()`) em `finally`.
+- `OcrPool` (`@Injectable`, implementa `OnModuleDestroy`): cria workers sob demanda (no máximo 2), cada um com `createWorker('por', 1, { langPath, gzip: true, ... })`, onde `langPath = join(dirname(require.resolve('@tesseract.js-data/por/package.json')), '4.0.0_best_int')`. **Não pode haver download em tempo de execução nem cache em disco fora de `os.tmpdir()`**: confirme as opções da versão 7.0.0 (no spike usou-se `cachePath`; prefira desligar o cache se a opção existir). `recognize(png: Buffer, timeoutMs): Promise<{ text: string; confidence: number }>`; no timeout, `worker.terminate()` e remover do pool. Sempre limpar o `setTimeout` (o jest acusa handle aberto). `onModuleDestroy` termina todos os workers.
+- Imports no TypeScript do projeto (sem `esModuleInterop`): `import sharp = require('sharp')`; `jsqr` com `const jsQR = require('jsqr') as (...)=>...` e tipo mínimo escrito por você; `import { createWorker } from 'tesseract.js'`.
+
+### Mudanças em `ImportsService`
+
+- Construtor ganha `private readonly receiptExtractor: ReceiptExtractorService` como **4º** parâmetro; atualize `imports.upload-validation.spec.ts` (`new ImportsService({} as any, {} as any, {} as any, {} as any)`) e qualquer outro `new ImportsService(` (procure com grep).
+- `previewReceiptImport`: mantém a validação do grupo e `ensureReceiptFile` na mesma ordem; **remove** as chamadas a `ensureReceiptAiEnabled` e `parseReceiptWithSelah` (os métodos ficam no arquivo, sem uso, com um comentário de uma linha dizendo que o Selah está desligado neste fluxo). Novo método privado `loadExpenseCategories(userId)` devolve `{ id, name, type }` das categorias de despesa, e `timezone` do usuário vem de `prisma.user.findUniqueOrThrow({ select: { timezone, financeCategories... } })`; `today = localToday(new Date(), timezone ?? 'America/Sao_Paulo')`.
+- A resposta serializada (`serializeReceiptPreview`) ganha: `itemsSum: number | null`, `totalMismatch: { itemsSum, total, difference } | null`, `extraction: { method, ocrConfidence, warnings, qrDetected, secondPass }`, `accessKeyValid: boolean`. Notas antigas (sem esses campos no `previewData`): `itemsSum` e `totalMismatch` `null`, `extraction` `null`, `accessKeyValid` `false`. `purchaseSummary`, `purchaseMission` `null`; `spendingSignals` e `followUpActions` `[]` (os sinais determinísticos já calculados continuam).
+- `confidence` calculada (substitui a do Selah): `'low'` se `totalMismatch` ou `items.length === 0` ou algum item com `lineConsistent === false`; senão `'high'` se `accessKeyValid` e `itemsSum !== null` e `warnings.length === 0`; senão `'medium'`.
+- Campos do `ReceiptScan`: `merchantName`, `documentNumber`, `purchaseDate` (já é `Date` UTC meia-noite), `totalAmount`, `currency 'BRL'`, **`accessKey`** (coluna nova; só a chave válida de 44 dígitos), `rawText` e `previewData.rawTextExcerpt` = `rawTextRedacted`, `previewData.qrCodeText` = `qrCodeText`, `merchantTaxId` = `cnpj`, `documentType` = `'nfce'` se a chave decodificada tiver modelo `65`, senão `null`, `provider = 'LUMEN_LOCAL'`, `model = null`, `notes` = `extraction.warnings` (até 12).
+- **Duplicata no preview:** além de `findPossibleDuplicateTransaction`, se houver `accessKey`, buscar `receiptScan.findFirst({ where: { userId, accessKey, status: IMPORTED }, include: { transaction: true } })`; achando, `possibleDuplicate = true` e a descrição vem da transação ligada. **Todas as buscas filtram por `userId` do token.** Chave importada por outro usuário não conta e não aparece.
+- **Duplicata no commit** (`commitReceiptImport`), depois de achar a nota do usuário e antes de gravar: se `previewData.possibleDuplicate`, **ou** existir outra nota `IMPORTED` do mesmo `userId` com a mesma `accessKey` (id diferente; reconsulta no commit, porque pode ter mudado desde a prévia), e `dto.acknowledgeDuplicate !== true` → `ConflictException({ statusCode: 409, code: 'RECEIPT_DUPLICATE_UNCONFIRMED', message: 'Parece que você já lançou esta compra. Confirme para importar mesmo assim.' })`, sem gravar nada. Limite conhecido, a documentar no HANDOFF: dois commits simultâneos de notas diferentes com a mesma chave podem passar (a checagem é de aviso, não de unicidade).
+- `CommitReceiptImportDto`: `@IsOptional() @IsBoolean() acknowledgeDuplicate?: boolean`.
+
+### Banco
+
+`schema.prisma`: em `model ReceiptScan` acrescente `accessKey String?` e `@@index([userId, accessKey])`. Migration `20261116120000_receipt_scan_access_key/migration.sql`:
+
+```sql
+ALTER TABLE "ReceiptScan" ADD COLUMN "accessKey" TEXT;
+CREATE INDEX "ReceiptScan_userId_accessKey_idx" ON "ReceiptScan"("userId", "accessKey");
+```
+
+Rode `npm run prisma:generate` depois. Não rode `migrate dev` nem `migrate deploy` (o agente principal valida em Postgres descartável).
