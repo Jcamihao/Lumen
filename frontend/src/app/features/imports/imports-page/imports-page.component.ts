@@ -1,5 +1,16 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  Injector,
+  afterNextRender,
+  computed,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
@@ -28,6 +39,8 @@ export class ImportsPageComponent {
   private readonly auth = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly toast = inject(ToastService);
+  private readonly injector = inject(Injector);
+  private readonly duplicateBox = viewChild<ElementRef<HTMLElement>>('duplicateBox');
 
   protected readonly preview = signal<ImportPreview | null>(null);
   protected readonly activeTab = signal<'receipt' | 'csv' | 'history'>('receipt');
@@ -70,16 +83,39 @@ export class ImportsPageComponent {
 
   protected readonly receiptWarnings = computed(() => this.receiptPreview()?.extraction?.warnings ?? []);
 
-  // Recalculado com os valores editados: o aviso só some quando a divergência deixa de existir.
+  // Avisos de leitura que não repetem os já listados em extraction.warnings (o backend copia os dois).
+  protected readonly receiptNotes = computed(() => {
+    const preview = this.receiptPreview();
+    const warnings = new Set(preview?.extraction?.warnings ?? []);
+    return (preview?.notes ?? []).filter((note) => !warnings.has(note));
+  });
+
+  // Sempre recalculado com os valores na tela: aparece quando o usuário cria uma divergência
+  // ao editar e some quando ele a corrige. Compara em centavos para não errar por ponto flutuante.
   protected readonly localTotalMismatch = computed(() => {
     const preview = this.receiptPreview();
-    if (!preview?.totalMismatch) return null;
+    if (!preview || !preview.items.length) return null;
 
-    const itemsSum = Math.round(
-      preview.items.reduce((sum, item) => sum + this.toNumber(item.totalPrice, 0), 0) * 100,
-    ) / 100;
-    const total = this.receiptTotalAmount();
-    return Math.abs(itemsSum - total) > 0.01 ? { itemsSum, total } : null;
+    const itemsCents = preview.items.reduce(
+      (sum, item) => sum + Math.round(this.toNumber(item.totalPrice, 0) * 100),
+      0,
+    );
+    const totalCents = Math.round(this.receiptTotalAmount() * 100);
+    return Math.abs(itemsCents - totalCents) > 1
+      ? { itemsSum: itemsCents / 100, total: totalCents / 100 }
+      : null;
+  });
+
+  // O "Resumo da compra" também vale só com a quebra por categoria (calculada sem IA).
+  protected readonly hasPurchaseSummary = computed(() => {
+    const receipt = this.receiptPreview();
+    return (
+      !!receipt &&
+      (!!receipt.purchaseSummary ||
+        receipt.spendingSignals.length > 0 ||
+        receipt.followUpActions.length > 0 ||
+        receipt.categoryBreakdown.length > 0)
+    );
   });
 
   protected handleFile(event: Event) {
@@ -115,9 +151,11 @@ export class ImportsPageComponent {
     const file = input.files?.item(0);
     if (!file) return;
 
+    // Limpa o campo já: sem isso, reenviar a mesma foto depois de um erro não dispara "change".
+    input.value = '';
+
     if (!this.selectedTagGroupId()) {
       this.receiptError.set('Escolha um grupo antes de enviar a nota fiscal.');
-      input.value = '';
       return;
     }
 
@@ -138,6 +176,7 @@ export class ImportsPageComponent {
           this.receiptDescription.set(preview.descriptionSuggestion);
           this.receiptCategoryId.set(preview.suggestedCategoryId || '');
           this.receiptLoading.set(false);
+          if (preview.possibleDuplicate) this.revealDuplicateBox();
         },
         error: (error) => {
           this.receiptLoading.set(false);
@@ -179,7 +218,7 @@ export class ImportsPageComponent {
         error: (error) => {
           this.creatingTagGroup.set(false);
           this.tagGroupError.set(
-            error?.error?.message || 'Nao foi possivel criar o grupo.',
+            error?.error?.message || 'Não foi possível criar o grupo.',
           );
         },
       });
@@ -259,12 +298,24 @@ export class ImportsPageComponent {
           // 409: a chave foi importada no meio-tempo. Abre a caixa e deixa o usuário decidir.
           if (error?.status === 409 && error?.error?.code === 'RECEIPT_DUPLICATE_UNCONFIRMED') {
             this.duplicateDecisionOpen.set(true);
+            this.revealDuplicateBox();
             return;
           }
-          this.receiptError.set(error?.error?.message || 'Nao foi possivel registrar a compra no financeiro.');
-          this.toast.error(error?.error?.message || 'Não foi possível registrar a compra.');
+          // Mesma mensagem na tela e no toast, para não haver dois textos diferentes para o mesmo erro.
+          const message = error?.error?.message || 'Não foi possível registrar a compra no financeiro.';
+          this.receiptError.set(message);
+          this.toast.error(message);
         },
       });
+  }
+
+  // A caixa abre no topo da prévia; o botão de confirmar fica no fim. Traz a caixa para a tela
+  // antes de o usuário poder clicar em "Importar mesmo assim" sem tê-la lido.
+  private revealDuplicateBox() {
+    afterNextRender(
+      () => this.duplicateBox()?.nativeElement.scrollIntoView?.({ block: 'center' }),
+      { injector: this.injector },
+    );
   }
 
   protected selectTab(tab: 'receipt' | 'csv' | 'history') {

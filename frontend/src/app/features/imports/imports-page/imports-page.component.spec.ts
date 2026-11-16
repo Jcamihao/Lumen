@@ -309,6 +309,261 @@ describe("ImportsPageComponent — nota fiscal sem IA", () => {
     expect(text()).not.toContain("Leitura incerta");
   });
 
+  describe("revisão 4b", () => {
+    const editItemTotal = (value: string) => {
+      clickButton("Ajustar");
+      const itemTotal = root().querySelectorAll<HTMLInputElement>(".proto-list-item .proto-form-grid input")[3];
+      itemTotal.value = value;
+      itemTotal.dispatchEvent(new Event("input"));
+      fixture.detectChanges();
+    };
+    const totalInput = () => root().querySelectorAll<HTMLInputElement>(".proto-form-grid input[type=number]")[0];
+
+    it("prévia sem divergência: editar o total de um item cria o aviso com os valores locais", () => {
+      create();
+      selectGroupAndUpload();
+      expect(text()).not.toContain("é diferente do total da nota");
+
+      editItemTotal("7");
+
+      expect(text()).toContain("A soma dos itens (R$ 7,00) é diferente do total da nota (R$ 10,00).");
+    });
+
+    it("prévia sem divergência: editar o total da nota cria o aviso, e voltar o valor o esconde", () => {
+      create();
+      selectGroupAndUpload();
+
+      totalInput().value = "12.5";
+      totalInput().dispatchEvent(new Event("input"));
+      fixture.detectChanges();
+      expect(text()).toContain("A soma dos itens (R$ 10,00) é diferente do total da nota (R$ 12,50).");
+
+      totalInput().value = "10";
+      totalInput().dispatchEvent(new Event("input"));
+      fixture.detectChanges();
+      expect(text()).not.toContain("é diferente do total da nota");
+    });
+
+    it("diferença de um centavo não gera aviso, dois centavos geram", () => {
+      api.previewReceiptImport.and.returnValue(
+        of(receipt({ items: [{ description: "Arroz", quantity: 1, unitPrice: 0.3, totalPrice: 0.3 }, { description: "Feijão", quantity: 1, unitPrice: 0.6, totalPrice: 0.6 }], totalAmount: 0.91 })),
+      );
+      create();
+      selectGroupAndUpload();
+      expect(text()).not.toContain("é diferente do total da nota");
+
+      totalInput().value = "0.92";
+      totalInput().dispatchEvent(new Event("input"));
+      fixture.detectChanges();
+      expect(text()).toContain("é diferente do total da nota");
+    });
+
+    it("com a caixa aberta pelo 409, o primeiro clique não leva acknowledgeDuplicate e o segundo leva", () => {
+      api.commitReceiptImport.and.returnValues(
+        httpError(409, "Parece que você já lançou esta compra.", "RECEIPT_DUPLICATE_UNCONFIRMED"),
+        of({ success: true }),
+      );
+      create();
+      selectGroupAndUpload();
+
+      clickButton("Confirmar importação");
+      expect(api.commitReceiptImport.calls.argsFor(0)[0].acknowledgeDuplicate).toBeUndefined();
+      expect(toast.success).not.toHaveBeenCalled();
+
+      clickButton("Importar mesmo assim");
+      expect(api.commitReceiptImport).toHaveBeenCalledTimes(2);
+      expect(api.commitReceiptImport.calls.argsFor(1)[0].acknowledgeDuplicate).toBeTrue();
+      expect(toast.success).toHaveBeenCalledTimes(1);
+    });
+
+    it("nova prévia sem duplicata fecha a caixa aberta por um 409 anterior", () => {
+      api.commitReceiptImport.and.returnValue(httpError(409, "dup", "RECEIPT_DUPLICATE_UNCONFIRMED"));
+      create();
+      selectGroupAndUpload();
+      clickButton("Confirmar importação");
+      expect(text()).toContain("Parece que você já lançou esta compra");
+
+      api.previewReceiptImport.and.returnValue(of(receipt({ merchantName: "Outro Mercado" })));
+      // volta ao upload: sem prévia, o usuário envia outra nota
+      (fixture.componentInstance as unknown as { receiptPreview: { set(v: null): void } }).receiptPreview.set(null);
+      fixture.detectChanges();
+      uploadReceipt();
+
+      expect(text()).toContain("Outro Mercado");
+      expect(text()).not.toContain("Parece que você já lançou esta compra");
+      expect(buttonWithText("Confirmar importação")).toBeDefined();
+    });
+
+    it("o 409 traz a caixa de duplicata para a tela antes do segundo clique", async () => {
+      const scroll = spyOn(HTMLElement.prototype, "scrollIntoView");
+      api.commitReceiptImport.and.returnValue(httpError(409, "dup", "RECEIPT_DUPLICATE_UNCONFIRMED"));
+      create();
+      selectGroupAndUpload();
+      await fixture.whenStable();
+      expect(scroll).not.toHaveBeenCalled();
+
+      clickButton("Confirmar importação");
+      await fixture.whenStable();
+
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect(scroll.calls.mostRecent().object).toBe(root().querySelector("[role='alert']") as HTMLElement);
+    });
+
+    it("409 não deixa receiptError antigo na tela", () => {
+      api.commitReceiptImport.and.returnValues(
+        httpError(500, "Falha no servidor.", undefined),
+        httpError(409, "dup", "RECEIPT_DUPLICATE_UNCONFIRMED"),
+      );
+      create();
+      selectGroupAndUpload();
+
+      clickButton("Confirmar importação");
+      expect(root().querySelector(".import-error")?.textContent?.trim()).toBe("Falha no servidor.");
+      expect(toast.error).toHaveBeenCalledWith("Falha no servidor.");
+
+      clickButton("Confirmar importação");
+      expect(root().querySelector(".import-error")).toBeNull();
+      expect(toast.error).toHaveBeenCalledTimes(1);
+    });
+
+    it("erro de commit sem mensagem usa o mesmo texto, com acento, na tela e no toast", () => {
+      api.commitReceiptImport.and.returnValue(throwError(() => ({ status: 0, error: {} })));
+      create();
+      selectGroupAndUpload();
+      clickButton("Confirmar importação");
+
+      const message = "Não foi possível registrar a compra no financeiro.";
+      expect(root().querySelector(".import-error")?.textContent?.trim()).toBe(message);
+      expect(toast.error).toHaveBeenCalledWith(message);
+    });
+
+    for (const [label, failure] of [
+      ["400", { status: 400, error: { message: "Formato inválido." } }],
+      ["409", { status: 409, error: { code: "RECEIPT_DUPLICATE_UNCONFIRMED", message: "dup" } }],
+      ["422", { status: 422, error: { code: "RECEIPT_UNREADABLE", message: "Sem total." } }],
+      ["429", { status: 429, error: { code: "RECEIPT_BUSY", message: "Ocupado." } }],
+      ["rede caída", { status: 0, error: new ProgressEvent("error") }],
+    ] as const) {
+      it(`preview com ${label} devolve o botão de envio ao normal e deixa reenviar`, () => {
+        api.previewReceiptImport.and.returnValue(throwError(() => failure));
+        create();
+        selectGroupAndUpload();
+
+        const sendButton = buttonWithText("Selecionar imagem ou PDF")!;
+        expect(sendButton).toBeDefined();
+        expect(sendButton.disabled).toBeFalse();
+        expect(text()).not.toContain("Lendo nota...");
+      });
+    }
+
+    it("commit com erro devolve o botão de confirmar ao normal", () => {
+      api.commitReceiptImport.and.returnValue(httpError(429, "Ocupado."));
+      create();
+      selectGroupAndUpload();
+      clickButton("Confirmar importação");
+
+      expect(buttonWithText("Confirmar importação")!.disabled).toBeFalse();
+      expect(text()).not.toContain("Registrando...");
+    });
+
+    it("limpa o campo de arquivo ao enviar, para poder reenviar a mesma foto", () => {
+      create();
+      clickButton("Mercado");
+      const component = fixture.componentInstance as unknown as { handleReceiptFile(event: Event): void };
+      const input = { files: fileOf(), value: "C:\\fakepath\\nota.jpg" };
+
+      component.handleReceiptFile({ target: input } as unknown as Event);
+
+      expect(input.value).toBe("");
+    });
+
+    it("limpa o campo de arquivo mesmo quando falta escolher o grupo", () => {
+      create();
+      const component = fixture.componentInstance as unknown as { handleReceiptFile(event: Event): void };
+      const input = { files: fileOf(), value: "C:\\fakepath\\nota.jpg" };
+
+      component.handleReceiptFile({ target: input } as unknown as Event);
+      fixture.detectChanges();
+
+      expect(input.value).toBe("");
+      expect(api.previewReceiptImport).not.toHaveBeenCalled();
+      expect(root().querySelector(".import-error")?.textContent).toContain("Escolha um grupo");
+    });
+
+    it("avisos de extraction.warnings não aparecem duas vezes quando notes repete o texto", () => {
+      api.previewReceiptImport.and.returnValue(
+        of(
+          receipt({
+            notes: ["Data não encontrada no texto.", "Aviso só em notes."],
+            extraction: { method: "OCR", ocrConfidence: 80, warnings: ["Data não encontrada no texto."], qrDetected: false, secondPass: false },
+          }),
+        ),
+      );
+      create();
+      selectGroupAndUpload();
+
+      expect(text().split("Data não encontrada no texto.").length - 1).toBe(1);
+      expect(text()).toContain("Aviso só em notes.");
+    });
+
+    it("quebra por categoria sozinha (sem IA) abre o Resumo da compra", () => {
+      api.previewReceiptImport.and.returnValue(
+        of(receipt({ categoryBreakdown: [{ label: "Mercearia", totalAmount: 10, itemCount: 1 }] })),
+      );
+      create();
+      selectGroupAndUpload();
+
+      expect(text()).toContain("Resumo da compra");
+      expect(text()).toContain("Mercearia");
+    });
+
+    it("sem sinais nem quebra por categoria o Resumo da compra fica escondido", () => {
+      create();
+      selectGroupAndUpload();
+
+      expect(text()).not.toContain("Resumo da compra");
+    });
+
+    it("texto da nota com HTML é mostrado como texto, sem criar elementos", () => {
+      api.previewReceiptImport.and.returnValue(
+        of(receipt({ merchantName: "<img src=x onerror=alert(1)>", notes: ["<b>negrito</b>"] })),
+      );
+      create();
+      selectGroupAndUpload();
+
+      expect(root().querySelector("img[src='x']")).toBeNull();
+      expect(root().querySelector("b")).toBeNull();
+      expect(text()).toContain("<b>negrito</b>");
+    });
+
+    it("avisos de divergência e duplicata usam role alert", () => {
+      api.previewReceiptImport.and.returnValue(
+        of(
+          receipt({
+            possibleDuplicate: true,
+            items: [{ description: "Arroz", quantity: 1, unitPrice: 8, totalPrice: 8 }],
+            totalMismatch: { itemsSum: 8, total: 10, difference: 2 },
+          }),
+        ),
+      );
+      create();
+      selectGroupAndUpload();
+
+      expect(root().querySelectorAll("[role='alert']").length).toBe(2);
+    });
+
+    it("não grava a nota em localStorage nem escreve no console", () => {
+      const setItem = spyOn(Storage.prototype, "setItem").and.callThrough();
+      const log = spyOn(console, "log");
+      create();
+      selectGroupAndUpload();
+      clickButton("Confirmar importação");
+
+      expect(setItem).not.toHaveBeenCalled();
+      expect(log).not.toHaveBeenCalled();
+    });
+  });
+
   it("título Resumo da compra aparece quando há sinais", () => {
     api.previewReceiptImport.and.returnValue(
       of(receipt({ spendingSignals: ["Compra recorrente de alimentos"] })),

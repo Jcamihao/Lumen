@@ -127,7 +127,7 @@
           </p>
         </div>
 
-        <div class="proto-note" role="alert" *ngIf="duplicateBoxVisible()">
+        <div #duplicateBox class="proto-note" role="alert" *ngIf="duplicateBoxVisible()">
           <span class="proto-tag" data-tone="warning">Possível duplicata</span>
           <strong class="proto-inline-title">Parece que você já lançou esta compra</strong>
           <p *ngIf="receipt.duplicateTransactionDescription">{{ receipt.duplicateTransactionDescription }}</p>
@@ -184,11 +184,11 @@
           </div>
         </div>
 
-        <div class="proto-actions-row" *ngIf="receipt.notes.length">
-          <span class="proto-chip" *ngFor="let note of receipt.notes">{{ note }}</span>
+        <div class="proto-actions-row" *ngIf="receiptNotes().length">
+          <span class="proto-chip" *ngFor="let note of receiptNotes()">{{ note }}</span>
         </div>
 
-        <article class="proto-surface" *ngIf="receipt.purchaseSummary || receipt.spendingSignals.length || receipt.followUpActions.length">
+        <article class="proto-surface" *ngIf="hasPurchaseSummary()">
           <div class="proto-surface__head">
             <div>
               <h3>Resumo da compra</h3>
