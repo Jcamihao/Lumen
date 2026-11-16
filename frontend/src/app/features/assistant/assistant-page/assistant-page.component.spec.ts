@@ -623,4 +623,300 @@ describe("AssistantPageComponent — assistente manual", () => {
       expect(buttonWithText("Confirmar")).toBeUndefined();
     });
   });
+
+  describe("reservas e limite do cartão (item 3b2a)", () => {
+    const envelopeRows = (overrides: Partial<Record<string, string>> = {}) => [
+      { label: "Nome", value: overrides["Nome"] ?? "gasolina" },
+      { label: "Valor mensal", value: overrides["Valor mensal"] ?? "R$ 400,00" },
+      { label: "Início", value: overrides["Início"] ?? "11/2026 (UTC)" },
+      {
+        label: "Aviso",
+        value:
+          "A reserva recebe a provisão mensal do app. Isso não transfere dinheiro de uma conta bancária nem faz aporte em meta.",
+      },
+    ];
+
+    const envelopeDraft = (overrides: Partial<DraftView> = {}) =>
+      draft({
+        kind: "ENVELOPE",
+        title: "Reserva",
+        amount: null,
+        description: null,
+        category: null,
+        date: null,
+        rows: envelopeRows(),
+        ...overrides,
+      });
+
+    const limitRows = (extra: Array<{ label: string; value: string }> = [], atual = "R$ 2.000,00") => [
+      { label: "Ciclo", value: "06/11/2026 a 05/12/2026" },
+      { label: "Limite atual", value: atual },
+      { label: "Novo limite", value: "R$ 5.000,00" },
+      { label: "Aviso", value: "Este limite vale só para o ciclo mostrado." },
+      ...extra,
+    ];
+
+    const limitDraft = (overrides: Partial<DraftView> = {}) =>
+      draft({
+        kind: "CREDIT_LIMIT",
+        title: "Limite do cartão",
+        amount: null,
+        description: null,
+        category: null,
+        date: null,
+        rows: limitRows(),
+        ...overrides,
+      });
+
+    const card = () => root().querySelector<HTMLElement>(".assistant-manual")!;
+    const rowLabels = () =>
+      Array.from(card().querySelectorAll(".assistant-draft__row dt")).map((dt) => dt.textContent?.trim());
+    const rowValues = () =>
+      Array.from(card().querySelectorAll(".assistant-draft__row dd")).map((dd) => dd.textContent?.trim());
+
+    const reserveConfirm = (): ConversationReply => ({
+      kind: "CONFIRM_DRAFT",
+      state: "AWAITING_CONFIRMATION",
+      text: "Reserva gasolina: R$ 400,00 por mês, início em 11/2026 (UTC).",
+      draft: envelopeDraft(),
+      quickReplies: ["confirmar", "cancelar"],
+    });
+
+    const limitConfirm = (draftOverrides: Partial<DraftView> = {}): ConversationReply => ({
+      kind: "CONFIRM_DRAFT",
+      state: "AWAITING_CONFIRMATION",
+      text: "Limite de R$ 5.000,00 para o ciclo com fechamento em 05/12/2026.",
+      draft: limitDraft(draftOverrides),
+      quickReplies: ["confirmar", "cancelar"],
+    });
+
+    it("reserva em coleta de nome restaurada mostra 'a informar', 'Falta informar: nome.' e nenhum Confirmar", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({
+          state: "COLLECTING_FIELDS",
+          draft: envelopeDraft({
+            pendingField: "name",
+            rows: envelopeRows({ Nome: "a informar" }),
+          }),
+        }),
+      );
+      create();
+
+      expect(card().querySelector(".assistant-draft__title")?.textContent?.trim()).toBe("Reserva");
+      expect(rowLabels()).toEqual(["Nome", "Valor mensal", "Início", "Aviso"]);
+      expect(rowValues()[0]).toBe("a informar");
+      expect(text()).toContain("Falta informar: nome.");
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+    });
+
+    it("reserva completa mostra título, nome, valor mensal, mês UTC e aviso de provisão, sem null nem campos de lançamento", () => {
+      conversation.sendMessage.and.returnValue(of(reserveConfirm()));
+      create();
+
+      typeAndSend("criar reserva 400 gasolina");
+
+      expect(card().querySelector(".assistant-draft__title")?.textContent?.trim()).toBe("Reserva");
+      expect(rowLabels()).toEqual(["Nome", "Valor mensal", "Início", "Aviso"]);
+      expect(text()).toContain("gasolina");
+      expect(text()).toContain("R$ 400,00");
+      expect(text()).toContain("11/2026 (UTC)");
+      expect(text()).toContain("A reserva recebe a provisão mensal do app.");
+      expect(card().textContent).not.toContain("null");
+      expect(text()).not.toContain("Categoria");
+      expect(text()).not.toContain("Forma de pagamento");
+      expect(buttonWithText("Confirmar")).toBeDefined();
+    });
+
+    it("limite completo mostra ciclo, teto atual, novo teto e aviso de validade por ciclo", () => {
+      conversation.sendMessage.and.returnValue(of(limitConfirm()));
+      create();
+
+      typeAndSend("definir limite do cartão 5000");
+
+      expect(card().querySelector(".assistant-draft__title")?.textContent?.trim()).toBe("Limite do cartão");
+      expect(rowLabels()).toEqual(["Ciclo", "Limite atual", "Novo limite", "Aviso"]);
+      expect(rowValues()).toEqual([
+        "06/11/2026 a 05/12/2026",
+        "R$ 2.000,00",
+        "R$ 5.000,00",
+        "Este limite vale só para o ciclo mostrado.",
+      ]);
+      expect(text()).not.toContain("todas as formas de pagamento");
+      expect(buttonWithText("Confirmar")).toBeDefined();
+    });
+
+    it("limite sem teto atual mostra 'não definido' e, com todas as formas, o segundo aviso", () => {
+      conversation.sendMessage.and.returnValue(
+        of(
+          limitConfirm({
+            rows: limitRows(
+              [{ label: "Aviso", value: "Este ciclo considera todas as formas de pagamento." }],
+              "não definido",
+            ),
+          }),
+        ),
+      );
+      create();
+
+      typeAndSend("definir limite do cartão 5000");
+
+      expect(rowValues()).toContain("não definido");
+      expect(rowLabels().filter((label) => label === "Aviso").length).toBe(2);
+      expect(text()).toContain("Este limite vale só para o ciclo mostrado.");
+      expect(text()).toContain("Este ciclo considera todas as formas de pagamento.");
+    });
+
+    it("confirmação com draftVersion maior substitui o cartão e o próximo Confirmar envia o novo id e versão", () => {
+      conversation.sendMessage.and.returnValue(of(limitConfirm()));
+      conversation.confirmDraft.and.returnValues(
+        of<ConversationReply>({
+          kind: "CONFIRM_DRAFT",
+          state: "AWAITING_CONFIRMATION",
+          text: "O ciclo ou o limite atual mudou. Confira os dados atualizados e confirme novamente.",
+          draft: limitDraft({
+            draftVersion: 2,
+            rows: limitRows([], "não definido").concat([
+              { label: "Atenção", value: "O ciclo ou o limite atual mudou. Confira os dados atualizados e confirme novamente." },
+            ]),
+          }),
+          quickReplies: ["confirmar", "cancelar"],
+        }),
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Limite definido.", data: {} }),
+      );
+      create();
+      typeAndSend("definir limite do cartão 5000");
+
+      buttonWithText("Confirmar")!.click();
+      fixture.detectChanges();
+
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1);
+      expect(rowLabels()).toContain("Atenção");
+      expect(text()).toContain("Confira os dados atualizados");
+
+      buttonWithText("Confirmar")!.click();
+      fixture.detectChanges();
+
+      expect(conversation.confirmDraft.calls.count()).toBe(2);
+      expect(conversation.confirmDraft.calls.argsFor(1)).toEqual(["draft-1", 2]);
+    });
+
+    it("atenção de revisão aparece ao restaurar a sessão", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({
+          state: "AWAITING_CONFIRMATION",
+          draft: limitDraft({
+            draftVersion: 2,
+            rows: [
+              ...limitRows(),
+              { label: "Atenção", value: "O ciclo ou o limite atual mudou. Confira os dados atualizados e confirme novamente." },
+            ],
+          }),
+        }),
+      );
+      create();
+
+      expect(text()).toContain("Você tem um rascunho em andamento.");
+      expect(rowLabels()).toContain("Atenção");
+      expect(buttonWithText("Confirmar")).toBeDefined();
+    });
+
+    it("DONE de limite com data vazia mostra sucesso sem depender de data.card", () => {
+      conversation.sendMessage.and.returnValue(of(limitConfirm()));
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({
+          kind: "DONE",
+          state: "IDLE",
+          text: "Limite de R$ 5.000,00 definido para o ciclo com fechamento em 05/12/2026.",
+          data: {},
+        }),
+      );
+      create();
+      typeAndSend("definir limite do cartão 5000");
+
+      buttonWithText("Confirmar")!.click();
+      fixture.detectChanges();
+
+      expect(text()).toContain("Limite de R$ 5.000,00 definido");
+      expect(text()).toContain("Lançado");
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      expect(card().querySelector(".assistant-draft")).toBeNull();
+    });
+
+    it("DONE de reserva com envelopeId mostra sucesso sem saldo inventado", () => {
+      conversation.sendMessage.and.returnValue(of(reserveConfirm()));
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({
+          kind: "DONE",
+          state: "IDLE",
+          text: "Reserva criada: gasolina, R$ 400,00 por mês.",
+          data: { envelopeId: "env-9" },
+        }),
+      );
+      create();
+      typeAndSend("criar reserva 400 gasolina");
+
+      buttonWithText("Confirmar")!.click();
+      fixture.detectChanges();
+
+      expect(text()).toContain("Reserva criada: gasolina, R$ 400,00 por mês.");
+      expect(text()).toContain("Lançado");
+      expect(card().textContent).not.toContain("saldo");
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+    });
+
+    it("commit desconhecido (ERROR com IDLE e sem draft) remove a confirmação anterior e não oferece nova tentativa", () => {
+      conversation.sendMessage.and.returnValue(of(reserveConfirm()));
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({
+          kind: "ERROR",
+          state: "IDLE",
+          text: "Não foi possível confirmar o resultado. Confira a tela de Finanças antes de enviar o pedido novamente.",
+        }),
+      );
+      create();
+      typeAndSend("criar reserva 400 gasolina");
+
+      buttonWithText("Confirmar")!.click();
+      fixture.detectChanges();
+
+      expect(text()).toContain("Não foi possível confirmar o resultado");
+      expect(text()).toContain("Erro");
+      expect(card().querySelector(".assistant-draft")).toBeNull();
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      expect(buttonWithText("Cancelar")).toBeUndefined();
+      expect(buttonWithText("Tentar de novo")).toBeUndefined();
+      expect(conversation.confirmDraft).toHaveBeenCalledTimes(1);
+    });
+
+    it("falha de transporte na confirmação mantém a nova tentativa com o mesmo id e versão", () => {
+      conversation.sendMessage.and.returnValue(of(reserveConfirm()));
+      conversation.confirmDraft.and.returnValues(
+        throwError(() => ({ status: 0 })),
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Reserva criada.", data: { envelopeId: "env-9" } }),
+      );
+      create();
+      typeAndSend("criar reserva 400 gasolina");
+
+      buttonWithText("Confirmar")!.click();
+      fixture.detectChanges();
+      expect(buttonWithText("Tentar de novo")).toBeDefined();
+
+      buttonWithText("Tentar de novo")!.click();
+      fixture.detectChanges();
+
+      expect(conversation.confirmDraft.calls.argsFor(1)).toEqual(["draft-1", 1]);
+      expect(text()).toContain("Reserva criada.");
+    });
+
+    it("resposta antiga de DONE sem data continua mostrando o texto da resposta", () => {
+      conversation.sendMessage.and.returnValue(
+        of({ kind: "DONE", state: "IDLE", text: "Registrado: gasto de R$ 50,00 (mercado)." }),
+      );
+      create();
+
+      typeAndSend("50 mercado");
+
+      expect(text()).toContain("Registrado: gasto de R$ 50,00");
+    });
+  });
 });

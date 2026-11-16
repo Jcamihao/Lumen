@@ -59,6 +59,7 @@ const PENDING_FIELD_LABELS = {
   description: "descrição",
   category: "categoria",
   title: "nome",
+  name: "nome",
   target: "valor-alvo",
   goal: "meta",
 } as const;

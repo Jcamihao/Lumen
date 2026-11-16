@@ -26,9 +26,9 @@ export type ConversationTransactionType = 'INCOME' | 'EXPENSE' | 'TRANSFER';
 
 export type ConversationPaymentMethod = 'PIX' | 'CREDIT' | 'DEBIT';
 
-export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION';
+export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION' | 'ENVELOPE' | 'CREDIT_LIMIT';
 
-export type PendingField = 'amount' | 'description' | 'category' | 'title' | 'target' | 'goal';
+export type PendingField = 'amount' | 'description' | 'category' | 'title' | 'target' | 'goal' | 'name';
 
 /** Linha do cartão do rascunho, já formatada pelo backend. Valor ausente vem como "a informar". */
 export interface DraftRow {
@@ -71,6 +71,8 @@ export interface ReplyData {
     dueDay: number | null;
   };
   transactionId?: string;
+  /** Em DONE de reserva: id do envelope criado. */
+  envelopeId?: string;
   /** Em `envelopes`: total disponível das reservas ativas. */
   totalCents?: number;
   goalId?: string;
