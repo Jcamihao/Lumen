@@ -199,7 +199,7 @@
           </div>
 
           <div class="proto-actions-row assistant-actions">
-            <button type="submit" class="proto-button" [disabled]="loading() || manualBusy() || form.invalid">
+            <button type="submit" class="proto-button" [disabled]="loading() || manualBusy() || form.invalid || !canSubmitQuestion()">
               <span class="material-symbols-rounded">send</span>
               {{ loading() ? 'Consultando...' : 'Enviar pergunta' }}
             </button>

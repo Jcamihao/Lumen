@@ -198,9 +198,18 @@ export class AssistantPageComponent {
   protected readonly form = this.fb.nonNullable.group({
     question: [
       "Como estou hoje?",
-      [Validators.required, Validators.minLength(2)],
+      [Validators.required],
     ],
   });
+
+  /**
+   * Pergunta nova pede 2 caracteres. Resposta a um campo pendente do assistente manual pode ter 1
+   * (ex.: "3" em "Em quantas parcelas?"), por isso o mínimo não fica no validador do formulário.
+   */
+  protected canSubmitQuestion() {
+    const length = this.form.getRawValue().question.trim().length;
+    return length >= (this.manualTurn()?.draft?.pendingField ? 1 : 2);
+  }
 
   constructor() {
     this.restorePersistedHistory();
@@ -456,6 +465,10 @@ export class AssistantPageComponent {
   }
 
   protected ask() {
+    if (!this.canSubmitQuestion()) {
+      return;
+    }
+
     this.sendQuestion(this.form.getRawValue().question.trim());
   }
 

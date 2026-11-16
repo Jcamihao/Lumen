@@ -1097,6 +1097,40 @@ describe("AssistantPageComponent — assistente manual", () => {
       expect(buttonWithText("Confirmar")).toBeUndefined();
     });
 
+    it("com campo pendente, a resposta de um caractere ('3' parcelas) é enviada; sem rascunho, um caractere continua bloqueado", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({
+          state: "COLLECTING_FIELDS",
+          draft: installmentDraft({ pendingField: "installmentsTotal" }),
+        }),
+      );
+      conversation.sendMessage.and.returnValue(
+        of<ConversationReply>({
+          kind: "ASK_FIELD",
+          state: "COLLECTING_FIELDS",
+          text: "Qual o primeiro vencimento? Responda hoje ou uma data, como 20/11/2026.",
+          draft: installmentDraft({ pendingField: "firstDueDate" }),
+        }),
+      );
+      create();
+
+      typeAndSend("3");
+
+      expect(conversation.sendMessage).toHaveBeenCalledTimes(1);
+      expect(conversation.sendMessage.calls.argsFor(0)[1]).toBe("3");
+    });
+
+    it("sem rascunho com campo pendente, uma pergunta de um caractere não é enviada ao assistente nem ao Selah", () => {
+      conversation.getSession.and.returnValue(of<ConversationSessionView>({ state: "IDLE" }));
+      create();
+
+      typeAndSend("3");
+
+      expect(root().querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBeTrue();
+      expect(conversation.sendMessage).not.toHaveBeenCalled();
+      expect(api.askAssistant).not.toHaveBeenCalled();
+    });
+
     it("revisão por data passada: ASK_FIELD com versão maior mostra Atenção sem Confirmar; a confirmação seguinte envia a versão nova", () => {
       conversation.sendMessage.and.returnValues(
         of(recurringConfirm()),
