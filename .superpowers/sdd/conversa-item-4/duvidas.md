@@ -10,3 +10,8 @@ Registradas pelo subagente haiku ao implementar `receipt-text.parser.ts`. Decis�
 6. `redactCpf`: a regra "CPF + até 30 caracteres na mesma linha" também apaga o que vier depois na mesma linha (ex.: `CONSUMIDOR`). Segue o contrato literalmente. Efeito colateral: se uma chave de 44 dígitos estiver na mesma linha de um CPF, pode ser apagada parcialmente.
 7. Privacidade: o parser trabalha sobre o texto original; o texto sem CPF só é aplicado a `rawTextRedacted`, ao nome do estabelecimento e às descrições de item.
 8. Funções auxiliares exportadas: a tabela tem 11 linhas (o brief fala em 9). Exportei as 11.
+
+# Dúvidas de contrato: revisão 4a-2 (sonnet)
+
+1. O contrato fixa prazo de 30 s só para OCR. A leitura de texto de PDF (`readPdfText`) não tem prazo: um PDF hostil de até 10 MB e 3 páginas pode ocupar CPU do processo. Decisão do dono ou da 4a-3: incluir prazo para PDF (por exemplo 10 s) ou aceitar o risco.
+2. Duas leituras simultâneas de imagens de 24 MP chegaram a 1,1 GB de RSS. O teto de 25 MP do contrato permite isso; dimensionar o container ou reduzir o teto.
