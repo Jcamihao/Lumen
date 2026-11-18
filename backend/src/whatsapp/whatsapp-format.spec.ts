@@ -16,6 +16,18 @@ describe('formatReplyForWhatsapp', () => {
     expect(text).toContain('Responda *confirmar* para gravar ou *cancelar* para descartar.');
   });
 
+  it('CONFIRM_DRAFT cujo texto ja e o cartao completo (pede "confirmar" ou "cancelar") nao repete linhas nem instrucao', () => {
+    const text = 'Rascunho de gasto:\nValor: R$ 50,00\nResponda "confirmar" ou "cancelar".';
+    const parts = formatReplyForWhatsapp(
+      base({
+        kind: 'CONFIRM_DRAFT',
+        text,
+        draft: { draftId: 'd1', draftVersion: 1, kind: 'TRANSACTION', title: 'Lançamento', rows: [{ label: 'Valor', value: 'R$ 50,00' }] } as never,
+      }),
+    );
+    expect(parts).toEqual([text]);
+  });
+
   it('INFO com rascunho nao ganha a linha de confirmar', () => {
     const [text] = formatReplyForWhatsapp(
       base({ kind: 'INFO', draft: { draftId: 'd1', draftVersion: 1, kind: 'TRANSACTION', title: 'x', rows: [{ label: 'Valor', value: 'R$ 1,00' }] } as never }),

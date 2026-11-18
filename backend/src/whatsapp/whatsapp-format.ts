@@ -3,13 +3,18 @@ import { ConversationReply } from '../conversation/conversation.types';
 export const MAX_PART_CHARS = 1000;
 export const MAX_PARTS = 3;
 const CONFIRM_LINE = 'Responda *confirmar* para gravar ou *cancelar* para descartar.';
+const MOTOR_CONFIRM_PROMPT = 'Responda "confirmar" ou "cancelar".';
 const ELLIPSIS = '…';
 
 /** Texto do motor em partes para o WhatsApp (contrato secao 10). Nunca inclui ids internos. */
 export function formatReplyForWhatsapp(reply: ConversationReply): string[] {
   const lines: string[] = [reply.text];
 
-  if (reply.draft) {
+  // Lancamento, meta e aporte: o texto do motor ja e o cartao completo e termina pedindo "confirmar" ou "cancelar".
+  // Repetir as linhas e a instrucao duplicaria o bloco no WhatsApp.
+  const textIsCompleteCard = reply.kind === 'CONFIRM_DRAFT' && reply.text.includes(MOTOR_CONFIRM_PROMPT);
+
+  if (reply.draft && !textIsCompleteCard) {
     for (const row of reply.draft.rows) {
       lines.push(`*${row.label}:* ${row.value}`);
     }
