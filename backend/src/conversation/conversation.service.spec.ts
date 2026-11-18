@@ -490,6 +490,29 @@ describe('ConversationService', () => {
       expect(help.unrecognized).toBeUndefined();
     });
 
+    it('"importar nota" orienta e indica a tela, sem rascunho nem sessao (item 4c)', async () => {
+      const reply = await service.handleMessage(msg('A', 'importar nota'));
+
+      expect(reply).toMatchObject({ kind: 'HELP', state: 'IDLE', data: { screen: 'imports' } });
+      expect(reply.text).toContain('abra Importações');
+      expect(reply.draft).toBeUndefined();
+      expect(reply.unrecognized).toBeUndefined();
+      expect(db.sessions).toHaveLength(0);
+      expect(transactions.create).not.toHaveBeenCalled();
+      expect(db.events.at(-1)).toMatchObject({ intent: 'import_receipt', outcome: ConversationOutcome.RECOGNIZED });
+    });
+
+    it('"importar nota" com rascunho em andamento nao mexe no rascunho (item 4c)', async () => {
+      await draftFor('A', '50 mercado');
+      const before = JSON.stringify(db.sessions);
+
+      const reply = await service.handleMessage(msg('A', 'importar nota'));
+
+      expect(reply).toMatchObject({ kind: 'HELP', data: { screen: 'imports' } });
+      expect(reply.state).not.toBe('IDLE');
+      expect(JSON.stringify(db.sessions)).toBe(before);
+    });
+
     it('falha em TransactionsService.create devolve o rascunho e nao grava nada', async () => {
       await draftFor('A', '50 mercado');
       const draft = db.sessions[0];

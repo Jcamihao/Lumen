@@ -361,7 +361,16 @@ export class ConversationService {
       await this.recordEvent(input, 'help', ConversationOutcome.RECOGNIZED);
       return this.reply('HELP', 'IDLE', REPLIES.help);
     }
+    if (intent.intent === 'import_receipt') {
+      return this.importReceiptReply(input, 'IDLE');
+    }
     return this.runRead(input, intent, 'IDLE');
+  }
+
+  /** Só orienta e indica a tela: não cria rascunho nem sessão e não grava nada (contrato do item 4, secao 9). */
+  private async importReceiptReply(input: ConversationInput, state: ConversationStateView): Promise<ConversationReply> {
+    await this.recordEvent(input, 'import_receipt', ConversationOutcome.RECOGNIZED);
+    return { ...this.reply('HELP', state, REPLIES.importReceipt), data: { screen: 'imports' } };
   }
 
   /** Cria rascunho novo. Nunca grava na primeira mensagem (contrato secao 6). */
@@ -799,6 +808,10 @@ export class ConversationService {
     if (intent && intent.intent === 'help') {
       await this.recordEvent(input, 'help', ConversationOutcome.RECOGNIZED);
       return this.reply('HELP', this.stateView(session), REPLIES.help);
+    }
+    if (intent && intent.intent === 'import_receipt') {
+      // Como a ajuda: o rascunho em andamento segue como estava.
+      return this.importReceiptReply(input, this.stateView(session));
     }
     if (awaiting) {
       await this.recordEvent(input, session.intent, ConversationOutcome.UNRECOGNIZED);

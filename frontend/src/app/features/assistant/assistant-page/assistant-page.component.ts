@@ -368,6 +368,10 @@ export class AssistantPageComponent {
     );
   }
 
+  protected openImports() {
+    void this.router.navigateByUrl("/imports");
+  }
+
   protected executeAction(action: AssistantAction) {
     this.actionFeedback.set(null);
 

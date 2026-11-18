@@ -188,6 +188,8 @@ export interface ReplyData {
     percent: number | null;
     targetDate: string | null;
   }>;
+  /** Tela do app que a resposta sugere abrir (item 4c: 'imports' para "importar nota"). */
+  screen?: 'imports';
   /** Total a pagar (installments), total da janela (upcoming_dues), total mensal estimado (fixed_bills), total disponivel (envelopes). */
   totalCents?: number;
 }
