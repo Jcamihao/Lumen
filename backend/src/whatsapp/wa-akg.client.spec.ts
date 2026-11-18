@@ -1,3 +1,5 @@
+import { createServer } from 'http';
+import { AddressInfo } from 'net';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from '@nestjs/common';
 import { WaAkgClient, WaAkgSendError } from './wa-akg.client';
@@ -52,6 +54,37 @@ describe('WaAkgClient', () => {
   it('timeout vira WaAkgSendError com motivo timeout', async () => {
     fetchMock.mockRejectedValueOnce(Object.assign(new Error('aborted'), { name: 'TimeoutError' }));
     await expect(buildClient().sendText(JID, 'oi')).rejects.toMatchObject({ reason: 'timeout' });
+  });
+
+  it('nao segue redirecionamento: a chave nao chega ao outro host e o envio falha como http 3xx', async () => {
+    global.fetch = originalFetch;
+    const seenByTarget: Array<Record<string, unknown>> = [];
+    const target = createServer((req, res) => {
+      seenByTarget.push({ ...req.headers });
+      res.end('{}');
+    });
+    await new Promise<void>((done) => target.listen(0, '127.0.0.1', done));
+    const targetPort = (target.address() as AddressInfo).port;
+    const redirector = createServer((_req, res) => {
+      res.writeHead(307, { Location: `http://127.0.0.1:${targetPort}/roubo` });
+      res.end();
+    });
+    await new Promise<void>((done) => redirector.listen(0, '127.0.0.1', done));
+    const redirectorPort = (redirector.address() as AddressInfo).port;
+    try {
+      const values: Record<string, unknown> = {
+        'whatsapp.waAkgBaseUrl': `http://127.0.0.1:${redirectorPort}`,
+        'whatsapp.waAkgSessionId': 'lumen',
+        'whatsapp.waAkgApiKey': API_KEY,
+        'whatsapp.waAkgTimeoutMs': 3000,
+      };
+      const client = new WaAkgClient({ get: (key: string) => values[key] } as unknown as ConfigService);
+      await expect(client.sendText(JID, 'oi')).rejects.toMatchObject({ reason: 'http 307' });
+      expect(seenByTarget).toHaveLength(0);
+    } finally {
+      await new Promise((done) => redirector.close(done));
+      await new Promise((done) => target.close(done));
+    }
   });
 
   it('nao loga o texto, a chave nem o jid em nenhum caminho de erro', async () => {

@@ -7,6 +7,7 @@ export const whatsappConfig = registerAs('whatsapp', () => ({
   waAkgApiKey: process.env.WA_AKG_API_KEY?.trim() ?? '',
   waAkgSessionId: process.env.WA_AKG_SESSION_ID?.trim() ?? '',
   waAkgWebhookSecret: process.env.WA_AKG_WEBHOOK_SECRET?.trim() ?? '',
-  waAkgTimeoutMs: parseInt(process.env.WA_AKG_TIMEOUT_MS ?? '8000', 10),
+  // Valor invalido (NaN) cairia em AbortSignal.timeout(NaN) e todo envio falharia: volta ao padrao.
+  waAkgTimeoutMs: parseInt(process.env.WA_AKG_TIMEOUT_MS ?? '', 10) || 8000,
   contactNumber: process.env.WHATSAPP_CONTACT_NUMBER?.trim() ?? '',
 }));

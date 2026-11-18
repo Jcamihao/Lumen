@@ -28,6 +28,8 @@ export class WaAkgClient {
         headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: { text } }),
         signal: AbortSignal.timeout(timeoutMs),
+        // Nao segue redirecionamento: o fetch reenviaria X-API-Key a outro host se a base mandasse redirecionar.
+        redirect: 'manual',
       });
     } catch (error) {
       const isTimeout = (error as { name?: string } | null)?.name === 'TimeoutError' || (error as { name?: string } | null)?.name === 'AbortError';
