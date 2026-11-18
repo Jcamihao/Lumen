@@ -24,3 +24,11 @@ Registradas pelo subagente haiku ao implementar `receipt-text.parser.ts`. Decis�
 4. Texto de "Leitura Selah": o parágrafo do bloco foi trocado para "Leitura do perfil desse gasto a partir da nota." (o brief pedia só o título).
 5. Mensagem padrão de erro do preview: "Não consegui ler esta nota. Tente outra foto ou lance o gasto pelo chat."
 6. Caixa de duplicata: confirmar o commit com a caixa visível envia `acknowledgeDuplicate: true`. Sem caixa, a chave não vai no payload.
+
+## Revisão 4b (sonnet): decisões do revisor
+
+1. Dúvida 6 do dev aceita: com a prévia marcada como duplicata, o único botão de confirmar já se chama "Importar mesmo assim" e a caixa fica no topo da prévia. Acrescentado: a caixa rola para a tela quando abre (prévia com duplicata e 409), para o usuário poder lê-la antes do clique.
+2. Aviso de divergência passa a valer sempre que a soma local dos itens diferir do total local (em centavos), não só quando o servidor avisou. Decisão do revisor a favor de avisar.
+3. "Resumo da compra" passa a abrir também só com a quebra por categoria (o backend a calcula sem IA).
+4. Rótulo "Sem sugestao" vem sem acento do backend (não alterável nesta fatia). A tela mostra "Sem sugestão". Pendência para o backend, se o dono quiser: corrigir o texto na origem.
+5. Pendência fora do escopo da 4b: no campo "Novo grupo (ex.: Farmácia)" o placeholder fica cortado em 360 px; é a tela de grupos que já existia.
