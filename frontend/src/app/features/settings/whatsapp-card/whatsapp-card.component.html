@@ -1,0 +1,122 @@
+<section class="whatsapp-card" aria-labelledby="whatsapp-card-title">
+  <div class="whatsapp-card__head">
+    <strong id="whatsapp-card-title">WhatsApp</strong>
+  </div>
+
+  <div class="whatsapp-card__body" aria-live="polite">
+    @switch (state()) {
+      @case ("loading") {
+        <p class="whatsapp-card__text">Carregando...</p>
+      }
+
+      @case ("unavailable") {
+        <p class="whatsapp-card__text">{{ unavailableText }}</p>
+      }
+
+      @case ("linked") {
+        <p class="whatsapp-card__text"><strong>WhatsApp vinculado: {{ maskedNumber() }}</strong></p>
+        @if (linkedSince()) {
+          <p class="whatsapp-card__text">desde {{ linkedSince() }}</p>
+        }
+
+        <div class="whatsapp-card__actions">
+          @if (!confirmingUnlink()) {
+            <button
+              type="button"
+              class="proto-button proto-button--secondary whatsapp-card__button"
+              [disabled]="busy()"
+              (click)="askUnlink()"
+            >
+              Desvincular
+            </button>
+          } @else {
+            <button
+              type="button"
+              class="proto-button proto-button--secondary whatsapp-card__button whatsapp-card__button--danger"
+              [disabled]="busy()"
+              (click)="confirmUnlink()"
+            >
+              {{ busy() ? 'Desvinculando...' : 'Confirmar desvínculo' }}
+            </button>
+            <button
+              type="button"
+              class="proto-button proto-button--secondary whatsapp-card__button"
+              [disabled]="busy()"
+              (click)="cancelUnlink()"
+            >
+              Cancelar
+            </button>
+          }
+        </div>
+      }
+
+      @case ("unlinked") {
+        <p class="whatsapp-card__text">Nenhum WhatsApp vinculado a esta conta.</p>
+        <p class="whatsapp-card__text">{{ consentFirst }}</p>
+        <p class="whatsapp-card__text">{{ consentSecond }}</p>
+
+        @if (!code()) {
+          <div class="whatsapp-card__actions">
+            @if (codeExpired()) {
+              <p class="whatsapp-card__text"><strong>Código expirado.</strong></p>
+            }
+            <button
+              type="button"
+              class="proto-button proto-button--secondary whatsapp-card__button"
+              [disabled]="busy()"
+              (click)="generateCode()"
+            >
+              {{ busy() ? 'Gerando...' : (codeExpired() ? 'Gerar novo código' : 'Gerar código de vínculo') }}
+            </button>
+          </div>
+        }
+
+        @if (code(); as c) {
+          <div class="whatsapp-card__code">
+            <p
+              class="whatsapp-card__code-value"
+              role="group"
+              [attr.aria-label]="spelledCode()"
+            >{{ formattedCode() }}</p>
+
+            <div class="whatsapp-card__actions">
+              <button
+                type="button"
+                class="proto-button proto-button--secondary whatsapp-card__button"
+                (click)="copyCode()"
+              >
+                Copiar
+              </button>
+            </div>
+
+            <p class="whatsapp-card__text">Vale até {{ expiresLabel() }} (faltam {{ minutesLeft() }} min).</p>
+            <p class="whatsapp-card__text">Envie este código, só ele, no WhatsApp para {{ destinationLabel() }}.</p>
+            @if (copyMessage()) {
+              <p class="whatsapp-card__text">{{ copyMessage() }}</p>
+            }
+          </div>
+        }
+      }
+
+      @case ("error") {
+        <!-- A mensagem e o botão de tentar de novo ficam no bloco comum abaixo. -->
+      }
+    }
+
+    @if (errorMessage()) {
+      <p class="whatsapp-card__text whatsapp-card__error">{{ errorMessage() }}</p>
+      @if (retryAction()) {
+        <div class="whatsapp-card__actions">
+          <button
+            type="button"
+            class="proto-button proto-button--secondary whatsapp-card__button"
+            [disabled]="busy()"
+            (click)="retry()"
+          >
+            Tentar de novo
+          </button>
+        </div>
+      }
+    }
+  </div>
+</section>

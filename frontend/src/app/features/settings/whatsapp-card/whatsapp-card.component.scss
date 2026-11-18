@@ -1,0 +1,77 @@
+:host {
+  display: block;
+}
+
+.whatsapp-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--surface-panel-border);
+  background: var(--surface-panel);
+}
+
+.whatsapp-card__head strong {
+  font-family: var(--font-display);
+}
+
+.whatsapp-card__body {
+  display: grid;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.whatsapp-card__text {
+  margin: 0;
+  color: var(--text-medium);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.whatsapp-card__text strong {
+  color: var(--text-strong);
+}
+
+.whatsapp-card__error {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.whatsapp-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.whatsapp-card__button {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+
+.whatsapp-card__button--danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.whatsapp-card__code {
+  display: grid;
+  gap: 0.6rem;
+  padding: 1rem;
+  border: 1px solid var(--surface-panel-border);
+  background: var(--surface-panel);
+}
+
+.whatsapp-card__code-value {
+  margin: 0;
+  color: var(--text-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  overflow-wrap: anywhere;
+}
+
+.whatsapp-card button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
