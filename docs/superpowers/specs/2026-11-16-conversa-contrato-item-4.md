@@ -153,6 +153,8 @@ Este item é de segurança (dado pessoal e arquivo enviado por usuário). O revi
 
 ## 12. Critério de pronto do item 4
 
+**Situação em 2026-11-18:** 4.0, 4a, 4b e 4c feitas, revisadas e com integração real repetida (resultado em `.superpowers/sdd/conversa-item-4/resultado-integracao-final.md`). Falta o portão de notas reais (seção 13) antes do merge na `master`. Com a regra de git de 2026-11-18 (`feat/fix` para `develop` para `master`), o merge em `develop` acontece com o item pronto e o portão passa a ser a condição para o merge em `master`.
+
 - 4.0: relatório de medição aprovado pelo dono.
 - 4a e 4b: `tsc`, `jest`, `nest build`, `ng test` e `npm run build` verdes (números reais colados); matriz da seção 10 coberta; mutantes mortos; integração real com duas contas; capturas no Chrome em tema claro e escuro, 360 px e desktop.
 - Nenhuma chamada de rede e nenhum arquivo persistido durante a leitura (provado por teste e por inspeção na integração real).

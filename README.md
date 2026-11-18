@@ -30,7 +30,7 @@ O LUMEN é um SaaS de organização de vida criado pela `codeStage Solucoes` par
 - **Histórico do Selah** com turnos de conversa persistidos por usuário.
 - **Painel administrativo de suporte** com triagem e atualização de status das solicitações.
 - **Notificações toast** reutilizáveis para feedback de sucesso, erro e informação.
-- **Tarefas recorrentes automáticas** e notas fiscais em PDF na importação.
+- **Tarefas recorrentes automáticas** e importação de nota fiscal por foto ou PDF, lida localmente (QR, texto do PDF e OCR) sem IA, com prévia, aviso de divergência e checagem de duplicata.
 
 ### 🧭 1) Núcleo do workspace
 - Dashboard agregado com prioridades, metas, dinheiro, lembretes e notificações.
@@ -131,6 +131,7 @@ Criadas só pelo seed (`backend/prisma/seed.js`) em ambiente local; o formulári
 
 - 🧱 Arquitetura: `docs/architecture.md`
 - 🎨 Design system: `docs/design-system.md`
+- 📝 Release notes 1.7.0 (preparada, sem tag até o merge na `master`): `docs/releases/v1.7.0.md`
 - 📝 Release notes 1.6.0: `docs/releases/v1.6.0.md`
 - 📝 Release notes 1.5.0: `docs/releases/v1.5.0.md`
 - 📝 Release notes 1.4.0: `docs/releases/v1.4.0.md`
