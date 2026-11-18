@@ -112,17 +112,12 @@ export class WhatsappAdapterService {
     if (message.type !== 'text') return;
 
     if (looksLikeLinkCode(message.content)) {
-      const failKey = `whatsapp:linkfail:${jidHash}`;
-      const failures = (await this.cache.getJson<number>(failKey)) ?? 0;
-      if (failures >= LINK_FAIL_MAX) return;
+      // A tentativa e contada antes do resgate (INCR atomico): tentativas em paralelo nao furam o limite.
+      const attempts = await this.cache.hitRateLimitWindow(`whatsapp:linkfail:${jidHash}`, LINK_FAIL_WINDOW_MS);
+      if (!attempts || attempts.hits > LINK_FAIL_MAX) return;
 
       const linked = await this.links.redeem(message.jid, message.content);
-      if (linked) {
-        await this.send(message.jid, [WHATSAPP_TEXTS.linked]);
-        return;
-      }
-      await this.cache.hitRateLimitWindow(failKey, LINK_FAIL_WINDOW_MS);
-      await this.send(message.jid, [WHATSAPP_TEXTS.linkFailed]);
+      await this.send(message.jid, [linked ? WHATSAPP_TEXTS.linked : WHATSAPP_TEXTS.linkFailed]);
       return;
     }
 
