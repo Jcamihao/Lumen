@@ -117,4 +117,18 @@ describe("RateLimitGuard — MFA", () => {
       await hammer(guard, 15, "/api/v1/billing/sync", {}, "203.0.113.10", { sub: "user-1" }),
     ).toBe(11);
   });
+
+  it("whatsapp/webhook: bloqueia na 601a chamada do mesmo IP em 5 minutos", async () => {
+    const guard = buildGuard();
+
+    expect(await hammer(guard, 602, "/api/v1/whatsapp/webhook", {}, "203.0.113.10")).toBe(601);
+  });
+
+  it("whatsapp/link-code: bloqueia na 6a geracao do mesmo usuario na mesma hora", async () => {
+    const guard = buildGuard();
+
+    expect(
+      await hammer(guard, 10, "/api/v1/whatsapp/link-code", {}, "203.0.113.10", { sub: "user-1" }),
+    ).toBe(6);
+  });
 });

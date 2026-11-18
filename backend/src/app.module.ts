@@ -20,6 +20,7 @@ import { authConfig } from "./config/auth.config";
 import { cacheConfig } from "./config/cache.config";
 import { mailConfig } from "./config/mail.config";
 import { whatsappConfig } from "./whatsapp/whatsapp.config";
+import { WhatsappModule } from "./whatsapp/whatsapp.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { EmailPreferencesModule } from "./email-preferences/email-preferences.module";
 import { FinanceCategoriesModule } from "./finance-categories/finance-categories.module";
@@ -74,6 +75,7 @@ import { UsersModule } from "./users/users.module";
     ImportsModule,
     AssistantModule,
     ConversationModule,
+    WhatsappModule,
     LifeEngineModule,
     BillingModule,
   ],
