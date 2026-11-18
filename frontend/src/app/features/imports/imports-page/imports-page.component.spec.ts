@@ -211,6 +211,33 @@ describe("ImportsPageComponent — nota fiscal sem IA", () => {
     expect(text()).toContain("Leitura incerta, confira cada linha.");
   });
 
+  it("divergência de soma aparece uma vez só: o aviso genérico do backend não repete a caixa com valores", () => {
+    const mismatchText = "A soma dos itens é diferente do total da nota. Confira cada linha.";
+    api.previewReceiptImport.and.returnValue(
+      of(
+        receipt({
+          items: [{ description: "Arroz", quantity: 1, unitPrice: 8, totalPrice: 8 }],
+          itemsSum: 8,
+          totalMismatch: { itemsSum: 8, total: 10, difference: 2 },
+          notes: [mismatchText],
+          extraction: {
+            method: "OCR",
+            ocrConfidence: 40,
+            warnings: [mismatchText, "Data não encontrada no texto."],
+            qrDetected: false,
+            secondPass: true,
+          },
+        }),
+      ),
+    );
+    create();
+    selectGroupAndUpload();
+
+    expect(text()).toContain("A soma dos itens (R$ 8,00) é diferente do total da nota (R$ 10,00).");
+    expect(text()).not.toContain("Confira cada linha.");
+    expect(text()).toContain("Data não encontrada no texto.");
+  });
+
   it("confiança alta não mostra aviso extra de leitura incerta", () => {
     create();
     selectGroupAndUpload();

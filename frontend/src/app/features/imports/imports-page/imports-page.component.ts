@@ -81,14 +81,24 @@ export class ImportsPageComponent {
     () => this.duplicateDecisionOpen() || !!this.receiptPreview()?.possibleDuplicate,
   );
 
-  protected readonly receiptWarnings = computed(() => this.receiptPreview()?.extraction?.warnings ?? []);
+  // O aviso de soma do backend (W_TOTAL_MISMATCH) fica de fora: a caixa "Total divergente" já o mostra,
+  // com os valores e recalculada a cada edição. Texto igual ao de receipt-text.parser.ts.
+  private static readonly TOTAL_MISMATCH_TEXT = 'A soma dos itens é diferente do total da nota.';
+
+  protected readonly receiptWarnings = computed(() =>
+    (this.receiptPreview()?.extraction?.warnings ?? []).filter((warning) => !this.isTotalMismatchText(warning)),
+  );
 
   // Avisos de leitura que não repetem os já listados em extraction.warnings (o backend copia os dois).
   protected readonly receiptNotes = computed(() => {
     const preview = this.receiptPreview();
     const warnings = new Set(preview?.extraction?.warnings ?? []);
-    return (preview?.notes ?? []).filter((note) => !warnings.has(note));
+    return (preview?.notes ?? []).filter((note) => !warnings.has(note) && !this.isTotalMismatchText(note));
   });
+
+  private isTotalMismatchText(text: string): boolean {
+    return text.startsWith(ImportsPageComponent.TOTAL_MISMATCH_TEXT);
+  }
 
   // Sempre recalculado com os valores na tela: aparece quando o usuário cria uma divergência
   // ao editar e some quando ele a corrige. Compara em centavos para não errar por ponto flutuante.
