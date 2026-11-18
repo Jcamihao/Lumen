@@ -1,4 +1,5 @@
 import { BadRequestException, HttpException, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ConversationChannel,
   ConversationOutcome,
@@ -261,6 +262,7 @@ export class ConversationService {
     private readonly goals: GoalsService,
     private readonly envelopes: EnvelopesService,
     private readonly entitlements: EntitlementsService,
+    private readonly configService: ConfigService,
   ) {}
 
   /** Mensagem digitada (canal APP ou WhatsApp). Ordem de decisao: contrato secao 6 e motor. */
@@ -786,6 +788,11 @@ export class ConversationService {
     }
     if (CONFIRM_WORDS.has(words)) {
       if (awaiting) {
+        // Trava de escrita do WhatsApp (contrato 8): o app continua gravando normalmente.
+        if (input.channel === 'WHATSAPP' && !this.configService.get<boolean>('whatsapp.writesEnabled')) {
+          await this.recordEvent(input, session.intent, ConversationOutcome.RECOGNIZED);
+          return this.reply('INFO', this.stateView(session), REPLIES.whatsappWritesOff);
+        }
         return this.applyDraft({ userId, session, messageId: input.messageId, now: input.receivedAt, channel: input.channel });
       }
       // "ok" fora de AWAITING_CONFIRMATION não faz nada (contrato secao 6).

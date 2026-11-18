@@ -117,6 +117,8 @@ const T0 = new Date('2026-11-15T12:00:00.000Z');
 describe('ConversationService', () => {
   let db: ReturnType<typeof buildFakeDb>;
   let transactions: { create: jest.Mock };
+  let configService: { get: jest.Mock };
+  let writesEnabled = true;
   let dashboard: { getSummary: jest.Mock };
   let creditCycle: { getCurrent: jest.Mock; setCeilingForConversation?: jest.Mock };
   let recurring: { list: jest.Mock; createForConversation: jest.Mock };
@@ -190,6 +192,8 @@ describe('ConversationService', () => {
     };
     envelopes = { list: jest.fn(async () => []), createForConversation: jest.fn(async () => ({})) };
     entitlements = { assertCanCreate: jest.fn(async () => undefined) };
+    writesEnabled = true;
+    configService = { get: jest.fn((key: string) => (key === 'whatsapp.writesEnabled' ? writesEnabled : undefined)) };
     service = new ConversationService(
       db.prisma as unknown as Deps[0],
       dashboard as unknown as Deps[1],
@@ -200,6 +204,7 @@ describe('ConversationService', () => {
       goals as unknown as Deps[6],
       envelopes as unknown as Deps[7],
       entitlements as unknown as Deps[8],
+      configService as unknown as Deps[9],
     );
   });
 
@@ -2976,6 +2981,60 @@ describe('ConversationService', () => {
         expect((await send('A', 'parcelas')).kind).toBe('INFO');
         expect(db.sessions).toHaveLength(0);
       });
+    });
+  });
+  describe('trava de escrita do WhatsApp (contrato 8)', () => {
+    const wmsg = (text: string, messageId = randomUUID()): ConversationInput => ({
+      userId: 'A',
+      channel: ConversationChannel.WHATSAPP,
+      messageId,
+      text,
+      receivedAt: T0,
+    });
+
+    async function whatsappDraft() {
+      const reply = await service.handleMessage(wmsg('gastei 32,90 mercado'));
+      expect(reply.kind).toBe('CONFIRM_DRAFT');
+      return db.sessions.find((row) => row.channel === ConversationChannel.WHATSAPP)!;
+    }
+
+    it('WHATSAPP com escrita desligada: "confirmar" nao grava, rascunho e sessao ficam, resposta e evento RECOGNIZED', async () => {
+      writesEnabled = false;
+      const draftBefore = await whatsappDraft();
+      const draftSnapshot = JSON.stringify(draftBefore.draft);
+
+      const reply = await service.handleMessage(wmsg('confirmar'));
+
+      expect(transactions.create).not.toHaveBeenCalled();
+      expect(reply).toEqual({ kind: 'INFO', state: ConversationState.AWAITING_CONFIRMATION, text: REPLIES.whatsappWritesOff });
+      const session = db.sessions.find((row) => row.channel === ConversationChannel.WHATSAPP)!;
+      expect(session.state).toBe(ConversationState.AWAITING_CONFIRMATION);
+      expect(JSON.stringify(session.draft)).toBe(draftSnapshot);
+      expect(db.events.at(-1)).toMatchObject({ channel: ConversationChannel.WHATSAPP, outcome: ConversationOutcome.RECOGNIZED });
+    });
+
+    it('WHATSAPP com escrita ligada: "confirmar" grava normalmente', async () => {
+      writesEnabled = true;
+      await whatsappDraft();
+      const reply = await service.handleMessage(wmsg('confirmar'));
+      expect(reply.kind).toBe('DONE');
+      expect(transactions.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('APP com escrita desligada: "confirmar" grava (a trava e so do WhatsApp)', async () => {
+      writesEnabled = false;
+      await draftFor('A', 'gastei 32,90 mercado');
+      const reply = await service.handleMessage(msg('A', 'confirmar'));
+      expect(reply.kind).toBe('DONE');
+      expect(transactions.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('botao do app (confirmDraft) nao e afetado pela trava, mesmo em sessao WHATSAPP', async () => {
+      writesEnabled = false;
+      const draft = await whatsappDraft();
+      const reply = await service.confirmDraft('A', draft.id, draft.version);
+      expect(reply?.kind).toBe('DONE');
+      expect(transactions.create).toHaveBeenCalledTimes(1);
     });
   });
 });
