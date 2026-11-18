@@ -58,6 +58,9 @@ export const REPLIES = {
   help:
     'Exemplos: "50 mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
     '"quanto gastei", "gastos com mercado", "limite do cartão".',
+  importReceipt:
+    'Para importar uma nota, abra Importações e envie a foto ou o PDF. ' +
+    'A leitura é feita aqui no Lumen e você confere tudo antes de gravar.',
   unrecognized: 'Não entendi. Digite "ajuda" para ver os exemplos.',
   duplicate: 'Essa mensagem já foi processada. Nada foi alterado.',
   expired: 'O rascunho expirou e foi descartado. Envie o lançamento de novo.',

@@ -2,7 +2,7 @@ import { registerLocaleData } from "@angular/common";
 import localePt from "@angular/common/locales/pt";
 import { LOCALE_ID, WritableSignal, signal } from "@angular/core";
 import { ComponentFixture, TestBed, fakeAsync, tick } from "@angular/core/testing";
-import { provideRouter } from "@angular/router";
+import { Router, provideRouter } from "@angular/router";
 import { Subject, of, throwError } from "rxjs";
 import {
   ConversationReply,
@@ -188,6 +188,32 @@ describe("AssistantPageComponent — assistente manual", () => {
     expect(text()).toContain("15/11/2026");
     expect(buttonWithText("Confirmar")).toBeDefined();
     expect(buttonWithText("Cancelar")).toBeDefined();
+  });
+
+  it("'importar nota' mostra o botão que abre a tela de importações", () => {
+    conversation.sendMessage.and.returnValue(
+      of({ kind: "HELP", state: "IDLE", text: "Para importar uma nota, abra Importações.", data: { screen: "imports" } }),
+    );
+    create();
+    const navigate = spyOn(TestBed.inject(Router), "navigateByUrl").and.resolveTo(true);
+
+    typeAndSend("importar nota");
+    const button = buttonWithText("Abrir importações");
+    expect(button).toBeDefined();
+    button!.click();
+
+    expect(navigate).toHaveBeenCalledOnceWith("/imports");
+    expect(api.askAssistant).not.toHaveBeenCalled();
+  });
+
+  it("ajuda comum não mostra o botão 'Abrir importações'", () => {
+    conversation.sendMessage.and.returnValue(of({ kind: "HELP", state: "IDLE", text: "Exemplos: saldo." }));
+    create();
+
+    typeAndSend("ajuda");
+
+    expect(text()).toContain("Exemplos: saldo.");
+    expect(buttonWithText("Abrir importações")).toBeUndefined();
   });
 
   it("offline não tenta o manual e segue para o Selah", () => {

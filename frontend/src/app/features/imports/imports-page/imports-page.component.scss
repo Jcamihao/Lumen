@@ -143,6 +143,19 @@
   gap: 1rem;
 }
 
+// Em 360 px o rótulo da categoria e a etiqueta de itens não cabem na mesma linha
+// ("Alimentacao" quebrava no meio da palavra); a etiqueta desce em vez disso.
+.imports-preview-stack .proto-list-item__top {
+  flex-wrap: wrap;
+}
+
+// Na caixa de duplicata a etiqueta e o título ficavam na mesma linha ("POSSÍVEL DUPLICATA Parece
+// que você..."); o título passa para a linha de baixo, como o texto do aviso de divergência.
+.imports-preview-stack .proto-tag + .proto-inline-title {
+  display: block;
+  margin-top: 0.4rem;
+}
+
 .import-error {
   margin: 0;
   color: var(--danger);

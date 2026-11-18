@@ -33,6 +33,7 @@ const FINANCE_READ_PHRASES: Array<{ intent: ReadIntent; phrases: string[] }> = [
 
 export type IntentMatch =
   | { intent: ReadIntent }
+  | { intent: 'import_receipt' }
   | { intent: 'spend_by_category'; categoryQuery: string }
   | { intent: 'create_expense' | 'create_income'; body: string; missingAmount?: true }
   | { intent: 'create_goal'; body: string; cofrinho?: true }
@@ -77,6 +78,7 @@ export function matchIntent(raw: string): IntentMatch | null {
 
   const phrase = words.join(' ');
   if (phrase === 'ajuda' || startsWithPhrase(phrase, 'o que voce faz')) return { intent: 'help' };
+  if (matchImportReceipt(raw, phrase)) return { intent: 'import_receipt' };
   if (startsWithPhrase(phrase, 'saldo') || startsWithPhrase(phrase, 'quanto tenho')) {
     return { intent: 'balance' };
   }
@@ -143,6 +145,18 @@ function matchFinanceRead(raw: string, phrase: string): IntentMatch | null {
     }
   }
   return null;
+}
+
+/** Contrato do item 4, secao 9: mesma regra das leituras (frase sozinha, ou curta e sem "?"). */
+const IMPORT_RECEIPT_PHRASES = ['importar nota fiscal', 'importar nota', 'ler nota', 'enviar nota'];
+
+function matchImportReceipt(raw: string, phrase: string): boolean {
+  for (const expected of IMPORT_RECEIPT_PHRASES) {
+    if (!startsWithPhrase(phrase, expected)) continue;
+    const extraWords = phrase.slice(expected.length).split(' ').filter((word) => word.length > 0).length;
+    if (extraWords === 0 || (extraWords <= FINANCE_READ_MAX_EXTRA_WORDS && !raw.includes('?'))) return true;
+  }
+  return false;
 }
 
 function matchIncome(tokens: string[], words: string[]): IntentMatch | null {

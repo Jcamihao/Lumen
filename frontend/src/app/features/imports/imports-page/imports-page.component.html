@@ -3,7 +3,7 @@
     <div class="proto-header__copy">
       <p class="section-kicker">Trazer dados</p>
       <h2>Importar dados</h2>
-      <p>Adicione gastos e compras por CSV ou pela leitura de nota fiscal com ajuda de IA.</p>
+      <p>Adicione gastos e compras por CSV ou pela leitura local de nota fiscal.</p>
     </div>
   </header>
 
@@ -40,14 +40,11 @@
     <div class="proto-surface__head">
       <div>
         <h3>Importar nota fiscal por imagem ou PDF</h3>
-        <p>Use IA para extrair automaticamente itens, total e estabelecimento.</p>
+        <p>A leitura é feita aqui mesmo: itens, total e estabelecimento.</p>
       </div>
-      <span class="proto-tag" [attr.data-tone]="canUseReceiptAi() ? 'accent' : 'warning'">
-        {{ canUseReceiptAi() ? 'IA ativa' : 'IA indisponível' }}
-      </span>
     </div>
 
-    <div class="proto-surface__body" *ngIf="canUseReceiptAi(); else aiDisabled">
+    <div class="proto-surface__body">
       <div class="imports-upload-box imports-upload-box--receipt" *ngIf="!receiptPreview()">
         <span class="imports-upload-box__eyebrow">Fluxo guiado</span>
         <span class="material-symbols-rounded">photo_camera</span>
@@ -123,11 +120,30 @@
       <p class="import-error" *ngIf="receiptError()">{{ receiptError() }}</p>
 
       <div *ngIf="receiptPreview() as receipt" class="imports-preview-stack">
+        <div class="proto-note" role="alert" *ngIf="localTotalMismatch() as mismatch">
+          <span class="proto-tag" data-tone="warning">Total divergente</span>
+          <p>
+            A soma dos itens ({{ previewAmount(mismatch.itemsSum) }}) é diferente do total da nota ({{ previewAmount(mismatch.total) }}).
+          </p>
+        </div>
+
+        <div #duplicateBox class="proto-note" role="alert" *ngIf="duplicateBoxVisible()">
+          <span class="proto-tag" data-tone="warning">Possível duplicata</span>
+          <strong class="proto-inline-title">Parece que você já lançou esta compra</strong>
+          <p *ngIf="receipt.duplicateTransactionDescription">{{ receipt.duplicateTransactionDescription }}</p>
+          <p>Confirme só se for outra compra.</p>
+        </div>
+
         <div class="proto-note">
           <strong class="proto-inline-title">
             {{ receipt.merchantName || 'Estabelecimento não identificado' }}
           </strong>
           <p>{{ confidenceLabel(receipt.confidence) }} · {{ documentTypeLabel(receipt.documentType || 'Documento') }}</p>
+          <p *ngIf="receipt.confidence === 'low'">Leitura incerta, confira cada linha.</p>
+        </div>
+
+        <div class="proto-note" *ngIf="receiptWarnings().length">
+          <p *ngFor="let warning of receiptWarnings()">{{ warning }}</p>
         </div>
 
         <div class="proto-form-grid">
@@ -168,15 +184,15 @@
           </div>
         </div>
 
-        <div class="proto-actions-row" *ngIf="receipt.notes.length">
-          <span class="proto-chip" *ngFor="let note of receipt.notes">{{ note }}</span>
+        <div class="proto-actions-row" *ngIf="receiptNotes().length">
+          <span class="proto-chip" *ngFor="let note of receiptNotes()">{{ note }}</span>
         </div>
 
-        <article class="proto-surface" *ngIf="receipt.purchaseSummary || receipt.spendingSignals.length || receipt.followUpActions.length">
+        <article class="proto-surface" *ngIf="hasPurchaseSummary()">
           <div class="proto-surface__head">
             <div>
-              <h3>Leitura Selah da compra</h3>
-              <p>Além de extrair a nota, o Selah interpreta o perfil desse gasto.</p>
+              <h3>Resumo da compra</h3>
+              <p>Leitura do perfil desse gasto a partir da nota.</p>
             </div>
           </div>
 
@@ -193,7 +209,7 @@
               <div class="proto-list">
                 <article class="proto-list-item" *ngFor="let bucket of receipt.categoryBreakdown">
                   <div class="proto-list-item__top">
-                    <strong>{{ bucket.label }}</strong>
+                    <strong>{{ bucketLabel(bucket.label) }}</strong>
                     <span class="proto-tag">{{ bucket.itemCount }} item(ns)</span>
                   </div>
                   <p>{{ previewAmount(bucket.totalAmount) }}</p>
@@ -233,7 +249,7 @@
               <span class="proto-tag">{{ item.categoryHint || 'Sem sugestão' }}</span>
             </div>
 
-            <p>Qtd. {{ item.quantity }} · {{ item.unitPrice !== null ? previewAmount(item.unitPrice) : 'Sem valor unitário' }}</p>
+            <p>Qtd. {{ item.quantity | number: '1.0-3' }} · {{ item.unitPrice !== null ? previewAmount(item.unitPrice) : 'Sem valor unitário' }}</p>
 
             <div
               class="imports-item-comparison"
@@ -328,18 +344,11 @@
 
         <div class="proto-actions-row">
           <button type="button" class="proto-button proto-button--secondary" [disabled]="receiptSaving()" (click)="commitReceipt()">
-            {{ receiptSaving() ? 'Registrando...' : 'Confirmar importação' }}
+            {{ receiptSaving() ? 'Registrando...' : duplicateBoxVisible() ? 'Importar mesmo assim' : 'Confirmar importação' }}
           </button>
         </div>
       </div>
     </div>
-
-    <ng-template #aiDisabled>
-      <div class="proto-empty">
-        <strong>IA externa desativada</strong>
-        <p>Ative o Selah nas configurações para importar notas fiscais por foto.</p>
-      </div>
-    </ng-template>
   </article>
 
   <!-- Aba CSV -->

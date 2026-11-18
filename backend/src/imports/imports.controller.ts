@@ -54,7 +54,7 @@ export class ImportsController {
   @Post('receipts/preview')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: RECEIPT_PDF_MAX_BYTES, files: 1, fields: 10 } }))
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Faz preview de nota fiscal por IA com itens extraidos da imagem' })
+  @ApiOperation({ summary: 'Faz preview de nota fiscal (QR, PDF com texto ou OCR) com itens extraidos' })
   previewReceipt(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: PreviewReceiptImportDto,
@@ -64,7 +64,7 @@ export class ImportsController {
   }
 
   @Post('receipts/commit')
-  @ApiOperation({ summary: 'Confirma a importacao de uma nota fiscal lida por IA' })
+  @ApiOperation({ summary: 'Confirma a importacao de uma nota fiscal lida no LUMEN' })
   commitReceipt(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CommitReceiptImportDto,

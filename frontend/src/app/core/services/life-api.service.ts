@@ -596,6 +596,7 @@ export class LifeApiService {
       unitPrice: number | null;
       totalPrice: number;
     }>;
+    acknowledgeDuplicate?: boolean;
   }) {
     return this.http.post<ReceiptImportCommitResponse>(
       `${environment.apiBaseUrl}/imports/receipts/commit`,

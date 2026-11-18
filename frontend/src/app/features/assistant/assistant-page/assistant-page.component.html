@@ -160,6 +160,10 @@
           </button>
         </div>
 
+        <div class="proto-actions-row" *ngIf="turn.data?.screen === 'imports'">
+          <button type="button" class="proto-button" (click)="openImports()">Abrir importações</button>
+        </div>
+
         <ng-container *ngIf="visibleQuickReplies(turn) as quickReplies">
           <div class="proto-actions-row" *ngIf="quickReplies.length">
             <button

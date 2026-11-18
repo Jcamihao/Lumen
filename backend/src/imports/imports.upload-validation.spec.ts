@@ -3,7 +3,7 @@ import { ImportsService } from "./imports.service";
 
 describe("ImportsService — validacao de arquivo enviado", () => {
   // Estas validacoes rodam ANTES de qualquer acesso ao banco.
-  const service = new ImportsService({} as any, {} as any, {} as any);
+  const service = new ImportsService({} as any, {} as any, {} as any, {} as any);
   const file = (buffer: Buffer, over: Record<string, unknown> = {}) =>
     ({ buffer, size: buffer.length, originalname: "arquivo", mimetype: "text/csv", ...over }) as any;
   const preview = (f: any) => service.previewTransactionsImport("user-1", f);

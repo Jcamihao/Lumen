@@ -86,6 +86,8 @@ export interface ReplyData {
   recurringTransactionId?: string;
   /** Em DONE de compra parcelada criada: id da compra. */
   installmentPurchaseId?: string;
+  /** Tela que a resposta sugere abrir ("importar nota" → 'imports'). */
+  screen?: 'imports';
   /** Em `envelopes`: total disponível das reservas ativas. */
   totalCents?: number;
   goalId?: string;

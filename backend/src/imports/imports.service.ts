@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -16,6 +17,7 @@ import { request as httpRequest } from 'http';
 import { request as httpsRequest } from 'https';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { localToday } from '../recurring-transactions/recurrence.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { CommitImportDto } from './dto/commit-import.dto';
 import {
@@ -24,6 +26,9 @@ import {
 } from './dto/commit-receipt-import.dto';
 import { PreviewReceiptImportDto } from './dto/preview-receipt-import.dto';
 import { looksLikeText, sniffMime } from '../common/utils/file-sniff';
+import { ReceiptExtractorService } from './receipt-extractor.service';
+import { ReceiptExtraction } from './receipt-extractor.types';
+import { decodeAccessKey, ReceiptTextItem } from './receipt-text.parser';
 import {
   CSV_IMPORT_MAX_BYTES,
   CSV_IMPORT_MAX_ROWS,
@@ -88,6 +93,16 @@ type ReceiptPreviewData = {
   qrCodeDetected: boolean;
   qrCodeText: string | null;
   itemCategoryHints: Array<string | null>;
+  itemsSum?: number | null;
+  totalMismatch?: { itemsSum: number; total: number; difference: number } | null;
+  extraction?: {
+    method: string;
+    ocrConfidence: number | null;
+    warnings: string[];
+    qrDetected: boolean;
+    secondPass: boolean;
+  } | null;
+  accessKeyValid?: boolean;
   purchaseSummary: string | null;
   purchaseMission: string | null;
   spendingSignals: string[];
@@ -131,6 +146,7 @@ export class ImportsService {
     private readonly prisma: PrismaService,
     private readonly lifeEngineService: LifeEngineService,
     private readonly notificationsService: NotificationsService,
+    private readonly receiptExtractor: ReceiptExtractorService,
   ) {}
 
   async listReceiptScans(userId: string) {
@@ -366,54 +382,76 @@ export class ImportsService {
     }
 
     this.ensureReceiptFile(file);
-    const aiContext = await this.ensureReceiptAiEnabled(userId);
-    const parsedReceipt = await this.parseReceiptWithSelah(file!, aiContext.expenseCategoryNames);
+    // Leitura local (QR, PDF com texto, OCR). Sem IA externa: o Selah fica fora deste fluxo.
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { timezone: true },
+    });
+    if (!user) {
+      throw new NotFoundException('Usuario nao encontrado.');
+    }
+    const expenseCategories = await this.loadExpenseCategories(userId);
 
-    const merchantName = this.optionalString(parsedReceipt.merchantName);
-    const purchaseDate = this.toDateOrNull(this.optionalString(parsedReceipt.purchaseDate));
-    const totalAmount = this.requiredPositiveNumber(parsedReceipt.totalAmount, 'totalAmount');
-    const subtotalAmount = this.optionalNumber(parsedReceipt.subtotalAmount);
-    const taxAmount = this.optionalNumber(parsedReceipt.taxAmount);
-    const confidence = this.normalizeConfidence(parsedReceipt.confidence);
-    const items = this.normalizeReceiptItems(parsedReceipt.items);
-    const documentType = this.normalizeDocumentType(parsedReceipt.documentType);
-    const merchantTaxId = this.optionalString(parsedReceipt.merchantTaxId);
-    const accessKey = this.normalizeAccessKey(parsedReceipt.accessKey);
-    const qrCodeText = this.optionalString(parsedReceipt.qrCodeText);
-    const qrCodeDetected = Boolean(parsedReceipt.qrCodeDetected || qrCodeText);
+    const extraction = await this.receiptExtractor.extract({
+      buffer: file!.buffer,
+      mimeType: sniffMime(file!.buffer)!,
+      fileName: file!.originalname,
+      today: localToday(new Date(), user.timezone || 'America/Sao_Paulo'),
+    });
+
+    const merchantName = this.optionalString(extraction.merchantName);
+    const purchaseDate = extraction.purchaseDate;
+    const totalAmount = extraction.totalAmount;
+    const items = this.normalizeExtractedReceiptItems(extraction.items);
+    // Só chave com dígito verificador válido chega aqui; chave inválida vira aviso, não dado.
+    const accessKey = extraction.accessKeyValid ? extraction.accessKey : null;
+    const confidence = this.computeReceiptConfidence(extraction);
     const duplicateMatch = await this.findPossibleDuplicateTransaction(
       userId,
       totalAmount,
       purchaseDate,
       merchantName,
     );
-    const suggestedCategory = this.suggestExpenseCategory(
-      aiContext.expenseCategories,
-      merchantName,
-      items,
-    );
+    const keyDuplicate = accessKey
+      ? await this.prisma.receiptScan.findFirst({
+          where: { userId, accessKey, status: ReceiptScanStatus.IMPORTED },
+          include: { transaction: true },
+        })
+      : null;
+    const duplicate = duplicateMatch ?? keyDuplicate?.transaction ?? null;
+    const suggestedCategory = this.suggestExpenseCategory(expenseCategories, merchantName, items);
 
     const previewData: ReceiptPreviewData = {
-      notes: this.readStringList(parsedReceipt.notes, 6),
-      rawTextExcerpt: this.optionalString(parsedReceipt.rawTextExcerpt),
-      possibleDuplicate: !!duplicateMatch,
-      duplicateTransactionId: duplicateMatch?.id ?? null,
-      duplicateTransactionDescription: duplicateMatch?.description ?? null,
+      notes: extraction.extraction.warnings.slice(0, 12),
+      rawTextExcerpt: this.optionalString(extraction.rawTextRedacted),
+      possibleDuplicate: !!duplicateMatch || !!keyDuplicate,
+      duplicateTransactionId: duplicate?.id ?? null,
+      duplicateTransactionDescription: duplicate?.description ?? null,
       suggestedCategoryId: suggestedCategory?.id ?? null,
       suggestedCategoryName: suggestedCategory?.name ?? null,
-      documentType,
-      merchantTaxId,
+      documentType: this.documentTypeFromAccessKey(accessKey),
+      merchantTaxId: this.optionalString(extraction.cnpj),
       accessKey,
-      qrCodeDetected,
-      qrCodeText,
+      accessKeyValid: accessKey !== null,
+      qrCodeDetected: extraction.extraction.qrDetected,
+      qrCodeText: extraction.qrCodeText,
       itemCategoryHints: items.map((item) => item.categoryHint),
-      purchaseSummary: this.optionalString(parsedReceipt.purchaseSummary),
-      purchaseMission: this.optionalString(parsedReceipt.purchaseMission),
-      spendingSignals: this.readStringList(parsedReceipt.spendingSignals, 5),
-      followUpActions: this.readStringList(parsedReceipt.followUpActions, 5),
-      provider: this.optionalString(parsedReceipt.provider),
-      model: this.optionalString(parsedReceipt.model),
-      generatedAt: this.optionalString(parsedReceipt.generatedAt),
+      itemsSum: extraction.itemsSum,
+      totalMismatch: extraction.totalMismatch,
+      extraction: {
+        method: extraction.extraction.method,
+        ocrConfidence: extraction.extraction.ocrConfidence,
+        warnings: extraction.extraction.warnings,
+        qrDetected: extraction.extraction.qrDetected,
+        secondPass: extraction.extraction.secondPass,
+      },
+      purchaseSummary: null,
+      purchaseMission: null,
+      spendingSignals: [],
+      followUpActions: [],
+      provider: 'LUMEN_LOCAL',
+      model: null,
+      generatedAt: new Date().toISOString(),
     };
 
     const receiptScan = await this.prisma.receiptScan.create({
@@ -425,14 +463,12 @@ export class ImportsService {
         tagGroupId: tagGroup.id,
         compareWithPrevious: dto.compareWithPrevious ?? false,
         merchantName,
-        documentNumber: this.optionalString(parsedReceipt.documentNumber),
+        documentNumber: this.optionalString(extraction.documentNumber),
         purchaseDate,
         totalAmount: new Prisma.Decimal(totalAmount),
-        subtotalAmount:
-          subtotalAmount !== null ? new Prisma.Decimal(subtotalAmount) : undefined,
-        taxAmount: taxAmount !== null ? new Prisma.Decimal(taxAmount) : undefined,
-        currency: this.optionalString(parsedReceipt.currency) ?? 'BRL',
+        currency: 'BRL',
         confidence,
+        accessKey,
         rawText: previewData.rawTextExcerpt,
         previewData,
         items: {
@@ -475,6 +511,22 @@ export class ImportsService {
 
     if (receiptScan.status === ReceiptScanStatus.IMPORTED && receiptScan.transactionId) {
       throw new BadRequestException('Esta nota fiscal ja foi importada.');
+    }
+
+    // Duplicata é aviso, não unicidade: duas confirmações simultâneas de notas diferentes com a
+    // mesma chave podem passar (limite conhecido, registrado no HANDOFF).
+    if (dto.acknowledgeDuplicate !== true) {
+      const keyAlreadyImported = receiptScan.accessKey
+        ? await this.hasOtherImportedWithKey(userId, receiptScan.accessKey, receiptScan.id)
+        : false;
+
+      if (this.previewData(receiptScan).possibleDuplicate || keyAlreadyImported) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'RECEIPT_DUPLICATE_UNCONFIRMED',
+          message: 'Parece que você já lançou esta compra. Confirme para importar mesmo assim.',
+        });
+      }
     }
 
     const categoryId =
@@ -579,6 +631,67 @@ export class ImportsService {
     };
   }
 
+  private async loadExpenseCategories(userId: string) {
+    return this.prisma.financeCategory.findMany({
+      where: { userId, type: TransactionType.EXPENSE },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, type: true },
+    });
+  }
+
+  private normalizeExtractedReceiptItems(items: ReceiptTextItem[]): NormalizedReceiptItem[] {
+    return items.map((item) => ({
+      description: item.description,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      totalPrice: item.totalPrice,
+      categoryHint: this.inferReceiptItemCategory(item.description, null),
+    }));
+  }
+
+  private documentTypeFromAccessKey(accessKey: string | null) {
+    if (!accessKey) {
+      return null;
+    }
+    // Modelo 65 na chave = NFC-e.
+    return decodeAccessKey(accessKey)?.model === '65' ? 'nfce' : null;
+  }
+
+  // Alta só com chave válida e soma batendo; baixa com divergência ou linha de item que não fecha.
+  private computeReceiptConfidence(extraction: ReceiptExtraction): 'low' | 'medium' | 'high' {
+    if (
+      extraction.totalMismatch ||
+      extraction.items.length === 0 ||
+      extraction.items.some((item) => !item.lineConsistent)
+    ) {
+      return 'low';
+    }
+
+    if (
+      extraction.accessKeyValid &&
+      extraction.itemsSum !== null &&
+      extraction.extraction.warnings.length === 0
+    ) {
+      return 'high';
+    }
+
+    return 'medium';
+  }
+
+  private async hasOtherImportedWithKey(userId: string, accessKey: string, excludeId: string) {
+    const found = await this.prisma.receiptScan.findFirst({
+      where: {
+        userId,
+        accessKey,
+        status: ReceiptScanStatus.IMPORTED,
+        id: { not: excludeId },
+      },
+      select: { id: true },
+    });
+
+    return found !== null;
+  }
+
   private ensureReceiptFile(file?: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('Envie uma imagem ou PDF da nota fiscal no campo file.');
@@ -601,6 +714,7 @@ export class ImportsService {
     }
   }
 
+  // Selah desligado neste fluxo (contrato item 4, seção 7): método mantido no arquivo, sem uso.
   private async ensureReceiptAiEnabled(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -640,6 +754,7 @@ export class ImportsService {
     };
   }
 
+  // Selah desligado neste fluxo (contrato item 4, seção 7): método mantido no arquivo, sem uso.
   private async parseReceiptWithSelah(
     file: Express.Multer.File,
     knownCategories: string[],
@@ -1284,6 +1399,11 @@ export class ImportsService {
         receiptScan.subtotalAmount !== null ? Number(receiptScan.subtotalAmount) : null,
       taxAmount: receiptScan.taxAmount !== null ? Number(receiptScan.taxAmount) : null,
       confidence: receiptScan.confidence,
+      itemsSum: previewData.itemsSum ?? null,
+      totalMismatch: previewData.totalMismatch ?? null,
+      extraction: previewData.extraction ?? null,
+      // Nota antiga (sem o campo no previewData) conta como chave não validada.
+      accessKeyValid: previewData.accessKeyValid === true,
       notes: previewData.notes || [],
       rawTextExcerpt: previewData.rawTextExcerpt || null,
       possibleDuplicate: previewData.possibleDuplicate || false,
