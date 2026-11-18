@@ -45,7 +45,7 @@ Regra que pesa mais: **o número de telefone nunca é autoridade.** Quem manda a
 Uma migration nova, só tabelas novas.
 
 - `WhatsappLink`: `id`, `userId` (único: uma conta tem um vínculo), `jid` (único: um número só pode ficar ativo em uma conta), `linkedAt`, `createdAt`. Relação com `User` com `onDelete: Cascade`. Desvincular **apaga** a linha (não há vínculo "inativo" para reaproveitar por engano) e apaga a sessão `WHATSAPP` pendente do usuário.
-- `WhatsappLinkCode`: `id`, `userId`, `codeHash` (SHA-256 do código; o código em claro nunca é gravado), `expiresAt`, `usedAt` (nulo até o uso), `failedAttempts`, `createdAt`. Gerar um código novo invalida os anteriores do mesmo usuário.
+- `WhatsappLinkCode`: `id`, `userId`, `codeHash` (SHA-256 do código; o código em claro nunca é gravado), `expiresAt`, `usedAt` (nulo até o uso), `createdAt`. A contagem de falhas de código fica no Redis (seção 9), não no banco. Gerar um código novo invalida os anteriores do mesmo usuário.
 
 O `jid` é guardado exatamente como o WA-AKG o entrega (`...@s.whatsapp.net`). O Lumen não converte nem completa número (evita o problema do nono dígito dos celulares brasileiros): o vínculo prova que aquele JID, como o WA-AKG o enxerga, pertence à conta.
 

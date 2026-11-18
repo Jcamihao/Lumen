@@ -866,14 +866,13 @@ model WhatsappLink {
 
 // Codigo de vinculo de uso unico. So o hash SHA-256 fica no banco.
 model WhatsappLinkCode {
-  id             String    @id @default(uuid())
-  userId         String
-  codeHash       String
-  expiresAt      DateTime
-  usedAt         DateTime?
-  failedAttempts Int       @default(0)
-  createdAt      DateTime  @default(now())
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([codeHash])
