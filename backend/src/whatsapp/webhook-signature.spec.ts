@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import { createHmac } from 'crypto';
 import { verifyWebhookSignature } from './webhook-signature';
 
@@ -33,5 +34,16 @@ describe('verifyWebhookSignature', () => {
   it('segredo vazio recusa tudo', () => {
     expect(verifyWebhookSignature(body, sign(body, ''), '')).toBe(false);
     expect(verifyWebhookSignature(body, sign(body), '')).toBe(false);
+  });
+
+  it('compara em tempo constante: usa timingSafeEqual, nao igualdade de strings', () => {
+    const spy = jest.spyOn(crypto, 'timingSafeEqual');
+    try {
+      expect(verifyWebhookSignature(body, sign(body), SECRET)).toBe(true);
+      expect(verifyWebhookSignature(body, sign(body, 'outro'), SECRET)).toBe(false);
+      expect(spy).toHaveBeenCalledTimes(2);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

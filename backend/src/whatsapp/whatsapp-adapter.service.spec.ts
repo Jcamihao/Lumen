@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { WhatsappAdapterService, WHATSAPP_TEXTS, parseInbound, sha256 } from './whatsapp-adapter.service';
 
@@ -133,6 +134,16 @@ describe('WhatsappAdapterService', () => {
     expect(client.sendText).toHaveBeenCalledTimes(5);
   });
 
+  it('tentativas de codigo em paralelo tambem param na 5a (contagem atomica antes do resgate)', async () => {
+    const { service, links } = build({ users: {} });
+    await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        service.handleInbound(event({ key: { id: `P${i}`, fromMe: false }, content: 'ZZZZ-ZZZZ' })),
+      ),
+    );
+    expect(links.redeem).toHaveBeenCalledTimes(5);
+  });
+
   it('Redis indisponivel: numero sem vinculo e descartado; vinculado segue', async () => {
     const unlinked = build({ cacheAvailable: false, users: {} });
     await unlinked.service.handleInbound(event({ content: 'ABCD-EFGH' }));
@@ -189,6 +200,21 @@ describe('WhatsappAdapterService', () => {
     const { service, client } = build();
     client.sendText.mockRejectedValueOnce(new Error('WA-AKG envio falhou: http 503'));
     await expect(service.handleInbound(event({ content: 'saldo' }))).resolves.toBeUndefined();
+  });
+
+  it('log de falha de envio usa so o numero mascarado: sem jid inteiro, sem texto da mensagem', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      const { service, client } = build();
+      client.sendText.mockRejectedValueOnce(new Error('WA-AKG envio falhou: http 503'));
+      await service.handleInbound(event({ content: 'gastei 77 com segredo-xyz' }));
+      const logged = warn.mock.calls.map((call) => String(call[0])).join('\n');
+      expect(logged).toContain('+55 11 *****-0000');
+      expect(logged).not.toContain('5511999990000');
+      expect(logged).not.toContain('segredo-xyz');
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('o hash do jid e sha256 (chave de taxa nao mostra o numero)', () => {

@@ -120,14 +120,60 @@ describe('WhatsappLinkService', () => {
     expect(db.links).toHaveLength(1);
   });
 
+  it('leitura velha de codigo ja usado (corrida): o consumo condicional recusa e nada e vinculado', async () => {
+    const { db, service } = buildService();
+    const { code } = await service.createCode('A');
+    expect(await service.redeem(JID_A, code)).toBe(true);
+    await service.unlinkByUserId('A');
+    const stale = { ...db.codes[0], usedAt: null };
+    db.whatsappLinkCode.findFirst.mockResolvedValueOnce(stale);
+    expect(await service.redeem(JID_B, code)).toBe(false);
+    expect(db.links).toHaveLength(0);
+  });
+
+  it('leitura velha de codigo expirado (corrida): o consumo condicional recusa e nada e vinculado', async () => {
+    const { db, service } = buildService();
+    const { code } = await service.createCode('A');
+    db.codes[0].expiresAt = new Date(Date.now() - 1);
+    db.whatsappLinkCode.findFirst.mockResolvedValueOnce({ ...db.codes[0] });
+    expect(await service.redeem(JID_A, code)).toBe(false);
+    expect(db.links).toHaveLength(0);
+  });
+
   it('jid ja vinculado a outra conta: false, sem vinculo novo, codigo fica consumido', async () => {
     const { db, service } = buildService();
     db.links.push({ id: 'x', userId: 'OUTRA', jid: JID_A, linkedAt: new Date() });
     const { code } = await service.createCode('B');
     expect(await service.redeem(JID_A, code)).toBe(false);
     expect(db.links).toHaveLength(1);
+    expect(db.whatsappLink.create).not.toHaveBeenCalled();
     expect(db.codes[0].usedAt).toBeInstanceOf(Date);
     expect(await service.redeem(JID_B, code)).toBe(false);
+  });
+
+  it('conta do codigo ja vinculada a outro jid: false, nem tenta criar, codigo consumido', async () => {
+    const { db, service } = buildService();
+    const { code } = await service.createCode('B');
+    db.links.push({ id: 'x', userId: 'B', jid: JID_A, linkedAt: new Date() });
+    expect(await service.redeem(JID_B, code)).toBe(false);
+    expect(db.whatsappLink.create).not.toHaveBeenCalled();
+    expect(db.links).toHaveLength(1);
+    expect(db.codes[0].usedAt).toBeInstanceOf(Date);
+  });
+
+  it('violacao de unicidade na criacao (corrida entre a checagem e o create): false, sem lancar', async () => {
+    const { db, service } = buildService();
+    const { code } = await service.createCode('A');
+    db.whatsappLink.create.mockRejectedValueOnce(Object.assign(new Error('Unique'), { code: 'P2002' }));
+    await expect(service.redeem(JID_A, code)).resolves.toBe(false);
+    expect(db.links).toHaveLength(0);
+  });
+
+  it('erro de banco que nao e unicidade sobe (nao vira "codigo invalido")', async () => {
+    const { db, service } = buildService();
+    const { code } = await service.createCode('A');
+    db.whatsappLink.create.mockRejectedValueOnce(new Error('conexao caiu'));
+    await expect(service.redeem(JID_A, code)).rejects.toThrow('conexao caiu');
   });
 
   it('usuario ja vinculado recebe 409 ao pedir codigo', async () => {
@@ -165,6 +211,17 @@ describe('WhatsappLinkService', () => {
     expect(db.links).toHaveLength(0);
     expect(db.sessions).toEqual([{ userId: 'A', channel: 'APP' }]);
     await expect(service.unlinkByUserId('A')).resolves.toBeUndefined();
+  });
+
+  it('findUserIdByJid devolve so o dono do jid pedido; jid sem vinculo = null', async () => {
+    const { db, service } = buildService();
+    db.links.push(
+      { id: 'x', userId: 'A', jid: JID_A, linkedAt: new Date() },
+      { id: 'y', userId: 'B', jid: JID_B, linkedAt: new Date() },
+    );
+    expect(await service.findUserIdByJid(JID_B)).toBe('B');
+    expect(await service.findUserIdByJid(JID_A)).toBe('A');
+    expect(await service.findUserIdByJid('5511000000000@s.whatsapp.net')).toBeNull();
   });
 
   it('getStatus mascara o numero e nunca devolve o jid inteiro', async () => {
