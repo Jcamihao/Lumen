@@ -1,6 +1,6 @@
 # Contrato do item 7: fallback de IA por plano, sem escrita por IA
 
-Data: 2026-11-19. Base: spec `2026-11-14-assistente-manual-financas.md` (estado `FALLBACK`, seção "Carregamento e timeout", ordem de implementação item 7) e plano `2026-11-14-assistente-manual-importacao-planos.md` (decisões 1, 2, 5 e 7 do dono). Branch: `feat/fallback-ia-item-7` (base `develop` `5bb7ed5`+).
+Data: 2026-11-19. Base: spec `2026-11-14-assistente-manual-financas.md` (estado `FALLBACK`, seção "Carregamento e timeout", ordem de implementação item 7) e plano `2026-11-14-assistente-manual-importacao-planos.md` (decisões 1, 2, 5 e 7 do dono). Branch: `feat/fallback-ia-item-7` (base `develop` `b8ef745`).
 
 ## 1. Configuração única (decisão 2 do dono)
 
