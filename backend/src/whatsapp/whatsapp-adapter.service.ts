@@ -77,11 +77,31 @@ export class WhatsappAdapterService {
     private readonly client: WaAkgClient,
   ) {}
 
+  /** Ultimo processamento em andamento por numero. Entrada sai do mapa quando a fila daquele numero esvazia. */
+  private readonly queues = new Map<string, Promise<void>>();
+
   /**
    * Processa um evento ja autenticado pela assinatura. Nunca lanca: falhas viram log sem texto.
    * O dono da conta vem so do vinculo (jid -> userId), nunca do corpo.
+   * Mensagens do mesmo numero rodam uma de cada vez, na ordem de chegada: sem isso "confirmar"
+   * colado no rascunho podia correr antes dele. Numeros diferentes seguem em paralelo.
    */
   async handleInbound(event: unknown): Promise<void> {
+    const jid = parseInbound(event, this.config.get<string>('whatsapp.waAkgSessionId') ?? '')?.jid;
+    if (!jid) return;
+
+    const run = (this.queues.get(jid) ?? Promise.resolve()).then(() => this.processSafely(event));
+    this.queues.set(jid, run);
+    try {
+      await run;
+    } finally {
+      if (this.queues.get(jid) === run) {
+        this.queues.delete(jid);
+      }
+    }
+  }
+
+  private async processSafely(event: unknown): Promise<void> {
     try {
       await this.process(event);
     } catch (error) {
