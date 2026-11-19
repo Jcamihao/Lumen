@@ -844,7 +844,7 @@ export class ConversationService {
     const lines = ids
       .map((id, index) => {
         const candidate = byId.get(id);
-        return candidate ? formatCandidateLine(index, candidate) : null;
+        return candidate?.eligible ? formatCandidateLine(index, candidate) : null;
       })
       .filter((line): line is string => line !== null);
     return [TX_REPLIES.pickHeader, ...lines].join('\n');
@@ -879,6 +879,10 @@ export class ConversationService {
       if (row === null) {
         return { status: 'ERROR', text: TX_REPLIES.gone };
       }
+      if (!row.eligible) {
+        // Conta fixa, parcelado, meta ou nota: nunca se muda por conversa (contrato 8a, secao 3).
+        return { status: 'ERROR', text: TX_REPLIES.onlyNonEditable };
+      }
       draft.targetId = row.id;
       draft.targetUpdatedAt = row.updatedAt.toISOString();
       draft.candidateIds = [];
@@ -900,7 +904,15 @@ export class ConversationService {
     } else if (parsed.field === 'date') {
       draft.changes.date = parsed.ymd;
     } else {
-      const categories = await this.prisma.financeCategory.findMany({ where: { userId }, select: { id: true, name: true } });
+      const target = await this.loadTxCandidate(userId, draft.targetId);
+      if (target === null) {
+        return { status: 'ERROR', text: TX_REPLIES.gone };
+      }
+      // Só categorias do mesmo tipo (receita/despesa) do lançamento, como no criar.
+      const categories = await this.prisma.financeCategory.findMany({
+        where: { userId, type: target.type },
+        select: { id: true, name: true },
+      });
       const query = normalize(parsed.query);
       const exact = categories.filter((category) => normalize(category.name) === query);
       const pool = exact.length > 0 ? exact : categories.filter((category) => normalize(category.name).includes(query));
@@ -1035,7 +1047,8 @@ export class ConversationService {
       return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: REPLIES.collectingReminder });
     }
     const pendingDraft = session.draft as unknown as SessionDraft;
-    if (isTransactionChangeDraft(pendingDraft) && pendingDraft.pendingField === 'transaction' && !awaiting) {
+    const readOrHelp = intent !== null && (isReadIntent(intent) || intent.intent === 'help' || intent.intent === 'import_receipt');
+    if (isTransactionChangeDraft(pendingDraft) && pendingDraft.pendingField === 'transaction' && !awaiting && !readOrHelp) {
       // Lista numerada: número escolhe o lançamento; texto vira nova busca (contrato 8a, secao 3).
       return this.fillPendingField({ input, session, text });
     }
@@ -1650,6 +1663,10 @@ export class ConversationService {
     if (target === null) {
       throw new NotFoundException(TX_REPLIES.gone);
     }
+    if (!target.eligible) {
+      // Rascunho antigo ou ids trocados: a regra de elegibilidade vale também na aplicação.
+      throw new BadRequestException(TX_REPLIES.onlyNonEditable);
+    }
     if (draft.action === 'DELETE') {
       await this.transactions.remove(userId, target.id);
       return {
@@ -1665,9 +1682,19 @@ export class ConversationService {
     const dto: UpdateTransactionDto = {};
     if (draft.changes.amountCents !== undefined) dto.amount = draft.changes.amountCents / 100;
     if (draft.changes.description !== undefined) dto.description = draft.changes.description;
-    if (draft.changes.categoryId !== undefined) dto.categoryId = draft.changes.categoryId;
+    if (draft.changes.categoryId !== undefined) {
+      dto.categoryId = draft.changes.categoryId;
+      // Com o tipo informado o serviço recusa categoria do outro tipo.
+      dto.type = target.type;
+    }
     if (draft.changes.date !== undefined) dto.date = `${draft.changes.date}T00:00:00.000Z`;
-    await this.transactions.update(userId, target.id, dto);
+    try {
+      // updatedAt vai ao serviço: ele bloqueia a linha (FOR NO KEY UPDATE) e compara dentro da transação.
+      await this.transactions.update(userId, target.id, dto, new Date(draft.targetUpdatedAt));
+    } catch (error) {
+      if (error instanceof ConflictException) throw new ConflictException(TX_REPLIES.changed);
+      throw error;
+    }
     const amountCents = draft.changes.amountCents ?? target.amountCents;
     const description = draft.changes.description ?? target.description;
     return {
@@ -2571,6 +2598,7 @@ const TX_SEARCH_LIMIT = 2000;
 
 function toTxCandidate(row: {
   id: string;
+  type: TransactionType;
   description: string;
   amount: { toString(): string };
   date: Date;
@@ -2585,6 +2613,7 @@ function toTxCandidate(row: {
 }): TxCandidate {
   return {
     id: row.id,
+    type: row.type,
     description: row.description,
     amountCents: Math.round(Number(row.amount.toString()) * 100),
     date: row.date.toISOString().slice(0, 10),

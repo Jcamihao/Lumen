@@ -1,3 +1,4 @@
+import { TransactionType } from '@prisma/client';
 import { AmountFailure, parseAmountPrefix } from './parsers/amount.parser';
 import { parseDateToken } from './parsers/date.parser';
 import { normalize, normalizeWord } from './parsers/normalize';
@@ -36,6 +37,7 @@ export const TX_REPLIES = {
 
 export interface TxCandidate {
   id: string;
+  type: TransactionType;
   description: string;
   amountCents: number;
   /** 'AAAA-MM-DD' (data-só, UTC). */

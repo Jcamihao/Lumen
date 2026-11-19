@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { ConversationService } from './conversation.service';
 import { ConversationInput } from './conversation.types';
 
@@ -99,9 +99,10 @@ const ROWS: Row[] = [
 ];
 
 const CATEGORIES: Row[] = [
-  { id: 'cat-mercado', userId: 'A', name: 'Mercado' },
-  { id: 'cat-padaria', userId: 'A', name: 'Padaria' },
-  { id: 'cat-pad-b', userId: 'A', name: 'Padaria Premium' },
+  { id: 'cat-mercado', userId: 'A', name: 'Mercado', type: 'EXPENSE' },
+  { id: 'cat-padaria', userId: 'A', name: 'Padaria', type: 'EXPENSE' },
+  { id: 'cat-pad-b', userId: 'A', name: 'Padaria Premium', type: 'EXPENSE' },
+  { id: 'cat-salario', userId: 'A', name: 'Padaria de Receita', type: 'INCOME' },
 ];
 
 function buildService(rows: Row[] = ROWS, writesEnabled = true) {
@@ -396,7 +397,7 @@ describe('editar lancamento (8a, secao 5)', () => {
     expect(reply.text).toBe('Alterei: 45,00 · Mercado do bairro.');
     expect(reply.data?.transactionId).toBe('t1');
     expect(txService.update).toHaveBeenCalledTimes(1);
-    expect(txService.update).toHaveBeenCalledWith('A', 't1', { amount: 45 });
+    expect(txService.update).toHaveBeenCalledWith('A', 't1', { amount: 45 }, ROWS[0].updatedAt);
     expect(db.sessions).toHaveLength(0);
   });
 
@@ -408,12 +409,18 @@ describe('editar lancamento (8a, secao 5)', () => {
     await send('categoria mercado');
     await send('data 13/11');
     await send('confirmar');
-    expect(txService.update).toHaveBeenCalledWith('A', 't2', {
-      amount: 99.9,
-      description: 'Padaria nova',
-      categoryId: 'cat-mercado',
-      date: '2026-11-13T00:00:00.000Z',
-    });
+    expect(txService.update).toHaveBeenCalledWith(
+      'A',
+      't2',
+      {
+        amount: 99.9,
+        description: 'Padaria nova',
+        categoryId: 'cat-mercado',
+        type: 'EXPENSE',
+        date: '2026-11-13T00:00:00.000Z',
+      },
+      ROWS[1].updatedAt,
+    );
   });
 
   it('conflito de updatedAt: nada gravado, rascunho descartado', async () => {
@@ -436,5 +443,144 @@ describe('editar lancamento (8a, secao 5)', () => {
     expect(reply.kind).toBe('CANCELLED');
     expect(txService.update).not.toHaveBeenCalled();
     expect(db.sessions).toHaveLength(0);
+  });
+});
+
+describe('revisao 8a-1: travas de apagar e editar', () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: T0 });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it.each(['apagar tudo', 'apagar 1', 'sim apagar', 'confirmar apagar', 'nao apagar', 'apagar mercado', 'excluir', 'ok', 'sim', 'confirmar'])(
+    'variante "%s" na confirmacao nao apaga',
+    async (text) => {
+      const { send, txService, db } = buildService(ROWS);
+      await send('apagar mercado');
+      await send('2');
+      await send(text);
+      expect(txService.remove).not.toHaveBeenCalled();
+      expect(db.sessions).toHaveLength(1);
+    },
+  );
+
+  it.each(['Apagar!', '  APAGAR  ', 'apagar'])('a palavra "%s" sozinha apaga uma vez', async (text) => {
+    const { send, txService } = buildService(ROWS);
+    await send('apagar mercado');
+    await send('2');
+    const reply = await send(text);
+    expect(reply.kind).toBe('DONE');
+    expect(txService.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('a palavra apagar antes de escolher o lancamento nao apaga nada', async () => {
+    const { send, txService } = buildService(ROWS);
+    await send('apagar mercado');
+    await send('apagar');
+    expect(txService.remove).not.toHaveBeenCalled();
+  });
+
+  it('candidato forjado de outra conta na lista: escolher da erro e nao vira alvo', async () => {
+    const { send, db, txService } = buildService(ROWS);
+    await send('apagar mercado');
+    (db.sessions[0].draft as Row).candidateIds = ['t4'];
+    const reply = await send('1');
+    expect(reply.kind).toBe('ERROR');
+    expect(reply.text).toBe('Não encontrei mais esse lançamento.');
+    expect((db.sessions[0].draft as Row).targetId).toBeNull();
+    expect(txService.remove).not.toHaveBeenCalled();
+  });
+
+  it('alvo forjado de outra conta na aplicacao: nada e apagado', async () => {
+    const { send, db, txService } = buildService(ROWS);
+    await send('apagar mercado');
+    await send('2');
+    (db.sessions[0].draft as Row).targetId = 't4';
+    const reply = await send('apagar');
+    expect(reply.kind).toBe('ERROR');
+    expect(txService.remove).not.toHaveBeenCalled();
+  });
+
+  it('candidato nao elegivel forjado na lista nao e escolhido', async () => {
+    const { send, db } = buildService(ROWS);
+    await send('apagar mercado');
+    (db.sessions[0].draft as Row).candidateIds = ['t3'];
+    const reply = await send('1');
+    expect(reply.kind).toBe('ERROR');
+    expect(reply.text).toContain('altere pela tela');
+    expect((db.sessions[0].draft as Row).targetId).toBeNull();
+  });
+
+  it('a lista nao mostra item que deixou de ser elegivel', async () => {
+    const { send, transactions } = buildService(ROWS);
+    await send('apagar mercado');
+    transactions[0].linkedGoalId = 'goal-1';
+    const reply = await send('9');
+    expect(reply.text).not.toContain('Mercado do bairro');
+    expect(reply.text).toContain('Mercado grande');
+  });
+
+  it.each(['apagar', 'editar'])('alvo que virou nao elegivel antes de aplicar (%s): nada e gravado', async (verb) => {
+    const { send, transactions, txService, db } = buildService(ROWS);
+    await send(verb === 'apagar' ? 'apagar mercado' : 'corrigir mercado');
+    await send('1');
+    if (verb === 'editar') await send('valor 45');
+    transactions[0].installmentPurchaseId = 'inst-1';
+    const reply = await send(verb === 'apagar' ? 'apagar' : 'confirmar');
+    expect(reply.kind).toBe('ERROR');
+    expect(txService.remove).not.toHaveBeenCalled();
+    expect(txService.update).not.toHaveBeenCalled();
+    expect(db.sessions).toHaveLength(0);
+  });
+
+  it('rascunho antigo com alvo recorrente: apagar recusa', async () => {
+    const { send, db, txService } = buildService(ROWS);
+    await send('apagar mercado');
+    await send('2');
+    (db.sessions[0].draft as Row).targetId = 't3';
+    await send('apagar');
+    expect(txService.remove).not.toHaveBeenCalled();
+  });
+
+  it('corrida com a tela: o servico recusa por updatedAt e a resposta e de conflito', async () => {
+    const { send, txService, db } = buildService(ROWS);
+    await send('corrigir mercado');
+    await send('1');
+    await send('valor 45');
+    txService.update.mockRejectedValueOnce(new ConflictException('x'));
+    const reply = await send('confirmar');
+    expect(reply.kind).toBe('ERROR');
+    expect(reply.text).toBe('Esse lançamento mudou desde que você escolheu; refaça a busca.');
+    expect(db.sessions).toHaveLength(0);
+  });
+
+  it('categoria de outro tipo (receita) nao serve para despesa', async () => {
+    const { send } = buildService(ROWS);
+    await send('corrigir mercado');
+    await send('2');
+    const reply = await send('categoria padaria de receita');
+    expect(reply.kind).toBe('ERROR');
+    expect(reply.text).toBe('Não achei essa categoria. Use o nome de uma categoria sua.');
+  });
+
+  it('confirmar duas vezes a edicao aplica uma so vez', async () => {
+    const { send, txService } = buildService(ROWS);
+    await send('corrigir mercado');
+    await send('1');
+    await send('valor 45');
+    await Promise.all([send('confirmar'), send('confirmar')]);
+    expect(txService.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('ajuda durante a lista nao vira busca nem muda a sessao', async () => {
+    const { send, db } = buildService(ROWS);
+    await send('apagar');
+    const before = db.sessions[0].version;
+    const reply = await send('ajuda');
+    expect(reply.kind).toBe('HELP');
+    expect(db.sessions[0].version).toBe(before);
+    expect((db.sessions[0].draft as Row).candidateIds).toEqual([]);
   });
 });
