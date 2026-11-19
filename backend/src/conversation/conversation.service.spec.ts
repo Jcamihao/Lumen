@@ -3172,6 +3172,51 @@ describe('ConversationService', () => {
       expect(db.events).toHaveLength(1);
     });
 
+    it('reentrega do mesmo messageId com a IA ainda em voo: DUPLICATE, uma so chamada e um so evento', async () => {
+      let release: (value: { status: 'answered'; text: string }) => void = () => undefined;
+      assistant.tryFallbackAnswer.mockImplementation(
+        () => new Promise((resolve) => { release = resolve; }),
+      );
+      const first = msg('A', 'analise meus gastos do mes', T0, randomUUID());
+
+      const inFlight = service.handleMessage(first);
+      for (let i = 0; i < 50 && assistant.tryFallbackAnswer.mock.calls.length === 0; i += 1) {
+        await Promise.resolve();
+      }
+      const again = await service.handleMessage(first);
+      release({ status: 'answered', text: 'Resposta.' });
+      const original = await inFlight;
+
+      expect(again.kind).toBe('DUPLICATE');
+      expect(original).toMatchObject({ kind: 'INFO', aiFallback: true });
+      expect(assistant.tryFallbackAnswer).toHaveBeenCalledTimes(1);
+      expect(db.events).toHaveLength(1);
+    });
+
+    it('a trava de reentrega e por usuario e e liberada ao fim, inclusive quando a IA falha', async () => {
+      const releases: Array<(value: { status: 'answered'; text: string }) => void> = [];
+      assistant.tryFallbackAnswer.mockImplementation(
+        () => new Promise((resolve) => { releases.push(resolve); }),
+      );
+      const id = randomUUID();
+
+      const forA = service.handleMessage(msg('A', 'analise meus gastos do mes', T0, id));
+      const forB = service.handleMessage(msg('B', 'analise meus gastos do mes', T0, id));
+      for (let i = 0; i < 50 && releases.length < 2; i += 1) {
+        await Promise.resolve();
+      }
+      expect(releases).toHaveLength(2);
+      releases.forEach((release) => release({ status: 'answered', text: 'Ok.' }));
+      expect(await forA).toMatchObject({ kind: 'INFO', aiFallback: true });
+      expect(await forB).toMatchObject({ kind: 'INFO', aiFallback: true });
+      expect((service as unknown as { fallbackInFlight: Set<string> }).fallbackInFlight.size).toBe(0);
+
+      assistant.tryFallbackAnswer.mockReset().mockRejectedValueOnce(new Error('x'));
+      const failed = await service.handleMessage(msg('A', 'analise meus gastos do mes', T0, randomUUID()));
+      expect(failed.text).toBe(REPLIES.aiFallbackUnavailable);
+      expect((service as unknown as { fallbackInFlight: Set<string> }).fallbackInFlight.size).toBe(0);
+    });
+
     it('aporte com nome que nao e meta vai a IA com o texto completo, sem rascunho', async () => {
       assistant.tryFallbackAnswer.mockResolvedValueOnce({ status: 'answered', text: 'Guardar é bom.' });
 
@@ -3182,6 +3227,32 @@ describe('ConversationService', () => {
       expect(db.sessions).toHaveLength(0);
       expect(goals.contribute).not.toHaveBeenCalled();
       expect(db.events[0]).toMatchObject({ intent: 'ai_fallback', outcome: ConversationOutcome.AI_ANSWERED });
+    });
+
+    it('texto vazio ou so espacos nao chama a IA: ajuda de sempre com um evento UNRECOGNIZED', async () => {
+      const reply = await service.handleMessage(msg('A', '   '));
+
+      expect(reply).toEqual({ kind: 'HELP', state: 'IDLE', text: REPLIES.unrecognized, unrecognized: true });
+      expect(assistant.tryFallbackAnswer).not.toHaveBeenCalled();
+      expect(db.events).toHaveLength(1);
+      expect(db.events[0]).toMatchObject({ intent: null, outcome: ConversationOutcome.UNRECOGNIZED });
+    });
+
+    it('modo ausente na configuracao conta como off: nao chama a IA', async () => {
+      (aiMode as string | undefined) = undefined;
+
+      const reply = await service.handleMessage(msg('A', 'analise meus gastos do mes'));
+
+      expect(reply).toMatchObject({ kind: 'HELP', unrecognized: true });
+      expect(assistant.tryFallbackAnswer).not.toHaveBeenCalled();
+    });
+
+    it('a IA recebe o texto aparado e o userId do dono', async () => {
+      assistant.tryFallbackAnswer.mockResolvedValueOnce({ status: 'answered', text: 'Ok.' });
+
+      await service.handleMessage(msg('B', '  analise meus gastos do mes  '));
+
+      expect(assistant.tryFallbackAnswer).toHaveBeenCalledWith('B', 'analise meus gastos do mes');
     });
 
     it('"confirmar" sem rascunho continua ajuda e nao chama a IA', async () => {

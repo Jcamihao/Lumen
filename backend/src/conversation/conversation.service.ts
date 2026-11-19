@@ -252,6 +252,8 @@ type SessionRow = {
 @Injectable()
 export class ConversationService {
   private readonly logger = new Logger(ConversationService.name);
+  /** Mensagens cujo fallback de IA está em voo (neste processo). A reentrega do mesmo messageId não pode cobrar duas vezes. */
+  private readonly fallbackInFlight = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -390,6 +392,13 @@ export class ConversationService {
       return controlWord ? help : { ...help, unrecognized: true };
     }
 
+    // O evento só é gravado depois da IA; sem esta trava, a reentrega durante a espera chamaria e cobraria de novo.
+    const flightKey = `${input.userId}:${input.channel}:${input.messageId}`;
+    if (this.fallbackInFlight.has(flightKey)) {
+      return this.reply('DUPLICATE', 'IDLE', REPLIES.duplicate);
+    }
+    this.fallbackInFlight.add(flightKey);
+
     let outcome: AssistantFallbackOutcome;
     try {
       outcome = await this.assistant.tryFallbackAnswer(input.userId, text);
@@ -397,6 +406,8 @@ export class ConversationService {
       // Só o nome do erro: nunca a mensagem do usuário.
       this.logger.warn(`Fallback de IA falhou: erro=${error instanceof Error ? error.name : typeof error}`);
       outcome = { status: 'unavailable' };
+    } finally {
+      this.fallbackInFlight.delete(flightKey);
     }
 
     if (outcome.status === 'answered') {

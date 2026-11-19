@@ -378,6 +378,23 @@ describe("AssistantPageComponent — assistente manual", () => {
     expect(text()).not.toContain("Organizando a resposta");
   }));
 
+  it("resposta que chega no meio da espera cancela os estágios seguintes (sem aviso preso na tela)", fakeAsync(() => {
+    const pending = new Subject<ConversationReply>();
+    conversation.sendMessage.and.returnValue(pending.asObservable());
+    create();
+
+    clickCommand("50 mercado");
+    tick(300);
+    pending.next({ kind: "CANCELLED", state: "IDLE", text: "Cancelado." });
+    pending.complete();
+    tick(6000);
+    fixture.detectChanges();
+
+    expect(text()).not.toContain("Consultando seus dados");
+    expect(text()).not.toContain("Organizando a resposta");
+    expect(text()).not.toContain("Pode demorar um pouco.");
+  }));
+
   it("não oferece nova tentativa enquanto a requisição está em voo (sem retry no carregamento)", fakeAsync(() => {
     const pending = new Subject<ConversationReply>();
     conversation.sendMessage.and.returnValue(pending.asObservable());
@@ -541,6 +558,17 @@ describe("AssistantPageComponent — assistente manual", () => {
 
     conversation.sendMessage.and.returnValue(of({ kind: "HELP", state: "IDLE", text: "x", unrecognized: true }));
     typeAndSend("Analise meus gastos do mês");
+    expect(root().querySelector<HTMLTextAreaElement>("#assistant-question")!.value).toBe("");
+  });
+
+  it("limpa o campo após resposta do fallback de IA", () => {
+    conversation.sendMessage.and.returnValue(
+      of({ kind: "INFO", state: "IDLE", text: "Seu caixa fecha no azul.", aiFallback: true }),
+    );
+    create();
+
+    typeAndSend("Analise meus gastos do mês");
+
     expect(root().querySelector<HTMLTextAreaElement>("#assistant-question")!.value).toBe("");
   });
 

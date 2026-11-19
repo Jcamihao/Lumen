@@ -941,6 +941,35 @@ describe("AssistantService", () => {
       expect(entitlements.recordSelahQuestion).not.toHaveBeenCalled();
     });
 
+    it("IA ligada mas sem data de consentimento: no_consent, sem plano, sem IA e sem cobrança", async () => {
+      const entitlements = buildEntitlements();
+      const prisma = buildPrismaService();
+      prisma.user.findUniqueOrThrow.mockResolvedValue({
+        privacyNoticeAcceptedAt: new Date("2026-03-26T12:00:00.000Z"),
+        aiAssistantEnabled: true,
+        aiAssistantConsentAt: null,
+      });
+      const { service } = buildFallbackService({ prisma, entitlements });
+      const postJsonSpy = jest.spyOn(service as any, "postJson");
+
+      await expect(service.tryFallbackAnswer("user-1", "Como estou?")).resolves.toEqual({ status: "no_consent" });
+      expect(entitlements.assertCanAskSelah).not.toHaveBeenCalled();
+      expect(postJsonSpy).not.toHaveBeenCalled();
+      expect(entitlements.recordSelahQuestion).not.toHaveBeenCalled();
+    });
+
+    it("falha que não é limite de plano não vira blocked_by_plan: sobe para o motor tratar", async () => {
+      const entitlements = buildEntitlements({
+        assertCanAskSelah: jest.fn().mockRejectedValue(new Error("banco fora do ar")),
+      });
+      const { service } = buildFallbackService({ entitlements });
+      const postJsonSpy = jest.spyOn(service as any, "postJson");
+
+      await expect(service.tryFallbackAnswer("user-1", "Como estou?")).rejects.toThrow("banco fora do ar");
+      expect(postJsonSpy).not.toHaveBeenCalled();
+      expect(entitlements.recordSelahQuestion).not.toHaveBeenCalled();
+    });
+
     it("sem crédito no plano: blocked_by_plan, sem chamar a IA nem cobrar", async () => {
       const entitlements = buildEntitlements({
         assertCanAskSelah: jest.fn().mockRejectedValue(
@@ -1013,6 +1042,39 @@ describe("AssistantService", () => {
       const customSpy = jest.spyOn(custom.service as any, "postJson").mockResolvedValue(selahAnswer("Ok."));
       await custom.service.tryFallbackAnswer("user-1", "Como estou?");
       expect(customSpy.mock.calls[0][3]).toBe(4000);
+    });
+
+    it("o corpo enviado ao Selah só tem dados do dono: nada do outro usuário e nenhum campo de escrita", async () => {
+      const summaries: Record<string, any> = {};
+      for (const [id, name, title] of [
+        ["user-A", "Alice Segredo", "Cirurgia secreta da Alice"],
+        ["user-B", "Beto Aberto", "Reforma do Beto"],
+      ]) {
+        summaries[id] = (await buildDashboardService({ user: { name, preferredCurrency: "BRL", monthlyIncome: 100 } }).getSummary());
+        summaries[id].goals = [{ title, currentAmount: 1, targetAmount: 2, status: "ACTIVE", targetDate: "2026-07-15T10:00:00.000Z" }];
+      }
+      const dashboard = { getSummary: jest.fn(async (id: string) => summaries[id]) };
+      const { service } = buildFallbackService({ dashboard });
+      const postJsonSpy = jest.spyOn(service as any, "postJson").mockResolvedValue(selahAnswer("Ok."));
+
+      await service.tryFallbackAnswer("user-B", "Como estou?");
+
+      const body = String(postJsonSpy.mock.calls[0][1]);
+      expect(body).toContain("Reforma do Beto");
+      expect(body).toContain("Beto");
+      expect(body).not.toContain("Alice");
+      expect(body).not.toContain("Cirurgia secreta");
+      const payload = JSON.parse(body);
+      expect(Object.keys(payload).filter((key) => /^(actions?|tools?|commands?|write|create)/i.test(key))).toEqual([]);
+    });
+
+    it.each(["abc", "0", "-5"])("SELAH_FALLBACK_TIMEOUT_MS inválido (%s) volta ao padrão de 15 s", async (invalid) => {
+      const { service } = buildFallbackService({ config: { ...SELAH_ON, SELAH_FALLBACK_TIMEOUT_MS: invalid } });
+      const postJsonSpy = jest.spyOn(service as any, "postJson").mockResolvedValue(selahAnswer("Ok."));
+
+      await service.tryFallbackAnswer("user-1", "Como estou?");
+
+      expect(postJsonSpy.mock.calls[0][3]).toBe(15000);
     });
 
     it("lê o resumo e o consentimento só do próprio usuário autenticado", async () => {
