@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, TransactionType } from '@prisma/client';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -101,8 +101,39 @@ export class TransactionsService {
     return this.serializeTransaction(transaction);
   }
 
-  async update(userId: string, id: string, dto: UpdateTransactionDto) {
-    await this.findTransaction(userId, id);
+  /**
+   * Edita o lancamento. Com `expectedUpdatedAt` (usado pela conversa, item 8a) a edicao so vale se o
+   * lancamento nao mudou desde aquele instante: a linha e bloqueada com SELECT ... FOR NO KEY UPDATE
+   * dentro de uma transacao, relida (id + userId) e comparada, e a mesma regra de validacao e gravacao
+   * da tela roda nessa mesma transacao. Sem o parametro, o comportamento e o de sempre.
+   */
+  async update(userId: string, id: string, dto: UpdateTransactionDto, expectedUpdatedAt?: Date) {
+    if (expectedUpdatedAt === undefined) {
+      const transaction = await this.updateRow(this.prisma, userId, id, dto);
+      await this.lifeEngineService.touchUserData(userId);
+      return this.serializeTransaction(transaction);
+    }
+    const transaction = await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<{ updatedAt: Date }[]>`SELECT "updatedAt" FROM "Transaction" WHERE "id" = ${id} AND "userId" = ${userId} FOR NO KEY UPDATE`;
+      if (rows.length === 0) {
+        throw new NotFoundException('Transacao nao encontrada.');
+      }
+      if (rows[0].updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+        throw new ConflictException('Lancamento alterado desde a leitura.');
+      }
+      return this.updateRow(tx, userId, id, dto);
+    });
+    await this.lifeEngineService.touchUserData(userId);
+    return this.serializeTransaction(transaction);
+  }
+
+  private async updateRow(
+    db: Prisma.TransactionClient | PrismaService,
+    userId: string,
+    id: string,
+    dto: UpdateTransactionDto,
+  ) {
+    await this.findTransaction(userId, id, db);
     await this.validateRelationships(
       userId,
       dto.categoryId === null ? undefined : dto.categoryId,
@@ -110,9 +141,10 @@ export class TransactionsService {
       dto.linkedGoalId === null ? undefined : dto.linkedGoalId,
       dto.type,
       dto.envelopeId === null ? undefined : dto.envelopeId,
+      db,
     );
 
-    const transaction = await this.prisma.transaction
+    return db.transaction
       .update({
         where: { id },
         data: {
@@ -144,9 +176,6 @@ export class TransactionsService {
 
         throw error;
       });
-
-    await this.lifeEngineService.touchUserData(userId);
-    return this.serializeTransaction(transaction);
   }
 
   async remove(userId: string, id: string) {
@@ -159,8 +188,8 @@ export class TransactionsService {
     return { success: true };
   }
 
-  private async findTransaction(userId: string, id: string) {
-    const transaction = await this.prisma.transaction.findFirst({
+  private async findTransaction(userId: string, id: string, db: Prisma.TransactionClient | PrismaService = this.prisma) {
+    const transaction = await db.transaction.findFirst({
       where: { id, userId },
     });
 
@@ -178,9 +207,10 @@ export class TransactionsService {
     goalId?: string,
     type?: TransactionType,
     envelopeId?: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
   ) {
     if (categoryId) {
-      const category = await this.prisma.financeCategory.findFirst({
+      const category = await db.financeCategory.findFirst({
         where: { id: categoryId, userId },
       });
 
@@ -196,7 +226,7 @@ export class TransactionsService {
     }
 
     if (taskId) {
-      const task = await this.prisma.task.findFirst({
+      const task = await db.task.findFirst({
         where: { id: taskId, userId },
       });
 
@@ -206,7 +236,7 @@ export class TransactionsService {
     }
 
     if (goalId) {
-      const goal = await this.prisma.goal.findFirst({
+      const goal = await db.goal.findFirst({
         where: { id: goalId, userId },
       });
 
@@ -216,7 +246,7 @@ export class TransactionsService {
     }
 
     if (envelopeId) {
-      const envelope = await this.prisma.envelope.findFirst({
+      const envelope = await db.envelope.findFirst({
         where: { id: envelopeId, userId },
         select: { id: true },
       });
