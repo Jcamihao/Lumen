@@ -78,7 +78,16 @@ function buildDb(transactions: Row[], categories: Row[] = []) {
     transaction: {
       findMany: jest.fn(async ({ where, orderBy, take }: { where: Row; orderBy?: unknown; take?: number }) => {
         let rows = transactions.filter((row) => matchesWhere(row, where));
-        rows = [...rows].sort((a, b) => b.date.getTime() - a.date.getTime() || b.createdAt.getTime() - a.createdAt.getTime());
+        // Honra o orderBy pedido (o fake nao ordena por conta propria): mutar a ordem do servico tem de quebrar teste.
+        const order = (orderBy as Array<Record<string, 'asc' | 'desc'>>) ?? [];
+        rows = [...rows].sort((a, b) => {
+          for (const clause of order) {
+            const [key, dir] = Object.entries(clause)[0];
+            const diff = (a[key] as Date).getTime() - (b[key] as Date).getTime();
+            if (diff !== 0) return dir === 'desc' ? -diff : diff;
+          }
+          return 0;
+        });
         if (take !== undefined) rows = rows.slice(0, take);
         return clone(rows);
       }),
@@ -503,6 +512,15 @@ describe('revisao 8a-1: travas de apagar e editar', () => {
     expect(txService.remove).not.toHaveBeenCalled();
   });
 
+  it('candidato forjado de outra conta: a lista numerada nao mostra a linha dele', async () => {
+    const { send, db } = buildService(ROWS);
+    await send('apagar mercado');
+    (db.sessions[0].draft as Row).candidateIds = ['t4', 't1'];
+    const reply = await send('9');
+    expect(reply.text).not.toContain('Mercado de B');
+    expect(reply.text).not.toContain('10,00');
+  });
+
   it('candidato nao elegivel forjado na lista nao e escolhido', async () => {
     const { send, db } = buildService(ROWS);
     await send('apagar mercado');
@@ -572,6 +590,31 @@ describe('revisao 8a-1: travas de apagar e editar', () => {
     await send('valor 45');
     await Promise.all([send('confirmar'), send('confirmar')]);
     expect(txService.update).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['recurringTransactionId', 'rec-1'],
+    ['installmentPurchaseId', 'inst-1'],
+    ['linkedGoalId', 'goal-1'],
+    ['receiptScan', { id: 'scan-1' }],
+  ])('nao elegivel por %s: fora da lista', async (field, value) => {
+    const rows = [txRow({ id: 'x1', userId: 'A', description: 'Padaria x', amount: '5.00', date: day('2026-11-14'), [field]: value })];
+    const { send, db } = buildService(rows);
+    const reply = await send('apagar padaria');
+    expect(reply.kind).toBe('INFO');
+    expect(reply.text).toContain('altere pela tela');
+    expect(db.sessions).toHaveLength(0);
+  });
+
+  it('ordem da lista: data desc e, no empate, createdAt desc', async () => {
+    const rows = [
+      txRow({ id: 'o1', userId: 'A', description: 'Lanche a', date: day('2026-11-10'), createdAt: new Date('2026-11-10T08:00:00.000Z') }),
+      txRow({ id: 'o2', userId: 'A', description: 'Lanche b', date: day('2026-11-12'), createdAt: new Date('2026-11-12T08:00:00.000Z') }),
+      txRow({ id: 'o3', userId: 'A', description: 'Lanche c', date: day('2026-11-12'), createdAt: new Date('2026-11-12T09:00:00.000Z') }),
+    ];
+    const { send, db } = buildService(rows);
+    await send('apagar lanche');
+    expect((db.sessions[0].draft as Row).candidateIds).toEqual(['o3', 'o2', 'o1']);
   });
 
   it('ajuda durante a lista nao vira busca nem muda a sessao', async () => {
