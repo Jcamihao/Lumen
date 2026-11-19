@@ -149,3 +149,9 @@ Cartão "WhatsApp" em Configurações, sem tela nova: estado (desligado pelo ser
 - Integração real com WA-AKG falso e duas contas.
 - Capturas do cartão no Chrome, claro e escuro, 360 px e desktop.
 - HANDOFF, release notes e README atualizados; merge em `develop` ao terminar; merge em `master` e tag só quando o dono pedir.
+
+## 16. Situação (2026-11-18)
+
+- 5a (backend), 5b (cartão em Configurações) e 5c (integração real com WA-AKG falso, no Chrome) concluídos, revisados e conferidos. Relatórios em `.superpowers/sdd/whatsapp-item-5/`.
+- D9 (achado da 5c): com a escrita pelo WhatsApp desligada, "confirmar" manda o usuário ao app, mas o app só lia a sessão do canal APP. Decisão do dono: opção A. `GET /conversation/session` devolve, sem sessão APP ativa, o rascunho do WhatsApp que aguarda confirmação (só do próprio usuário); o botão do app confirma por `draftId`. Não muda rota nem formato de resposta.
+- 5d (validação com número real) continua aberta: depende de D1 (número de teste), do host HTTPS da API (agente de infra, domínio `financelumen.tech`) e de pedido explícito do dono para agir na VPS.
