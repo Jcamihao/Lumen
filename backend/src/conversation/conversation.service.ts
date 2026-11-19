@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, HttpException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   ConversationChannel,
@@ -312,6 +312,10 @@ export class ConversationService {
     });
     if (!session || session.version !== draftVersion) {
       return null;
+    }
+    if (isDeleteChange(session.draft)) {
+      // Botão "Confirmar" não apaga: a ação de apagar é a palavra "apagar" (contrato 8a, secao 4; decisão do dono).
+      return this.reply('ERROR', this.stateView(session), TX_REPLIES.deleteNeedsWord);
     }
     const now = new Date();
     if (session.expiresAt < now) {
@@ -938,7 +942,13 @@ export class ConversationService {
     if (CANCEL_WORDS.has(words)) {
       return this.cancelSession(userId, session, input.messageId);
     }
-    if (CONFIRM_WORDS.has(words)) {
+    const deleteAwaiting = awaiting && isDeleteChange(session.draft);
+    if (deleteAwaiting && CONFIRM_WORDS.has(words)) {
+      // Apagar só vale com a palavra "apagar" (contrato 8a, secao 4): confirmar/sim/ok não apagam.
+      await this.recordEvent(input, session.intent, ConversationOutcome.UNRECOGNIZED);
+      return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: TX_REPLIES.deleteNeedsWord });
+    }
+    if (CONFIRM_WORDS.has(words) || (deleteAwaiting && words === 'apagar')) {
       if (awaiting) {
         // Trava de escrita do WhatsApp (contrato 8): o app continua gravando normalmente.
         if (input.channel === 'WHATSAPP' && !this.configService.get<boolean>('whatsapp.writesEnabled')) {
@@ -1431,8 +1441,7 @@ export class ConversationService {
   /** Um caso por tipo de rascunho. Só este método chama o serviço financeiro ou de metas. */
   private async applyByKind(userId: string, draft: SessionDraft): Promise<AppliedAction> {
     if (isTransactionChangeDraft(draft)) {
-      // Aplicação de apagar e editar entra nos commits seguintes.
-      throw new ConflictException(TX_REPLIES.notReady);
+      return this.applyTransactionChange(userId, draft);
     }
     if (draft.kind === 'GOAL') {
       return this.applyGoal(userId, draft);
@@ -1553,6 +1562,27 @@ export class ConversationService {
       materializationPending: receipt.materializationPending,
       refreshPending: receipt.refreshPending,
     };
+  }
+
+  /**
+   * Apaga ou edita o lançamento escolhido. Relê com id + userId; se sumiu, nada é gravado (contrato 8a, secao 4).
+   * Apagar usa o mesmo TransactionsService.remove da tela (apagamento definitivo).
+   */
+  private async applyTransactionChange(userId: string, draft: TransactionChangeDraft): Promise<AppliedAction> {
+    const target = draft.targetId === null ? null : await this.loadTxCandidate(userId, draft.targetId);
+    if (target === null) {
+      throw new NotFoundException(TX_REPLIES.gone);
+    }
+    if (draft.action === 'DELETE') {
+      await this.transactions.remove(userId, target.id);
+      return {
+        text: `Apaguei: ${describeCandidate(target)}.`,
+        data: { transactionId: target.id },
+        resultRef: target.id,
+      };
+    }
+    // Edição entra no commit seguinte.
+    throw new ConflictException(TX_REPLIES.notReady);
   }
 
   private async applyTransaction(userId: string, draft: ExpenseOrIncomeDraft): Promise<AppliedAction> {
@@ -2706,6 +2736,10 @@ function isDiscardError(error: unknown): boolean {
 function discardText(kind: DraftKind, error: unknown): string {
   if (error instanceof PlanLimitException) {
     return error.message;
+  }
+  if (kind === 'TRANSACTION_CHANGE') {
+    // Lançamento sumiu ou mudou (404/409): a mensagem do motor já diz o que fazer.
+    return error instanceof HttpException ? error.message : TX_REPLIES.gone;
   }
   if (kind === 'ENVELOPE') {
     // Nome repetido (corrida com a tela): o domínio devolve a mensagem conhecida; as demais recusas são genéricas.

@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { NotFoundException } from '@nestjs/common';
 import { ConversationService } from './conversation.service';
 import { ConversationInput } from './conversation.types';
 
@@ -97,17 +98,29 @@ const ROWS: Row[] = [
   txRow({ id: 't5', userId: 'A', description: 'Padaria antiga', amount: '9.00', date: day('2026-05-01') }),
 ];
 
-function buildService(transactions: Row[]) {
+function buildService(rows: Row[] = ROWS, writesEnabled = true) {
+  const transactions = rows.map((row) => clone(row));
   const db = buildDb(transactions);
-  const deps = [db.prisma, {}, {}, { create: jest.fn() }, {}, {}, {}, {}, {}, { get: jest.fn(() => true) }];
+  const txService = {
+    create: jest.fn(),
+    update: jest.fn(),
+    // Apaga de verdade no fake, como o TransactionsService.remove faz.
+    remove: jest.fn(async (userId: string, id: string) => {
+      const index = transactions.findIndex((row) => row.id === id && row.userId === userId);
+      if (index === -1) throw new NotFoundException('Lançamento não encontrado');
+      transactions.splice(index, 1);
+      return { success: true };
+    }),
+  };
+  const deps = [db.prisma, {}, {}, txService, {}, {}, {}, {}, {}, { get: jest.fn(() => writesEnabled) }];
   const service = new ConversationService(...(deps as unknown as Deps));
   let counter = 0;
-  const send = (userId: string, text: string) => {
+  const send = (text: string, userId = 'A', channel: 'APP' | 'WHATSAPP' = 'APP') => {
     counter += 1;
-    const input: ConversationInput = { userId, channel: 'APP', messageId: `m${counter}`, text, receivedAt: T0 };
+    const input: ConversationInput = { userId, channel, messageId: `m${counter}`, text, receivedAt: T0 };
     return service.handleMessage(input);
   };
-  return { db, service, send: (text: string, userId = 'A') => send(userId, text) };
+  return { db, service, txService, transactions, send };
 }
 
 describe('editar/apagar: busca, lista e escolha (8a, secoes 3 e 4)', () => {
@@ -207,5 +220,79 @@ describe('editar/apagar: busca, lista e escolha (8a, secoes 3 e 4)', () => {
     const second = await send('mercado');
     expect(second.kind).toBe('ASK_FIELD');
     expect((db.sessions[0].draft as Row).candidateIds).toEqual(['t1', 't2']);
+  });
+});
+
+describe('apagar reforcado (8a, secao 4)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: T0 });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('apagar confirma e apaga de vez pelo mesmo servico da tela, com recibo', async () => {
+    const { send, txService, transactions } = buildService(ROWS);
+    await send('apagar mercado');
+    await send('2');
+    const reply = await send('apagar');
+    expect(reply.kind).toBe('DONE');
+    expect(reply.state).toBe('IDLE');
+    expect(reply.text).toBe('Apaguei: 120,00 · Mercado grande.');
+    expect(reply.data?.transactionId).toBe('t2');
+    expect(txService.remove).toHaveBeenCalledTimes(1);
+    expect(txService.remove).toHaveBeenCalledWith('A', 't2');
+    expect(transactions.some((row) => row.id === 't2')).toBe(false);
+  });
+
+  it.each(['confirmar', 'sim', 'ok'])('"%s" nao apaga o lancamento: pede a palavra apagar', async (word) => {
+    const { send, txService, db } = buildService(ROWS);
+    await send('apagar mercado');
+    await send('2');
+    const reply = await send(word);
+    expect(reply.text).toContain('Para apagar, responda apagar.');
+    expect(reply.state).toBe('AWAITING_CONFIRMATION');
+    expect(txService.remove).not.toHaveBeenCalled();
+    expect(db.sessions).toHaveLength(1);
+  });
+
+  it('o botao Confirmar (endpoint) recusa rascunho de apagar e nao apaga', async () => {
+    const { send, txService, db, service } = buildService(ROWS);
+    await send('apagar mercado');
+    await send('2');
+    const session = db.sessions[0];
+    const reply = await service.confirmDraft('A', session.id, session.version);
+    expect(reply?.kind).toBe('ERROR');
+    expect(reply?.text).toBe('Para apagar, responda apagar.');
+    expect(txService.remove).not.toHaveBeenCalled();
+    expect(db.sessions).toHaveLength(1);
+  });
+
+  it('apagar duas vezes (ou em paralelo) apaga uma so vez', async () => {
+    const { send, txService } = buildService(ROWS);
+    await send('apagar mercado');
+    await send('2');
+    await Promise.all([send('apagar'), send('apagar')]);
+    expect(txService.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('lancamento sumiu antes de apagar: erro, nada apagado e sessao descartada', async () => {
+    const { send, txService, db } = buildService(ROWS);
+    await send('apagar mercado');
+    await send('2');
+    txService.remove.mockRejectedValueOnce(new NotFoundException('Lançamento não encontrado'));
+    const reply = await send('apagar');
+    expect(reply.kind).toBe('ERROR');
+    expect(reply.text).toBe('Lançamento não encontrado');
+    expect(db.sessions).toHaveLength(0);
+  });
+
+  it('WhatsApp com escrita desligada: apagar nao grava', async () => {
+    const { send, txService } = buildService(ROWS, false);
+    await send('apagar mercado', 'A', 'WHATSAPP');
+    await send('2', 'A', 'WHATSAPP');
+    const reply = await send('apagar', 'A', 'WHATSAPP');
+    expect(reply.kind).toBe('INFO');
+    expect(txService.remove).not.toHaveBeenCalled();
   });
 });
