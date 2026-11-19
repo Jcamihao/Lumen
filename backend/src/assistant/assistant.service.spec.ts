@@ -1,3 +1,4 @@
+import { PlanLimitException } from "../billing/plan-limit.exception";
 import { AssistantService } from "./assistant.service";
 
 describe("AssistantService", () => {
@@ -867,6 +868,166 @@ describe("AssistantService", () => {
       const response = await service.ask("user-1", "Como estou hoje?");
 
       expect(response.proactiveSignals).toHaveLength(3);
+    });
+  });
+
+  describe("tryFallbackAnswer (fallback do motor de conversa, item 7)", () => {
+    const SELAH_ON = {
+      SELAH_ASSISTANT_ENABLED: "true",
+      SELAH_BASE_URL: "http://localhost:3010",
+      SELAH_SOURCE_APP: "LumenBack",
+    };
+
+    const buildFallbackService = ({
+      config = SELAH_ON,
+      prisma = buildPrismaService(),
+      dashboard = buildDashboardService(),
+      entitlements = buildEntitlements(),
+    }: {
+      config?: Record<string, string>;
+      prisma?: any;
+      dashboard?: any;
+      entitlements?: any;
+    } = {}) => {
+      const writeServices = {
+        tasks: { create: jest.fn() },
+        goals: { create: jest.fn() },
+        reminders: { create: jest.fn() },
+      };
+      const service = new AssistantService(
+        dashboard,
+        buildConfigService(config),
+        prisma,
+        writeServices.tasks as any,
+        writeServices.goals as any,
+        writeServices.reminders as any,
+        entitlements,
+      );
+      return { service, writeServices };
+    };
+
+    const selahAnswer = (answer: string) => ({
+      statusCode: 200,
+      body: JSON.stringify({ answer, actions: [{ kind: "create_task" }], suggestedActions: ["Pagar já."] }),
+    });
+
+    it("sem consentimento: no_consent, sem plano, sem IA e sem cobrança", async () => {
+      const entitlements = buildEntitlements();
+      const prisma = buildPrismaService();
+      prisma.user.findUniqueOrThrow.mockResolvedValue({
+        privacyNoticeAcceptedAt: null,
+        aiAssistantEnabled: true,
+        aiAssistantConsentAt: new Date("2026-03-26T12:00:00.000Z"),
+      });
+      const { service } = buildFallbackService({ prisma, entitlements });
+      const postJsonSpy = jest.spyOn(service as any, "postJson");
+
+      await expect(service.tryFallbackAnswer("user-1", "Como estou?")).resolves.toEqual({ status: "no_consent" });
+      expect(entitlements.assertCanAskSelah).not.toHaveBeenCalled();
+      expect(postJsonSpy).not.toHaveBeenCalled();
+      expect(entitlements.recordSelahQuestion).not.toHaveBeenCalled();
+    });
+
+    it("IA do usuário desligada: no_consent, mesmo com aviso aceito", async () => {
+      const entitlements = buildEntitlements();
+      const { service } = buildFallbackService({
+        prisma: buildPrismaService({ aiAssistantEnabled: false, aiAssistantConsentAt: null }),
+        entitlements,
+      });
+      const postJsonSpy = jest.spyOn(service as any, "postJson");
+
+      await expect(service.tryFallbackAnswer("user-1", "Como estou?")).resolves.toEqual({ status: "no_consent" });
+      expect(postJsonSpy).not.toHaveBeenCalled();
+      expect(entitlements.recordSelahQuestion).not.toHaveBeenCalled();
+    });
+
+    it("sem crédito no plano: blocked_by_plan, sem chamar a IA nem cobrar", async () => {
+      const entitlements = buildEntitlements({
+        assertCanAskSelah: jest.fn().mockRejectedValue(
+          new PlanLimitException({ resource: "selahQuestions", limit: 10, used: 10, plan: "FREE" }),
+        ),
+      });
+      const { service } = buildFallbackService({ entitlements });
+      const postJsonSpy = jest.spyOn(service as any, "postJson");
+
+      await expect(service.tryFallbackAnswer("user-1", "Como estou?")).resolves.toEqual({ status: "blocked_by_plan" });
+      expect(postJsonSpy).not.toHaveBeenCalled();
+      expect(entitlements.recordSelahQuestion).not.toHaveBeenCalled();
+    });
+
+    it("resposta da IA: answered só com o texto de answer, cobra uma vez e não escreve nada", async () => {
+      const entitlements = buildEntitlements();
+      const { service, writeServices } = buildFallbackService({ entitlements });
+      const postJsonSpy = jest
+        .spyOn(service as any, "postJson")
+        .mockResolvedValue(selahAnswer("  Seu caixa fecha no azul.  "));
+
+      await expect(service.tryFallbackAnswer("user-1", "Como estou?")).resolves.toEqual({
+        status: "answered",
+        text: "Seu caixa fecha no azul.",
+      });
+      expect(postJsonSpy).toHaveBeenCalledTimes(1);
+      const payload = JSON.parse(String(postJsonSpy.mock.calls[0][1]));
+      expect(payload.originModule).toBe("general");
+      expect(payload.message).toBe("Como estou?");
+      expect(entitlements.recordSelahQuestion).toHaveBeenCalledTimes(1);
+      expect(entitlements.recordSelahQuestion).toHaveBeenCalledWith("user-1");
+      expect(writeServices.tasks.create).not.toHaveBeenCalled();
+      expect(writeServices.goals.create).not.toHaveBeenCalled();
+      expect(writeServices.reminders.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["erro HTTP", { statusCode: 500, body: "erro" }],
+      ["payload inválido", { statusCode: 200, body: "não é json" }],
+      ["resposta vazia", { statusCode: 200, body: JSON.stringify({ answer: "   " }) }],
+    ])("%s: unavailable, sem inventar resposta e sem cobrar", async (_label, response) => {
+      const entitlements = buildEntitlements();
+      const { service } = buildFallbackService({ entitlements });
+      jest.spyOn(service as any, "postJson").mockResolvedValue(response);
+
+      await expect(service.tryFallbackAnswer("user-1", "Como estou?")).resolves.toEqual({ status: "unavailable" });
+      expect(entitlements.recordSelahQuestion).not.toHaveBeenCalled();
+    });
+
+    it("integração do Selah desligada: unavailable, sem chamada externa e sem cobrança", async () => {
+      const entitlements = buildEntitlements();
+      const { service } = buildFallbackService({
+        config: { ...SELAH_ON, SELAH_ASSISTANT_ENABLED: "false" },
+        entitlements,
+      });
+      const postJsonSpy = jest.spyOn(service as any, "postJson");
+
+      await expect(service.tryFallbackAnswer("user-1", "Como estou?")).resolves.toEqual({ status: "unavailable" });
+      expect(postJsonSpy).not.toHaveBeenCalled();
+      expect(entitlements.recordSelahQuestion).not.toHaveBeenCalled();
+    });
+
+    it("usa SELAH_FALLBACK_TIMEOUT_MS (padrão 15 s), e não o timeout do assistente legado", async () => {
+      const { service } = buildFallbackService();
+      const postJsonSpy = jest.spyOn(service as any, "postJson").mockResolvedValue(selahAnswer("Ok."));
+      await service.tryFallbackAnswer("user-1", "Como estou?");
+      expect(postJsonSpy.mock.calls[0][3]).toBe(15000);
+
+      const custom = buildFallbackService({ config: { ...SELAH_ON, SELAH_FALLBACK_TIMEOUT_MS: "4000", SELAH_TIMEOUT_MS: "50000" } });
+      const customSpy = jest.spyOn(custom.service as any, "postJson").mockResolvedValue(selahAnswer("Ok."));
+      await custom.service.tryFallbackAnswer("user-1", "Como estou?");
+      expect(customSpy.mock.calls[0][3]).toBe(4000);
+    });
+
+    it("lê o resumo e o consentimento só do próprio usuário autenticado", async () => {
+      const dashboard = buildDashboardService();
+      const prisma = buildPrismaService();
+      const { service } = buildFallbackService({ dashboard, prisma });
+      jest.spyOn(service as any, "postJson").mockResolvedValue(selahAnswer("Ok."));
+
+      await service.tryFallbackAnswer("user-A", "Como estou?");
+      await service.tryFallbackAnswer("user-B", "Como estou?");
+
+      expect(dashboard.getSummary).toHaveBeenCalledWith("user-A");
+      expect(dashboard.getSummary).toHaveBeenCalledWith("user-B");
+      expect(prisma.user.findUniqueOrThrow).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "user-A" } }));
+      expect(prisma.user.findUniqueOrThrow).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "user-B" } }));
     });
   });
 });

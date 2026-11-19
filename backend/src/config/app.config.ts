@@ -47,4 +47,9 @@ export const appConfig = registerAs('app', () => ({
   selahEscalationDays: parseInt(process.env.SELAH_ESCALATION_DAYS ?? '3', 10),
   // Interruptor de planos/limites. Desligado (padrao) = sem limites para ninguem.
   billingEnabled: parseBoolean(process.env.BILLING_ENABLED, false),
+  // Fallback de IA do motor de conversa. 'off' (padrao) = mensagem nao reconhecida so recebe ajuda.
+  assistantAiMode:
+    process.env.ASSISTANT_AI_MODE?.trim().toLowerCase() === 'fallback'
+      ? ('fallback' as const)
+      : ('off' as const),
 }));
