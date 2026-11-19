@@ -70,6 +70,58 @@ describe('parseInbound', () => {
   });
 });
 
+describe('WhatsappAdapterService: ordem por numero', () => {
+  it('mensagens do mesmo numero rodam uma de cada vez, na ordem de chegada', async () => {
+    const { service, conversation } = build();
+    const order: string[] = [];
+    let releaseFirst!: () => void;
+    conversation.handleMessage.mockImplementation(async (...args: unknown[]) => {
+      const text = (args[0] as { text: string }).text;
+      order.push(`inicio:${text}`);
+      if (text === 'primeira') await new Promise<void>((resolve) => (releaseFirst = resolve));
+      order.push(`fim:${text}`);
+      return { kind: 'INFO', state: 'IDLE', text: 'ok' };
+    });
+
+    const first = service.handleInbound(event({ key: { id: 'M1', fromMe: false }, content: 'primeira' }));
+    const second = service.handleInbound(event({ key: { id: 'M2', fromMe: false }, content: 'segunda' }));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(order).toEqual(['inicio:primeira']);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual(['inicio:primeira', 'fim:primeira', 'inicio:segunda', 'fim:segunda']);
+  });
+
+  it('numeros diferentes nao esperam um pelo outro', async () => {
+    const { service, conversation } = build({ users: { [JID_A]: 'USER-A', [JID_B]: 'USER-B' } });
+    let releaseA!: () => void;
+    const started: string[] = [];
+    conversation.handleMessage.mockImplementation(async (...args: unknown[]) => {
+      const userId = (args[0] as { userId: string }).userId;
+      started.push(userId);
+      if (userId === 'USER-A') await new Promise<void>((resolve) => (releaseA = resolve));
+      return { kind: 'INFO', state: 'IDLE', text: 'ok' };
+    });
+
+    const a = service.handleInbound(event({ content: 'saldo' }));
+    const b = service.handleInbound(event({ key: { id: 'MB', remoteJid: JID_B, fromMe: false }, from: JID_B, content: 'saldo' }));
+    await b;
+    expect(started).toEqual(['USER-A', 'USER-B']);
+    releaseA();
+    await a;
+  });
+
+  it('falha em uma mensagem nao trava a fila do numero, e o mapa esvazia', async () => {
+    const { service, conversation, client } = build();
+    conversation.handleMessage.mockRejectedValueOnce(new Error('boom'));
+    await service.handleInbound(event({ key: { id: 'M1', fromMe: false }, content: 'um' }));
+    await service.handleInbound(event({ key: { id: 'M2', fromMe: false }, content: 'dois' }));
+    expect(client.sendText).toHaveBeenCalledTimes(1);
+    expect((service as unknown as { queues: Map<string, unknown> }).queues.size).toBe(0);
+  });
+});
+
 describe('WhatsappAdapterService', () => {
   it('descartes silenciosos: nada enviado, motor nao chamado', async () => {
     const { service, conversation, client, links } = build();
