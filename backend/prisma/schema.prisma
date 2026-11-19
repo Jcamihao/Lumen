@@ -197,6 +197,8 @@ model User {
   selahUsage                    SelahUsage[]
   conversationSessions          ConversationSession[]
   conversationEvents            ConversationEvent[]
+  whatsappLink                  WhatsappLink?
+  whatsappLinkCodes             WhatsappLinkCode[]
 
   @@index([email])
 }
@@ -849,4 +851,29 @@ model ConversationEvent {
 
   @@unique([userId, channel, messageId])
   @@index([userId, createdAt])
+}
+
+// Vinculo entre um numero do WhatsApp (JID como o WA-AKG entrega) e uma conta Lumen.
+// Desvincular apaga a linha. Um JID ativo em uma so conta; uma conta tem um vinculo.
+model WhatsappLink {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  jid       String   @unique
+  linkedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Codigo de vinculo de uso unico. So o hash SHA-256 fica no banco.
+model WhatsappLinkCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([codeHash])
 }

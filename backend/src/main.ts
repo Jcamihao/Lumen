@@ -72,7 +72,17 @@ async function bootstrap() {
     },
     credentials: true,
   });
-  app.use(json({ limit: '5mb' }));
+  // Corpo bruto so para o webhook do WhatsApp (a assinatura exige os bytes originais).
+  app.use(
+    json({
+      limit: '5mb',
+      verify: (req: RequestWithContext & { rawBody?: Buffer }, _res, buf) => {
+        if ((req.originalUrl ?? req.url ?? '').startsWith('/api/v1/whatsapp/webhook')) {
+          req.rawBody = buf;
+        }
+      },
+    }),
+  );
   app.use(urlencoded({ extended: true, limit: '5mb' }));
   app.use(helmet());
   app.use(compression());

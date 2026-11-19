@@ -1,4 +1,5 @@
 import { BadRequestException, HttpException, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ConversationChannel,
   ConversationOutcome,
@@ -261,6 +262,7 @@ export class ConversationService {
     private readonly goals: GoalsService,
     private readonly envelopes: EnvelopesService,
     private readonly entitlements: EntitlementsService,
+    private readonly configService: ConfigService,
   ) {}
 
   /** Mensagem digitada (canal APP ou WhatsApp). Ordem de decisao: contrato secao 6 e motor. */
@@ -313,14 +315,22 @@ export class ConversationService {
     return this.cancelSession(userId, session, null);
   }
 
-  /** Estado do canal APP para o app reabrir a conversa. Sem sessao ativa = IDLE. */
+  /**
+   * Estado para o app reabrir a conversa. A sessao do canal APP manda. Sem ela, um rascunho do WhatsApp
+   * que espera confirmacao tambem aparece, para o usuario confirmar pelo botao do app (a escrita pelo
+   * WhatsApp pode estar desligada). Sempre so do proprio usuario. Sem sessao ativa = IDLE.
+   */
   async getSession(userId: string): Promise<{ state: ConversationStateView; draft?: DraftView }> {
-    const session = await this.loadSession(userId, ConversationChannel.APP);
-    if (!session || session.expiresAt < new Date()) {
-      return { state: 'IDLE' };
+    const now = new Date();
+    const app = await this.loadSession(userId, ConversationChannel.APP);
+    if (app && app.expiresAt >= now) {
+      return { state: app.state, draft: await this.toDraftView(app) };
     }
-    const draft = await this.toDraftView(session);
-    return { state: session.state, draft };
+    const whatsapp = await this.loadSession(userId, ConversationChannel.WHATSAPP);
+    if (whatsapp && whatsapp.expiresAt >= now && whatsapp.state === ConversationState.AWAITING_CONFIRMATION) {
+      return { state: whatsapp.state, draft: await this.toDraftView(whatsapp) };
+    }
+    return { state: 'IDLE' };
   }
 
   // ---------- sem sessao ativa ----------
@@ -786,6 +796,11 @@ export class ConversationService {
     }
     if (CONFIRM_WORDS.has(words)) {
       if (awaiting) {
+        // Trava de escrita do WhatsApp (contrato 8): o app continua gravando normalmente.
+        if (input.channel === 'WHATSAPP' && !this.configService.get<boolean>('whatsapp.writesEnabled')) {
+          await this.recordEvent(input, session.intent, ConversationOutcome.RECOGNIZED);
+          return this.reply('INFO', this.stateView(session), REPLIES.whatsappWritesOff);
+        }
         return this.applyDraft({ userId, session, messageId: input.messageId, now: input.receivedAt, channel: input.channel });
       }
       // "ok" fora de AWAITING_CONFIRMATION não faz nada (contrato secao 6).

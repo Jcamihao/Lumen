@@ -63,6 +63,7 @@ export const REPLIES = {
     'A leitura é feita aqui no Lumen e você confere tudo antes de gravar.',
   unrecognized: 'Não entendi. Digite "ajuda" para ver os exemplos.',
   duplicate: 'Essa mensagem já foi processada. Nada foi alterado.',
+  whatsappWritesOff: 'Para gravar, confirme no app: abra o assistente e toque em Confirmar. Por aqui eu monto o rascunho e respondo consultas.',
   expired: 'O rascunho expirou e foi descartado. Envie o lançamento de novo.',
   cancelled: 'Rascunho cancelado. Nada foi gravado.',
   confirmReminder: 'Há um rascunho aguardando. Responda "confirmar" ou "cancelar".',
