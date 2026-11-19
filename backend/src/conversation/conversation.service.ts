@@ -374,6 +374,11 @@ export class ConversationService {
     if (intent.intent === 'import_receipt') {
       return this.importReceiptReply(input, 'IDLE');
     }
+    if (intent.intent === 'edit_transaction' || intent.intent === 'delete_transaction') {
+      // Fluxo de editar e apagar entra nos commits seguintes; até lá segue como texto livre, como antes.
+      await this.recordEvent(input, null, ConversationOutcome.UNRECOGNIZED);
+      return { ...this.reply('HELP', 'IDLE', REPLIES.unrecognized), unrecognized: true };
+    }
     return this.runRead(input, intent, 'IDLE');
   }
 
