@@ -53,6 +53,7 @@ import {
 } from './parsers/goal.parser';
 import { normalize } from './parsers/normalize';
 import type { TransactionChangeDraft } from './conversation.types';
+import { UpdateTransactionDto } from '../transactions/dto/update-transaction.dto';
 import {
   TX_CHANGE_MAX_CANDIDATES,
   TX_CHANGE_WINDOW_DAYS,
@@ -61,9 +62,12 @@ import {
   TxCandidate,
   describeCandidate,
   formatCandidateLine,
+  formatCents,
+  formatDayMonth,
   isDeleteChange,
   isTransactionChangeDraft,
   matchesSearch,
+  parseChange,
   parseSearch,
 } from './transaction-change';
 import { parseEnvelopeBody } from './parsers/envelope.parser';
@@ -847,7 +851,12 @@ export class ConversationService {
   }
 
   /** Resposta à lista: número escolhe; sem candidatos, o texto é a busca. Mudança de campo: etapa de editar. */
-  private async answerTransactionChange(userId: string, draft: TransactionChangeDraft, value: string): Promise<PendingAnswer> {
+  private async answerTransactionChange(
+    userId: string,
+    draft: TransactionChangeDraft,
+    value: string,
+    today: string,
+  ): Promise<PendingAnswer> {
     if (draft.pendingField === 'transaction') {
       if (draft.candidateIds.length === 0) {
         // Comando sem termo ("apagar"): o texto seguinte é a busca.
@@ -876,8 +885,35 @@ export class ConversationService {
       draft.pendingField = draft.action === 'EDIT' ? 'change' : null;
       return { status: 'UPDATED' };
     }
-    // Mudança de campo entra na etapa de editar (commit seguinte).
-    return { status: 'ERROR', text: TX_REPLIES.notReady };
+    // Editar: uma mudança por mensagem; a prévia mostra antes -> depois (contrato 8a, secao 5).
+    if (draft.targetId === null) {
+      return { status: 'ERROR', text: TX_REPLIES.gone };
+    }
+    const parsed = parseChange(value, today, amountErrorText);
+    if (parsed.ok === false) {
+      return { status: 'ERROR', text: parsed.text };
+    }
+    if (parsed.field === 'amountCents') {
+      draft.changes.amountCents = parsed.cents;
+    } else if (parsed.field === 'description') {
+      draft.changes.description = parsed.text;
+    } else if (parsed.field === 'date') {
+      draft.changes.date = parsed.ymd;
+    } else {
+      const categories = await this.prisma.financeCategory.findMany({ where: { userId }, select: { id: true, name: true } });
+      const query = normalize(parsed.query);
+      const exact = categories.filter((category) => normalize(category.name) === query);
+      const pool = exact.length > 0 ? exact : categories.filter((category) => normalize(category.name).includes(query));
+      if (pool.length === 0) {
+        return { status: 'ERROR', text: TX_REPLIES.categoryNotFound };
+      }
+      if (pool.length > 1) {
+        return { status: 'ERROR', text: TX_REPLIES.categoryAmbiguous };
+      }
+      draft.changes.categoryId = pool[0].id;
+    }
+    draft.pendingField = null;
+    return { status: 'UPDATED' };
   }
 
   /** Prévia do rascunho de editar/apagar. Confirmação de apagar usa a palavra "apagar" (contrato 8a, secao 4). */
@@ -889,7 +925,34 @@ export class ConversationService {
     if (draft.action === 'DELETE') {
       return [`Apagar: ${describeCandidate(target)}.`, TX_REPLIES.deleteWarning, TX_REPLIES.deleteNeedsWord].join('\n');
     }
-    return `Editar: ${describeCandidate(target)}.`;
+    const lines = await this.changeDiffLines(userId, target, draft.changes);
+    if (lines.length === 0) {
+      return TX_REPLIES.nothingToChange;
+    }
+    return [`Editar: ${describeCandidate(target)}.`, ...lines, TX_REPLIES.editConfirm].join('\n');
+  }
+
+  /** Linhas "antes -> depois" só dos campos que mudam de fato. */
+  private async changeDiffLines(
+    userId: string,
+    target: TxCandidate,
+    changes: TransactionChangeDraft['changes'],
+  ): Promise<string[]> {
+    const lines: string[] = [];
+    if (changes.amountCents !== undefined && changes.amountCents !== target.amountCents) {
+      lines.push(`Valor: ${formatCents(target.amountCents)} -> ${formatCents(changes.amountCents)}`);
+    }
+    if (changes.description !== undefined && changes.description !== target.description) {
+      lines.push(`Descrição: ${target.description} -> ${changes.description}`);
+    }
+    if (changes.categoryId !== undefined && changes.categoryId !== target.categoryId) {
+      const after = changes.categoryId === null ? null : (await this.categoryNames(userId, [changes.categoryId]))[0] ?? null;
+      lines.push(`Categoria: ${target.categoryName ?? 'sem categoria'} -> ${after ?? 'sem categoria'}`);
+    }
+    if (changes.date !== undefined && changes.date !== target.date) {
+      lines.push(`Data: ${formatDayMonth(target.date)} -> ${formatDayMonth(changes.date)}`);
+    }
+    return lines;
   }
 
   private async saveNewDraft(args: {
@@ -948,6 +1011,16 @@ export class ConversationService {
       await this.recordEvent(input, session.intent, ConversationOutcome.UNRECOGNIZED);
       return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: TX_REPLIES.deleteNeedsWord });
     }
+    // Editar sem nenhuma mudança: confirmar não grava (contrato 8a, secao 5). Só depois de escolhido o lançamento.
+    const editNothing =
+      isTransactionChangeDraft(session.draft) &&
+      session.draft.action === 'EDIT' &&
+      session.draft.targetId !== null &&
+      Object.keys(session.draft.changes).length === 0;
+    if (editNothing && CONFIRM_WORDS.has(words)) {
+      await this.recordEvent(input, session.intent, ConversationOutcome.UNRECOGNIZED);
+      return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: TX_REPLIES.nothingToChange });
+    }
     if (CONFIRM_WORDS.has(words) || (deleteAwaiting && words === 'apagar')) {
       if (awaiting) {
         // Trava de escrita do WhatsApp (contrato 8): o app continua gravando normalmente.
@@ -964,6 +1037,10 @@ export class ConversationService {
     const pendingDraft = session.draft as unknown as SessionDraft;
     if (isTransactionChangeDraft(pendingDraft) && pendingDraft.pendingField === 'transaction' && !awaiting) {
       // Lista numerada: número escolhe o lançamento; texto vira nova busca (contrato 8a, secao 3).
+      return this.fillPendingField({ input, session, text });
+    }
+    if (isTransactionChangeDraft(pendingDraft) && pendingDraft.action === 'EDIT' && pendingDraft.pendingField !== 'transaction' && !intent) {
+      // Edição: "valor 45", "descrição padaria" etc. (também depois da prévia, para mudar mais de um campo).
       return this.fillPendingField({ input, session, text });
     }
     // Texto que começa com número é a resposta pedida (nome, descrição, quantidade, data), não um comando (contrato 4).
@@ -1052,7 +1129,7 @@ export class ConversationService {
   /** Resposta ao campo pendente, por tipo de rascunho. Só muda `draft` no caminho UPDATED. */
   private async answerPending(userId: string, draft: SessionDraft, value: string, today: string): Promise<PendingAnswer> {
     if (isTransactionChangeDraft(draft)) {
-      return this.answerTransactionChange(userId, draft, value);
+      return this.answerTransactionChange(userId, draft, value, today);
     }
     if (draft.kind === 'GOAL') {
       return this.answerGoal(userId, draft, value);
@@ -1581,8 +1658,23 @@ export class ConversationService {
         resultRef: target.id,
       };
     }
-    // Edição entra no commit seguinte.
-    throw new ConflictException(TX_REPLIES.notReady);
+    // Conflito: o item mudou desde a escolha (ex.: editado pela tela). Nada é gravado (contrato 8a, secao 5).
+    if (target.updatedAt.toISOString() !== draft.targetUpdatedAt) {
+      throw new ConflictException(TX_REPLIES.changed);
+    }
+    const dto: UpdateTransactionDto = {};
+    if (draft.changes.amountCents !== undefined) dto.amount = draft.changes.amountCents / 100;
+    if (draft.changes.description !== undefined) dto.description = draft.changes.description;
+    if (draft.changes.categoryId !== undefined) dto.categoryId = draft.changes.categoryId;
+    if (draft.changes.date !== undefined) dto.date = `${draft.changes.date}T00:00:00.000Z`;
+    await this.transactions.update(userId, target.id, dto);
+    const amountCents = draft.changes.amountCents ?? target.amountCents;
+    const description = draft.changes.description ?? target.description;
+    return {
+      text: `Alterei: ${formatCents(amountCents)} · ${description}.`,
+      data: { transactionId: target.id },
+      resultRef: target.id,
+    };
   }
 
   private async applyTransaction(userId: string, draft: ExpenseOrIncomeDraft): Promise<AppliedAction> {

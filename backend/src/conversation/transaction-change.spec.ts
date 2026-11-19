@@ -37,7 +37,7 @@ function txRow(overrides: Row): Row {
   };
 }
 
-function buildDb(transactions: Row[]) {
+function buildDb(transactions: Row[], categories: Row[] = []) {
   const sessions: Row[] = [];
   const events: Row[] = [];
   const prisma = {
@@ -72,7 +72,7 @@ function buildDb(transactions: Row[]) {
       updateMany: jest.fn(async () => ({ count: 0 })),
     },
     financeCategory: {
-      findMany: jest.fn(async () => []),
+      findMany: jest.fn(async ({ where }: { where: Row }) => clone(categories.filter((row) => matchesWhere(row, where)))),
       findFirst: jest.fn(async () => null),
     },
     transaction: {
@@ -98,12 +98,18 @@ const ROWS: Row[] = [
   txRow({ id: 't5', userId: 'A', description: 'Padaria antiga', amount: '9.00', date: day('2026-05-01') }),
 ];
 
+const CATEGORIES: Row[] = [
+  { id: 'cat-mercado', userId: 'A', name: 'Mercado' },
+  { id: 'cat-padaria', userId: 'A', name: 'Padaria' },
+  { id: 'cat-pad-b', userId: 'A', name: 'Padaria Premium' },
+];
+
 function buildService(rows: Row[] = ROWS, writesEnabled = true) {
   const transactions = rows.map((row) => clone(row));
-  const db = buildDb(transactions);
+  const db = buildDb(transactions, CATEGORIES);
   const txService = {
     create: jest.fn(),
-    update: jest.fn(),
+    update: jest.fn(async () => ({ id: 'unused' })),
     // Apaga de verdade no fake, como o TransactionsService.remove faz.
     remove: jest.fn(async (userId: string, id: string) => {
       const index = transactions.findIndex((row) => row.id === id && row.userId === userId);
@@ -294,5 +300,141 @@ describe('apagar reforcado (8a, secao 4)', () => {
     const reply = await send('apagar', 'A', 'WHATSAPP');
     expect(reply.kind).toBe('INFO');
     expect(txService.remove).not.toHaveBeenCalled();
+  });
+});
+
+type ConversationReplyLike = Awaited<ReturnType<ConversationService['handleMessage']>>;
+
+describe('editar lancamento (8a, secao 5)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: T0 });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /** "corrigir mercado" + escolha do número: pergunta o que mudar. */
+  async function pick(send: (text: string) => Promise<ConversationReplyLike>, number: string) {
+    await send('corrigir mercado');
+    return send(number);
+  }
+
+  it('escolher o lancamento pergunta o que mudar', async () => {
+    const { send } = buildService(ROWS);
+    const reply = await pick(send, '1');
+    expect(reply.kind).toBe('ASK_FIELD');
+    expect(reply.text).toBe('O que mudar? valor, descrição, categoria ou data. Ex.: valor 45');
+  });
+
+  it('valor mostra antes -> depois e aguarda confirmar', async () => {
+    const { send } = buildService(ROWS);
+    await pick(send, '1');
+    const reply = await send('valor 45');
+    expect(reply.kind).toBe('CONFIRM_DRAFT');
+    expect(reply.state).toBe('AWAITING_CONFIRMATION');
+    expect(reply.text).toContain('Editar: 50,00 · Mercado do bairro.');
+    expect(reply.text).toContain('Valor: 50,00 -> 45,00');
+    expect(reply.text).toContain('Responda confirmar para salvar ou cancelar.');
+    expect(reply.quickReplies).toEqual(['confirmar', 'cancelar']);
+  });
+
+  it('varias mudancas em mensagens seguidas aparecem todas na previa', async () => {
+    const { send } = buildService(ROWS);
+    await pick(send, '1');
+    await send('descrição Padaria da esquina');
+    const reply = await send('data 13/11');
+    expect(reply.text).toContain('Descrição: Mercado do bairro -> Padaria da esquina');
+    expect(reply.text).toContain('Data: 14/11 -> 13/11');
+  });
+
+  it('categoria pelo nome: mostra sem categoria -> Padaria', async () => {
+    const { send } = buildService(ROWS);
+    await pick(send, '2');
+    const reply = await send('categoria padaria');
+    expect(reply.text).toContain('Categoria: sem categoria -> Padaria');
+  });
+
+  it('categoria ambigua ou inexistente: erro e rascunho segue', async () => {
+    const { send, db } = buildService(ROWS);
+    await pick(send, '2');
+    const ambiguous = await send('categoria pad');
+    expect(ambiguous.kind).toBe('ERROR');
+    expect(ambiguous.text).toBe('Tem mais de uma categoria com esse nome. Escreva o nome completo.');
+    const missing = await send('categoria xyz');
+    expect(missing.text).toBe('Não achei essa categoria. Use o nome de uma categoria sua.');
+    expect(db.sessions).toHaveLength(1);
+  });
+
+  it.each([
+    ['valor 0', 'ERROR'],
+    ['data 31/02', 'ERROR'],
+    ['tipo receita', 'ERROR'],
+    ['descrição a', 'ERROR'],
+  ])('"%s" e recusado sem gravar', async (text, kind) => {
+    const { send, txService } = buildService(ROWS);
+    await pick(send, '1');
+    const reply = await send(text);
+    expect(reply.kind).toBe(kind);
+    expect(txService.update).not.toHaveBeenCalled();
+  });
+
+  it('confirmar sem nenhuma mudanca nao grava', async () => {
+    const { send, txService } = buildService(ROWS);
+    await pick(send, '1');
+    const reply = await send('confirmar');
+    expect(reply.text).toContain('Nada para mudar. Escolha um campo ou responda cancelar.');
+    expect(txService.update).not.toHaveBeenCalled();
+  });
+
+  it('confirmar aplica so o campo mudado, pelo TransactionsService.update, com recibo', async () => {
+    const { send, txService, db } = buildService(ROWS);
+    await pick(send, '1');
+    await send('valor 45');
+    const reply = await send('confirmar');
+    expect(reply.kind).toBe('DONE');
+    expect(reply.state).toBe('IDLE');
+    expect(reply.text).toBe('Alterei: 45,00 · Mercado do bairro.');
+    expect(reply.data?.transactionId).toBe('t1');
+    expect(txService.update).toHaveBeenCalledTimes(1);
+    expect(txService.update).toHaveBeenCalledWith('A', 't1', { amount: 45 });
+    expect(db.sessions).toHaveLength(0);
+  });
+
+  it('varios campos: o DTO leva cada um no formato da tela', async () => {
+    const { send, txService } = buildService(ROWS);
+    await pick(send, '2');
+    await send('valor 99,90');
+    await send('descrição Padaria nova');
+    await send('categoria mercado');
+    await send('data 13/11');
+    await send('confirmar');
+    expect(txService.update).toHaveBeenCalledWith('A', 't2', {
+      amount: 99.9,
+      description: 'Padaria nova',
+      categoryId: 'cat-mercado',
+      date: '2026-11-13T00:00:00.000Z',
+    });
+  });
+
+  it('conflito de updatedAt: nada gravado, rascunho descartado', async () => {
+    const { send, txService, transactions, db } = buildService(ROWS);
+    await pick(send, '1');
+    await send('valor 45');
+    transactions[0].updatedAt = new Date('2026-11-15T09:00:00.000Z');
+    const reply = await send('confirmar');
+    expect(reply.kind).toBe('ERROR');
+    expect(reply.text).toBe('Esse lançamento mudou desde que você escolheu; refaça a busca.');
+    expect(txService.update).not.toHaveBeenCalled();
+    expect(db.sessions).toHaveLength(0);
+  });
+
+  it('cancelar descarta sem gravar', async () => {
+    const { send, txService, db } = buildService(ROWS);
+    await pick(send, '1');
+    await send('valor 45');
+    const reply = await send('cancelar');
+    expect(reply.kind).toBe('CANCELLED');
+    expect(txService.update).not.toHaveBeenCalled();
+    expect(db.sessions).toHaveLength(0);
   });
 });

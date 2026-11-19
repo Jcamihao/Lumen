@@ -1,5 +1,6 @@
-import { parseAmountPrefix } from './parsers/amount.parser';
-import { normalize } from './parsers/normalize';
+import { AmountFailure, parseAmountPrefix } from './parsers/amount.parser';
+import { parseDateToken } from './parsers/date.parser';
+import { normalize, normalizeWord } from './parsers/normalize';
 import { TransactionChangeDraft } from './conversation.types';
 
 /** Editar e apagar lançamento por conversa (contrato 8a). Funções puras: sem banco, sem Nest. */
@@ -8,6 +9,9 @@ import { TransactionChangeDraft } from './conversation.types';
 export const TX_CHANGE_WINDOW_DAYS = 180;
 export const TX_CHANGE_MAX_CANDIDATES = 5;
 export const TX_DAY_MS = 86_400_000;
+/** Limites de descrição iguais aos do criar lançamento. */
+export const TX_DESCRIPTION_MIN = 2;
+export const TX_DESCRIPTION_MAX = 120;
 
 export const TX_REPLIES = {
   askWhich: 'Qual lançamento? Diga parte da descrição, a categoria ou o valor. Ex.: apagar mercado',
@@ -19,6 +23,15 @@ export const TX_REPLIES = {
   onlyNonEditable: 'Esse lançamento veio de conta fixa, parcelado, meta ou nota; altere pela tela.',
   gone: 'Não encontrei mais esse lançamento.',
   notReady: 'Ainda não disponível.',
+  changeNotUnderstood: 'Não entendi a mudança. Use: valor 45, descrição padaria, categoria mercado ou data 15/11.',
+  descriptionShort: 'A descrição precisa ter pelo menos 2 letras.',
+  descriptionLong: 'A descrição passou de 120 letras. Use um texto menor.',
+  dateInvalid: 'Essa data não existe. Use dd/mm, ex.: 15/11.',
+  nothingToChange: 'Nada para mudar. Escolha um campo ou responda cancelar.',
+  editConfirm: 'Responda confirmar para salvar ou cancelar.',
+  changed: 'Esse lançamento mudou desde que você escolheu; refaça a busca.',
+  categoryNotFound: 'Não achei essa categoria. Use o nome de uma categoria sua.',
+  categoryAmbiguous: 'Tem mais de uma categoria com esse nome. Escreva o nome completo.',
 } as const;
 
 export interface TxCandidate {
@@ -70,6 +83,43 @@ export function formatCents(cents: number): string {
 export function formatDayMonth(ymd: string): string {
   const [, month, day] = ymd.split('-');
   return `${day}/${month}`;
+}
+
+/** Mudança pedida em uma mensagem: "valor 45", "descrição padaria", "categoria mercado", "data 15/11". */
+export type ChangeParse =
+  | { ok: true; field: 'amountCents'; cents: number }
+  | { ok: true; field: 'description'; text: string }
+  | { ok: true; field: 'categoryName'; query: string }
+  | { ok: true; field: 'date'; ymd: string }
+  | { ok: false; text: string };
+
+export function parseChange(value: string, today: string, amountError: (reason: AmountFailure) => string): ChangeParse {
+  const trimmed = value.trim();
+  const space = trimmed.search(/\s/);
+  const key = normalizeWord(space === -1 ? trimmed : trimmed.slice(0, space));
+  const rest = space === -1 ? '' : trimmed.slice(space).trim();
+  if (key === 'valor') {
+    const amount = parseAmountPrefix(rest);
+    if (amount.ok === false) return { ok: false, text: amountError(amount.reason) };
+    if (amount.rest.trim().length > 0) return { ok: false, text: TX_REPLIES.changeNotUnderstood };
+    return { ok: true, field: 'amountCents', cents: amount.cents };
+  }
+  if (key === 'descricao') {
+    if (rest.length < TX_DESCRIPTION_MIN) return { ok: false, text: TX_REPLIES.descriptionShort };
+    if (rest.length > TX_DESCRIPTION_MAX) return { ok: false, text: TX_REPLIES.descriptionLong };
+    return { ok: true, field: 'description', text: rest };
+  }
+  if (key === 'categoria') {
+    if (rest.length === 0) return { ok: false, text: TX_REPLIES.changeNotUnderstood };
+    return { ok: true, field: 'categoryName', query: rest };
+  }
+  if (key === 'data') {
+    const date = parseDateToken(rest, today);
+    if (date === null) return { ok: false, text: TX_REPLIES.changeNotUnderstood };
+    if (date.kind === 'INVALID') return { ok: false, text: TX_REPLIES.dateInvalid };
+    return { ok: true, field: 'date', ymd: date.ymd };
+  }
+  return { ok: false, text: TX_REPLIES.changeNotUnderstood };
 }
 
 export function describeCandidate(candidate: TxCandidate): string {
