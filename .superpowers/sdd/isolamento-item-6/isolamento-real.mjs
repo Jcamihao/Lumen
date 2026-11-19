@@ -59,6 +59,20 @@ function check(name, ok, detail = '') {
   results.push({ name, ok: Boolean(ok), detail });
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok || !detail ? '' : `\n        ${detail}`}`);
 }
+/** Mesma resposta: mesmo status e mesmo corpo, ignorando so campos volateis por requisicao (requestId, timestamp). */
+function sameResponse(a, b) {
+  const strip = (r) => {
+    try {
+      const j = JSON.parse(r.text);
+      delete j.requestId;
+      delete j.timestamp;
+      return JSON.stringify(j);
+    } catch {
+      return r.text;
+    }
+  };
+  return a.status === b.status && strip(a) === strip(b);
+}
 const note = (text) => console.log(`NOTA  ${text}`);
 const section = (title) => console.log(`\n=== ${title}`);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -126,6 +140,10 @@ const flushRate = async () => {
 // ---------- contas ----------
 const WHO = ['A', 'B', 'C'];
 const JID = { A: '5511911110001@s.whatsapp.net', B: '5521922220002@s.whatsapp.net', C: '5531933330003@s.whatsapp.net', D: '5541944440004@s.whatsapp.net' };
+/** Numero atual de cada conta (muda no cenario 5, quando A e B trocam de numero). */
+const cur = { ...JID };
+/** Ids de linhas de outras contas usados nos ataques: nunca podem aparecer em log. */
+const watchIds = new Set();
 const TAG = { A: 'Zeta', B: 'Beta', C: 'Gama' };
 // A nota importada de cada conta (10, 11 e 12) tambem sai do saldo.
 const brl = (value) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
@@ -176,6 +194,12 @@ async function linkAll() {
   await settle();
 }
 
+/** Saldo atual da conta pela mesma conta que o app mostra (receitas - despesas), em texto pt-BR. */
+async function balanceOf(who) {
+  const rows = await db.transaction.groupBy({ by: ['type'], where: { userId: acc[who].userId }, _sum: { amount: true } });
+  const sum = (type) => Number(rows.find((row) => row.type === type)?._sum.amount ?? 0);
+  return brl(sum('INCOME') - sum('EXPENSE'));
+}
 const txCount = (who, where = {}) => db.transaction.count({ where: { userId: acc[who].userId, ...where } });
 const waSession = (who) => db.conversationSession.findFirst({ where: { userId: acc[who].userId, channel: 'WHATSAPP' } });
 const appSession = (who) => db.conversationSession.findFirst({ where: { userId: acc[who].userId, channel: 'APP' } });
@@ -214,7 +238,7 @@ async function s1() {
   // A tenta importar a nota de B pela rota real: nao encontrada, igual a nota inexistente.
   const foreign = await api('POST', '/imports/receipts/commit', { token: acc.A.token, body: { receiptScanId: acc.B.scanId } });
   const missing = await api('POST', '/imports/receipts/commit', { token: acc.A.token, body: { receiptScanId: randomUUID() } });
-  check('importar nota de outra conta: 404 igual a nota inexistente', foreign.status === 404 && foreign.status === missing.status && foreign.text === missing.text, `${foreign.status} ${foreign.text} | ${missing.status} ${missing.text}`);
+  check('importar nota de outra conta: 404 igual a nota inexistente', foreign.status === 404 && sameResponse(foreign, missing), `${foreign.status} ${foreign.text} | ${missing.status} ${missing.text}`);
   for (const who of WHO) {
     const reply = await appMsg(who, 'importar nota');
     check(`"importar nota" de ${who}: so orienta, sem dado de outra conta`, reply.json?.data?.screen === 'imports' && !foreignSecrets(who).some((s) => reply.text.toLowerCase().includes(s)), reply.text);
@@ -235,6 +259,7 @@ async function s2() {
   await settle();
   const wa = { A: await waSession('A'), B: await waSession('B') };
   check('rascunho WHATSAPP de A e B montados', wa.A?.state === 'AWAITING_CONFIRMATION' && wa.B?.state === 'AWAITING_CONFIRMATION');
+  for (const id of [draftApp.B.draftId, wa.B.id, draftApp.A.draftId, wa.A.id, acc.B.scanId, acc.A.scanId, acc.C.scanId]) watchIds.add(id);
   const before = { A: await domainCounts('A'), B: await domainCounts('B'), C: await domainCounts('C') };
   const versionsB = { app: (await appSession('B')).version, wa: wa.B.version };
 
@@ -246,10 +271,11 @@ async function s2() {
   for (const [label, id, version] of targets) {
     const foreignConfirm = await api('POST', '/conversation/confirm', { token: acc.A.token, body: { draftId: id, draftVersion: version } });
     const missingConfirm = await api('POST', '/conversation/confirm', { token: acc.A.token, body: { draftId: ghost, draftVersion: version } });
-    check(`confirmar rascunho ${label} com token de A: 404 identico ao id inexistente`, foreignConfirm.status === 404 && foreignConfirm.status === missingConfirm.status && foreignConfirm.text === missingConfirm.text, `${foreignConfirm.status} ${foreignConfirm.text} | ${missingConfirm.status} ${missingConfirm.text}`);
+    note(`${label}: confirmar alheio -> ${foreignConfirm.status} ${foreignConfirm.text.slice(0, 160)} | confirmar inexistente -> ${missingConfirm.status} ${missingConfirm.text.slice(0, 160)}`);
+    check(`confirmar rascunho ${label} com token de A: 404 identico ao id inexistente`, foreignConfirm.status === 404 && sameResponse(foreignConfirm, missingConfirm), `${foreignConfirm.status} ${foreignConfirm.text} | ${missingConfirm.status} ${missingConfirm.text}`);
     const foreignCancel = await api('POST', '/conversation/cancel', { token: acc.A.token, body: { draftId: id } });
     const missingCancel = await api('POST', '/conversation/cancel', { token: acc.A.token, body: { draftId: ghost } });
-    check(`cancelar rascunho ${label} com token de A: 404 identico ao id inexistente`, foreignCancel.status === 404 && foreignCancel.status === missingCancel.status && foreignCancel.text === missingCancel.text, `${foreignCancel.status} ${foreignCancel.text} | ${missingCancel.status} ${missingCancel.text}`);
+    check(`cancelar rascunho ${label} com token de A: 404 identico ao id inexistente`, foreignCancel.status === 404 && sameResponse(foreignCancel, missingCancel), `${foreignCancel.status} ${foreignCancel.text} | ${missingCancel.status} ${missingCancel.text}`);
     // draftVersion de B com o draftId de A (e o inverso)
     const crossA = await api('POST', '/conversation/confirm', { token: acc.A.token, body: { draftId: draftApp.A.draftId, draftVersion: 999 } });
     check('confirmar o proprio rascunho com versao errada: 404, sem gravar', crossA.status === 404);
@@ -268,14 +294,14 @@ async function s2() {
   check('userId no corpo de /cancel: recusado (400)', withUserIdCancel.status === 400, `${withUserIdCancel.status}`);
   const header = await fetch(`${BASE}/conversation/message`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${acc.A.token}`, 'X-User-Id': acc.B.userId, 'X-Account-Id': acc.B.userId }, body: JSON.stringify({ messageId: randomUUID(), text: 'saldo' }) });
   const headerJson = await header.json();
-  check('cabecalho X-User-Id de B ignorado: resposta e o saldo de A', header.status === 200 && JSON.stringify(headerJson).includes(MONEY.A.balance) && !JSON.stringify(headerJson).includes(MONEY.B.balance), JSON.stringify(headerJson));
+  check('cabecalho X-User-Id de B ignorado: resposta e o saldo de A', header.status === 200 && JSON.stringify(headerJson).includes(await balanceOf('A')) && !JSON.stringify(headerJson).includes(await balanceOf('B')), JSON.stringify(headerJson));
 
   // webhook com userId/accountId/participant extras: o dono e o do `from`
   await deliver(JID.A, 'saldo', { id: `${RUN}-hostil-1`, data: { userId: acc.B.userId, accountId: acc.B.userId, user: { id: acc.B.userId }, participant: JID.B, key: { id: `${RUN}-hostil-1`, remoteJid: JID.B, fromMe: false, participant: JID.B } }, top: { userId: acc.B.userId, accountId: acc.B.userId } });
   await settle();
   const hostileA = await sentTo(JID.A);
   const hostileB = await sentTo(JID.B);
-  check('payload hostil (userId/accountId/participant de B) vindo do numero de A: resposta so para A', hostileA.some((m) => m.text?.includes('Saldo')) && !JSON.stringify(hostileA).includes(MONEY.B.balance));
+  check('payload hostil (userId/accountId/participant de B) vindo do numero de A: resposta so para A', hostileA.some((m) => m.text?.includes('Saldo')) && !JSON.stringify(hostileA).includes(await balanceOf('B')));
   check('o numero de B nao recebeu nada do payload hostil', !hostileB.some((m) => m.text?.includes('Saldo atual')));
   const hostileEvent = await db.conversationEvent.findFirst({ where: { messageId: `${RUN}-hostil-1` } });
   check('evento do payload hostil gravado na conta de A', hostileEvent?.userId === acc.A.userId);
@@ -379,6 +405,7 @@ async function s4() {
           return out.json;
         }
         await deliver(JID[who], text);
+        await settle(4000); // como uma pessoa: espera a resposta antes da proxima mensagem
         return null;
       };
       await send('saldo');
@@ -389,6 +416,7 @@ async function s4() {
         if (done.status === 200) planned[who] += 1;
       } else {
         await deliver(JID[who], 'confirmar');
+        await settle(4000);
         planned[who] += 1;
       }
       await send('metas');
@@ -424,20 +452,25 @@ async function s5() {
   const sentBefore = (await sentTo(JID.C)).length;
   const key = `${RUN}-reentrega-1`;
   await deliver(JID.C, 'saldo', { id: key });
+  await settle();
   await deliver(JID.C, 'saldo', { id: key });
   await settle();
-  check('mesmo key.id duas vezes: uma resposta so', (await sentTo(JID.C)).length - sentBefore === 1);
+  check('mesmo key.id reentregue depois da primeira: uma resposta so', (await sentTo(JID.C)).length - sentBefore === 1);
   check('mesmo key.id duas vezes: um evento so', (await db.conversationEvent.count({ where: { userId: acc.C.userId, channel: 'WHATSAPP', messageId: key } })) === 1);
 
+  // Reentrega SIMULTANEA do mesmo key.id: o WA-AKG nao faz isso, mas registramos o que acontece.
+  const parallelKey = `${RUN}-reentrega-paralela`;
+  const sentBeforeParallel = (await sentTo(JID.C)).length;
+  await Promise.all([deliver(JID.C, 'saldo', { id: parallelKey }), deliver(JID.C, 'saldo', { id: parallelKey }), deliver(JID.C, 'saldo', { id: parallelKey })]);
+  await settle();
+  note(`reentrega simultanea (3x) do mesmo key.id de uma leitura: ${(await sentTo(JID.C)).length - sentBeforeParallel} resposta(s); eventos: ${await db.conversationEvent.count({ where: { userId: acc.C.userId, messageId: parallelKey } })}`);
   await deliver(JID.C, `47,47 ${cat('C').toLowerCase()}`);
   await settle();
   const before = await txCount('C', { amount: 47.47 });
   const confirmKey = `${RUN}-confirma-1`;
-  await deliver(JID.C, 'confirmar', { id: confirmKey });
-  await deliver(JID.C, 'confirmar', { id: confirmKey });
-  await deliver(JID.C, 'sim', { id: `${RUN}-confirma-2` });
+  await Promise.all([deliver(JID.C, 'confirmar', { id: confirmKey }), deliver(JID.C, 'confirmar', { id: confirmKey }), deliver(JID.C, 'sim', { id: `${RUN}-confirma-2` })]);
   await settle();
-  check('confirmar duas vezes (reentrega e outra mensagem): 1 transacao', (await txCount('C', { amount: 47.47 })) - before === 1);
+  check('confirmar em paralelo (mesmo key.id e outra mensagem): 1 transacao', (await txCount('C', { amount: 47.47 })) - before === 1);
 
   // alternar JIDs: A desvincula, B passa a usar o numero de A
   const unlinkA = await api('DELETE', '/whatsapp/link', { token: acc.A.token });
@@ -456,7 +489,10 @@ async function s5() {
   await deliver(JID.A, 'saldo');
   await settle();
   const newTexts = (await sentTo(JID.A)).slice(sentBeforeA).map((m) => m.text).join('\n');
-  check('o mesmo numero agora responde com o saldo de B e nunca o de A', newTexts.includes(MONEY.B.balance) && !newTexts.includes(MONEY.A.balance), newTexts);
+  const balanceA = await balanceOf('A');
+  const balanceB = await balanceOf('B');
+  check('o mesmo numero agora responde com o saldo de B e nunca o de A', newTexts.includes(balanceB) && !newTexts.includes(balanceA), `${newTexts} | A=${balanceA} B=${balanceB}`);
+  cur.B = JID.A;
   check('B nao herdou a sessao antiga de A nem gravou nada', (await waSession('B')) === null && (await txCount('A')) === txBefore.A && (await txCount('B')) === txBefore.B);
   // o mesmo JID em duas contas: C tenta o JID de A
   const codeC = await api('POST', '/whatsapp/link-code', { token: acc.C.token });
@@ -470,7 +506,8 @@ async function s5() {
   await deliver(JID.D, 'saldo');
   await settle();
   const dTexts = (await sentTo(JID.D)).map((m) => m.text).join('\n');
-  check('A vinculou o numero novo (D) e ve so o proprio saldo', dTexts.includes(MONEY.A.balance) && !dTexts.includes(MONEY.B.balance));
+  cur.A = JID.D;
+  check('A vinculou o numero novo (D) e ve so o proprio saldo', dTexts.includes(balanceA) && !dTexts.includes(balanceB), dTexts);
   // webhook: assinatura invalida, ausente e corpo adulterado
   const sentBeforeSig = (await sentAll()).length;
   const bad = await deliver(JID.D, 'saldo', { sign: 'invalid' });
@@ -496,12 +533,14 @@ async function s6() {
     add(`meta ${who}`, goalName(who));
     add(`JID ${who}`, JID[who].split('@')[0]);
   }
+  for (const who of WHO) add(`saldo atual ${who}`, await balanceOf(who));
   for (const who of WHO) if (acc[who].lastCode) add(`codigo de vinculo ${who}`, acc[who].lastCode);
   for (const text of ['sem categoria', 'xyzdesconhecido', '51,11', '47,47', '11,11', '22,22', '33,33']) add(`texto "${text}"`, text);
   add('chave da API do falso', process.env.FAKE_API_KEY);
   add('segredo do webhook', WEBHOOK_SECRET);
   add('senha de teste', PASSWORD);
   for (const [index, extra] of (process.env.GREP_SECRETS ?? '').split(',').filter(Boolean).entries()) add(`segredo extra ${index + 1}`, extra);
+  for (const id of watchIds) add(`id de rascunho/nota alheio ${id.slice(0, 8)}`, id);
   for (const file of files) {
     const lines = readFileSync(file, 'utf8').split('\n');
     const hits = [];
@@ -512,6 +551,8 @@ async function s6() {
     check(`${path.basename(file)} (${lines.length} linhas): zero ocorrencias de saldo, texto, codigo, chave, segredo, categoria, meta ou numero`, hits.length === 0, hits.slice(0, 8).join(' | '));
     const idHits = [];
     for (const [number, line] of lines.entries()) for (const who of WHO) if (line.includes(acc[who].userId)) idHits.push(`${number + 1}: ${line.replace(acc[who].userId, `<id ${who}>`).slice(0, 140)}`);
+    const mixed = lines.filter((line) => WHO.filter((who) => line.includes(acc[who].userId)).length > 1);
+    check(`${path.basename(file)}: nenhuma linha mistura ids de duas contas`, mixed.length === 0, mixed.slice(0, 3).join(' | ').slice(0, 300));
     note(`${path.basename(file)}: ${idHits.length} linha(s) com id de conta (o id da propria conta em log operacional): ${idHits.slice(0, 3).join(' || ')}`);
   }
   note(`codigos de vinculo no banco: ${codes}`);
@@ -534,15 +575,15 @@ async function s7(writes) {
   const CONFIRMS = ['confirmar', 'Confirmar', 'CONFIRMAR', 'confirmár', 'Confirmar!', ' confirmar ', 'sim', 'SIM', 'ok', 'OK', ' ok '];
   for (const [kind, text] of KINDS) {
     await flushRate();
-    await deliver(JID.A, 'cancelar');
+    await deliver(cur.A, 'cancelar');
     await settle();
     const before = await domainCounts('A');
-    await deliver(JID.A, text);
+    await deliver(cur.A, text);
     await settle();
     const draft = await waSession('A');
     const awaiting = draft?.state === 'AWAITING_CONFIRMATION';
     check(`rascunho de ${kind} aguardando confirmacao no WhatsApp`, awaiting, `estado=${draft?.state}`);
-    for (const word of CONFIRMS) await deliver(JID.A, word);
+    for (const word of CONFIRMS) await deliver(cur.A, word);
     await settle();
     const after = await domainCounts('A');
     if (writes) {
@@ -553,12 +594,12 @@ async function s7(writes) {
     check(`WRITES=false, ${kind}: rascunho continua aguardando`, (await waSession('A'))?.state === 'AWAITING_CONFIRMATION');
   }
   if (!writes) {
-    const texts = (await sentTo(JID.A)).map((m) => m.text);
+    const texts = (await sentTo(cur.A)).map((m) => m.text);
     check('WRITES=false: as respostas mandam confirmar no app', texts.some((text) => text.includes('app')));
     // botao do app: grava (D9, desenho)
-    await deliver(JID.A, 'cancelar');
+    await deliver(cur.A, 'cancelar');
     await settle();
-    await deliver(JID.A, `62,62 ${cat('A').toLowerCase()}`);
+    await deliver(cur.A, `62,62 ${cat('A').toLowerCase()}`);
     await settle();
     const session = await api('GET', '/conversation/session', { token: acc.A.token });
     const before = await txCount('A', { amount: 62.62 });
