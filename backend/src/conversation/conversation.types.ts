@@ -25,7 +25,7 @@ export interface ConversationInput {
   receivedAt: Date;
 }
 
-export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION' | 'ENVELOPE' | 'CREDIT_LIMIT' | 'RECURRING' | 'INSTALLMENT';
+export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION' | 'ENVELOPE' | 'CREDIT_LIMIT' | 'RECURRING' | 'INSTALLMENT' | 'TRANSACTION_CHANGE';
 
 /**
  * Rascunho para a tela: valores formatados, sem ids internos alem de draftId/draftVersion.
@@ -57,7 +57,9 @@ export type PendingField =
   | 'goal'
   | 'name'
   | 'installmentsTotal'
-  | 'firstDueDate';
+  | 'firstDueDate'
+  | 'transaction'
+  | 'change';
 
 /** Rascunho de lançamento. Sessões antigas não têm `kind`: ausente = TRANSACTION. Dinheiro em centavos. */
 export interface ExpenseOrIncomeDraft {
@@ -145,6 +147,22 @@ export interface InstallmentDraft {
   reviewReason?: string;
 }
 
+/**
+ * Editar ou apagar lançamento por conversa (contrato 8a, secoes 3 a 6). Só guarda ids: o item é relido do banco com id + userId.
+ * changes: campos a mudar (só EDIT). targetUpdatedAt: updatedAt do item quando foi escolhido (conflito, secao 5).
+ */
+export interface TransactionChangeDraft {
+  kind: 'TRANSACTION_CHANGE';
+  action: 'EDIT' | 'DELETE';
+  /** Ids da lista numerada (máx. 5), enquanto o usuário não escolhe. */
+  candidateIds: string[];
+  targetId: string | null;
+  targetUpdatedAt: string | null;
+  changes: { amountCents?: number; description?: string; categoryId?: string | null; date?: string };
+  pendingField: 'transaction' | 'change' | null;
+  reviewReason?: string;
+}
+
 export type SessionDraft =
   | ExpenseOrIncomeDraft
   | GoalDraft
@@ -152,7 +170,8 @@ export type SessionDraft =
   | EnvelopeDraft
   | CreditLimitDraft
   | RecurringDraft
-  | InstallmentDraft;
+  | InstallmentDraft
+  | TransactionChangeDraft;
 
 /** Dados numericos para a tela (centavos). Presentes em INFO e DONE. */
 export interface ReplyData {

@@ -1,4 +1,4 @@
-import { BadRequestException, HttpException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   ConversationChannel,
@@ -52,6 +52,20 @@ import {
   splitTrailingAmount,
 } from './parsers/goal.parser';
 import { normalize } from './parsers/normalize';
+import type { TransactionChangeDraft } from './conversation.types';
+import {
+  TX_CHANGE_MAX_CANDIDATES,
+  TX_CHANGE_WINDOW_DAYS,
+  TX_DAY_MS,
+  TX_REPLIES,
+  TxCandidate,
+  describeCandidate,
+  formatCandidateLine,
+  isDeleteChange,
+  isTransactionChangeDraft,
+  matchesSearch,
+  parseSearch,
+} from './transaction-change';
 import { parseEnvelopeBody } from './parsers/envelope.parser';
 import { IntentMatch, ReadIntent, matchIntent } from './parsers/intent.matcher';
 import {
@@ -229,6 +243,9 @@ interface AppliedAction {
 
 type CategoryRow = { id: string; name: string };
 
+/** Resultado da busca de lançamentos para editar/apagar (contrato 8a, secao 3). */
+type TxSearch = { status: 'FOUND'; ids: string[] } | { status: 'NONE' } | { status: 'ONLY_NON_EDITABLE' };
+
 interface DashboardFinances {
   finances: { balance: number; monthlyIncome: number; monthlyExpenses: number };
 }
@@ -375,9 +392,11 @@ export class ConversationService {
       return this.importReceiptReply(input, 'IDLE');
     }
     if (intent.intent === 'edit_transaction' || intent.intent === 'delete_transaction') {
-      // Fluxo de editar e apagar entra nos commits seguintes; até lá segue como texto livre, como antes.
-      await this.recordEvent(input, null, ConversationOutcome.UNRECOGNIZED);
-      return { ...this.reply('HELP', 'IDLE', REPLIES.unrecognized), unrecognized: true };
+      return this.startTransactionChange({
+        input,
+        action: intent.intent === 'delete_transaction' ? 'DELETE' : 'EDIT',
+        body: intent.body,
+      });
     }
     return this.runRead(input, intent, 'IDLE');
   }
@@ -749,6 +768,126 @@ export class ConversationService {
     return found !== null;
   }
 
+  /** Editar/apagar: busca e abre a lista numerada, ou pergunta qual lançamento (contrato 8a, secoes 3 a 5). */
+  private async startTransactionChange(args: {
+    input: ConversationInput;
+    action: 'EDIT' | 'DELETE';
+    body: string;
+  }): Promise<ConversationReply> {
+    const { input, action, body } = args;
+    const intent = action === 'DELETE' ? 'delete_transaction' : 'edit_transaction';
+    const draft: TransactionChangeDraft = {
+      kind: 'TRANSACTION_CHANGE',
+      action,
+      candidateIds: [],
+      targetId: null,
+      targetUpdatedAt: null,
+      changes: {},
+      pendingField: 'transaction',
+    };
+    if (body.length > 0) {
+      const found = await this.searchTransactions(input.userId, body, input.receivedAt);
+      if (found.status !== 'FOUND') {
+        await this.recordEvent(input, intent, ConversationOutcome.RECOGNIZED);
+        return this.reply('INFO', 'IDLE', found.status === 'NONE' ? TX_REPLIES.notFound : TX_REPLIES.onlyNonEditable);
+      }
+      draft.candidateIds = found.ids;
+    }
+    const today = await this.todayYmd(input.userId, input.receivedAt);
+    return this.saveNewDraft({ input, intent, draft, today });
+  }
+
+  /**
+   * Busca de lançamentos do usuário (últimos 180 dias). Só elegíveis entram na lista, até 5, na ordem do banco.
+   * Carrega a janela inteira e filtra em memória: acento e caixa não são feitos no banco (ver resultado-8a1.md).
+   */
+  private async searchTransactions(userId: string, body: string, now: Date): Promise<TxSearch> {
+    const search = parseSearch(body);
+    if (search.term.length === 0 && search.amountCents === null) {
+      return { status: 'NONE' };
+    }
+    const rows = await this.prisma.transaction.findMany({
+      where: { userId, date: { gte: new Date(now.getTime() - TX_CHANGE_WINDOW_DAYS * TX_DAY_MS) } },
+      select: TX_SELECT,
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      take: TX_SEARCH_LIMIT,
+    });
+    const matched = rows.map(toTxCandidate).filter((candidate) => matchesSearch(candidate, search));
+    if (matched.length === 0) {
+      return { status: 'NONE' };
+    }
+    const editable = matched.filter((candidate) => candidate.eligible).slice(0, TX_CHANGE_MAX_CANDIDATES);
+    if (editable.length === 0) {
+      return { status: 'ONLY_NON_EDITABLE' };
+    }
+    return { status: 'FOUND', ids: editable.map((candidate) => candidate.id) };
+  }
+
+  /** Lançamento do usuário pelo id (id + userId, nunca só o id). */
+  private async loadTxCandidate(userId: string, id: string): Promise<TxCandidate | null> {
+    const row = await this.prisma.transaction.findFirst({ where: { id, userId }, select: TX_SELECT });
+    return row ? toTxCandidate(row) : null;
+  }
+
+  /** Lista numerada dos candidatos ainda existentes (a numeração segue a ordem original). */
+  private async transactionListText(userId: string, ids: string[]): Promise<string> {
+    const rows = await this.prisma.transaction.findMany({ where: { userId, id: { in: ids } }, select: TX_SELECT });
+    const byId = new Map(rows.map((row) => [row.id, toTxCandidate(row)]));
+    const lines = ids
+      .map((id, index) => {
+        const candidate = byId.get(id);
+        return candidate ? formatCandidateLine(index, candidate) : null;
+      })
+      .filter((line): line is string => line !== null);
+    return [TX_REPLIES.pickHeader, ...lines].join('\n');
+  }
+
+  /** Resposta à lista: número escolhe; sem candidatos, o texto é a busca. Mudança de campo: etapa de editar. */
+  private async answerTransactionChange(userId: string, draft: TransactionChangeDraft, value: string): Promise<PendingAnswer> {
+    if (draft.pendingField === 'transaction') {
+      if (draft.candidateIds.length === 0) {
+        // Comando sem termo ("apagar"): o texto seguinte é a busca.
+        const found = await this.searchTransactions(userId, value, new Date());
+        if (found.status !== 'FOUND') {
+          return { status: 'ERROR', text: found.status === 'NONE' ? TX_REPLIES.notFound : TX_REPLIES.onlyNonEditable };
+        }
+        draft.candidateIds = found.ids;
+        return { status: 'UPDATED' };
+      }
+      const chosen = /^[1-5]$/.test(value) ? draft.candidateIds[Number(value) - 1] : undefined;
+      if (chosen === undefined) {
+        return {
+          status: 'ASK',
+          outcome: ConversationOutcome.UNRECOGNIZED,
+          question: await this.transactionListText(userId, draft.candidateIds),
+        };
+      }
+      const row = await this.loadTxCandidate(userId, chosen);
+      if (row === null) {
+        return { status: 'ERROR', text: TX_REPLIES.gone };
+      }
+      draft.targetId = row.id;
+      draft.targetUpdatedAt = row.updatedAt.toISOString();
+      draft.candidateIds = [];
+      draft.pendingField = draft.action === 'EDIT' ? 'change' : null;
+      return { status: 'UPDATED' };
+    }
+    // Mudança de campo entra na etapa de editar (commit seguinte).
+    return { status: 'ERROR', text: TX_REPLIES.notReady };
+  }
+
+  /** Prévia do rascunho de editar/apagar. Confirmação de apagar usa a palavra "apagar" (contrato 8a, secao 4). */
+  private async transactionChangeText(userId: string, draft: TransactionChangeDraft): Promise<string> {
+    const target = draft.targetId === null ? null : await this.loadTxCandidate(userId, draft.targetId);
+    if (target === null) {
+      return TX_REPLIES.gone;
+    }
+    if (draft.action === 'DELETE') {
+      return [`Apagar: ${describeCandidate(target)}.`, TX_REPLIES.deleteWarning, TX_REPLIES.deleteNeedsWord].join('\n');
+    }
+    return `Editar: ${describeCandidate(target)}.`;
+  }
+
   private async saveNewDraft(args: {
     input: ConversationInput;
     intent: string;
@@ -813,6 +952,10 @@ export class ConversationService {
       return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: REPLIES.collectingReminder });
     }
     const pendingDraft = session.draft as unknown as SessionDraft;
+    if (isTransactionChangeDraft(pendingDraft) && pendingDraft.pendingField === 'transaction' && !awaiting) {
+      // Lista numerada: número escolhe o lançamento; texto vira nova busca (contrato 8a, secao 3).
+      return this.fillPendingField({ input, session, text });
+    }
     // Texto que começa com número é a resposta pedida (nome, descrição, quantidade, data), não um comando (contrato 4).
     if (!awaiting && startsWithNumericAnswer(pendingDraft) && /^\d/.test(text)) {
       return this.fillPendingField({ input, session, text });
@@ -898,6 +1041,9 @@ export class ConversationService {
 
   /** Resposta ao campo pendente, por tipo de rascunho. Só muda `draft` no caminho UPDATED. */
   private async answerPending(userId: string, draft: SessionDraft, value: string, today: string): Promise<PendingAnswer> {
+    if (isTransactionChangeDraft(draft)) {
+      return this.answerTransactionChange(userId, draft, value);
+    }
     if (draft.kind === 'GOAL') {
       return this.answerGoal(userId, draft, value);
     }
@@ -1284,6 +1430,10 @@ export class ConversationService {
 
   /** Um caso por tipo de rascunho. Só este método chama o serviço financeiro ou de metas. */
   private async applyByKind(userId: string, draft: SessionDraft): Promise<AppliedAction> {
+    if (isTransactionChangeDraft(draft)) {
+      // Aplicação de apagar e editar entra nos commits seguintes.
+      throw new ConflictException(TX_REPLIES.notReady);
+    }
     if (draft.kind === 'GOAL') {
       return this.applyGoal(userId, draft);
     }
@@ -1886,7 +2036,7 @@ export class ConversationService {
       state: ConversationState.AWAITING_CONFIRMATION,
       text: [options.prefix, body].filter(Boolean).join('\n'),
       draft: view,
-      quickReplies: ['confirmar', 'cancelar'],
+      quickReplies: isDeleteChange(draft) ? ['apagar', 'cancelar'] : ['confirmar', 'cancelar'],
     };
   }
 
@@ -1897,6 +2047,9 @@ export class ConversationService {
     today: string,
     view: DraftView,
   ): Promise<string> {
+    if (isTransactionChangeDraft(draft)) {
+      return this.transactionChangeText(session.userId, draft);
+    }
     if (draft.kind === 'ENVELOPE') {
       return envelopeDraftText({
         name: draft.name ?? 'a informar',
@@ -1948,6 +2101,11 @@ export class ConversationService {
   }
 
   private async questionFor(userId: string, draft: SessionDraft): Promise<string> {
+    if (isTransactionChangeDraft(draft)) {
+      if (draft.pendingField === 'change') return TX_REPLIES.askChange;
+      if (draft.candidateIds.length === 0) return TX_REPLIES.askWhich;
+      return this.transactionListText(userId, draft.candidateIds);
+    }
     if (draft.kind === 'RECURRING') {
       if (draft.pendingField === 'description') return REPLIES.askDraftDescription;
       if (draft.pendingField === 'amount') return REPLIES.askRecurringAmount;
@@ -2007,6 +2165,16 @@ export class ConversationService {
       date: null,
       paymentMethod: null,
     };
+
+    if (isTransactionChangeDraft(draft)) {
+      return {
+        ...base,
+        kind: 'TRANSACTION_CHANGE',
+        title: draft.action === 'DELETE' ? 'Apagar lançamento' : 'Editar lançamento',
+        pendingField: draft.pendingField,
+        rows: [{ label: 'Lançamento', value: draft.targetId === null ? 'a escolher' : 'escolhido' }],
+      };
+    }
 
     if (draft.kind === 'ENVELOPE') {
       return {
@@ -2259,6 +2427,57 @@ export class ConversationService {
   }
 }
 
+/** Campos lidos do lançamento para editar/apagar (id + userId sempre no where). */
+const TX_SELECT = {
+  id: true,
+  type: true,
+  description: true,
+  amount: true,
+  date: true,
+  createdAt: true,
+  updatedAt: true,
+  categoryId: true,
+  recurringTransactionId: true,
+  installmentPurchaseId: true,
+  linkedGoalId: true,
+  receiptScan: { select: { id: true } },
+  category: { select: { name: true } },
+} as const;
+
+/** Teto de linhas lidas na busca (janela de 180 dias). */
+const TX_SEARCH_LIMIT = 2000;
+
+function toTxCandidate(row: {
+  id: string;
+  description: string;
+  amount: { toString(): string };
+  date: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  categoryId: string | null;
+  recurringTransactionId: string | null;
+  installmentPurchaseId: string | null;
+  linkedGoalId: string | null;
+  receiptScan: { id: string } | null;
+  category: { name: string } | null;
+}): TxCandidate {
+  return {
+    id: row.id,
+    description: row.description,
+    amountCents: Math.round(Number(row.amount.toString()) * 100),
+    date: row.date.toISOString().slice(0, 10),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    categoryId: row.categoryId,
+    categoryName: row.category?.name ?? null,
+    eligible:
+      row.recurringTransactionId === null &&
+      row.installmentPurchaseId === null &&
+      row.linkedGoalId === null &&
+      row.receiptScan === null,
+  };
+}
+
 // ---------- funcoes puras do motor ----------
 
 function isReadIntent(match: IntentMatch): boolean {
@@ -2282,6 +2501,9 @@ function isOptionNumber(words: string, draft: SessionDraft): boolean {
 }
 
 function numberedOptions(draft: SessionDraft): string[] {
+  if (isTransactionChangeDraft(draft)) {
+    return [];
+  }
   if (draft.kind === 'GOAL' || draft.kind === 'ENVELOPE' || draft.kind === 'CREDIT_LIMIT' || draft.kind === 'RECURRING' || draft.kind === 'INSTALLMENT') {
     return [];
   }
