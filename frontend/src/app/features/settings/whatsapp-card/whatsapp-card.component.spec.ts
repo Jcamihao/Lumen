@@ -125,6 +125,9 @@ describe("WhatsappCardComponent", () => {
     expect(value?.getAttribute("aria-label")).toBe("K 7 M 2 Q X 9 P");
     expect(text()).toMatch(/Vale até \d{2}:\d{2}/);
     expect(text()).toContain("Envie este código, só ele, no WhatsApp para +55 11 91234-5678.");
+    // Em 360 px o número do Lumen não pode quebrar no meio.
+    const dest = (fixture.nativeElement as HTMLElement).querySelector(".whatsapp-card__number");
+    expect(dest?.textContent).toBe("+55 11 91234-5678");
     fixture.destroy();
   });
 
@@ -262,6 +265,9 @@ describe("WhatsappCardComponent", () => {
     expect(api.getStatus).toHaveBeenCalledTimes(2);
     expect(text()).toContain("WhatsApp vinculado: +55 11 *****-1234");
     expect(text()).not.toContain("Muitos códigos");
+    // O número mascarado fica em um span sem quebra de linha (não parte em "+55 11" / "*****-1234").
+    const masked = (fixture.nativeElement as HTMLElement).querySelector(".whatsapp-card__number");
+    expect(masked?.textContent).toBe("+55 11 *****-1234");
     fixture.destroy();
   });
 

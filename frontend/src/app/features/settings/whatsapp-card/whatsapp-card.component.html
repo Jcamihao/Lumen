@@ -14,7 +14,7 @@
       }
 
       @case ("linked") {
-        <p class="whatsapp-card__text"><strong>WhatsApp vinculado: {{ maskedNumber() }}</strong></p>
+        <p class="whatsapp-card__text"><strong>WhatsApp vinculado: <span class="whatsapp-card__number">{{ maskedNumber() }}</span></strong></p>
         @if (linkedSince()) {
           <p class="whatsapp-card__text">desde {{ linkedSince() }}</p>
         }
@@ -95,7 +95,7 @@
             </div>
 
             <p class="whatsapp-card__text" aria-live="off">Vale até {{ expiresLabel() }} (faltam {{ minutesLeft() }} min).</p>
-            <p class="whatsapp-card__text">Envie este código, só ele, no WhatsApp para {{ destinationLabel() }}.</p>
+            <p class="whatsapp-card__text">Envie este código, só ele, no WhatsApp para <span class="whatsapp-card__number">{{ destinationLabel() }}</span>.</p>
             @if (copyMessage()) {
               <p class="whatsapp-card__text">{{ copyMessage() }}</p>
             }

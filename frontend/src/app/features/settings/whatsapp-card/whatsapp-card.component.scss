@@ -53,6 +53,11 @@
   color: var(--danger);
 }
 
+.whatsapp-card__number {
+  /* Em 360 px o número mascarado não pode quebrar no meio ("+55 11" / "*****-1234"). */
+  white-space: nowrap;
+}
+
 .whatsapp-card__code {
   display: grid;
   gap: 0.6rem;
