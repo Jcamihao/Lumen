@@ -103,6 +103,8 @@ export interface ConversationReply {
   quickReplies?: string[];
   /** true só quando o motor não reconheceu a intenção (texto livre). Só esse caso vai ao Selah. */
   unrecognized?: true;
+  /** Resposta veio do fallback de IA do motor (texto puro, nunca escrita). */
+  aiFallback?: true;
 }
 
 /** Resposta de GET /conversation/session. */
