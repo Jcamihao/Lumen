@@ -19,8 +19,8 @@ const UNLINK_COMMAND = 'desvincular whatsapp';
 
 export const WHATSAPP_TEXTS = {
   linked: 'Pronto! Este número está vinculado ao seu Lumen. Mande, por exemplo, "50 mercado" ou "saldo".',
-  linkFailed: 'Não consegui validar este código. Gere um novo no Lumen, em Configurações, e envie de novo.',
-  hint: 'Este número ainda não está vinculado a uma conta do Lumen. Abra o Lumen, vá em Configurações > WhatsApp e gere um código de vínculo.',
+  linkFailed: 'Não consegui validar este código. Gere um novo no Lumen, em Configurações > Conta > WhatsApp, e envie de novo.',
+  hint: 'Este número ainda não está vinculado a uma conta do Lumen. Abra o Lumen, vá em Configurações > Conta > WhatsApp e gere um código de vínculo.',
   media: 'Notas e arquivos são enviados pela tela de Importações do app do Lumen. Por aqui eu leio só texto.',
   unlinked: 'Número desvinculado. Para usar o Lumen por aqui de novo, gere um novo código de vínculo no app.',
   empty: 'Não entendi a mensagem. Mande um texto curto, por exemplo "50 mercado" ou "saldo".',

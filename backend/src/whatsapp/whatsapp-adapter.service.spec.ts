@@ -167,6 +167,11 @@ describe('WhatsappAdapterService', () => {
     expect(client.sendText).toHaveBeenCalledWith(JID_A, WHATSAPP_TEXTS.linkFailed);
   });
 
+  it('os textos de orientacao apontam o caminho real do cartao: Configuracoes > Conta > WhatsApp', () => {
+    expect(WHATSAPP_TEXTS.hint).toContain('Configurações > Conta > WhatsApp');
+    expect(WHATSAPP_TEXTS.linkFailed).toContain('Configurações > Conta > WhatsApp');
+  });
+
   it('orientacao a numero desconhecido: no maximo uma por hora por numero', async () => {
     const { service, client } = build({ users: {} });
     await service.handleInbound(event({ content: 'oi' }));
