@@ -205,6 +205,15 @@ describe('Isolamento A/B/C do motor de conversa', () => {
       expect(world.sessions.filter((row) => row.userId === USER_ID.A)).toHaveLength(1);
     });
 
+    it('o mesmo messageId em canais diferentes da mesma conta nao colide: os dois processam', async () => {
+      const messageId = 'mesmo-id-nos-dois-canais';
+      const app = await send('A', expenseText('A'), 'APP', messageId);
+      const whatsapp = await send('A', expenseText('A'), 'WHATSAPP', messageId);
+
+      expect(app.kind).toBe('CONFIRM_DRAFT');
+      expect(whatsapp.kind).toBe('CONFIRM_DRAFT');
+    });
+
     it('o mesmo messageId em contas diferentes nao colide: as duas processam', async () => {
       const messageId = 'mesma-key-id';
       const a = await send('A', expenseText('A'), 'WHATSAPP', messageId);
