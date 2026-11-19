@@ -1,15 +1,18 @@
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
   DestroyRef,
+  ElementRef,
   inject,
+  Injector,
   OnInit,
   signal,
 } from "@angular/core";
 import { HttpErrorResponse } from "@angular/common/http";
 import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
-import { catchError, EMPTY, interval, Subscription, switchMap } from "rxjs";
+import { catchError, EMPTY, exhaustMap, interval, Subscription } from "rxjs";
 import { ToastService } from "../../../core/services/toast.service";
 import { WhatsappApiService } from "../../../core/services/whatsapp-api.service";
 import { WhatsappLinkCode, WhatsappStatus } from "../../../core/models/whatsapp.models";
@@ -18,7 +21,7 @@ type CardState = "loading" | "unavailable" | "error" | "unlinked" | "linked";
 type RetryAction = "status" | "code" | "unlink";
 
 const CONSENT_FIRST =
-  "Ao vincular, você conversa com o Lumen pelo WhatsApp. O WhatsApp é um canal de terceiros: o texto das suas mensagens passa por ele.";
+  "Ao vincular, você conversa com o Lumen pelo WhatsApp. O Lumen usa uma conexão não oficial com o WhatsApp, um canal de terceiros: o texto das suas mensagens passa por ele.";
 const CONSENT_SECOND =
   "Por enquanto, pelo WhatsApp o Lumen só monta rascunhos e consulta; para lançar de fato, confirme no app. Você pode desvincular quando quiser.";
 const UNAVAILABLE_TEXT = "O WhatsApp ainda não está disponível nesta conta.";
@@ -44,8 +47,10 @@ export function splitCode(code: string): string {
  * Formato não reconhecido volta sem alteração.
  */
 export function formatPhone(raw: string): string {
-  const digits = raw.replace(/\D/g, "");
-  const m = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(digits);
+  const text = raw.trim();
+  // Só dígitos e separadores de telefone; qualquer outra coisa sai como veio.
+  if (!/^\+?[\d\s()-]+$/.test(text)) return raw;
+  const m = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(text.replace(/\D/g, ""));
   return m ? `+55 ${m[1]} ${m[2]}-${m[3]}` : raw;
 }
 
@@ -64,6 +69,8 @@ export class WhatsappCardComponent implements OnInit {
   private readonly api = inject(WhatsappApiService);
   private readonly toast = inject(ToastService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   readonly consentFirst = CONSENT_FIRST;
   readonly consentSecond = CONSENT_SECOND;
@@ -92,7 +99,7 @@ export class WhatsappCardComponent implements OnInit {
     return Math.max(0, Math.ceil((Date.parse(iso) - this.now()) / 60000));
   });
   readonly destinationLabel = computed(() => {
-    const number = this.status()?.contactNumber;
+    const number = this.status()?.contactNumber?.trim();
     return number ? formatPhone(number) : "o número do Lumen";
   });
   readonly maskedNumber = computed(() => this.status()?.maskedNumber ?? "");
@@ -139,10 +146,13 @@ export class WhatsappCardComponent implements OnInit {
       .subscribe({
         next: (c) => {
           this.busy.set(false);
+          // Resposta atrasada: se o cartão já saiu de "não vinculado", o código não vale.
+          if (this.state() !== "unlinked") return;
           this.codeExpired.set(false);
           this.copyMessage.set(null);
           this.code.set(c);
           this.startCodeTimers();
+          this.focusAfterRender("code");
         },
         error: (err: unknown) => {
           this.busy.set(false);
@@ -169,10 +179,12 @@ export class WhatsappCardComponent implements OnInit {
 
   askUnlink(): void {
     this.confirmingUnlink.set(true);
+    this.focusAfterRender("confirm-unlink");
   }
 
   cancelUnlink(): void {
     this.confirmingUnlink.set(false);
+    this.focusAfterRender("unlink");
   }
 
   confirmUnlink(): void {
@@ -194,6 +206,7 @@ export class WhatsappCardComponent implements OnInit {
           );
           this.state.set("unlinked");
           this.toast.success("WhatsApp desvinculado");
+          this.focusAfterRender("generate");
         },
         error: (err: unknown) => {
           this.busy.set(false);
@@ -265,8 +278,15 @@ export class WhatsappCardComponent implements OnInit {
     this.tickSub = interval(TICK_MS).subscribe(() => this.onTick());
     this.pollSub = interval(POLL_MS)
       .pipe(
-        switchMap(() =>
-          this.api.getStatus().pipe(catchError(() => EMPTY)),
+        // exhaustMap: não abre requisição nova enquanto a anterior não voltou.
+        exhaustMap(() =>
+          this.api.getStatus().pipe(
+            catchError((err: unknown) => {
+              // Falha passageira: tenta no próximo ciclo (o prazo do código limita o total).
+              if (statusOf(err) === 503) this.handleError(err, "status");
+              return EMPTY;
+            }),
+          ),
         ),
       )
       .subscribe((s) => this.onPoll(s));
@@ -289,6 +309,10 @@ export class WhatsappCardComponent implements OnInit {
 
   private onPoll(s: WhatsappStatus): void {
     if (!this.code()) return;
+    if (!s.enabled) {
+      this.applyStatus(s);
+      return;
+    }
     this.status.set(s);
     if (s.linked) {
       this.stopCodeTimers();
@@ -302,6 +326,14 @@ export class WhatsappCardComponent implements OnInit {
     this.stopCodeTimers();
     this.clearCode();
     this.codeExpired.set(true);
+  }
+
+  /** Devolve o foco a um controle que acabou de sair ou entrar na tela, para não cair no <body>. */
+  private focusAfterRender(target: "code" | "generate" | "unlink" | "confirm-unlink"): void {
+    afterNextRender(
+      () => this.host.nativeElement.querySelector<HTMLElement>(`[data-focus="${target}"]`)?.focus(),
+      { injector: this.injector },
+    );
   }
 
   private clearCode(): void {

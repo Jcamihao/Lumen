@@ -56,19 +56,19 @@
 .whatsapp-card__code {
   display: grid;
   gap: 0.6rem;
-  padding: 1rem;
-  border: 1px solid var(--surface-panel-border);
-  background: var(--surface-panel);
+  padding-left: 0.85rem;
+  border-left: 3px solid var(--accent);
 }
 
 .whatsapp-card__code-value {
   margin: 0;
   color: var(--text-strong);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 2rem;
+  /* Uma linha só, mesmo em 360 px: "K7M2-QX9P" nunca quebra no hífen. */
+  font-size: clamp(1.4rem, 8vw, 2rem);
   font-weight: 700;
-  letter-spacing: 0.12em;
-  overflow-wrap: anywhere;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
 }
 
 .whatsapp-card button:focus-visible {

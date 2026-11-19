@@ -24,6 +24,7 @@
             <button
               type="button"
               class="proto-button proto-button--secondary whatsapp-card__button"
+              data-focus="unlink"
               [disabled]="busy()"
               (click)="askUnlink()"
             >
@@ -33,6 +34,7 @@
             <button
               type="button"
               class="proto-button proto-button--secondary whatsapp-card__button whatsapp-card__button--danger"
+              data-focus="confirm-unlink"
               [disabled]="busy()"
               (click)="confirmUnlink()"
             >
@@ -63,6 +65,7 @@
             <button
               type="button"
               class="proto-button proto-button--secondary whatsapp-card__button"
+              data-focus="generate"
               [disabled]="busy()"
               (click)="generateCode()"
             >
@@ -75,6 +78,8 @@
           <div class="whatsapp-card__code">
             <p
               class="whatsapp-card__code-value"
+              data-focus="code"
+              tabindex="-1"
               role="group"
               [attr.aria-label]="spelledCode()"
             >{{ formattedCode() }}</p>
@@ -89,7 +94,7 @@
               </button>
             </div>
 
-            <p class="whatsapp-card__text">Vale até {{ expiresLabel() }} (faltam {{ minutesLeft() }} min).</p>
+            <p class="whatsapp-card__text" aria-live="off">Vale até {{ expiresLabel() }} (faltam {{ minutesLeft() }} min).</p>
             <p class="whatsapp-card__text">Envie este código, só ele, no WhatsApp para {{ destinationLabel() }}.</p>
             @if (copyMessage()) {
               <p class="whatsapp-card__text">{{ copyMessage() }}</p>
