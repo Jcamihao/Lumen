@@ -617,6 +617,16 @@ describe('revisao 8a-1: travas de apagar e editar', () => {
     expect((db.sessions[0].draft as Row).candidateIds).toEqual(['o3', 'o2', 'o1']);
   });
 
+  it('novo comando de escrita durante a lista nao vira busca: lembra o rascunho e mantem a sessao', async () => {
+    const { send, db } = buildService(ROWS);
+    await send('apagar');
+    const before = db.sessions[0].version;
+    const reply = await send('corrigir mercado');
+    expect(reply.text).toContain('Responda a pergunta ou "cancelar"');
+    expect(db.sessions[0].version).toBe(before);
+    expect((db.sessions[0].draft as Row).candidateIds).toEqual([]);
+  });
+
   it('ajuda durante a lista nao vira busca nem muda a sessao', async () => {
     const { send, db } = buildService(ROWS);
     await send('apagar');

@@ -1047,9 +1047,9 @@ export class ConversationService {
       return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: REPLIES.collectingReminder });
     }
     const pendingDraft = session.draft as unknown as SessionDraft;
-    const readOrHelp = intent !== null && (isReadIntent(intent) || intent.intent === 'help' || intent.intent === 'import_receipt');
-    if (isTransactionChangeDraft(pendingDraft) && pendingDraft.pendingField === 'transaction' && !awaiting && !readOrHelp) {
-      // Lista numerada: número escolhe o lançamento; texto vira nova busca (contrato 8a, secao 3).
+    if (isTransactionChangeDraft(pendingDraft) && pendingDraft.pendingField === 'transaction' && !awaiting && (intent === null || /^\d/.test(text))) {
+      // Lista numerada: número escolhe o lançamento; texto vira nova busca (contrato 8a, secao 3). Comando conhecido
+      // (leitura, ajuda, novo comando de escrita) segue a regra do motor: leitura responde, escrita lembra o rascunho.
       return this.fillPendingField({ input, session, text });
     }
     if (isTransactionChangeDraft(pendingDraft) && pendingDraft.action === 'EDIT' && pendingDraft.pendingField !== 'transaction' && !intent) {
