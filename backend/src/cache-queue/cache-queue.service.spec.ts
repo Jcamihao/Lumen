@@ -204,8 +204,137 @@ describe('CacheQueueService', () => {
     await jest.advanceTimersByTimeAsync(1500);
     await expect(limited).resolves.toBeNull();
 
-    // Timeout nao e erro de conexao: o status segue ativo.
-    expect(service.isReady()).toBe(true);
+    // Dois timeouts seguidos: Redis pendurado, vira degradado (ver testes do breaker).
+    expect(service.isReady()).toBe(false);
+  });
+
+  describe('breaker de timeouts (Redis pendurado, conexao aberta)', () => {
+    async function twoTimeouts(service: CacheQueueService, client: any) {
+      client.get.mockReturnValue(neverSettles());
+      for (let i = 0; i < 2; i++) {
+        const p = service.getJson('k');
+        await jest.advanceTimersByTimeAsync(1500);
+        await p;
+      }
+    }
+
+    it('um timeout isolado nao derruba o status; sucesso zera a contagem', async () => {
+      const { service, client } = await boot();
+      jest.useFakeTimers();
+
+      client.get.mockReturnValueOnce(neverSettles());
+      const p = service.getJson('k');
+      await jest.advanceTimersByTimeAsync(1500);
+      await p;
+      expect(service.isReady()).toBe(true);
+
+      client.get.mockResolvedValueOnce(null);
+      await service.getJson('k');
+      client.get.mockReturnValueOnce(neverSettles());
+      const p2 = service.getJson('k');
+      await jest.advanceTimersByTimeAsync(1500);
+      await p2;
+      expect(service.isReady()).toBe(true);
+    });
+
+    it('dois timeouts seguidos: degradado imediato, sem chamar o cliente, 1 log de transicao', async () => {
+      const { service, client } = await boot();
+      jest.useFakeTimers();
+      await twoTimeouts(service, client);
+
+      expect(service.isReady()).toBe(false);
+      client.get.mockClear();
+      const t0 = Date.now();
+      await expect(service.getJson('k')).resolves.toBeNull();
+      await expect(service.hitRateLimitWindow('rl', 1000)).resolves.toBeNull();
+      expect(Date.now() - t0).toBe(0);
+      expect(client.get).not.toHaveBeenCalled();
+      const downLogs = warnSpy.mock.calls.filter((c) => /indisponivel/.test(String(c[0])));
+      expect(downLogs).toHaveLength(1);
+    });
+
+    it('depois do intervalo uma sonda testa o Redis; sucesso volta a up com log de reconexao', async () => {
+      const { service, client } = await boot();
+      jest.useFakeTimers();
+      await twoTimeouts(service, client);
+
+      await jest.advanceTimersByTimeAsync(4999);
+      client.get.mockClear();
+      await service.getJson('k');
+      expect(client.get).not.toHaveBeenCalled();
+
+      await jest.advanceTimersByTimeAsync(1);
+      client.get.mockResolvedValue(JSON.stringify({ ok: 1 }));
+      await expect(service.getJson('k')).resolves.toEqual({ ok: 1 });
+      expect(service.isReady()).toBe(true);
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('reconectado'));
+    });
+
+    it('sonda que falha reagenda a proxima e so uma sonda roda por vez', async () => {
+      const { service, client } = await boot();
+      jest.useFakeTimers();
+      await twoTimeouts(service, client);
+
+      await jest.advanceTimersByTimeAsync(5000);
+      client.get.mockClear();
+      const probe = service.getJson('k');
+      const other = service.getJson('k'); // concorrente: nao e sonda
+      await expect(other).resolves.toBeNull();
+      expect(client.get).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(1500);
+      await probe;
+      expect(service.isReady()).toBe(false);
+
+      client.get.mockClear();
+      await service.getJson('k');
+      expect(client.get).not.toHaveBeenCalled(); // reagendada, ainda nao passou o intervalo
+      await jest.advanceTimersByTimeAsync(5000);
+      client.get.mockResolvedValue(null);
+      await service.getJson('k');
+      expect(client.get).toHaveBeenCalledTimes(1);
+      expect(service.isReady()).toBe(true);
+    });
+
+    it('close apos o breaker cancela a sonda; ready do cliente volta a up', async () => {
+      const { service, client } = await boot();
+      jest.useFakeTimers();
+      await twoTimeouts(service, client);
+
+      client.emit('close');
+      await jest.advanceTimersByTimeAsync(10_000);
+      client.get.mockClear();
+      await service.getJson('k');
+      expect(client.get).not.toHaveBeenCalled(); // sem sonda: espera o ready do ioredis
+
+      client.emit('ready');
+      expect(service.isReady()).toBe(true);
+      client.get.mockResolvedValue(null);
+      await service.getJson('k');
+      expect(client.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('sonda que falha nao gera warn por chamada (log so na transicao)', async () => {
+      const { service, client } = await boot();
+      jest.useFakeTimers();
+      await twoTimeouts(service, client);
+      warnSpy.mockClear();
+
+      for (let i = 0; i < 3; i++) {
+        await jest.advanceTimersByTimeAsync(5000);
+        const probe = service.getJson('k');
+        await jest.advanceTimersByTimeAsync(1500);
+        await probe;
+      }
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('timeout do proprio ioredis (Command timed out) tambem conta', async () => {
+      const { service, client } = await boot();
+      client.get.mockRejectedValue(new Error('Command timed out'));
+      await service.getJson('k');
+      await service.getJson('k');
+      expect(service.isReady()).toBe(false);
+    });
   });
 
   it('(f) boot com connect rejeitando: sem excecao, isReady false; depois de ready passa a funcionar', async () => {
