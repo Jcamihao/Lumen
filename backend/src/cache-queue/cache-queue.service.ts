@@ -18,6 +18,10 @@ const COMMAND_TIMEOUT_MS = 1500;
 const INVALIDATE_TIMEOUT_MS = 5000;
 const ENQUEUE_TIMEOUT_MS = 2000;
 const CLOSE_TIMEOUT_MS = 1000;
+// Redis pendurado (conexao aberta, sem resposta) nao emite close: depois de N timeouts
+// seguidos o cache vira degradado e so uma chamada de sonda por intervalo testa a volta.
+const TIMEOUT_STREAK_LIMIT = 2;
+const PROBE_INTERVAL_MS = 5000;
 
 // INCR, PTTL e PEXPIRE no mesmo script: rodam atomicos no Redis, entao a chave nao
 // fica sem expiracao se o PEXPIRE falhar. Expira na primeira batida ou se a chave ficou sem TTL.
@@ -66,6 +70,13 @@ function errorReason(error: unknown): string {
   return error instanceof Error ? error.name : 'erro';
 }
 
+function isTimeoutError(error: unknown): boolean {
+  return (
+    error instanceof CacheTimeoutError ||
+    (error instanceof Error && /timed out/i.test(error.message))
+  );
+}
+
 function isConnectionError(error: unknown): boolean {
   const code = (error as { code?: unknown } | null)?.code;
   if (typeof code === 'string' && CONNECTION_ERROR_CODES.has(code)) {
@@ -83,6 +94,9 @@ export class CacheQueueService implements OnModuleInit, OnModuleDestroy {
   private readonly queues = new Map<string, Queue>();
   private status: CacheStatus = 'idle';
   private closing = false;
+  private timeoutStreak = 0;
+  private probeAt: number | null = null;
+  private probing = false;
 
   constructor(private readonly configService: ConfigService) {
     this.ttlSeconds = this.configService.get<number>('cache.ttlSeconds', 300);
@@ -120,10 +134,25 @@ export class CacheQueueService implements OnModuleInit, OnModuleDestroy {
     });
     this.cacheClient = client;
 
-    client.on('ready', () => this.setStatus('up'));
-    client.on('close', () => this.setStatus('down', 'conexao fechada'));
-    client.on('end', () => this.setStatus('down', 'conexao encerrada'));
-    client.on('error', (error: unknown) => this.setStatus('down', errorReason(error)));
+    // ready/close: o proprio ioredis reconecta; a sonda por timeout deixa de valer.
+    client.on('ready', () => {
+      this.resetTimeoutState();
+      this.setStatus('up');
+    });
+    client.on('close', () => {
+      this.probeAt = null;
+      this.setStatus('down', 'conexao fechada');
+    });
+    client.on('end', () => {
+      this.probeAt = null;
+      this.setStatus('down', 'conexao encerrada');
+    });
+    client.on('error', (error: unknown) => {
+      if (isConnectionError(error)) {
+        this.probeAt = null;
+      }
+      this.setStatus('down', errorReason(error));
+    });
 
     // Nao aguarda: o boot segue mesmo com Redis fora; a reconexao e automatica.
     client.connect().catch((error: unknown) => this.setStatus('down', errorReason(error)));
@@ -277,22 +306,64 @@ export class CacheQueueService implements OnModuleInit, OnModuleDestroy {
     timeoutMs = COMMAND_TIMEOUT_MS,
   ): Promise<T> {
     const client = this.cacheClient;
-    if (!this.isReady() || !client) {
+    if (!client) {
+      return fallback;
+    }
+
+    // Degradado por timeout: so uma chamada por intervalo passa como sonda.
+    const isProbe = !this.isReady() && this.claimProbe();
+    if (!this.isReady() && !isProbe) {
       return fallback;
     }
 
     try {
-      return await withTimeout(command(client), timeoutMs);
+      const result = await withTimeout(command(client), timeoutMs);
+      this.resetTimeoutState();
+      if (isProbe) {
+        this.setStatus('up');
+      }
+      return result;
     } catch (error) {
       const reason = errorReason(error);
-      this.logger.warn(
-        `Operacao de cache falhou (${operation}: ${reason}). Usando modo degradado.`,
-      );
+      if (isProbe) {
+        this.probeAt = Date.now() + PROBE_INTERVAL_MS;
+      } else {
+        this.logger.warn(
+          `Operacao de cache falhou (${operation}: ${reason}). Usando modo degradado.`,
+        );
+      }
       if (isConnectionError(error)) {
         this.setStatus('down', reason);
+      } else if (isTimeoutError(error)) {
+        this.registerTimeout();
       }
       return fallback;
+    } finally {
+      if (isProbe) {
+        this.probing = false;
+      }
     }
+  }
+
+  private claimProbe(): boolean {
+    if (this.closing || this.probing || this.probeAt === null || Date.now() < this.probeAt) {
+      return false;
+    }
+    this.probing = true;
+    return true;
+  }
+
+  private registerTimeout() {
+    this.timeoutStreak += 1;
+    if (this.timeoutStreak >= TIMEOUT_STREAK_LIMIT && this.isReady()) {
+      this.probeAt = Date.now() + PROBE_INTERVAL_MS;
+      this.setStatus('down', 'timeouts seguidos');
+    }
+  }
+
+  private resetTimeoutState() {
+    this.timeoutStreak = 0;
+    this.probeAt = null;
   }
 
   // Loga so na transicao de estado, nunca a cada tentativa de reconexao.
