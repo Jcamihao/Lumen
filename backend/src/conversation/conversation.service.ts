@@ -315,14 +315,22 @@ export class ConversationService {
     return this.cancelSession(userId, session, null);
   }
 
-  /** Estado do canal APP para o app reabrir a conversa. Sem sessao ativa = IDLE. */
+  /**
+   * Estado para o app reabrir a conversa. A sessao do canal APP manda. Sem ela, um rascunho do WhatsApp
+   * que espera confirmacao tambem aparece, para o usuario confirmar pelo botao do app (a escrita pelo
+   * WhatsApp pode estar desligada). Sempre so do proprio usuario. Sem sessao ativa = IDLE.
+   */
   async getSession(userId: string): Promise<{ state: ConversationStateView; draft?: DraftView }> {
-    const session = await this.loadSession(userId, ConversationChannel.APP);
-    if (!session || session.expiresAt < new Date()) {
-      return { state: 'IDLE' };
+    const now = new Date();
+    const app = await this.loadSession(userId, ConversationChannel.APP);
+    if (app && app.expiresAt >= now) {
+      return { state: app.state, draft: await this.toDraftView(app) };
     }
-    const draft = await this.toDraftView(session);
-    return { state: session.state, draft };
+    const whatsapp = await this.loadSession(userId, ConversationChannel.WHATSAPP);
+    if (whatsapp && whatsapp.expiresAt >= now && whatsapp.state === ConversationState.AWAITING_CONFIRMATION) {
+      return { state: whatsapp.state, draft: await this.toDraftView(whatsapp) };
+    }
+    return { state: 'IDLE' };
   }
 
   // ---------- sem sessao ativa ----------

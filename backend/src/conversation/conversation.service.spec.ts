@@ -3029,6 +3029,44 @@ describe('ConversationService', () => {
       expect(transactions.create).toHaveBeenCalledTimes(1);
     });
 
+    describe('getSession mostra o rascunho pendente do WhatsApp (decisao D9)', () => {
+      it('so rascunho WHATSAPP aguardando confirmacao: o app o recebe e o botao grava', async () => {
+        writesEnabled = false;
+        const draft = await whatsappDraft();
+        const view = await service.getSession('A');
+        expect(view.state).toBe(ConversationState.AWAITING_CONFIRMATION);
+        expect(view.draft).toMatchObject({ draftId: draft.id, draftVersion: draft.version });
+        const reply = await service.confirmDraft('A', view.draft!.draftId, view.draft!.draftVersion);
+        expect(reply?.kind).toBe('DONE');
+        expect(transactions.create).toHaveBeenCalledTimes(1);
+      });
+
+      it('sessao APP ativa tem prioridade sobre a do WhatsApp', async () => {
+        await whatsappDraft();
+        await draftFor('A', '50 mercado');
+        const appSession = db.sessions.find((row) => row.channel === ConversationChannel.APP)!;
+        const view = await service.getSession('A');
+        expect(view.draft).toMatchObject({ draftId: appSession.id });
+      });
+
+      it('isolamento: o rascunho WHATSAPP de A nunca aparece para B', async () => {
+        await whatsappDraft();
+        await expect(service.getSession('B')).resolves.toEqual({ state: 'IDLE' });
+      });
+
+      it('sessao WHATSAPP que ainda coleta campos nao aparece no app (so a pendente de confirmacao)', async () => {
+        const reply = await service.handleMessage(wmsg('gastei 32,90'));
+        expect(reply.state).toBe(ConversationState.COLLECTING_FIELDS);
+        await expect(service.getSession('A')).resolves.toEqual({ state: 'IDLE' });
+      });
+
+      it('sessao WHATSAPP expirada vira IDLE', async () => {
+        const draft = await whatsappDraft();
+        draft.expiresAt = new Date(Date.now() - 1000);
+        await expect(service.getSession('A')).resolves.toEqual({ state: 'IDLE' });
+      });
+    });
+
     it('botao do app (confirmDraft) nao e afetado pela trava, mesmo em sessao WHATSAPP', async () => {
       writesEnabled = false;
       const draft = await whatsappDraft();
