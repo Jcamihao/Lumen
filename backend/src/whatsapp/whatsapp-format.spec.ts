@@ -36,6 +36,11 @@ describe('formatReplyForWhatsapp', () => {
     expect(text).not.toContain('confirmar');
   });
 
+  it('resposta do fallback de IA (aiFallback) sai como texto simples, sem cartao nem exemplos', () => {
+    const parts = formatReplyForWhatsapp(base({ kind: 'INFO', state: 'IDLE', text: 'Seu caixa fecha no azul.', aiFallback: true }));
+    expect(parts).toEqual(['Seu caixa fecha no azul.']);
+  });
+
   it('quickReplies so entram em HELP', () => {
     const [helpText] = formatReplyForWhatsapp(base({ kind: 'HELP', quickReplies: ['saldo', 'reservas'] } as never));
     expect(helpText).toContain('Exemplos: saldo | reservas');

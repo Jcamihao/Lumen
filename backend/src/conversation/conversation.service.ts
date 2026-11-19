@@ -31,6 +31,7 @@ import {
   parseRecurringBody,
   resolveFirstDue,
 } from './parsers/write-body.parser';
+import { AssistantFallbackOutcome, AssistantService } from '../assistant/assistant.service';
 import { EntitlementsService } from '../billing/entitlements.service';
 import { PlanLimitException } from '../billing/plan-limit.exception';
 import { GoalsService } from '../goals/goals.service';
@@ -263,6 +264,7 @@ export class ConversationService {
     private readonly envelopes: EnvelopesService,
     private readonly entitlements: EntitlementsService,
     private readonly configService: ConfigService,
+    private readonly assistant: AssistantService,
   ) {}
 
   /** Mensagem digitada (canal APP ou WhatsApp). Ordem de decisao: contrato secao 6 e motor. */
@@ -340,11 +342,9 @@ export class ConversationService {
     const intent = text.length > 0 ? matchIntent(text) : null;
 
     if (!intent) {
-      await this.recordEvent(input, null, ConversationOutcome.UNRECOGNIZED);
       const word = normalize(text);
       const control = CONFIRM_WORDS.has(word) || CANCEL_WORDS.has(word);
-      const help = this.reply('HELP', 'IDLE', REPLIES.unrecognized);
-      return control ? help : { ...help, unrecognized: true };
+      return this.handleUnrecognized(input, text, control);
     }
     if (intent.intent === 'create_expense' || intent.intent === 'create_income') {
       return this.startDraft({ input, intent });
@@ -353,7 +353,7 @@ export class ConversationService {
       return this.startGoalDraft({ input, body: intent.body, cofrinho: intent.cofrinho === true });
     }
     if (intent.intent === 'contribute_goal') {
-      return this.startContributionDraft({ input, body: intent.body });
+      return this.startContributionDraft({ input, body: intent.body, text });
     }
     if (intent.intent === 'create_envelope') {
       return this.startEnvelopeDraft({ input, body: intent.body });
@@ -375,6 +375,41 @@ export class ConversationService {
       return this.importReceiptReply(input, 'IDLE');
     }
     return this.runRead(input, intent, 'IDLE');
+  }
+
+  /**
+   * Texto que o motor não reconheceu. Em `off` é a ajuda de sempre (com `unrecognized` para o canal).
+   * Em `fallback` o próprio motor decide: a IA responde (só leitura) ou a ajuda diz por que não respondeu.
+   * Um único evento por messageId. Palavra de controle e texto vazio não chamam a IA.
+   */
+  private async handleUnrecognized(input: ConversationInput, text: string, controlWord: boolean): Promise<ConversationReply> {
+    const fallback = this.configService.get<string>('app.assistantAiMode') === 'fallback';
+    if (controlWord || !fallback || text === '') {
+      await this.recordEvent(input, null, ConversationOutcome.UNRECOGNIZED);
+      const help = this.reply('HELP', 'IDLE', REPLIES.unrecognized);
+      return controlWord ? help : { ...help, unrecognized: true };
+    }
+
+    let outcome: AssistantFallbackOutcome;
+    try {
+      outcome = await this.assistant.tryFallbackAnswer(input.userId, text);
+    } catch (error) {
+      // Só o nome do erro: nunca a mensagem do usuário.
+      this.logger.warn(`Fallback de IA falhou: erro=${error instanceof Error ? error.name : typeof error}`);
+      outcome = { status: 'unavailable' };
+    }
+
+    if (outcome.status === 'answered') {
+      await this.recordEvent(input, 'ai_fallback', ConversationOutcome.AI_ANSWERED);
+      return { ...this.reply('INFO', 'IDLE', outcome.text), aiFallback: true };
+    }
+    if (outcome.status === 'unavailable') {
+      await this.recordEvent(input, 'ai_fallback', ConversationOutcome.AI_UNAVAILABLE);
+      return this.reply('HELP', 'IDLE', REPLIES.aiFallbackUnavailable);
+    }
+    await this.recordEvent(input, 'ai_fallback', ConversationOutcome.AI_BLOCKED);
+    const helpText = outcome.status === 'blocked_by_plan' ? REPLIES.aiFallbackBlocked : REPLIES.aiFallbackHelp;
+    return this.reply('HELP', 'IDLE', helpText);
   }
 
   /** Só orienta e indica a tela: não cria rascunho nem sessão e não grava nada (contrato do item 4, secao 9). */
@@ -493,8 +528,8 @@ export class ConversationService {
    * Aporte em meta ativa. Meta única é usada sem perguntar; várias viram opções numeradas.
    * Não recusa por limite de plano: aporte não cria vaga.
    */
-  private async startContributionDraft(args: { input: ConversationInput; body: string }): Promise<ConversationReply> {
-    const { input, body } = args;
+  private async startContributionDraft(args: { input: ConversationInput; body: string; text: string }): Promise<ConversationReply> {
+    const { input, body, text } = args;
     const { userId, receivedAt } = input;
     const parsed = parseContributionBody(body);
     if (parsed.ok === false) {
@@ -521,8 +556,7 @@ export class ConversationService {
     // Sem valor e com um nome que não casa com nenhuma meta ativa ("guardar dinheiro é importante")
     // é conversa, não comando: vai ao Selah, sem rascunho e sem pedir valor.
     if (amountCents === null && name !== null && candidates.length === 0) {
-      await this.recordEvent(input, null, ConversationOutcome.UNRECOGNIZED);
-      return { ...this.reply('HELP', 'IDLE', REPLIES.unrecognized), unrecognized: true };
+      return this.handleUnrecognized(input, text, false);
     }
     if (active.length === 0) {
       await this.recordEvent(input, 'contribute_goal', ConversationOutcome.ERROR);

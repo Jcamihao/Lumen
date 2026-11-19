@@ -62,6 +62,18 @@ export const REPLIES = {
     'Para importar uma nota, abra Importações e envie a foto ou o PDF. ' +
     'A leitura é feita aqui no Lumen e você confere tudo antes de gravar.',
   unrecognized: 'Não entendi. Digite "ajuda" para ver os exemplos.',
+  aiFallbackBlocked:
+    'Não entendi. As perguntas com IA do seu plano já acabaram neste mês. ' +
+    'Exemplos: "50 mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
+    '"quanto gastei", "gastos com mercado", "limite do cartão".',
+  aiFallbackUnavailable:
+    'Não entendi. A IA está indisponível agora. ' +
+    'Exemplos: "50 mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
+    '"quanto gastei", "gastos com mercado", "limite do cartão".',
+  aiFallbackHelp:
+    'Não entendi. ' +
+    'Exemplos: "50 mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
+    '"quanto gastei", "gastos com mercado", "limite do cartão".',
   duplicate: 'Essa mensagem já foi processada. Nada foi alterado.',
   whatsappWritesOff: 'Para gravar, confirme no app: abra o assistente e toque em Confirmar. Por aqui eu monto o rascunho e respondo consultas.',
   expired: 'O rascunho expirou e foi descartado. Envie o lançamento de novo.',

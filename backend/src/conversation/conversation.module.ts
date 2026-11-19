@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AssistantModule } from '../assistant/assistant.module';
 import { BillingModule } from '../billing/billing.module';
 import { CreditCycleModule } from '../credit-cycle/credit-cycle.module';
 import { DashboardModule } from '../dashboard/dashboard.module';
@@ -20,6 +21,7 @@ import { ConversationService } from './conversation.service';
     RecurringTransactionsModule,
     EnvelopesModule,
     BillingModule,
+    AssistantModule,
   ],
   controllers: [ConversationController],
   providers: [ConversationService],

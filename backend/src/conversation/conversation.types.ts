@@ -206,4 +206,6 @@ export interface ConversationReply {
    * entregar a mensagem a outro destino (ex.: Selah). "ajuda", "confirmar" sem rascunho etc. não marcam.
    */
   unrecognized?: true;
+  /** Resposta veio do fallback de IA (ASSISTANT_AI_MODE=fallback). Nunca vem de escrita. */
+  aiFallback?: true;
 }
