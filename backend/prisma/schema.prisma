@@ -812,6 +812,9 @@ enum ConversationOutcome {
   UNRECOGNIZED
   DUPLICATE
   ERROR
+  AI_ANSWERED
+  AI_BLOCKED
+  AI_UNAVAILABLE
 }
 
 // Uma sessao ativa por usuario e canal. Nao existe linha = IDLE.

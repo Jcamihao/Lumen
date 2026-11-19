@@ -5,6 +5,7 @@ import { randomUUID } from "crypto";
 import { request as httpRequest } from "http";
 import { request as httpsRequest } from "https";
 import { EntitlementsService } from "../billing/entitlements.service";
+import { PlanLimitException } from "../billing/plan-limit.exception";
 import { DashboardService } from "../dashboard/dashboard.service";
 import { CreateGoalDto } from "../goals/dto/create-goal.dto";
 import { GoalsService } from "../goals/goals.service";
@@ -218,6 +219,12 @@ type SelahAttemptReason =
 
 const ASSISTANT_REPLY_LIST_LIMIT = 6;
 
+export type AssistantFallbackOutcome =
+  | { status: "answered"; text: string }
+  | { status: "blocked_by_plan" }
+  | { status: "no_consent" }
+  | { status: "unavailable" };
+
 @Injectable()
 export class AssistantService {
   private readonly logger = new Logger(AssistantService.name);
@@ -284,6 +291,51 @@ export class AssistantService {
       generatedAt,
       spendingAnalysis,
     );
+  }
+
+  /**
+   * Resposta do fallback do motor de conversa. Só leitura: o payload é o mesmo do assistente e só
+   * o campo `answer` volta. Sem resposta da IA, devolve `unavailable` (nunca inventa texto local).
+   * Crédito cobrado só quando há resposta.
+   */
+  async tryFallbackAnswer(userId: string, question: string): Promise<AssistantFallbackOutcome> {
+    const privacySettings = await this.loadPrivacySettings(userId);
+
+    if (
+      !privacySettings.privacyNoticeAcceptedAt ||
+      !privacySettings.aiAssistantEnabled ||
+      !privacySettings.aiAssistantConsentAt
+    ) {
+      return { status: "no_consent" };
+    }
+
+    try {
+      await this.entitlements.assertCanAskSelah(userId);
+    } catch (error) {
+      if (error instanceof PlanLimitException) {
+        return { status: "blocked_by_plan" };
+      }
+      throw error;
+    }
+
+    const summary = (await this.dashboardService.getSummary(userId)) as DashboardSummary;
+    const selahResult = await this.askSelah(
+      summary,
+      privacySettings,
+      question,
+      [],
+      "general",
+      this.readFallbackTimeout(),
+    );
+    const answer = selahResult.reply?.answer.trim() ?? "";
+
+    if (!answer) {
+      return { status: "unavailable" };
+    }
+
+    await this.entitlements.recordSelahQuestion(userId);
+
+    return { status: "answered", text: answer };
   }
 
   async getPulse(userId: string): Promise<AssistantPulse> {
@@ -405,6 +457,7 @@ export class AssistantService {
     question: string,
     history: AskAssistantHistoryItemDto[],
     originModule: AssistantModule,
+    timeoutMs?: number,
   ): Promise<{
     reply: AssistantReply | null;
     attempted: boolean;
@@ -437,7 +490,7 @@ export class AssistantService {
       "/v1/adapters/lumen/life-assistant/chat";
     const apiKey = this.readEnv("SELAH_API_KEY");
     const sourceApp = this.readEnv("SELAH_SOURCE_APP") || "LumenBack";
-    const timeoutMs = this.readTimeout();
+    const requestTimeoutMs = timeoutMs ?? this.readTimeout();
     const url = `${baseUrl.replace(/\/+$/, "")}${route.startsWith("/") ? route : `/${route}`}`;
     const requestId = randomUUID();
     const body = JSON.stringify(
@@ -455,7 +508,7 @@ export class AssistantService {
           "X-Request-Id": requestId,
           ...(apiKey ? { "X-Selah-Api-Key": apiKey } : {}),
         },
-        timeoutMs,
+        requestTimeoutMs,
       );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -2175,6 +2228,11 @@ export class AssistantService {
   private readTimeout() {
     const value = Number(this.readEnv("SELAH_TIMEOUT_MS") || 50000);
     return Number.isFinite(value) && value > 0 ? value : 50000;
+  }
+
+  private readFallbackTimeout() {
+    const value = Number(this.readEnv("SELAH_FALLBACK_TIMEOUT_MS") || 15000);
+    return Number.isFinite(value) && value > 0 ? value : 15000;
   }
 
   private readBooleanEnv(key: string) {

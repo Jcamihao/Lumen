@@ -39,6 +39,8 @@ type ManualTurn = {
   quickReplies: string[];
   /** Dados do DONE (ids criados). Usados só para o rótulo "Criado" de conta fixa e parcelado. */
   data: ReplyData | null;
+  /** Resposta do fallback de IA: vira balão de texto, sem o cartão do motor. */
+  aiFallback: boolean;
 };
 
 type ManualError = { text: string; retry: (() => void) | null };
@@ -46,8 +48,12 @@ type ManualError = { text: string; retry: (() => void) | null };
 /** Mensagem pendente de reentrega (decisão 5): reenviar o mesmo texto reusa o messageId. */
 type ManualPending = { id: string; text: string };
 
-/** Acima disso, o aviso "Consultando seus dados…" aparece (decisão 6). */
-const MANUAL_SLOW_HINT_MS = 250;
+/** Aviso de carregamento por tempo de espera (decisão 6 e spec "Carregamento e timeout"). */
+const MANUAL_HINT_STAGES = [
+  { afterMs: 250, text: "Consultando seus dados…" },
+  { afterMs: 3000, text: "Organizando a resposta…" },
+  { afterMs: 5000, text: "Organizando a resposta… Pode demorar um pouco." },
+];
 /** Limite do motor (contrato, seção 4). Texto maior não é comando: vai direto ao Selah. */
 const MANUAL_MAX_LENGTH = 500;
 
@@ -109,13 +115,16 @@ export class AssistantPageComponent {
   protected readonly readingTab = signal<AssistantReadingTab>("summary");
   protected readonly manualTurn = signal<ManualTurn | null>(null);
   protected readonly manualBusy = signal(false);
-  protected readonly manualSlow = signal(false);
+  protected readonly manualHint = signal<string | null>(null);
   protected readonly manualError = signal<ManualError | null>(null);
   protected readonly manualCommands = ["saldo", "resumo", "50 mercado", "cartão", "ajuda"];
+  /** Cartão do motor: tudo que não é balão do fallback de IA. */
+  protected readonly manualCard = computed(() => (this.manualTurn()?.aiFallback ? null : this.manualTurn()));
+  protected readonly manualBubble = computed(() => (this.manualTurn()?.aiFallback ? this.manualTurn() : null));
   private manualPending: ManualPending | null = null;
   /** Sobe a cada resposta aplicada. Uma leitura de sessão que começou antes dela é antiga e não pode sobrescrever o cartão. */
   private manualEpoch = 0;
-  private manualSlowTimer: ReturnType<typeof setTimeout> | null = null;
+  private manualHintTimers: ReturnType<typeof setTimeout>[] = [];
   protected readonly activeMessage = computed<AssistantMessage | null>(() => {
     const messages = this.history();
     const activeId = this.activeMessageId();
@@ -216,7 +225,7 @@ export class AssistantPageComponent {
     this.loadServerHistory();
     this.loadPulse();
     this.refreshManualSession();
-    this.destroyRef.onDestroy(() => this.clearManualSlowTimer());
+    this.destroyRef.onDestroy(() => this.clearManualHintTimers());
 
     this.route.queryParamMap
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -530,12 +539,7 @@ export class AssistantPageComponent {
 
           this.manualPending = null;
 
-          // Não reconheceu o texto livre: segue o fluxo do Selah, sem mudar nada dele.
-          if (reply.unrecognized) {
-            this.askSelah(question);
-            return;
-          }
-
+          // O motor decide sozinho quando o texto não é comando (fallback de IA); `unrecognized` não desvia mais para o Selah.
           this.applyManualReply(question, reply);
           this.clearQuestionIfUnchanged(question);
         },
@@ -729,6 +733,7 @@ export class AssistantPageComponent {
       draft: reply.draft ?? null,
       quickReplies: reply.quickReplies ?? [],
       data: reply.data ?? null,
+      aiFallback: reply.aiFallback === true,
     });
 
     // Mensagem já processada: o estado real está no servidor. Atualiza o cartão com ele.
@@ -783,30 +788,28 @@ export class AssistantPageComponent {
       draft: session.draft,
       quickReplies: [],
       data: null,
+      aiFallback: false,
     });
   }
 
   private startManualBusy() {
     this.manualBusy.set(true);
-    this.manualSlow.set(false);
-    this.clearManualSlowTimer();
-    this.manualSlowTimer = setTimeout(() => {
-      this.manualSlowTimer = null;
-      this.manualSlow.set(true);
-    }, MANUAL_SLOW_HINT_MS);
+    this.manualHint.set(null);
+    this.clearManualHintTimers();
+    this.manualHintTimers = MANUAL_HINT_STAGES.map((stage) =>
+      setTimeout(() => this.manualHint.set(stage.text), stage.afterMs),
+    );
   }
 
   private endManualBusy() {
     this.manualBusy.set(false);
-    this.manualSlow.set(false);
-    this.clearManualSlowTimer();
+    this.manualHint.set(null);
+    this.clearManualHintTimers();
   }
 
-  private clearManualSlowTimer() {
-    if (this.manualSlowTimer !== null) {
-      clearTimeout(this.manualSlowTimer);
-      this.manualSlowTimer = null;
-    }
+  private clearManualHintTimers() {
+    this.manualHintTimers.forEach((timer) => clearTimeout(timer));
+    this.manualHintTimers = [];
   }
 
   /** UUID v4 para o messageId. randomUUID só existe em contexto seguro (https/localhost); getRandomValues existe sempre. */

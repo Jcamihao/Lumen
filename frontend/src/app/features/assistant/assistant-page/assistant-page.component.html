@@ -80,7 +80,7 @@
   </div>
 
   <section #manualRegion class="assistant-manual-region" aria-live="polite">
-    <p class="proto-muted" *ngIf="manualSlow()">Consultando seus dados…</p>
+    <p class="proto-muted" *ngIf="manualHint() as hint">{{ hint }}</p>
 
     <div class="assistant-manual__error" *ngIf="manualError() as manualErr">
       <p class="assistant-error">{{ manualErr.text }}</p>
@@ -91,7 +91,12 @@
       </div>
     </div>
 
-    <article class="proto-surface assistant-manual" *ngIf="manualTurn() as turn">
+    <div class="assistant-bubble" *ngIf="manualBubble() as bubble">
+      <p class="proto-muted" *ngIf="bubble.question">Você: {{ bubble.question }}</p>
+      <p class="assistant-bubble__text">{{ bubble.text }}</p>
+    </div>
+
+    <article class="proto-surface assistant-manual" *ngIf="manualCard() as turn">
       <div class="proto-surface__head">
         <div>
           <h3>Assistente manual</h3>

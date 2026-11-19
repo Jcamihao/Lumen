@@ -164,13 +164,27 @@ describe("AssistantPageComponent — assistente manual", () => {
     });
   });
 
-  it("texto que o motor não reconhece vai ao Selah e não mostra cartão manual", () => {
+  it("unrecognized na resposta não chama mais o Selah e mostra o texto de ajuda do motor", () => {
     create();
 
     typeAndSend("Como estou hoje?");
 
     expect(conversation.sendMessage).toHaveBeenCalledTimes(1);
-    expect(api.askAssistant).toHaveBeenCalledTimes(1);
+    expect(api.askAssistant).not.toHaveBeenCalled();
+    expect(text()).toContain("Assistente manual");
+    expect(text()).toContain("ajuda");
+  });
+
+  it("resposta do fallback de IA (INFO com aiFallback) vira balão de texto, sem cartão", () => {
+    conversation.sendMessage.and.returnValue(
+      of({ kind: "INFO", state: "IDLE", text: "Seu caixa fecha no azul.", aiFallback: true }),
+    );
+    create();
+
+    typeAndSend("Analise meus gastos do mês");
+
+    expect(api.askAssistant).not.toHaveBeenCalled();
+    expect(root().querySelector(".assistant-bubble")?.textContent).toContain("Seu caixa fecha no azul.");
     expect(text()).not.toContain("Assistente manual");
   });
 
@@ -339,6 +353,64 @@ describe("AssistantPageComponent — assistente manual", () => {
     expect(text()).not.toContain("Consultando seus dados");
   }));
 
+  it("carregamento em estágios: 250 ms, 3 s e 5 s (com 'Pode demorar um pouco.')", fakeAsync(() => {
+    const pending = new Subject<ConversationReply>();
+    conversation.sendMessage.and.returnValue(pending.asObservable());
+    create();
+
+    clickCommand("50 mercado");
+    tick(250);
+    fixture.detectChanges();
+    expect(text()).toContain("Consultando seus dados…");
+
+    tick(2750);
+    fixture.detectChanges();
+    expect(text()).toContain("Organizando a resposta…");
+    expect(text()).not.toContain("Pode demorar um pouco.");
+
+    tick(2000);
+    fixture.detectChanges();
+    expect(text()).toContain("Pode demorar um pouco.");
+
+    pending.next({ kind: "CANCELLED", state: "IDLE", text: "Cancelado." });
+    pending.complete();
+    fixture.detectChanges();
+    expect(text()).not.toContain("Organizando a resposta");
+  }));
+
+  it("resposta que chega no meio da espera cancela os estágios seguintes (sem aviso preso na tela)", fakeAsync(() => {
+    const pending = new Subject<ConversationReply>();
+    conversation.sendMessage.and.returnValue(pending.asObservable());
+    create();
+
+    clickCommand("50 mercado");
+    tick(300);
+    pending.next({ kind: "CANCELLED", state: "IDLE", text: "Cancelado." });
+    pending.complete();
+    tick(6000);
+    fixture.detectChanges();
+
+    expect(text()).not.toContain("Consultando seus dados");
+    expect(text()).not.toContain("Organizando a resposta");
+    expect(text()).not.toContain("Pode demorar um pouco.");
+  }));
+
+  it("não oferece nova tentativa enquanto a requisição está em voo (sem retry no carregamento)", fakeAsync(() => {
+    const pending = new Subject<ConversationReply>();
+    conversation.sendMessage.and.returnValue(pending.asObservable());
+    create();
+
+    clickCommand("50 mercado");
+    tick(5000);
+    fixture.detectChanges();
+
+    expect(buttonWithText("Tentar de novo")).toBeUndefined();
+    expect(conversation.sendMessage).toHaveBeenCalledTimes(1);
+
+    pending.next({ kind: "CANCELLED", state: "IDLE", text: "Cancelado." });
+    pending.complete();
+  }));
+
   it("ao abrir, restaura o rascunho em andamento com botões", () => {
     conversation.getSession.and.returnValue(
       of<ConversationSessionView>({ state: "AWAITING_CONFIRMATION", draft: draft() }),
@@ -478,7 +550,7 @@ describe("AssistantPageComponent — assistente manual", () => {
     expect(buttonWithText("Confirmar")).toBeUndefined();
   });
 
-  it("limpa o campo após resposta do manual, mas mantém o texto quando vai ao Selah", () => {
+  it("limpa o campo após resposta do manual, inclusive a que veio com unrecognized", () => {
     conversation.sendMessage.and.returnValue(of({ kind: "ASK_FIELD", state: "COLLECTING_FIELDS", text: "Qual a descrição?" }));
     create();
     typeAndSend("50");
@@ -486,6 +558,27 @@ describe("AssistantPageComponent — assistente manual", () => {
 
     conversation.sendMessage.and.returnValue(of({ kind: "HELP", state: "IDLE", text: "x", unrecognized: true }));
     typeAndSend("Analise meus gastos do mês");
+    expect(root().querySelector<HTMLTextAreaElement>("#assistant-question")!.value).toBe("");
+  });
+
+  it("limpa o campo após resposta do fallback de IA", () => {
+    conversation.sendMessage.and.returnValue(
+      of({ kind: "INFO", state: "IDLE", text: "Seu caixa fecha no azul.", aiFallback: true }),
+    );
+    create();
+
+    typeAndSend("Analise meus gastos do mês");
+
+    expect(root().querySelector<HTMLTextAreaElement>("#assistant-question")!.value).toBe("");
+  });
+
+  it("mantém o texto no campo quando a mensagem segue ao Selah (offline)", () => {
+    api.offlineMode.set(true);
+    create();
+
+    typeAndSend("Analise meus gastos do mês");
+
+    expect(api.askAssistant).toHaveBeenCalledTimes(1);
     expect(root().querySelector<HTMLTextAreaElement>("#assistant-question")!.value).toBe("Analise meus gastos do mês");
   });
 

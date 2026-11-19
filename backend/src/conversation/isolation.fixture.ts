@@ -438,6 +438,7 @@ export function buildEngine(world: World, writesEnabled = true): Engine {
     s.envelopes as unknown as Deps[7],
     s.entitlements as unknown as Deps[8],
     config as unknown as Deps[9],
+    { tryFallbackAnswer: jest.fn(async () => ({ status: 'unavailable' })) } as unknown as Deps[10],
   );
   return { service, settings };
 }

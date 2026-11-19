@@ -119,6 +119,7 @@ describe('ConversationService', () => {
   let transactions: { create: jest.Mock };
   let configService: { get: jest.Mock };
   let writesEnabled = true;
+  let aiMode: 'off' | 'fallback' = 'off';
   let dashboard: { getSummary: jest.Mock };
   let creditCycle: { getCurrent: jest.Mock; setCeilingForConversation?: jest.Mock };
   let recurring: { list: jest.Mock; createForConversation: jest.Mock };
@@ -126,6 +127,7 @@ describe('ConversationService', () => {
   let goals: { list: jest.Mock; create: jest.Mock; contribute: jest.Mock };
   let envelopes: { list: jest.Mock; createForConversation: jest.Mock };
   let entitlements: { assertCanCreate: jest.Mock };
+  let assistant: { tryFallbackAnswer: jest.Mock };
   let service: ConversationService;
   let warn: jest.SpyInstance;
 
@@ -193,7 +195,14 @@ describe('ConversationService', () => {
     envelopes = { list: jest.fn(async () => []), createForConversation: jest.fn(async () => ({})) };
     entitlements = { assertCanCreate: jest.fn(async () => undefined) };
     writesEnabled = true;
-    configService = { get: jest.fn((key: string) => (key === 'whatsapp.writesEnabled' ? writesEnabled : undefined)) };
+    aiMode = 'off';
+    assistant = { tryFallbackAnswer: jest.fn(async () => ({ status: 'unavailable' })) };
+    configService = {
+      get: jest.fn((key: string) => {
+        if (key === 'app.assistantAiMode') return aiMode;
+        return key === 'whatsapp.writesEnabled' ? writesEnabled : undefined;
+      }),
+    };
     service = new ConversationService(
       db.prisma as unknown as Deps[0],
       dashboard as unknown as Deps[1],
@@ -205,6 +214,7 @@ describe('ConversationService', () => {
       envelopes as unknown as Deps[7],
       entitlements as unknown as Deps[8],
       configService as unknown as Deps[9],
+      assistant as unknown as Deps[10],
     );
   });
 
@@ -3073,6 +3083,183 @@ describe('ConversationService', () => {
       const reply = await service.confirmDraft('A', draft.id, draft.version);
       expect(reply?.kind).toBe('DONE');
       expect(transactions.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('fallback de IA (item 7, ASSISTANT_AI_MODE)', () => {
+    const writers = (): jest.Mock[] => [
+      transactions.create,
+      goals.create,
+      goals.contribute,
+      envelopes.createForConversation,
+      creditCycle.setCeilingForConversation as jest.Mock,
+      recurring.createForConversation,
+      installments.createForConversation,
+    ];
+
+    beforeEach(() => {
+      creditCycle.setCeilingForConversation = jest.fn(async () => ({}));
+      aiMode = 'fallback';
+    });
+
+    it('modo off: texto livre e aporte sem nome de meta so recebem ajuda, sem chamar a IA', async () => {
+      aiMode = 'off';
+
+      const free = await service.handleMessage(msg('A', 'analise meus gastos do mes'));
+      expect(free).toEqual({ kind: 'HELP', state: 'IDLE', text: REPLIES.unrecognized, unrecognized: true });
+      expect(db.events.at(-1)).toMatchObject({ intent: null, outcome: ConversationOutcome.UNRECOGNIZED });
+
+      const contribution = await service.handleMessage(msg('A', 'guardar dinheiro é importante'));
+      expect(contribution).toMatchObject({ kind: 'HELP', unrecognized: true });
+      expect(db.events.at(-1)).toMatchObject({ intent: null, outcome: ConversationOutcome.UNRECOGNIZED });
+
+      expect(assistant.tryFallbackAnswer).not.toHaveBeenCalled();
+    });
+
+    it('respondido: INFO em texto puro com aiFallback, um evento AI_ANSWERED e nenhuma escrita', async () => {
+      assistant.tryFallbackAnswer.mockResolvedValueOnce({ status: 'answered', text: 'Seu gasto com mercado subiu.' });
+
+      const reply = await service.handleMessage(msg('A', 'analise meus gastos do mes'));
+
+      expect(reply).toEqual({ kind: 'INFO', state: 'IDLE', text: 'Seu gasto com mercado subiu.', aiFallback: true });
+      expect(assistant.tryFallbackAnswer).toHaveBeenCalledWith('A', 'analise meus gastos do mes');
+      expect(db.events).toHaveLength(1);
+      expect(db.events[0]).toMatchObject({ intent: 'ai_fallback', outcome: ConversationOutcome.AI_ANSWERED });
+      expect(db.sessions).toHaveLength(0);
+      for (const write of writers()) {
+        expect(write).not.toHaveBeenCalled();
+      }
+    });
+
+    it.each([
+      ['blocked_by_plan', 'aiFallbackBlocked', ConversationOutcome.AI_BLOCKED],
+      ['no_consent', 'aiFallbackHelp', ConversationOutcome.AI_BLOCKED],
+      ['unavailable', 'aiFallbackUnavailable', ConversationOutcome.AI_UNAVAILABLE],
+    ] as const)('%s: ajuda contextual sem unrecognized e evento de IA', async (status, replyKey, outcome) => {
+      assistant.tryFallbackAnswer.mockResolvedValueOnce({ status });
+
+      const reply = await service.handleMessage(msg('A', 'analise meus gastos do mes'));
+
+      expect(reply).toEqual({ kind: 'HELP', state: 'IDLE', text: REPLIES[replyKey] });
+      expect(db.events).toHaveLength(1);
+      expect(db.events[0]).toMatchObject({ intent: 'ai_fallback', outcome });
+      expect(db.sessions).toHaveLength(0);
+      for (const write of writers()) {
+        expect(write).not.toHaveBeenCalled();
+      }
+    });
+
+    it('erro inesperado do fallback vira indisponivel, sem derrubar a conversa e sem texto do usuario no log', async () => {
+      assistant.tryFallbackAnswer.mockRejectedValueOnce(new Error('falha com analise meus gastos'));
+
+      const reply = await service.handleMessage(msg('A', 'analise meus gastos do mes'));
+
+      expect(reply).toEqual({ kind: 'HELP', state: 'IDLE', text: REPLIES.aiFallbackUnavailable });
+      expect(assistant.tryFallbackAnswer).toHaveBeenCalledTimes(1);
+      expect(db.events[0]).toMatchObject({ outcome: ConversationOutcome.AI_UNAVAILABLE });
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('analise');
+    });
+
+    it('reentrega do mesmo messageId vira DUPLICATE: um evento e nenhuma nova chamada a IA', async () => {
+      assistant.tryFallbackAnswer.mockResolvedValue({ status: 'answered', text: 'Resposta.' });
+      const first = msg('A', 'analise meus gastos do mes', T0, randomUUID());
+
+      await service.handleMessage(first);
+      const again = await service.handleMessage(first);
+
+      expect(again.kind).toBe('DUPLICATE');
+      expect(assistant.tryFallbackAnswer).toHaveBeenCalledTimes(1);
+      expect(db.events).toHaveLength(1);
+    });
+
+    it('reentrega do mesmo messageId com a IA ainda em voo: DUPLICATE, uma so chamada e um so evento', async () => {
+      let release: (value: { status: 'answered'; text: string }) => void = () => undefined;
+      assistant.tryFallbackAnswer.mockImplementation(
+        () => new Promise((resolve) => { release = resolve; }),
+      );
+      const first = msg('A', 'analise meus gastos do mes', T0, randomUUID());
+
+      const inFlight = service.handleMessage(first);
+      for (let i = 0; i < 50 && assistant.tryFallbackAnswer.mock.calls.length === 0; i += 1) {
+        await Promise.resolve();
+      }
+      const again = await service.handleMessage(first);
+      release({ status: 'answered', text: 'Resposta.' });
+      const original = await inFlight;
+
+      expect(again.kind).toBe('DUPLICATE');
+      expect(original).toMatchObject({ kind: 'INFO', aiFallback: true });
+      expect(assistant.tryFallbackAnswer).toHaveBeenCalledTimes(1);
+      expect(db.events).toHaveLength(1);
+    });
+
+    it('a trava de reentrega e por usuario e e liberada ao fim, inclusive quando a IA falha', async () => {
+      const releases: Array<(value: { status: 'answered'; text: string }) => void> = [];
+      assistant.tryFallbackAnswer.mockImplementation(
+        () => new Promise((resolve) => { releases.push(resolve); }),
+      );
+      const id = randomUUID();
+
+      const forA = service.handleMessage(msg('A', 'analise meus gastos do mes', T0, id));
+      const forB = service.handleMessage(msg('B', 'analise meus gastos do mes', T0, id));
+      for (let i = 0; i < 50 && releases.length < 2; i += 1) {
+        await Promise.resolve();
+      }
+      expect(releases).toHaveLength(2);
+      releases.forEach((release) => release({ status: 'answered', text: 'Ok.' }));
+      expect(await forA).toMatchObject({ kind: 'INFO', aiFallback: true });
+      expect(await forB).toMatchObject({ kind: 'INFO', aiFallback: true });
+      expect((service as unknown as { fallbackInFlight: Set<string> }).fallbackInFlight.size).toBe(0);
+
+      assistant.tryFallbackAnswer.mockReset().mockRejectedValueOnce(new Error('x'));
+      const failed = await service.handleMessage(msg('A', 'analise meus gastos do mes', T0, randomUUID()));
+      expect(failed.text).toBe(REPLIES.aiFallbackUnavailable);
+      expect((service as unknown as { fallbackInFlight: Set<string> }).fallbackInFlight.size).toBe(0);
+    });
+
+    it('aporte com nome que nao e meta vai a IA com o texto completo, sem rascunho', async () => {
+      assistant.tryFallbackAnswer.mockResolvedValueOnce({ status: 'answered', text: 'Guardar é bom.' });
+
+      const reply = await service.handleMessage(msg('A', 'guardar dinheiro é importante'));
+
+      expect(reply).toMatchObject({ kind: 'INFO', aiFallback: true });
+      expect(assistant.tryFallbackAnswer).toHaveBeenCalledWith('A', 'guardar dinheiro é importante');
+      expect(db.sessions).toHaveLength(0);
+      expect(goals.contribute).not.toHaveBeenCalled();
+      expect(db.events[0]).toMatchObject({ intent: 'ai_fallback', outcome: ConversationOutcome.AI_ANSWERED });
+    });
+
+    it('texto vazio ou so espacos nao chama a IA: ajuda de sempre com um evento UNRECOGNIZED', async () => {
+      const reply = await service.handleMessage(msg('A', '   '));
+
+      expect(reply).toEqual({ kind: 'HELP', state: 'IDLE', text: REPLIES.unrecognized, unrecognized: true });
+      expect(assistant.tryFallbackAnswer).not.toHaveBeenCalled();
+      expect(db.events).toHaveLength(1);
+      expect(db.events[0]).toMatchObject({ intent: null, outcome: ConversationOutcome.UNRECOGNIZED });
+    });
+
+    it('modo ausente na configuracao conta como off: nao chama a IA', async () => {
+      (aiMode as string | undefined) = undefined;
+
+      const reply = await service.handleMessage(msg('A', 'analise meus gastos do mes'));
+
+      expect(reply).toMatchObject({ kind: 'HELP', unrecognized: true });
+      expect(assistant.tryFallbackAnswer).not.toHaveBeenCalled();
+    });
+
+    it('a IA recebe o texto aparado e o userId do dono', async () => {
+      assistant.tryFallbackAnswer.mockResolvedValueOnce({ status: 'answered', text: 'Ok.' });
+
+      await service.handleMessage(msg('B', '  analise meus gastos do mes  '));
+
+      expect(assistant.tryFallbackAnswer).toHaveBeenCalledWith('B', 'analise meus gastos do mes');
+    });
+
+    it('"confirmar" sem rascunho continua ajuda e nao chama a IA', async () => {
+      const reply = await service.handleMessage(msg('A', 'confirmar'));
+
+      expect(reply).toEqual({ kind: 'HELP', state: 'IDLE', text: REPLIES.unrecognized });
+      expect(assistant.tryFallbackAnswer).not.toHaveBeenCalled();
     });
   });
 });
