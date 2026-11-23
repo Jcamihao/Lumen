@@ -1,5 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { PaymentMethod, Prisma } from '@prisma/client';
+import { PaymentMethod, Prisma, TransactionType } from '@prisma/client';
 import { lockUserForCredit } from '../credit-cycle/credit-cycle.util';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -16,6 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export const CARD_NOT_FOUND_MESSAGE = 'Cartao nao encontrado.';
 export const CARD_NEEDS_CREDIT_MESSAGE = 'Cartao so pode ser usado com pagamento em credito.';
 export const CARD_ARCHIVED_MESSAGE = 'Cartao arquivado nao aceita novo lancamento.';
+export const CARD_ONLY_EXPENSE_MESSAGE = 'Cartao so se aplica a despesa.';
 
 type Db = Prisma.TransactionClient;
 
@@ -23,7 +24,7 @@ type Db = Prisma.TransactionClient;
 export async function findOwnedCardForLink(db: Db, userId: string, cardId: string) {
   const card = await db.creditCard.findFirst({
     where: { id: cardId, userId },
-    select: { id: true, name: true, archivedAt: true },
+    select: { id: true, name: true, archivedAt: true, isDefault: true },
   });
   if (!card) throw new NotFoundException(CARD_NOT_FOUND_MESSAGE);
   return card;
@@ -34,14 +35,16 @@ export async function lockForCardLink(db: Db, userId: string, cardId: unknown): 
   if (typeof cardId === 'string') await lockUserForCredit(db, userId);
 }
 
-/** Criacao: cardId ausente ou nulo = sem vinculo explicito (conta no cartao padrao). */
+/** Criacao: cardId ausente ou nulo = sem vinculo explicito (conta no cartao padrao). Receita nunca tem cartao. */
 export async function resolveCardForCreate(
   db: Db,
   userId: string,
   cardId: string | null | undefined,
   paymentMethod: PaymentMethod | null | undefined,
+  type?: TransactionType | null,
 ): Promise<string | undefined> {
   if (typeof cardId !== 'string') return undefined;
+  if (type === TransactionType.INCOME) throw new BadRequestException(CARD_ONLY_EXPENSE_MESSAGE);
   if (paymentMethod !== PaymentMethod.CREDIT) throw new BadRequestException(CARD_NEEDS_CREDIT_MESSAGE);
   const card = await findOwnedCardForLink(db, userId, cardId);
   if (card.archivedAt) throw new BadRequestException(CARD_ARCHIVED_MESSAGE);
@@ -57,9 +60,15 @@ export async function resolveCardForCreate(
 export async function resolveCardForUpdate(
   db: Db,
   userId: string,
-  current: { cardId?: string | null; paymentMethod?: PaymentMethod | null },
-  dto: { cardId?: string | null; paymentMethod?: PaymentMethod | null },
+  current: { cardId?: string | null; paymentMethod?: PaymentMethod | null; type?: TransactionType | null },
+  dto: { cardId?: string | null; paymentMethod?: PaymentMethod | null; type?: TransactionType | null },
 ): Promise<{ cardId?: string | null }> {
+  const effectiveType = dto.type !== undefined ? dto.type : current.type;
+  if (typeof dto.cardId === 'string' && effectiveType === TransactionType.INCOME) {
+    throw new BadRequestException(CARD_ONLY_EXPENSE_MESSAGE);
+  }
+  // Virou receita: o vinculo gravado sai (receita nao tem cartao).
+  if (effectiveType === TransactionType.INCOME) return current.cardId ? { cardId: null } : {};
   const effective = dto.paymentMethod !== undefined ? dto.paymentMethod : current.paymentMethod;
   if (typeof dto.cardId === 'string' && effective !== PaymentMethod.CREDIT) {
     throw new BadRequestException(CARD_NEEDS_CREDIT_MESSAGE);

@@ -160,7 +160,7 @@ export class RecurringTransactionsService {
       return await this.prisma.$transaction(async (tx) => {
         // Cartao: lock do User antes de ler o cartao (mesma ordem do resto do dominio de cartao).
         await lockForCardLink(tx, userId, dto.cardId);
-        const cardId = await resolveCardForCreate(tx, userId, dto.cardId, dto.paymentMethod);
+        const cardId = await resolveCardForCreate(tx, userId, dto.cardId, dto.paymentMethod, dto.type);
         const row = await tx.recurringTransaction.create({
           data: {
             userId,
@@ -266,7 +266,7 @@ export class RecurringTransactionsService {
       const current = cardLock
         ? await db.recurringTransaction.findFirst({
             where: { id, userId },
-            select: { cardId: true, paymentMethod: true },
+            select: { cardId: true, paymentMethod: true, type: true },
           })
         : existing;
       if (!current) throw new NotFoundException('Conta fixa nao encontrada.');

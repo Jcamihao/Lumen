@@ -91,7 +91,7 @@ export class TransactionsService {
 
     // Cartao so com CREDIT, do proprio usuario e nao arquivado; com cardId a escrita roda sob o lock do User.
     const transaction = await withCardGuard(this.prisma, userId, typeof dto.cardId === 'string', async (db) => {
-      const cardId = await resolveCardForCreate(db, userId, dto.cardId, dto.paymentMethod);
+      const cardId = await resolveCardForCreate(db, userId, dto.cardId, dto.paymentMethod, dto.type);
       return db.transaction.create({
         data: {
           userId,
@@ -129,7 +129,8 @@ export class TransactionsService {
       dto.envelopeId === null ? undefined : dto.envelopeId,
     );
 
-    const cardLock = dto.cardId !== undefined || dto.paymentMethod !== undefined;
+    // Tipo entra no lock: virar receita limpa o cartao gravado, e isso precisa ser sob o lock.
+    const cardLock = dto.cardId !== undefined || dto.paymentMethod !== undefined || dto.type !== undefined;
     const transaction = await withCardGuard(this.prisma, userId, cardLock, async (db) => {
       // Relido sob o lock: a regra de cartao depende do estado atual gravado.
       const current = await this.findTransaction(db, userId, id);
