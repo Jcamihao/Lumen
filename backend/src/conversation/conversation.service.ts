@@ -53,8 +53,25 @@ import {
   splitTrailingAmount,
 } from './parsers/goal.parser';
 import { normalize } from './parsers/normalize';
-import type { TransactionChangeDraft } from './conversation.types';
+import type { TargetChangeDraft, TransactionChangeDraft } from './conversation.types';
 import { UpdateTransactionDto } from '../transactions/dto/update-transaction.dto';
+import { UpdateGoalDto } from '../goals/dto/update-goal.dto';
+import { UpdateEnvelopeDto } from '../envelopes/dto/update-envelope.dto';
+import {
+  TG_REPLIES,
+  TARGET_CHANGE_MAX_CANDIDATES,
+  type EnvelopeCandidate,
+  type GoalCandidate,
+  STATUS_PT,
+  describeEnvelope,
+  describeGoal,
+  formatDateFull,
+  formatEnvelopeLine,
+  formatGoalLine,
+  isTargetChangeDraft,
+  matchesName,
+  parseTargetChange,
+} from './target-change';
 import {
   TX_CHANGE_MAX_CANDIDATES,
   TX_CHANGE_WINDOW_DAYS,
@@ -409,6 +426,21 @@ export class ConversationService {
       return this.startTransactionChange({
         input,
         action: intent.intent === 'delete_transaction' ? 'DELETE' : 'EDIT',
+        body: intent.body,
+      });
+    }
+    if (
+      intent.intent === 'edit_goal' ||
+      intent.intent === 'delete_goal' ||
+      intent.intent === 'edit_envelope' ||
+      intent.intent === 'delete_envelope'
+    ) {
+      // Editar/apagar meta ou reserva (contrato 8b, secoes 3 a 5).
+      const kind = intent.intent === 'edit_goal' || intent.intent === 'delete_goal' ? 'GOAL_CHANGE' : 'ENVELOPE_CHANGE';
+      return this.startTargetChange({
+        input,
+        kind,
+        action: intent.intent === 'delete_goal' || intent.intent === 'delete_envelope' ? 'DELETE' : 'EDIT',
         body: intent.body,
       });
     }
@@ -1095,12 +1127,8 @@ export class ConversationService {
       await this.recordEvent(input, session.intent, ConversationOutcome.UNRECOGNIZED);
       return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: TX_REPLIES.deleteNeedsWord });
     }
-    // Editar sem nenhuma mudança: confirmar não grava (contrato 8a, secao 5). Só depois de escolhido o lançamento.
-    const editNothing =
-      isTransactionChangeDraft(session.draft) &&
-      session.draft.action === 'EDIT' &&
-      session.draft.targetId !== null &&
-      Object.keys(session.draft.changes).length === 0;
+    // Editar sem nenhuma mudança: confirmar não grava (contrato 8a, secao 5; vale tambem para meta e reserva, 8b).
+    const editNothing = isEditWithoutChanges(session.draft);
     if (editNothing && CONFIRM_WORDS.has(words)) {
       await this.recordEvent(input, session.intent, ConversationOutcome.UNRECOGNIZED);
       return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: TX_REPLIES.nothingToChange });
@@ -1126,6 +1154,14 @@ export class ConversationService {
     }
     if (isTransactionChangeDraft(pendingDraft) && pendingDraft.action === 'EDIT' && pendingDraft.pendingField !== 'transaction' && !intent) {
       // Edição: "valor 45", "descrição padaria" etc. (também depois da prévia, para mudar mais de um campo).
+      return this.fillPendingField({ input, session, text });
+    }
+    if (isTargetChangeDraft(pendingDraft) && pendingDraft.pendingField === 'target' && !awaiting && (intent === null || /^\d/.test(text))) {
+      // Meta/reserva: número escolhe; texto vira busca (contrato 8b, secao 3). Comando conhecido segue a regra do motor.
+      return this.fillPendingField({ input, session, text });
+    }
+    if (isTargetChangeDraft(pendingDraft) && pendingDraft.action === 'EDIT' && pendingDraft.pendingField !== 'target' && !intent) {
+      // "título viagem", "valor 800", "sem alvo", "prazo 12/2026" (meta) ou "nome x", "valor mensal 150" (reserva).
       return this.fillPendingField({ input, session, text });
     }
     // Texto que começa com número é a resposta pedida (nome, descrição, quantidade, data), não um comando (contrato 4).
@@ -1215,6 +1251,9 @@ export class ConversationService {
   private async answerPending(userId: string, draft: SessionDraft, value: string, today: string): Promise<PendingAnswer> {
     if (isTransactionChangeDraft(draft)) {
       return this.answerTransactionChange(userId, draft, value, today);
+    }
+    if (isTargetChangeDraft(draft)) {
+      return this.answerTargetChange(userId, draft, value, today);
     }
     if (draft.kind === 'GOAL') {
       return this.answerGoal(userId, draft, value);
@@ -1605,6 +1644,9 @@ export class ConversationService {
     if (isTransactionChangeDraft(draft)) {
       return this.applyTransactionChange(userId, draft);
     }
+    if (isTargetChangeDraft(draft)) {
+      return this.applyTargetChange(userId, draft);
+    }
     if (draft.kind === 'GOAL') {
       return this.applyGoal(userId, draft);
     }
@@ -1775,6 +1817,316 @@ export class ConversationService {
       data: { transactionId: target.id },
       resultRef: target.id,
     };
+  }
+
+  // ---------- editar/apagar meta e reserva (contrato 8b) ----------
+
+  /** Editar/apagar meta ou reserva: busca e lista numerada, ou pergunta qual (contrato 8b, secao 3). */
+  private async startTargetChange(args: {
+    input: ConversationInput;
+    kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE';
+    action: 'EDIT' | 'DELETE';
+    body: string;
+  }): Promise<ConversationReply> {
+    const { input, kind, action, body } = args;
+    const intent = `${action === 'DELETE' ? 'delete' : 'edit'}_${kind === 'GOAL_CHANGE' ? 'goal' : 'envelope'}`;
+    const draft: TargetChangeDraft = {
+      kind,
+      action,
+      candidateIds: [],
+      targetId: null,
+      targetUpdatedAt: null,
+      changes: {},
+      pendingField: 'target',
+    };
+    if (body.length > 0) {
+      const found = await this.searchTargets(input.userId, kind, body);
+      if (found.length === 0) {
+        await this.recordEvent(input, intent, ConversationOutcome.RECOGNIZED);
+        return this.reply('INFO', 'IDLE', this.targetNotFoundText(kind));
+      }
+      draft.candidateIds = found.map((candidate) => candidate.id);
+    }
+    const today = await this.todayYmd(input.userId, input.receivedAt);
+    return this.saveNewDraft({ input, intent, draft, today });
+  }
+
+  /**
+   * Busca do alvo (contrato 8b, secao 3): metas de qualquer status, sem janela de data, e reservas;
+   * nome sem acento e caixa filtrado em memoria (como no 8a), ate 5, mais recentes primeiro.
+   */
+  private async searchTargets(
+    userId: string,
+    kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE',
+    body: string,
+  ): Promise<Array<GoalCandidate | EnvelopeCandidate>> {
+    const term = normalize(body.trim());
+    if (term.length === 0) {
+      return [];
+    }
+    if (kind === 'GOAL_CHANGE') {
+      const rows = await this.prisma.goal.findMany({ where: { userId }, select: GOAL_CHANGE_SELECT, orderBy: { updatedAt: 'desc' } });
+      return rows
+        .filter((row) => matchesName(row.title, term))
+        .slice(0, TARGET_CHANGE_MAX_CANDIDATES)
+        .map(toGoalCandidateRow);
+    }
+    const rows = await this.prisma.envelope.findMany({
+      where: { userId },
+      select: ENVELOPE_CHANGE_SELECT,
+      orderBy: { updatedAt: 'desc' },
+    });
+    return rows
+      .filter((row) => matchesName(row.name, term))
+      .slice(0, TARGET_CHANGE_MAX_CANDIDATES)
+      .map(toEnvelopeCandidateRow);
+  }
+
+  /** Meta ou reserva do usuario pelo id (id + userId, nunca so o id). */
+  private async loadTargetCandidate(
+    userId: string,
+    kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE',
+    id: string,
+  ): Promise<GoalCandidate | EnvelopeCandidate | null> {
+    if (kind === 'GOAL_CHANGE') {
+      const row = await this.prisma.goal.findFirst({ where: { id, userId }, select: GOAL_CHANGE_SELECT });
+      return row === null ? null : toGoalCandidateRow(row);
+    }
+    const row = await this.prisma.envelope.findFirst({ where: { id, userId }, select: ENVELOPE_CHANGE_SELECT });
+    return row === null ? null : toEnvelopeCandidateRow(row);
+  }
+
+  /** Lista numerada dos candidatos que ainda existem (sumido sai da lista, numeracao preserva a ordem). */
+  private async targetListText(userId: string, kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE', ids: string[]): Promise<string> {
+    const header = kind === 'GOAL_CHANGE' ? TG_REPLIES.pickHeaderGoal : TG_REPLIES.pickHeaderEnvelope;
+    if (kind === 'GOAL_CHANGE') {
+      const rows = await this.prisma.goal.findMany({ where: { userId, id: { in: ids } }, select: GOAL_CHANGE_SELECT });
+      const byId = new Map(rows.map((row) => [row.id, toGoalCandidateRow(row)]));
+      const lines = ids
+        .map((id, index) => {
+          const candidate = byId.get(id);
+          return candidate ? formatGoalLine(index, candidate) : null;
+        })
+        .filter((line): line is string => line !== null);
+      return [header, ...lines].join('\n');
+    }
+    const rows = await this.prisma.envelope.findMany({ where: { userId, id: { in: ids } }, select: ENVELOPE_CHANGE_SELECT });
+    const byId = new Map(rows.map((row) => [row.id, toEnvelopeCandidateRow(row)]));
+    const lines = ids
+      .map((id, index) => {
+        const candidate = byId.get(id);
+        return candidate ? formatEnvelopeLine(index, candidate) : null;
+      })
+      .filter((line): line is string => line !== null);
+    return [header, ...lines].join('\n');
+  }
+
+  /** Resposta a lista: numero escolhe; sem candidatos, o texto e a busca. Mudanca de campo: etapa de editar. */
+  private async answerTargetChange(
+    userId: string,
+    draft: TargetChangeDraft,
+    value: string,
+    today: string,
+  ): Promise<PendingAnswer> {
+    const gone = this.targetGoneText(draft.kind);
+    if (draft.pendingField === 'target') {
+      if (draft.candidateIds.length === 0) {
+        // Comando sem termo ("apagar meta"): o texto seguinte e a busca.
+        const found = await this.searchTargets(userId, draft.kind, value);
+        if (found.length === 0) {
+          return { status: 'ERROR', text: this.targetNotFoundText(draft.kind) };
+        }
+        draft.candidateIds = found.map((candidate) => candidate.id);
+        return { status: 'UPDATED' };
+      }
+      const chosen = /^[1-5]$/.test(value) ? draft.candidateIds[Number(value) - 1] : undefined;
+      if (chosen === undefined) {
+        return {
+          status: 'ASK',
+          outcome: ConversationOutcome.UNRECOGNIZED,
+          question: await this.targetListText(userId, draft.kind, draft.candidateIds),
+        };
+      }
+      const row = await this.loadTargetCandidate(userId, draft.kind, chosen);
+      if (row === null) {
+        return { status: 'ERROR', text: gone };
+      }
+      draft.targetId = row.id;
+      draft.targetUpdatedAt = row.updatedAt.toISOString();
+      draft.candidateIds = [];
+      draft.pendingField = draft.action === 'EDIT' ? 'change' : null;
+      return { status: 'UPDATED' };
+    }
+    // Editar: uma mudanca por mensagem; previa mostra antes -> depois (contrato 8b, secao 5).
+    if (draft.targetId === null) {
+      return { status: 'ERROR', text: gone };
+    }
+    const parsed = parseTargetChange(draft.kind, value, today, amountErrorText);
+    if (parsed.ok === false) {
+      return { status: 'ERROR', text: parsed.text };
+    }
+    if (parsed.field === 'title') {
+      draft.changes.title = parsed.text;
+    } else if (parsed.field === 'name') {
+      draft.changes.name = parsed.text;
+    } else if (parsed.field === 'targetCents') {
+      draft.changes.targetCents = parsed.cents;
+    } else if (parsed.field === 'targetDate') {
+      draft.changes.targetDate = parsed.ymd;
+    } else if (parsed.field === 'monthlyCents') {
+      draft.changes.monthlyCents = parsed.cents;
+    }
+    draft.pendingField = null;
+    return { status: 'UPDATED' };
+  }
+
+  /** Previa do rascunho de editar/apagar meta ou reserva. Apagar so confirma com a palavra "apagar" (contrato 8b, secao 4). */
+  private async targetChangeText(userId: string, draft: TargetChangeDraft): Promise<string> {
+    const target = draft.targetId === null ? null : await this.loadTargetCandidate(userId, draft.kind, draft.targetId);
+    if (target === null) {
+      return this.targetGoneText(draft.kind);
+    }
+    const noun = 'title' in target ? 'meta' : 'reserva';
+    const described = 'title' in target ? describeGoal(target) : describeEnvelope(target);
+    if (draft.action === 'DELETE') {
+      const note = 'title' in target ? TG_REPLIES.goalDeleteNote : TG_REPLIES.envelopeDeleteNote;
+      return [`Apagar ${noun}: ${described}.`, note, TG_REPLIES.deleteWarning, TG_REPLIES.deleteNeedsWord].join('\n');
+    }
+    const rows = this.targetRows(draft.kind, 'EDIT', target, draft.changes);
+    const changed = rows.filter((row) => row.label !== 'Aviso');
+    if (changed.length === 0) {
+      return TG_REPLIES.nothingToChange;
+    }
+    const lines = [`Editar ${noun}: ${described}.`, ...changed.map((row) => `${row.label}: ${row.value}`)];
+    if (rows.some((row) => row.label === 'Aviso')) {
+      lines.push(TG_REPLIES.envelopeAmountNote);
+    }
+    lines.push(TG_REPLIES.editConfirm);
+    return lines.join('\n');
+  }
+
+  /** Linhas do cartao: apagar mostra o alvo inteiro; editar, "antes -> depois" so do que muda (contrato 8b, secoes 4 e 5). */
+  private targetRows(
+    kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE',
+    action: 'EDIT' | 'DELETE',
+    target: GoalCandidate | EnvelopeCandidate,
+    changes: TargetChangeDraft['changes'],
+  ): DraftView['rows'] {
+    if (action === 'DELETE') {
+      if ('title' in target) {
+        const rows: DraftView['rows'] = [
+          { label: 'Nome', value: target.title },
+          { label: 'Situação', value: STATUS_PT[target.status] },
+          { label: 'Guardado', value: formatBrl(target.currentCents) },
+          { label: 'Alvo', value: target.targetCents === null ? 'sem alvo' : formatBrl(target.targetCents) },
+        ];
+        if (target.targetDate !== null) {
+          rows.push({ label: 'Prazo', value: formatDateFull(target.targetDate) });
+        }
+        rows.push({ label: 'Aviso', value: TG_REPLIES.goalDeleteNote });
+        return rows;
+      }
+      return [
+        { label: 'Nome', value: target.name },
+        { label: 'Valor mensal', value: `${formatBrl(target.monthlyCents)}/mês` },
+        { label: 'Situação', value: target.isActive ? 'ativa' : 'pausada' },
+        { label: 'Aviso', value: TG_REPLIES.envelopeDeleteNote },
+      ];
+    }
+    const rows: DraftView['rows'] = [];
+    if ('title' in target) {
+      if (changes.title !== undefined && changes.title !== target.title) {
+        rows.push({ label: 'Título', value: `${target.title} → ${changes.title}` });
+      }
+      if (changes.targetCents !== undefined) {
+        const before = target.targetCents === null ? 'sem alvo' : formatBrl(target.targetCents);
+        const after = changes.targetCents === null ? 'sem alvo' : formatBrl(changes.targetCents);
+        if (before !== after) {
+          rows.push({ label: 'Valor alvo', value: `${before} → ${after}` });
+        }
+      }
+      if (changes.targetDate !== undefined) {
+        const before = target.targetDate === null ? 'sem prazo' : formatDateFull(target.targetDate);
+        const after = changes.targetDate === null ? 'sem prazo' : formatDateFull(changes.targetDate);
+        if (before !== after) {
+          rows.push({ label: 'Prazo', value: `${before} → ${after}` });
+        }
+      }
+      return rows;
+    }
+    if (changes.name !== undefined && changes.name !== target.name) {
+      rows.push({ label: 'Nome', value: `${target.name} → ${changes.name}` });
+    }
+    if (changes.monthlyCents !== undefined && changes.monthlyCents !== target.monthlyCents) {
+      rows.push({ label: 'Valor mensal', value: `${formatBrl(target.monthlyCents)} → ${formatBrl(changes.monthlyCents)}` });
+      // Decisao do dono (contrato 8b, secao 5): o valor novo so vale do proximo deposito em diante.
+      rows.push({ label: 'Aviso', value: TG_REPLIES.envelopeAmountNote });
+    }
+    return rows;
+  }
+
+  /**
+   * Apaga ou edita a meta/reserva escolhida (contrato 8b, secoes 4 a 6). Reli com id + userId; conflito de
+   * updatedAt recusa nos dois caminhos (decisao do 8a extendida); gravacao pelos mesmos servicos da tela.
+   */
+  private async applyTargetChange(userId: string, draft: TargetChangeDraft): Promise<AppliedAction> {
+    const target = draft.targetId === null ? null : await this.loadTargetCandidate(userId, draft.kind, draft.targetId);
+    if (target === null) {
+      throw new NotFoundException(this.targetGoneText(draft.kind));
+    }
+    if (target.updatedAt.toISOString() !== draft.targetUpdatedAt) {
+      throw new ConflictException(this.targetChangedText(draft.kind));
+    }
+    if (draft.kind === 'GOAL_CHANGE' && 'title' in target) {
+      if (draft.action === 'DELETE') {
+        await this.goals.remove(userId, target.id);
+        return {
+          text: `Apaguei a meta "${target.title}". ${TG_REPLIES.goalDeleteNote}`,
+          data: { goalId: target.id },
+          resultRef: target.id,
+        };
+      }
+      const dto: UpdateGoalDto = {};
+      if (draft.changes.title !== undefined) dto.title = draft.changes.title;
+      if (draft.changes.targetCents !== undefined) {
+        dto.targetAmount = draft.changes.targetCents === null ? null : draft.changes.targetCents / 100;
+      }
+      if (draft.changes.targetDate !== undefined) {
+        dto.targetDate = draft.changes.targetDate === null ? null : `${draft.changes.targetDate}T00:00:00.000Z`;
+      }
+      await this.goals.update(userId, target.id, dto);
+      return { text: `Alterei a meta "${target.title}".`, data: { goalId: target.id }, resultRef: target.id };
+    }
+    if (draft.kind === 'ENVELOPE_CHANGE' && !('title' in target)) {
+      if (draft.action === 'DELETE') {
+        await this.envelopes.remove(userId, target.id);
+        return {
+          text: `Apaguei a reserva "${target.name}". ${TG_REPLIES.envelopeDeleteNote}`,
+          data: { envelopeId: target.id },
+          resultRef: target.id,
+        };
+      }
+      const dto: UpdateEnvelopeDto = {};
+      if (draft.changes.name !== undefined) dto.name = draft.changes.name;
+      if (draft.changes.monthlyCents !== undefined) dto.monthlyAmount = draft.changes.monthlyCents / 100;
+      // O servico da tela checa entitlement (reativacao) e duplicidade de nome; nos nao mexemos em isActive.
+      await this.envelopes.update(userId, target.id, dto);
+      return { text: `Alterei a reserva "${target.name}".`, data: { envelopeId: target.id }, resultRef: target.id };
+    }
+    // kind e linha nao bateram (nao deve acontecer; leitura era do mesmo id): recusa como sumido.
+    throw new NotFoundException(this.targetGoneText(draft.kind));
+  }
+
+  private targetNotFoundText(kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE'): string {
+    return kind === 'GOAL_CHANGE' ? TG_REPLIES.goalNotFound : TG_REPLIES.envelopeNotFound;
+  }
+
+  private targetGoneText(kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE'): string {
+    return kind === 'GOAL_CHANGE' ? TG_REPLIES.goalGone : TG_REPLIES.envelopeGone;
+  }
+
+  private targetChangedText(kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE'): string {
+    return kind === 'GOAL_CHANGE' ? TG_REPLIES.goalChanged : TG_REPLIES.envelopeChanged;
   }
 
   private async applyTransaction(userId: string, draft: ExpenseOrIncomeDraft): Promise<AppliedAction> {
@@ -2272,6 +2624,9 @@ export class ConversationService {
     if (isTransactionChangeDraft(draft)) {
       return this.transactionChangeText(session.userId, draft);
     }
+    if (isTargetChangeDraft(draft)) {
+      return this.targetChangeText(session.userId, draft);
+    }
     if (draft.kind === 'ENVELOPE') {
       return envelopeDraftText({
         name: draft.name ?? 'a informar',
@@ -2327,6 +2682,11 @@ export class ConversationService {
       if (draft.pendingField === 'change') return TX_REPLIES.askChange;
       if (draft.candidateIds.length === 0) return TX_REPLIES.askWhich;
       return this.transactionListText(userId, draft.candidateIds);
+    }
+    if (isTargetChangeDraft(draft)) {
+      if (draft.pendingField === 'change') return draft.kind === 'GOAL_CHANGE' ? TG_REPLIES.askChangeGoal : TG_REPLIES.askChangeEnvelope;
+      if (draft.candidateIds.length === 0) return draft.kind === 'GOAL_CHANGE' ? TG_REPLIES.askWhichGoal : TG_REPLIES.askWhichEnvelope;
+      return this.targetListText(userId, draft.kind, draft.candidateIds);
     }
     if (draft.kind === 'RECURRING') {
       if (draft.pendingField === 'description') return REPLIES.askDraftDescription;
@@ -2416,6 +2776,25 @@ export class ConversationService {
         changeAction: draft.action,
         pendingField: draft.pendingField,
         rows: rows.length > 0 ? rows : [{ label: 'Lançamento', value: draft.targetId === null ? 'a escolher' : 'escolhido' }],
+      };
+    }
+
+    if (isTargetChangeDraft(draft)) {
+      // Prévia exata (contrato 8b, secoes 4 e 5): o alvo é relido com id + userId. Sumido: linha neutra; a aplicação recusa depois.
+      const isGoal = draft.kind === 'GOAL_CHANGE';
+      const editing = draft.action === 'EDIT' && Object.keys(draft.changes).length > 0;
+      const target =
+        draft.targetId !== null && (draft.action === 'DELETE' || editing)
+          ? await this.loadTargetCandidate(session.userId, draft.kind, draft.targetId)
+          : null;
+      const rows = target === null ? [] : this.targetRows(draft.kind, draft.action, target, draft.changes);
+      return {
+        ...base,
+        kind: draft.kind,
+        title: `${draft.action === 'DELETE' ? 'Apagar' : 'Editar'} ${isGoal ? 'meta' : 'reserva'}`,
+        changeAction: draft.action,
+        pendingField: draft.pendingField,
+        rows: rows.length > 0 ? rows : [{ label: isGoal ? 'Meta' : 'Reserva', value: draft.targetId === null ? 'a escolher' : 'escolhido' }],
       };
     }
 
@@ -2690,6 +3069,65 @@ const TX_SELECT = {
 /** Teto de linhas lidas na busca (janela de 180 dias). */
 const TX_SEARCH_LIMIT = 2000;
 
+/** Campos do editar/apagar meta e reserva (contrato 8b): o mínimo para listar, prévia e conflito. */
+const GOAL_CHANGE_SELECT = {
+  id: true,
+  title: true,
+  status: true,
+  targetAmount: true,
+  currentAmount: true,
+  targetDate: true,
+  updatedAt: true,
+} as const;
+
+const ENVELOPE_CHANGE_SELECT = {
+  id: true,
+  name: true,
+  monthlyAmount: true,
+  isActive: true,
+  updatedAt: true,
+} as const;
+
+type GoalChangeRow = {
+  id: string;
+  title: string;
+  status: GoalCandidate['status'];
+  targetAmount: Prisma.Decimal | null;
+  currentAmount: Prisma.Decimal;
+  targetDate: Date | null;
+  updatedAt: Date;
+};
+
+type EnvelopeChangeRow = {
+  id: string;
+  name: string;
+  monthlyAmount: Prisma.Decimal;
+  isActive: boolean;
+  updatedAt: Date;
+};
+
+function toGoalCandidateRow(row: GoalChangeRow): GoalCandidate {
+  return {
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    targetCents: row.targetAmount === null ? null : toCents(row.targetAmount),
+    currentCents: toCents(row.currentAmount),
+    targetDate: row.targetDate === null ? null : row.targetDate.toISOString().slice(0, 10),
+    updatedAt: row.updatedAt,
+  };
+}
+
+function toEnvelopeCandidateRow(row: EnvelopeChangeRow): EnvelopeCandidate {
+  return {
+    id: row.id,
+    name: row.name,
+    monthlyCents: toCents(row.monthlyAmount),
+    isActive: row.isActive,
+    updatedAt: row.updatedAt,
+  };
+}
+
 function toTxCandidate(row: {
   id: string;
   type: TransactionType;
@@ -2755,6 +3193,9 @@ function isOptionNumber(words: string, draft: SessionDraft): boolean {
 
 function numberedOptions(draft: SessionDraft): string[] {
   if (isTransactionChangeDraft(draft)) {
+    return [];
+  }
+  if (isTargetChangeDraft(draft)) {
     return [];
   }
   if (draft.kind === 'GOAL' || draft.kind === 'ENVELOPE' || draft.kind === 'CREDIT_LIMIT' || draft.kind === 'RECURRING' || draft.kind === 'INSTALLMENT') {
@@ -2956,6 +3397,14 @@ function isDiscardError(error: unknown): boolean {
 }
 
 /** Texto do rascunho descartado por erro 4xx. Limite do plano usa a mensagem da própria exceção. */
+/** Confirmar uma ediçao sem nenhuma mudanca nao grava (contratos 8a e 8b): lançamento, meta ou reserva. */
+function isEditWithoutChanges(draft: unknown): boolean {
+  if (!isTransactionChangeDraft(draft) && !isTargetChangeDraft(draft)) {
+    return false;
+  }
+  return draft.action === 'EDIT' && draft.targetId !== null && Object.keys(draft.changes).length === 0;
+}
+
 function discardText(kind: DraftKind, error: unknown): string {
   if (error instanceof PlanLimitException) {
     return error.message;
@@ -2963,6 +3412,14 @@ function discardText(kind: DraftKind, error: unknown): string {
   if (kind === 'TRANSACTION_CHANGE') {
     // Lançamento sumiu ou mudou (404/409): a mensagem do motor já diz o que fazer.
     return error instanceof HttpException ? error.message : TX_REPLIES.gone;
+  }
+  if (kind === 'GOAL_CHANGE' || kind === 'ENVELOPE_CHANGE') {
+    // Meta/reserva sumiram, mudaram ou o domínio recusou (nome repetido): mensagem conhecida passa; o resto é genérica.
+    return error instanceof HttpException
+      ? error.message
+      : kind === 'GOAL_CHANGE'
+        ? TG_REPLIES.goalGone
+        : TG_REPLIES.envelopeGone;
   }
   if (kind === 'ENVELOPE') {
     // Nome repetido (corrida com a tela): o domínio devolve a mensagem conhecida; as demais recusas são genéricas.

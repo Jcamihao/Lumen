@@ -39,7 +39,8 @@ export type IntentMatch =
   | { intent: 'create_goal'; body: string; cofrinho?: true }
   | { intent: 'contribute_goal'; body: string }
   | { intent: 'create_envelope' | 'set_credit_limit' | 'create_recurring' | 'create_installment'; body: string }
-  | { intent: 'edit_transaction' | 'delete_transaction'; body: string };
+  | { intent: 'edit_transaction' | 'delete_transaction'; body: string }
+  | { intent: 'edit_goal' | 'delete_goal' | 'edit_envelope' | 'delete_envelope'; body: string };
 
 const EXPENSE_VERBS = ['gastei', 'paguei', 'comprei'];
 
@@ -103,27 +104,38 @@ export function matchIntent(raw: string): IntentMatch | null {
   return null;
 }
 
-/** Editar e apagar lançamento por conversa (contrato 8a, secao 2): comando curto, até 6 palavras e sem "?". */
+/** Editar e apagar por conversa (contratos 8a e 8b): comando curto, até 6 palavras e sem "?". */
 const TRANSACTION_CHANGE_MAX_WORDS = 6;
 const TRANSACTION_DELETE_VERBS = ['apagar', 'excluir', 'remover'];
 const TRANSACTION_EDIT_VERBS = ['editar', 'corrigir', 'alterar'];
+/** Artigos e poses que podem anteceder o substantivo do alvo ("editar a minha meta viagem"). */
+const CHANGE_ARTICLES = new Set(['o', 'a', 'uma', 'um', 'minha', 'meu', 'minhas', 'meus']);
 
 function matchTransactionChange(raw: string, tokens: string[], words: string[]): IntentMatch | null {
   if (tokens.length > TRANSACTION_CHANGE_MAX_WORDS || raw.includes('?')) return null;
-  let intent: 'edit_transaction' | 'delete_transaction';
+  let action: 'edit' | 'delete';
   if (TRANSACTION_DELETE_VERBS.includes(words[0])) {
-    intent = 'delete_transaction';
+    action = 'delete';
   } else if (TRANSACTION_EDIT_VERBS.includes(words[0])) {
-    intent = 'edit_transaction';
+    action = 'edit';
   } else {
     return null;
   }
   let rest = tokens.slice(1);
-  if (rest.length > 0 && normalizeWord(rest[0]) === 'lancamento') rest = rest.slice(1);
+  // O substantivo escolhe o alvo (contrato 8b, secao 3); sem substantivo é lançamento (contrato 8a).
+  while (rest.length > 0 && CHANGE_ARTICLES.has(normalizeWord(rest[0]))) rest = rest.slice(1);
+  const noun = rest.length > 0 ? normalizeWord(rest[0]) : '';
+  if (noun === 'meta' || noun === 'metas' || noun === 'cofrinho') {
+    return { intent: action === 'delete' ? 'delete_goal' : 'edit_goal', body: rest.slice(1).join(' ').trim() };
+  }
+  if (noun === 'reserva' || noun === 'reservas' || noun === 'envelope') {
+    return { intent: action === 'delete' ? 'delete_envelope' : 'edit_envelope', body: rest.slice(1).join(' ').trim() };
+  }
+  if (noun === 'lancamento') rest = rest.slice(1);
   let body = rest.join(' ').trim();
   // "apagar conta" sem termo: o motor pergunta qual lançamento (contrato 8a, secao 2).
   if (normalizeWord(body) === 'conta') body = '';
-  return { intent, body };
+  return { intent: action === 'delete' ? 'delete_transaction' : 'edit_transaction', body };
 }
 
 /** Comandos de escrita novos (reserva, limite, conta fixa, parcelado): até 20 palavras e 500 caracteres. Não ampliam o matcher do 3b1. */
