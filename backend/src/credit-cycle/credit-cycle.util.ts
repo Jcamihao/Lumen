@@ -4,7 +4,7 @@ import { addDaysUtc, daysInMonthUtc, utcDate } from '../recurring-transactions/r
 /**
  * Filtro de gasto do ciclo de um cartao (contrato item 9, secoes 4.3 e 4.4). Usado pelo
  * ciclo e pelo insights: manter uma so regra. Padrao com countAllPayments soma toda EXPENSE;
- * os demais somam CREDIT do proprio cartao, e o padrao soma tambem CREDIT sem cartao.
+ * os demais somam CREDIT do proprio cartao, e o padrao soma tambem EXPENSE CREDIT sem cartao.
  */
 export function cardSpendWhere(
   userId: string,
@@ -19,12 +19,13 @@ export function cardSpendWhere(
 
 /**
  * Lancamentos de um cartao (listagem e gasto do ciclo usam a mesma regra). O padrao tambem
- * pega CREDIT sem cartao (lancamento antigo, anterior aos cartoes nomeados). Cartao secundario
+ * pega DESPESA CREDIT sem cartao (lancamento antigo, anterior aos cartoes nomeados); receita
+ * CREDIT sem cartao nao entra, pois o gasto do ciclo so soma despesa. Cartao secundario
  * so pega o proprio cardId. O userId fica fora deste helper, sempre AND no where de quem chama.
  */
 export function cardScopeWhere(card: { id: string; isDefault: boolean }): Prisma.TransactionWhereInput {
   if (!card.isDefault) return { cardId: card.id };
-  return { OR: [{ cardId: card.id }, { cardId: null, paymentMethod: 'CREDIT' }] };
+  return { OR: [{ cardId: card.id }, { cardId: null, paymentMethod: 'CREDIT', type: TransactionType.EXPENSE }] };
 }
 
 /** Nome do cartao criado para cada usuario (migration e cadastro). */
