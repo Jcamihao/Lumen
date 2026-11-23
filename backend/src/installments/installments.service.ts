@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { InstallmentPurchase, Prisma } from '@prisma/client';
 import { EntitlementsService } from '../billing/entitlements.service';
 import { LifeEngineService } from '../life-engine/life-engine.service';
+import { lockForCardLink, resolveCardForCreate } from '../credit-cards/card-link';
 import { PrismaService } from '../prisma/prisma.service';
 import { localToday, utcDate } from '../recurring-transactions/recurrence.util';
 import { ConversationWriteRules } from '../recurring-transactions/conversation-write.types';
@@ -18,7 +19,9 @@ const DESCRIPTION_MIN = 2;
 const DESCRIPTION_MAX = 120;
 
 /** Decimal do Prisma vira string no JSON; o front espera numero, mais o progresso ja calculado. */
-export function toInstallmentResponse<T extends InstallmentPurchase>(item: T) {
+export function toInstallmentResponse<T extends InstallmentPurchase & { card?: { name: string } | null }>(item: T) {
+  // card vira cardName (so acrescenta campo); o objeto nao vai para a resposta.
+  const { card, ...rest } = item;
   const totalAmount = Number(item.totalAmount);
   const installmentAmount = Number(item.installmentAmount);
   const paidAmount =
@@ -27,7 +30,8 @@ export function toInstallmentResponse<T extends InstallmentPurchase>(item: T) {
       : Math.round(installmentAmount * item.installmentsGenerated * 100) / 100;
 
   return {
-    ...item,
+    ...rest,
+    cardName: card?.name ?? null,
     totalAmount,
     installmentAmount,
     paidAmount,
@@ -72,7 +76,7 @@ export class InstallmentsService {
 
     const items = await this.prisma.installmentPurchase.findMany({
       where: { userId },
-      include: { category: true },
+      include: { category: true, card: { select: { name: true } } },
       orderBy: [{ isActive: 'desc' }, { nextDueDate: 'asc' }],
     });
 
@@ -170,6 +174,9 @@ export class InstallmentsService {
     let callbackFinished = false;
     try {
       return await this.prisma.$transaction(async (tx) => {
+        // Cartao: lock do User antes de ler o cartao (mesma ordem do resto do dominio de cartao).
+        await lockForCardLink(tx, userId, dto.cardId);
+        const cardId = await resolveCardForCreate(tx, userId, dto.cardId, dto.paymentMethod);
         const row = await tx.installmentPurchase.create({
           data: {
             userId,
@@ -179,6 +186,7 @@ export class InstallmentsService {
             installmentsTotal: dto.installmentsTotal,
             categoryId: dto.categoryId ?? null,
             paymentMethod: dto.paymentMethod ?? null,
+            cardId,
             anchorDay: firstDue.getUTCDate(),
             nextDueDate: firstDue,
           },
@@ -228,7 +236,7 @@ export class InstallmentsService {
   private async findOwned(userId: string, id: string) {
     const item = await this.prisma.installmentPurchase.findFirst({
       where: { id, userId },
-      include: { category: true },
+      include: { category: true, card: { select: { name: true } } },
     });
 
     if (!item) {
