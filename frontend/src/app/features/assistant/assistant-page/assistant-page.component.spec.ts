@@ -1691,4 +1691,94 @@ describe("AssistantPageComponent — assistente manual", () => {
       expect(buttonWithText("Confirmar")).toBeUndefined();
     });
   });
+  describe("cartão de apagar contas fixas e parcelados (8c-2)", () => {
+    const targetDraft = (overrides: Partial<DraftView> = {}): DraftView => ({
+      ...draft(),
+      kind: "RECURRING_CHANGE",
+      title: "Apagar conta fixa",
+      changeAction: "DELETE",
+      amount: null,
+      description: null,
+      category: null,
+      date: null,
+      rows: [
+        { label: "Nome", value: "Netflix" },
+        { label: "Valor", value: "R$ 55,90/mês" },
+        { label: "Aviso", value: "Os lançamentos já gerados continuam no extrato, soltos. Os próximos não vão mais ser gerados." },
+      ],
+      ...overrides,
+    });
+
+    const targetDeleteConfirm = (d: DraftView): ConversationReply => ({
+      kind: "CONFIRM_DRAFT",
+      state: "AWAITING_CONFIRMATION",
+      text: "Apagar conta fixa: Netflix · 55,90/mês.\nIsto apaga de vez e não dá para desfazer.\nPara apagar, responda apagar.",
+      quickReplies: ["apagar", "cancelar"],
+      draft: d,
+    });
+
+    it("cartão de apagar conta fixa tem Apagar de vez com a flag e o aviso", () => {
+      conversation.sendMessage.and.returnValue(of(targetDeleteConfirm(targetDraft())));
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Apaguei a conta fixa \"Netflix\"." }),
+      );
+      create();
+      typeAndSend("apagar conta fixa netflix");
+
+      expect(buttonWithText("Apagar de vez")).toBeDefined();
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      expect(text()).toContain("Os próximos não vão mais ser gerados.");
+
+      clickCommand("Apagar de vez");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1, true);
+    });
+
+    it("cartão de apagar parcelado repete o botão com o aviso das parcelas", () => {
+      const d = targetDraft({
+        kind: "INSTALLMENT_CHANGE",
+        title: "Apagar compra parcelada",
+        rows: [
+          { label: "Nome", value: "TV de 50" },
+          { label: "Parcela", value: "R$ 300,00 · 4 de 12" },
+          { label: "Aviso", value: "As parcelas já geradas continuam no extrato, soltas. As que faltavam somem com a compra." },
+        ],
+      });
+      conversation.sendMessage.and.returnValue(of(targetDeleteConfirm(d)));
+      create();
+      typeAndSend("apagar parcelado tv");
+
+      expect(text()).toContain("Apagar compra parcelada");
+      expect(buttonWithText("Apagar de vez")).toBeDefined();
+      expect(text()).toContain("As que faltavam somem com a compra.");
+    });
+
+    it("restaurado pedindo o alvo de conta fixa diz 'conta fixa ou parcelado' (e meta segue 'meta ou reserva')", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({
+          state: "COLLECTING_FIELDS",
+          draft: targetDraft({
+            title: "Editar conta fixa",
+            changeAction: "EDIT",
+            pendingField: "targetChoice",
+            rows: [{ label: "Conta fixa", value: "a escolher" }],
+          }),
+        }),
+      );
+      create();
+
+      expect(text()).toContain("Falta informar: conta fixa ou parcelado.");
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+    });
+
+    it("sessão restaurada no apagar de conta fixa não mostra o atalho 'apagar'", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({ state: "AWAITING_CONFIRMATION", draft: targetDraft() }),
+      );
+      create();
+
+      expect(buttonWithText("Apagar de vez")).toBeDefined();
+      expect(buttonWithText("apagar")).toBeUndefined();
+    });
+  });
 });

@@ -115,7 +115,7 @@
         </ng-template>
 
         <p class="proto-muted" *ngIf="turn.kind === 'RESTORED' && turn.draft?.pendingField as pending">
-          Falta informar: {{ pendingFieldLabel(pending) }}. Responda no campo de pergunta abaixo.
+          Falta informar: {{ pendingFieldLabel(pending, turn.draft?.kind) }}. Responda no campo de pergunta abaixo.
         </p>
 
         <ng-container *ngIf="turn.draft as draft">
