@@ -1156,11 +1156,11 @@ export class ConversationService {
       // Edição: "valor 45", "descrição padaria" etc. (também depois da prévia, para mudar mais de um campo).
       return this.fillPendingField({ input, session, text });
     }
-    if (isTargetChangeDraft(pendingDraft) && pendingDraft.pendingField === 'target' && !awaiting && (intent === null || /^\d/.test(text))) {
+    if (isTargetChangeDraft(pendingDraft) && pendingDraft.pendingField === 'targetChoice' && !awaiting && (intent === null || /^\d/.test(text))) {
       // Meta/reserva: número escolhe; texto vira busca (contrato 8b, secao 3). Comando conhecido segue a regra do motor.
       return this.fillPendingField({ input, session, text });
     }
-    if (isTargetChangeDraft(pendingDraft) && pendingDraft.action === 'EDIT' && pendingDraft.pendingField !== 'target' && !intent) {
+    if (isTargetChangeDraft(pendingDraft) && pendingDraft.action === 'EDIT' && pendingDraft.pendingField !== 'targetChoice' && !intent) {
       // "título viagem", "valor 800", "sem alvo", "prazo 12/2026" (meta) ou "nome x", "valor mensal 150" (reserva).
       return this.fillPendingField({ input, session, text });
     }
@@ -1837,7 +1837,7 @@ export class ConversationService {
       targetId: null,
       targetUpdatedAt: null,
       changes: {},
-      pendingField: 'target',
+      pendingField: 'targetChoice',
     };
     if (body.length > 0) {
       const found = await this.searchTargets(input.userId, kind, body);
@@ -1929,7 +1929,7 @@ export class ConversationService {
     today: string,
   ): Promise<PendingAnswer> {
     const gone = this.targetGoneText(draft.kind);
-    if (draft.pendingField === 'target') {
+    if (draft.pendingField === 'targetChoice') {
       if (draft.candidateIds.length === 0) {
         // Comando sem termo ("apagar meta"): o texto seguinte e a busca.
         const found = await this.searchTargets(userId, draft.kind, value);

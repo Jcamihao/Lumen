@@ -71,7 +71,7 @@ export type PendingField =
   | 'installmentsTotal'
   | 'firstDueDate'
   | 'transaction'
-  | 'target'
+  | 'targetChoice'
   | 'change';
 
 /** Rascunho de lançamento. Sessões antigas não têm `kind`: ausente = TRANSACTION. Dinheiro em centavos. */
@@ -189,7 +189,7 @@ export interface TargetChangeDraft {
   targetId: string | null;
   targetUpdatedAt: string | null;
   changes: { title?: string; targetCents?: number | null; targetDate?: string | null; name?: string; monthlyCents?: number };
-  pendingField: 'target' | 'change' | null;
+  pendingField: 'targetChoice' | 'change' | null;
   reviewReason?: string;
 }
 
