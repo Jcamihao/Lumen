@@ -672,4 +672,90 @@ describe('Isolamento A/B/C do motor de conversa', () => {
       expect(sessionOf('A', 'WHATSAPP')).toBeDefined();
     });
   });
+
+  describe('9. editar e apagar lancamento (8a): so a propria conta', () => {
+    const addTx = (who: Who, id: string, description: string, amount: number, day = '2026-11-14') => {
+      world.transactions.push({
+        id,
+        userId: USER_ID[who],
+        type: 'EXPENSE',
+        description,
+        amount,
+        date: new Date(`${day}T00:00:00.000Z`),
+        categoryId: null,
+        createdAt: T0,
+        updatedAt: T0,
+        recurringTransactionId: null,
+        installmentPurchaseId: null,
+        linkedGoalId: null,
+        receiptScan: null,
+      });
+    };
+    const sessionOf = (who: Who) => world.sessions.find((row) => row.userId === USER_ID[who]);
+
+    it('a lista de A nao traz lancamento de B com o mesmo termo, e a de B so o dela', async () => {
+      addTx('A', 'a-1', 'Mercado Teste A', 10);
+      addTx('B', 'b-1', 'Mercado Teste B', 20);
+      const forA = await send('A', 'apagar mercado teste');
+      expect(forA.text).toContain('Mercado Teste A');
+      expect(forA.text).not.toContain('Mercado Teste B');
+      const forB = await send('B', 'apagar mercado teste');
+      expect(forB.text).toContain('Mercado Teste B');
+      expect(forB.text).not.toContain('Mercado Teste A');
+    });
+
+    it('apagar com id de B plantado na sessao de A: nao encontrado, igual ao inexistente, B intacto', async () => {
+      addTx('A', 'a-1', 'Mercado Teste A', 10);
+      addTx('B', 'b-1', 'Mercado Teste B', 20);
+      const pickA = async () => {
+        await send('A', 'apagar mercado teste');
+        await send('A', '1');
+      };
+      await pickA();
+      sessionOf('A')!.draft.targetId = 'b-1';
+      const forged = await send('A', 'apagar');
+      expect(forged.kind).toBe('ERROR');
+      await pickA();
+      sessionOf('A')!.draft.targetId = 'nao-existe';
+      const missing = await send('A', 'apagar');
+      expect(forged.text).toBe(missing.text);
+      expect(world.transactions.some((tx) => tx.id === 'b-1')).toBe(true);
+      expect(world.services.transactions.remove).not.toHaveBeenCalledWith(USER_ID.A, 'b-1');
+    });
+
+    it('editar com id de B plantado: B nao muda, resposta igual a do id inexistente', async () => {
+      addTx('A', 'a-1', 'Mercado Teste A', 10);
+      addTx('B', 'b-1', 'Mercado Teste B', 20);
+      await send('A', 'corrigir mercado teste');
+      await send('A', '1');
+      sessionOf('A')!.draft.targetId = 'b-1';
+      await send('A', 'valor 99');
+      const forged = await send('A', 'confirmar');
+      expect(forged.kind).toBe('ERROR');
+      expect(world.transactions.find((tx) => tx.id === 'b-1')!.amount).toBe(20);
+      expect(world.services.transactions.update).not.toHaveBeenCalledWith(USER_ID.A, 'b-1', expect.anything());
+    });
+
+    it('A confirma o rascunho de apagar de B (com id e versao de B): nao encontrado, nada apagado', async () => {
+      addTx('B', 'b-1', 'Mercado Teste B', 20);
+      await send('B', 'apagar mercado teste');
+      await send('B', '1');
+      const session = sessionOf('B')!;
+      const result = await engine.service.confirmDraft(USER_ID.A, session.id, session.version);
+      expect(result).toBeNull();
+      expect(sessionOf('B')).toBeDefined();
+      expect(world.transactions.some((tx) => tx.id === 'b-1')).toBe(true);
+    });
+
+    it('logs do fluxo de apagar e editar nao carregam descricao nem valor', async () => {
+      addTx('A', 'a-1', 'Descricao secreta XYZ', 777.77);
+      await send('A', 'apagar secreta xyz');
+      await send('A', '1');
+      await send('A', 'apagar');
+      await send('A', 'corrigir secreta xyz');
+      await send('A', '1');
+      await send('A', 'valor 12');
+      expect(logged.join('\n')).not.toMatch(/secreta|777|XYZ/i);
+    });
+  });
 });
