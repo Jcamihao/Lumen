@@ -10,7 +10,7 @@ import { Prisma, TransactionType } from '@prisma/client';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { localToday } from '../recurring-transactions/recurrence.util';
-import { creditCycleBounds, lockUserForCredit, userCycleFieldsFromCard } from './credit-cycle.util';
+import { cardSpendWhere, creditCycleBounds, lockUserForCredit, userCycleFieldsFromCard } from './credit-cycle.util';
 import { SetCreditCycleCeilingDto } from './dto/set-credit-cycle-ceiling.dto';
 import { UpdateCreditCycleSettingsDto } from './dto/update-credit-cycle-settings.dto';
 import { CreditLimitChangedError, CreditLimitExpectation, CreditLimitWriteReceipt, CreditLimitWriteUncertainError } from './conversation-write.types';
@@ -139,7 +139,7 @@ export class CreditCycleService {
         where: { cardId_closingDate: { cardId: card.id, closingDate: end } },
       }),
       this.prisma.transaction.aggregate({
-        where: this.spendWhere(userId, card, start, end),
+        where: cardSpendWhere(userId, card, start, end),
         _sum: { amount: true },
       }),
       // Sugestao para o formulario quando ainda nao ha teto definido neste ciclo.
@@ -162,20 +162,6 @@ export class CreditCycleService {
       spent,
       previousCeiling: previousCeilingRow ? Number(previousCeilingRow.ceiling) : null,
     });
-  }
-
-  /**
-   * Gasto do ciclo de um cartao (contrato item 9, secao 4.3 e 4.4): so o padrao
-   * com countAllPayments soma toda EXPENSE; os demais somam CREDIT do proprio cartao,
-   * e o padrao soma tambem CREDIT sem cartao (lancamentos antigos).
-   */
-  private spendWhere(userId: string, card: CycleCard, start: Date, end: Date): Prisma.TransactionWhereInput {
-    const range = { userId, type: TransactionType.EXPENSE, date: { gte: start, lte: end } };
-    if (card.isDefault && card.countAllPayments) return range;
-    const cardScope = card.isDefault
-      ? { OR: [{ cardId: card.id }, { cardId: null }] }
-      : { cardId: card.id };
-    return { ...range, paymentMethod: 'CREDIT', ...cardScope };
   }
 
   /**
