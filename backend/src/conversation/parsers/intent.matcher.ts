@@ -38,7 +38,8 @@ export type IntentMatch =
   | { intent: 'create_expense' | 'create_income'; body: string; missingAmount?: true }
   | { intent: 'create_goal'; body: string; cofrinho?: true }
   | { intent: 'contribute_goal'; body: string }
-  | { intent: 'create_envelope' | 'set_credit_limit' | 'create_recurring' | 'create_installment'; body: string };
+  | { intent: 'create_envelope' | 'set_credit_limit' | 'create_recurring' | 'create_installment'; body: string }
+  | { intent: 'edit_transaction' | 'delete_transaction'; body: string };
 
 const EXPENSE_VERBS = ['gastei', 'paguei', 'comprei'];
 
@@ -63,6 +64,9 @@ export function matchIntent(raw: string): IntentMatch | null {
 
   const envelopeOrLimit = matchEnvelopeOrLimit(raw, tokens, words);
   if (envelopeOrLimit) return envelopeOrLimit;
+
+  const transactionChange = matchTransactionChange(raw, tokens, words);
+  if (transactionChange) return transactionChange;
 
   const income = matchIncome(tokens, words);
   if (income) return income;
@@ -97,6 +101,29 @@ export function matchIntent(raw: string): IntentMatch | null {
     return { intent: 'credit_card' };
   }
   return null;
+}
+
+/** Editar e apagar lançamento por conversa (contrato 8a, secao 2): comando curto, até 6 palavras e sem "?". */
+const TRANSACTION_CHANGE_MAX_WORDS = 6;
+const TRANSACTION_DELETE_VERBS = ['apagar', 'excluir', 'remover'];
+const TRANSACTION_EDIT_VERBS = ['editar', 'corrigir', 'alterar'];
+
+function matchTransactionChange(raw: string, tokens: string[], words: string[]): IntentMatch | null {
+  if (tokens.length > TRANSACTION_CHANGE_MAX_WORDS || raw.includes('?')) return null;
+  let intent: 'edit_transaction' | 'delete_transaction';
+  if (TRANSACTION_DELETE_VERBS.includes(words[0])) {
+    intent = 'delete_transaction';
+  } else if (TRANSACTION_EDIT_VERBS.includes(words[0])) {
+    intent = 'edit_transaction';
+  } else {
+    return null;
+  }
+  let rest = tokens.slice(1);
+  if (rest.length > 0 && normalizeWord(rest[0]) === 'lancamento') rest = rest.slice(1);
+  let body = rest.join(' ').trim();
+  // "apagar conta" sem termo: o motor pergunta qual lançamento (contrato 8a, secao 2).
+  if (normalizeWord(body) === 'conta') body = '';
+  return { intent, body };
 }
 
 /** Comandos de escrita novos (reserva, limite, conta fixa, parcelado): até 20 palavras e 500 caracteres. Não ampliam o matcher do 3b1. */

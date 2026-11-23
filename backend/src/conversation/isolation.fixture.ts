@@ -78,6 +78,24 @@ export function uniqueViolation(target: string[] = []): Error {
 
 export class World {
   sessions: Row[] = [];
+
+  /** Forma de lançamento que o motor lê (campos de vínculo sempre presentes, como no Prisma). */
+  transactionView(tx: Row): Row {
+    const category = this.categories.find((row) => row.id === tx.categoryId);
+    return {
+      description: '',
+      createdAt: T0,
+      updatedAt: T0,
+      categoryId: null,
+      recurringTransactionId: null,
+      installmentPurchaseId: null,
+      linkedGoalId: null,
+      receiptScan: null,
+      ...tx,
+      amount: String(tx.amount),
+      category: category ? { name: category.name } : null,
+    };
+  }
   events: Row[] = [];
   links: Row[] = [];
   linkCodes: Row[] = [];
@@ -160,6 +178,17 @@ export class World {
       findFirst: jest.fn(async ({ where }: { where: Row }) => clone(this.categories.find((row) => matches(row, where)) ?? null)),
     },
     transaction: {
+      // Busca e leitura de editar/apagar (8a): respeita o where; campos novos com default de lançamento manual.
+      findMany: jest.fn(async ({ where, take }: { where: Row; take?: number }) => {
+        let rows = this.transactions.filter((tx) => matches(tx, where));
+        rows = [...rows].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        if (take !== undefined) rows = rows.slice(0, take);
+        return clone(rows.map((tx) => this.transactionView(tx)));
+      }),
+      findFirst: jest.fn(async ({ where }: { where: Row }) => {
+        const row = this.transactions.find((tx) => matches(tx, where));
+        return row ? clone(this.transactionView(row)) : null;
+      }),
       groupBy: jest.fn(async ({ where }: { where: Row }) => {
         const sums = new Map<string | null, number>();
         for (const row of this.transactions.filter((tx) => matches(tx, where))) {
@@ -269,6 +298,27 @@ export class World {
         const row = { id: randomUUID(), userId, ...dto, amount: Math.abs(dto.amount) };
         this.transactions.push(row);
         return clone(row);
+      }),
+      update: jest.fn(async (userId: string, id: string, dto: Row) => {
+        this.track('transactions.update', userId, true);
+        const row = this.transactions.find((tx) => tx.id === id && tx.userId === userId);
+        if (!row) throw new NotFoundException('Lançamento não encontrado');
+        if (dto.categoryId && !this.categories.some((category) => category.id === dto.categoryId && category.userId === userId)) {
+          throw new NotFoundException('Categoria financeira invalida.');
+        }
+        if (dto.amount !== undefined) row.amount = Math.abs(dto.amount);
+        if (dto.description !== undefined) row.description = dto.description;
+        if (dto.categoryId !== undefined) row.categoryId = dto.categoryId;
+        if (dto.date !== undefined) row.date = new Date(dto.date);
+        row.updatedAt = new Date(T0.getTime() + this.transactions.length);
+        return clone(row);
+      }),
+      remove: jest.fn(async (userId: string, id: string) => {
+        this.track('transactions.remove', userId, true);
+        const index = this.transactions.findIndex((tx) => tx.id === id && tx.userId === userId);
+        if (index === -1) throw new NotFoundException('Lançamento não encontrado');
+        this.transactions.splice(index, 1);
+        return { success: true };
       }),
     },
     goals: {
