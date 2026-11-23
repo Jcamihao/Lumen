@@ -1354,6 +1354,16 @@ describe('InsightsService: gasto do ciclo pelo cartao padrao (contrato item 9, s
   });
 });
 
+describe('InsightsService: busca do cartao padrao', () => {
+  it('procura so o padrao ativo do proprio usuario', async () => {
+    const prisma: any = buildPrisma([], [], {});
+    await new InsightsService(prisma).refreshForUser('user-1');
+    expect(prisma.creditCard.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: 'user-1', isDefault: true, archivedAt: null } }),
+    );
+  });
+});
+
 describe('InsightsService: ciclo pelo dia de fechamento do cartao padrao', () => {
   it('usa o closingDay do cartao padrao, nao o espelho do User', async () => {
     const prisma: any = buildPrisma([], [], { monthClosingDay: 30, creditCycleCountAllPayments: false });

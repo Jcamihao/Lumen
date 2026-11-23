@@ -343,6 +343,12 @@ describe('CreditCardsService', () => {
   });
 
   describe('ler e listar', () => {
+    it('lista: o padrao vem primeiro mesmo quando e o cartao mais novo', async () => {
+      await service.makeDefault('user-a', 'card-a2');
+
+      expect((await service.list('user-a', false)).map((c) => c.id)).toEqual(['card-a2', 'card-a1']);
+    });
+
     it('lista: padrao primeiro; arquivados so com includeArchived', async () => {
       await service.archive('user-a', 'card-a2');
 
@@ -393,6 +399,13 @@ describe('CreditCardsService', () => {
       expect(db.log.indexOf('card.update:card-a1')).toBeLessThan(db.log.indexOf('user.update'));
     });
 
+    it('countAllPayments=false em cartao nao padrao e aceito (so true e recusado)', async () => {
+      await expect(service.update('user-a', 'card-a2', { countAllPayments: false })).resolves.toMatchObject({
+        id: 'card-a2',
+        countAllPayments: false,
+      });
+    });
+
     it('PATCH de cartao nao padrao nao mexe no User', async () => {
       await service.update('user-a', 'card-a2', { closingDay: 25, dueDay: 3 });
 
@@ -439,6 +452,15 @@ describe('CreditCardsService', () => {
       expect(receipt.archivedAt).toEqual(expect.any(String));
       expect(cardsOf('user-a').find((c) => c.id === 'card-a2')).toBeDefined();
       expect(db.state.ceilings.find((c) => c.id === 'ceil-old')!.cardId).toBe('card-a2');
+    });
+
+    it('arquivar de novo e idempotente: nao regrava archivedAt', async () => {
+      const first = await service.archive('user-a', 'card-a2');
+      jest.setSystemTime(new Date('2026-11-16T12:00:00.000Z'));
+      const second = await service.archive('user-a', 'card-a2');
+
+      expect(second.archivedAt).toBe(first.archivedAt);
+      expect(cardsOf('user-a').find((c) => c.id === 'card-a2')!.archivedAt!.toISOString()).toBe(first.archivedAt);
     });
 
     it('nome de cartao arquivado volta a ficar livre', async () => {

@@ -162,6 +162,16 @@ describe('CreditCycleService', () => {
       expect(result.previousCeiling).toBe(1500);
     });
 
+    it('o teto sugerido vem so de ciclos anteriores (estritamente antes do fechamento atual)', async () => {
+      const { service, prisma } = build({ previousCeilingRow: { ceiling: decimal(1500) } });
+
+      await service.getCurrent('user-1');
+
+      const where = prisma.creditCycleCeiling.findFirst.mock.calls[0][0].where;
+      expect(where.closingDate).toHaveProperty('lt');
+      expect(where.closingDate).not.toHaveProperty('lte');
+    });
+
     it('devolve o dia de vencimento junto (so informativo)', async () => {
       const { service } = build({ creditDueDay: 15 });
 
