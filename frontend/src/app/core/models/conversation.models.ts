@@ -36,7 +36,9 @@ export type DraftKind =
   | 'INSTALLMENT'
   | 'TRANSACTION_CHANGE'
   | 'GOAL_CHANGE'
-  | 'ENVELOPE_CHANGE';
+  | 'ENVELOPE_CHANGE'
+  | 'RECURRING_CHANGE'
+  | 'INSTALLMENT_CHANGE';
 
 export type PendingField =
   | 'amount'

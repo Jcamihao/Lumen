@@ -619,8 +619,15 @@ export class AssistantPageComponent {
     return match ? `${match[3]}/${match[2]}/${match[1]}` : date;
   }
 
-  protected pendingFieldLabel(field: DraftView["pendingField"]) {
-    return field ? PENDING_FIELD_LABELS[field] : null;
+  protected pendingFieldLabel(field: DraftView["pendingField"], kind?: DraftView["kind"]) {
+    if (!field) {
+      return null;
+    }
+    if (field === "targetChoice") {
+      // O mesmo campo pede meta/reserva (8b) ou conta fixa/parcelado (8c): o kind diz qual.
+      return kind === "RECURRING_CHANGE" || kind === "INSTALLMENT_CHANGE" ? "conta fixa ou parcelado" : "meta ou reserva";
+    }
+    return PENDING_FIELD_LABELS[field];
   }
 
   /** Conta fixa e parcelado são cadastros: o rótulo é "Criado", não "Lançado". Os demais DONE seguem como antes. */
