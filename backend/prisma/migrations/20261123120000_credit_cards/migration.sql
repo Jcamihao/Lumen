@@ -21,8 +21,15 @@ CREATE TABLE "CreditCard" (
 
 -- Backfill: um "Principal" padrao por usuario, copiando os campos atuais do User.
 -- Idempotente: so cria quando o usuario ainda nao tem cartao padrao ativo.
+-- Clamp na faixa 1..31: dado antigo pode estar fora dela (0, 45, -3; so por SQL direto, pois os
+-- DTOs sempre validaram 1..31). Sem o clamp, o Principal nasceria com o mesmo valor invalido.
+-- dueDay usa CASE porque LEAST/GREATEST ignoram NULL no Postgres (GREATEST(1, NULL) = 1), e
+-- vencimento ausente tem que continuar NULL.
 INSERT INTO "CreditCard" ("id", "userId", "name", "closingDay", "dueDay", "countAllPayments", "isDefault", "createdAt", "updatedAt")
-SELECT gen_random_uuid()::text, u."id", 'Principal', u."monthClosingDay", u."creditDueDay", u."creditCycleCountAllPayments", true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+SELECT gen_random_uuid()::text, u."id", 'Principal',
+  LEAST(31, GREATEST(1, u."monthClosingDay")),
+  CASE WHEN u."creditDueDay" IS NULL THEN NULL ELSE LEAST(31, GREATEST(1, u."creditDueDay")) END,
+  u."creditCycleCountAllPayments", true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 FROM "User" u
 WHERE NOT EXISTS (
     SELECT 1 FROM "CreditCard" c
