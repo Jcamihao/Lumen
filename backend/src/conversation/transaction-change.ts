@@ -138,7 +138,13 @@ export function formatCandidateLine(index: number, candidate: TxCandidate): stri
 export function isDeleteChange(draft: unknown): boolean {
   const value = draft as { kind?: string; action?: string } | null;
   const kind = value?.kind ?? '';
-  return (kind === 'TRANSACTION_CHANGE' || kind === 'GOAL_CHANGE' || kind === 'ENVELOPE_CHANGE') && value?.action === 'DELETE';
+  return (
+    kind === 'TRANSACTION_CHANGE' ||
+    kind === 'GOAL_CHANGE' ||
+    kind === 'ENVELOPE_CHANGE' ||
+    kind === 'RECURRING_CHANGE' ||
+    kind === 'INSTALLMENT_CHANGE'
+  ) && value?.action === 'DELETE';
 }
 
 export function isTransactionChangeDraft(draft: unknown): draft is TransactionChangeDraft {

@@ -40,7 +40,15 @@ export type IntentMatch =
   | { intent: 'contribute_goal'; body: string }
   | { intent: 'create_envelope' | 'set_credit_limit' | 'create_recurring' | 'create_installment'; body: string }
   | { intent: 'edit_transaction' | 'delete_transaction'; body: string }
-  | { intent: 'edit_goal' | 'delete_goal' | 'edit_envelope' | 'delete_envelope'; body: string };
+  | { intent: 'edit_goal' | 'delete_goal' | 'edit_envelope' | 'delete_envelope'; body: string }
+  | {
+      intent:
+        | 'edit_recurring'
+        | 'delete_recurring'
+        | 'edit_installment'
+        | 'delete_installment';
+      body: string;
+    };
 
 const EXPENSE_VERBS = ['gastei', 'paguei', 'comprei'];
 
@@ -130,6 +138,21 @@ function matchTransactionChange(raw: string, tokens: string[], words: string[]):
   }
   if (noun === 'reserva' || noun === 'reservas' || noun === 'envelope') {
     return { intent: action === 'delete' ? 'delete_envelope' : 'edit_envelope', body: rest.slice(1).join(' ').trim() };
+  }
+  // Conta fixa e parcelado (contrato 8c, secao 3): "conta fixa"/"fixa" e "parcela(s)"/"parcelado(s)"/
+  // "compra(s) parcelada(s)". "conta" sozinho continua sendo lancamento (D1 do dono).
+  const second = rest.length > 1 ? normalizeWord(rest[1]) : '';
+  if (noun === 'fixa' || noun === 'fixas') {
+    return { intent: action === 'delete' ? 'delete_recurring' : 'edit_recurring', body: rest.slice(1).join(' ').trim() };
+  }
+  if ((noun === 'conta' || noun === 'contas') && (second === 'fixa' || second === 'fixas')) {
+    return { intent: action === 'delete' ? 'delete_recurring' : 'edit_recurring', body: rest.slice(2).join(' ').trim() };
+  }
+  if (noun === 'parcela' || noun === 'parcelas' || noun === 'parcelado' || noun === 'parcelados') {
+    return { intent: action === 'delete' ? 'delete_installment' : 'edit_installment', body: rest.slice(1).join(' ').trim() };
+  }
+  if ((noun === 'compra' || noun === 'compras') && (second === 'parcelada' || second === 'parceladas')) {
+    return { intent: action === 'delete' ? 'delete_installment' : 'edit_installment', body: rest.slice(2).join(' ').trim() };
   }
   if (noun === 'lancamento') rest = rest.slice(1);
   let body = rest.join(' ').trim();

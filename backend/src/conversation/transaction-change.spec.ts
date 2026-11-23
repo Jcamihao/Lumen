@@ -171,7 +171,8 @@ describe('editar/apagar: busca, lista e escolha (8a, secoes 3 e 4)', () => {
 
   it('so lancamentos nao elegiveis: mensagem de tela, sem sessao', async () => {
     const { send, db } = buildService(ROWS);
-    const reply = await send('apagar conta fixa');
+    // "conta fixa" sozinho virou alvo proprio (8c); aqui o termo pega o lancamento gerado por recorrência sem casar substantivo.
+    const reply = await send('apagar mercado conta');
     expect(reply.kind).toBe('INFO');
     expect(reply.text).toBe('Esse lançamento veio de conta fixa, parcelado, meta, nota ou é transferência; altere pela tela.');
     expect(db.sessions).toHaveLength(0);

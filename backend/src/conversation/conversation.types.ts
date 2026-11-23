@@ -35,7 +35,9 @@ export type DraftKind =
   | 'INSTALLMENT'
   | 'TRANSACTION_CHANGE'
   | 'GOAL_CHANGE'
-  | 'ENVELOPE_CHANGE';
+  | 'ENVELOPE_CHANGE'
+  | 'RECURRING_CHANGE'
+  | 'INSTALLMENT_CHANGE';
 
 /**
  * Rascunho para a tela: valores formatados, sem ids internos alem de draftId/draftVersion.
@@ -182,13 +184,23 @@ export interface TransactionChangeDraft {
  * (null = "sem alvo"/"sem prazo"); reserva usa name/monthlyCents.
  */
 export interface TargetChangeDraft {
-  kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE';
+  kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE' | 'RECURRING_CHANGE' | 'INSTALLMENT_CHANGE';
   action: 'EDIT' | 'DELETE';
   /** Ids da lista numerada (máx. 5), enquanto o usuário não escolhe. */
   candidateIds: string[];
   targetId: string | null;
   targetUpdatedAt: string | null;
-  changes: { title?: string; targetCents?: number | null; targetDate?: string | null; name?: string; monthlyCents?: number };
+  changes: {
+    title?: string;
+    targetCents?: number | null;
+    targetDate?: string | null;
+    name?: string;
+    monthlyCents?: number;
+    /** Conta fixa (contrato 8c): descricao/valor/data final ('sem prazo' = null). */
+    description?: string;
+    amountCents?: number;
+    endDate?: string | null;
+  };
   pendingField: 'targetChoice' | 'change' | null;
   reviewReason?: string;
 }
