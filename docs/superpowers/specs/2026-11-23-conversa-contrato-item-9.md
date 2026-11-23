@@ -1,6 +1,6 @@
 # Contrato do item 9: vários cartões nomeados (entrega 9a, só backend)
 
-Status: **rascunho para aprovação do dono** (2026-11-23). Branch `feat/varios-cartoes` (base `develop` `92fff11`).
+Status: **aprovado pelo dono em 2026-11-23** ("sim em todas" nas 5 decisões da seção 8; não pedir aprovação de novo). Branch `feat/varios-cartoes` (base `develop` `92fff11`).
 Validado pelo dono em 2026-11-23: modelo `CreditCard` por usuário; limite por plano **fica para depois do billing**; primeira entrega **só backend**, front depois integrando tudo.
 
 ## 1. Situação hoje (lido no código)
