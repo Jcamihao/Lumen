@@ -111,7 +111,7 @@
         <!-- Com rascunho para confirmar, o texto do motor repete a lista abaixo: mostra só uma chamada curta. -->
         <p class="assistant-manual__text" *ngIf="!(turn.kind === 'CONFIRM_DRAFT' && turn.draft); else confirmLead">{{ turn.text }}</p>
         <ng-template #confirmLead>
-          <p class="assistant-manual__text">Confira os dados antes de confirmar.</p>
+          <p class="assistant-manual__text">{{ isDeleteDraft(turn) ? "Confira o lançamento antes de apagar." : "Confira os dados antes de confirmar." }}</p>
         </ng-template>
 
         <p class="proto-muted" *ngIf="turn.kind === 'RESTORED' && turn.draft?.pendingField as pending">
@@ -156,10 +156,17 @@
           </ng-template>
         </ng-container>
 
+        <p class="proto-muted" *ngIf="showConfirmButtons(turn) && isDeleteDraft(turn)">Isto apaga de vez e não dá para desfazer.</p>
+
         <div class="proto-actions-row" *ngIf="showConfirmButtons(turn)">
-          <button type="button" class="proto-button" [disabled]="manualBusy()" (click)="confirmDraft()">
+          <button *ngIf="!isDeleteDraft(turn); else deleteConfirm" type="button" class="proto-button" [disabled]="manualBusy()" (click)="confirmDraft()">
             Confirmar
           </button>
+          <ng-template #deleteConfirm>
+            <button type="button" class="proto-button" [disabled]="manualBusy()" (click)="confirmDraft()">
+              Apagar de vez
+            </button>
+          </ng-template>
           <button type="button" class="proto-button proto-button--secondary" [disabled]="manualBusy()" (click)="cancelDraft()">
             Cancelar
           </button>

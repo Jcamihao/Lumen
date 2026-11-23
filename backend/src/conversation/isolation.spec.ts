@@ -747,6 +747,61 @@ describe('Isolamento A/B/C do motor de conversa', () => {
       expect(world.transactions.some((tx) => tx.id === 'b-1')).toBe(true);
     });
 
+    it('A confirma o apagar de B com a flag de apagar explicita: null igual ao inexistente, B intacto', async () => {
+      addTx('B', 'b-1', 'Mercado Teste B', 20);
+      await send('B', 'apagar mercado teste');
+      await send('B', '1');
+      const session = sessionOf('B')!;
+      const forged = await engine.service.confirmDraft(USER_ID.A, session.id, session.version, true);
+      const missing = await engine.service.confirmDraft(USER_ID.A, 'nao-existe', session.version, true);
+      expect(forged).toBeNull();
+      expect(forged).toEqual(missing);
+      expect(sessionOf('B')).toBeDefined();
+      expect(world.transactions.some((tx) => tx.id === 'b-1')).toBe(true);
+      expect(world.services.transactions.remove).not.toHaveBeenCalled();
+    });
+
+    it('B confirma o proprio apagar com flag: so o item de B sai; A nao e tocado', async () => {
+      addTx('A', 'a-1', 'Mercado Teste A', 10);
+      addTx('B', 'b-1', 'Mercado Teste B', 20);
+      await send('B', 'apagar mercado teste');
+      await send('B', '1');
+      const session = sessionOf('B')!;
+      const reply = await engine.service.confirmDraft(USER_ID.B, session.id, session.version, true);
+      expect(reply?.kind).toBe('DONE');
+      expect(world.services.transactions.remove).toHaveBeenCalledWith(USER_ID.B, 'b-1');
+      expect(world.transactions.some((tx) => tx.id === 'b-1')).toBe(false);
+      expect(world.transactions.some((tx) => tx.id === 'a-1')).toBe(true);
+    });
+
+    it('cartao com id de B plantado (apagar e editar): linha neutra no turno e no GET, sem descricao nem valor de B', async () => {
+      addTx('A', 'a-1', 'Mercado Teste A', 10);
+      addTx('B', 'b-1', 'Segredo de B', 987.65);
+      await send('A', 'apagar mercado teste');
+      await send('A', '1');
+      sessionOf('A')!.draft.targetId = 'b-1';
+      const restoredDelete = await engine.service.getSession(USER_ID.A);
+      expect(restoredDelete.draft?.rows).toEqual([{ label: 'Lançamento', value: 'escolhido' }]);
+      expect(JSON.stringify(restoredDelete)).not.toMatch(/Segredo|987/);
+      world.sessions.splice(0, world.sessions.length);
+      await send('A', 'corrigir mercado teste');
+      await send('A', '1');
+      sessionOf('A')!.draft.targetId = 'b-1';
+      sessionOf('A')!.draft.changes = { amountCents: 4500, categoryId: 'cat-B-main' };
+      const restoredEdit = await engine.service.getSession(USER_ID.A);
+      expect(restoredEdit.draft?.rows).toEqual([{ label: 'Lançamento', value: 'escolhido' }]);
+      expect(JSON.stringify(restoredEdit)).not.toMatch(/Segredo|987/);
+    });
+
+    it('cartao de editar com categoria de B plantada na mudanca: nunca mostra o nome da categoria de B', async () => {
+      addTx('A', 'a-1', 'Mercado Teste A', 10);
+      await send('A', 'corrigir mercado teste');
+      await send('A', '1');
+      sessionOf('A')!.draft.changes = { categoryId: 'cat-B-main' };
+      const restored = await engine.service.getSession(USER_ID.A);
+      expect(restored.draft?.rows).toEqual([{ label: 'Categoria', value: 'sem categoria → sem categoria' }]);
+    });
+
     it('logs do fluxo de apagar e editar nao carregam descricao nem valor', async () => {
       addTx('A', 'a-1', 'Descricao secreta XYZ', 777.77);
       await send('A', 'apagar secreta xyz');

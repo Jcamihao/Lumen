@@ -21,7 +21,7 @@ export const TX_REPLIES = {
   deleteWarning: 'Isto apaga de vez e não dá para desfazer.',
   deleteNeedsWord: 'Para apagar, responda apagar.',
   notFound: 'Não achei lançamento com isso nos últimos 180 dias.',
-  onlyNonEditable: 'Esse lançamento veio de conta fixa, parcelado, meta ou nota; altere pela tela.',
+  onlyNonEditable: 'Esse lançamento veio de conta fixa, parcelado, meta, nota ou é transferência; altere pela tela.',
   gone: 'Não encontrei mais esse lançamento.',
   notReady: 'Ainda não disponível.',
   changeNotUnderstood: 'Não entendi a mudança. Use: valor 45, descrição padaria, categoria mercado ou data 15/11.',

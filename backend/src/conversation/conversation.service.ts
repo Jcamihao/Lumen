@@ -313,16 +313,20 @@ export class ConversationService {
     return this.handleWithoutSession({ input, text });
   }
 
-  /** Botao "Confirmar". Null = 404 no controller (inexistente, outra conta, versao antiga ou já consumido). */
-  async confirmDraft(userId: string, draftId: string, draftVersion: number): Promise<ConversationReply | null> {
+  /**
+   * Botao "Confirmar" (deleteExplicit = botão "Apagar de vez" do cartão de apagar). Null = 404 no controller
+   * (inexistente, outra conta, versao antiga ou já consumido). Rascunho de apagar só aplica com deleteExplicit,
+   * que equivale à palavra "apagar" digitada (contrato 8a, secao 4). Sem a flag, o texto de sempre, sem gravar.
+   */
+  async confirmDraft(userId: string, draftId: string, draftVersion: number, deleteExplicit = false): Promise<ConversationReply | null> {
     const session = await this.prisma.conversationSession.findFirst({
       where: { id: draftId, userId, state: ConversationState.AWAITING_CONFIRMATION },
     });
     if (!session || session.version !== draftVersion) {
       return null;
     }
-    if (isDeleteChange(session.draft)) {
-      // Botão "Confirmar" não apaga: a ação de apagar é a palavra "apagar" (contrato 8a, secao 4; decisão do dono).
+    if (isDeleteChange(session.draft) && !deleteExplicit) {
+      // Botão "Confirmar" não apaga: a ação de apagar é a palavra "apagar" ou a ação explícita do cartão (decisão do dono).
       return this.reply('ERROR', this.stateView(session), TX_REPLIES.deleteNeedsWord);
     }
     const now = new Date();
@@ -1010,6 +1014,29 @@ export class ConversationService {
       lines.push(`Data: ${formatDayMonth(target.date)} -> ${formatDayMonth(changes.date)}`);
     }
     return lines;
+  }
+
+  /** Linhas do cartão de editar: valor atual e novo por campo que muda de fato (sem ids). */
+  private async changeDiffRows(
+    userId: string,
+    target: TxCandidate,
+    changes: TransactionChangeDraft['changes'],
+  ): Promise<DraftView['rows']> {
+    const rows: DraftView['rows'] = [];
+    if (changes.amountCents !== undefined && changes.amountCents !== target.amountCents) {
+      rows.push({ label: 'Valor', value: `${formatBrl(target.amountCents)} → ${formatBrl(changes.amountCents)}` });
+    }
+    if (changes.description !== undefined && changes.description !== target.description) {
+      rows.push({ label: 'Descrição', value: `${target.description} → ${changes.description}` });
+    }
+    if (changes.categoryId !== undefined && changes.categoryId !== target.categoryId) {
+      const after = changes.categoryId === null ? null : (await this.categoryNames(userId, [changes.categoryId]))[0] || null;
+      rows.push({ label: 'Categoria', value: `${target.categoryName ?? 'sem categoria'} → ${after ?? 'sem categoria'}` });
+    }
+    if (changes.date !== undefined && changes.date !== target.date) {
+      rows.push({ label: 'Data', value: `${formatDmy(target.date)} → ${formatDmy(changes.date)}` });
+    }
+    return rows;
   }
 
   private async saveNewDraft(args: {
@@ -1712,6 +1739,11 @@ export class ConversationService {
       // Rascunho antigo ou ids trocados: a regra de elegibilidade vale também na aplicação.
       throw new BadRequestException(TX_REPLIES.onlyNonEditable);
     }
+    // Conflito: o item mudou desde a escolha (ex.: editado pela tela). Vale tambem para apagar
+    // (decisao do dono em 2026-11-23: apagar confere updatedAt como editar). Nada é gravado (contrato 8a, secao 5).
+    if (target.updatedAt.toISOString() !== draft.targetUpdatedAt) {
+      throw new ConflictException(TX_REPLIES.changed);
+    }
     if (draft.action === 'DELETE') {
       await this.transactions.remove(userId, target.id);
       return {
@@ -1719,10 +1751,6 @@ export class ConversationService {
         data: { transactionId: target.id },
         resultRef: target.id,
       };
-    }
-    // Conflito: o item mudou desde a escolha (ex.: editado pela tela). Nada é gravado (contrato 8a, secao 5).
-    if (target.updatedAt.toISOString() !== draft.targetUpdatedAt) {
-      throw new ConflictException(TX_REPLIES.changed);
     }
     const dto: UpdateTransactionDto = {};
     if (draft.changes.amountCents !== undefined) dto.amount = draft.changes.amountCents / 100;
@@ -2361,12 +2389,33 @@ export class ConversationService {
     };
 
     if (isTransactionChangeDraft(draft)) {
+      // Prévia exata (contrato 8a, secoes 4 e 5): o lançamento escolhido é relido com id + userId da sessão.
+      // Apagar mostra o lançamento; editar mostra "antes -> depois" só dos campos que mudam. Inelegível ou sumido: linha neutra.
+      const editing = draft.action === 'EDIT' && Object.keys(draft.changes).length > 0;
+      const loaded =
+        draft.targetId !== null && (draft.action === 'DELETE' || editing)
+          ? await this.loadTxCandidate(session.userId, draft.targetId)
+          : null;
+      const target = loaded?.eligible === true ? loaded : null;
+      let rows: DraftView['rows'] = [];
+      if (target !== null) {
+        rows =
+          draft.action === 'DELETE'
+            ? [
+                { label: 'Valor', value: formatBrl(target.amountCents) },
+                { label: 'Descrição', value: target.description },
+                { label: 'Categoria', value: target.categoryName ?? 'sem categoria' },
+                { label: 'Data', value: formatDmy(target.date) },
+              ]
+            : await this.changeDiffRows(session.userId, target, draft.changes);
+      }
       return {
         ...base,
         kind: 'TRANSACTION_CHANGE',
         title: draft.action === 'DELETE' ? 'Apagar lançamento' : 'Editar lançamento',
+        changeAction: draft.action,
         pendingField: draft.pendingField,
-        rows: [{ label: 'Lançamento', value: draft.targetId === null ? 'a escolher' : 'escolhido' }],
+        rows: rows.length > 0 ? rows : [{ label: 'Lançamento', value: draft.targetId === null ? 'a escolher' : 'escolhido' }],
       };
     }
 
@@ -2666,7 +2715,10 @@ function toTxCandidate(row: {
     updatedAt: row.updatedAt,
     categoryId: row.categoryId,
     categoryName: row.category?.name ?? null,
+    // Decisao do dono em 2026-11-23: transferencia fica fora do editar/apagar por conversa
+    // (editar uma errado mexe em duas contas). Busca, lista, escolha, aplicacao e previa usam esta flag.
     eligible:
+      row.type !== 'TRANSFER' &&
       row.recurringTransactionId === null &&
       row.installmentPurchaseId === null &&
       row.linkedGoalId === null &&
@@ -2675,6 +2727,11 @@ function toTxCandidate(row: {
 }
 
 // ---------- funcoes puras do motor ----------
+
+/** 'AAAA-MM-DD' vira 'dd/mm/aaaa'. */
+function formatDmy(ymd: string): string {
+  return ymd.split('-').reverse().join('/');
+}
 
 function isReadIntent(match: IntentMatch): boolean {
   return match.intent === 'spend_by_category' || (READ_INTENTS as string[]).includes(match.intent);
