@@ -74,6 +74,7 @@ const PENDING_FIELD_LABELS = {
   installmentsTotal: "quantidade de parcelas",
   firstDueDate: "primeiro vencimento",
   transaction: "lançamento",
+  targetChoice: "meta ou reserva",
   change: "o que mudar",
 } as const;
 

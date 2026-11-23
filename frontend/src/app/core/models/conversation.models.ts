@@ -26,7 +26,17 @@ export type ConversationTransactionType = 'INCOME' | 'EXPENSE' | 'TRANSFER';
 
 export type ConversationPaymentMethod = 'PIX' | 'CREDIT' | 'DEBIT';
 
-export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION' | 'ENVELOPE' | 'CREDIT_LIMIT' | 'RECURRING' | 'INSTALLMENT' | 'TRANSACTION_CHANGE';
+export type DraftKind =
+  | 'TRANSACTION'
+  | 'GOAL'
+  | 'CONTRIBUTION'
+  | 'ENVELOPE'
+  | 'CREDIT_LIMIT'
+  | 'RECURRING'
+  | 'INSTALLMENT'
+  | 'TRANSACTION_CHANGE'
+  | 'GOAL_CHANGE'
+  | 'ENVELOPE_CHANGE';
 
 export type PendingField =
   | 'amount'
@@ -39,6 +49,7 @@ export type PendingField =
   | 'installmentsTotal'
   | 'firstDueDate'
   | 'transaction'
+  | 'targetChoice'
   | 'change';
 
 /** Linha do cartão do rascunho, já formatada pelo backend. Valor ausente vem como "a informar". */

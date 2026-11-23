@@ -1572,4 +1572,123 @@ describe("AssistantPageComponent — assistente manual", () => {
       expect(buttonWithText("Confirmar")).toBeUndefined();
     });
   });
+  describe("cartão de apagar/editar metas e reservas (8b-2)", () => {
+    const targetDraft = (overrides: Partial<DraftView> = {}): DraftView => ({
+      ...draft(),
+      kind: "GOAL_CHANGE",
+      title: "Apagar meta",
+      changeAction: "DELETE",
+      amount: null,
+      description: null,
+      category: null,
+      date: null,
+      rows: [
+        { label: "Meta", value: "Viagem" },
+        { label: "Guardado", value: "R$ 100,00" },
+        { label: "Aviso", value: "Os aportes já feitos continuam no extrato, soltos." },
+      ],
+      ...overrides,
+    });
+
+    const targetDeleteConfirm = (d: DraftView): ConversationReply => ({
+      kind: "CONFIRM_DRAFT",
+      state: "AWAITING_CONFIRMATION",
+      text: "Apagar a meta \"Viagem\"?\nIsto apaga de vez e não dá para desfazer.\nPara apagar, responda apagar.",
+      quickReplies: ["apagar", "cancelar"],
+      draft: d,
+    });
+
+    it("cartão de apagar meta tem Apagar de vez, mostra o aviso e manda a flag true", () => {
+      conversation.sendMessage.and.returnValue(of(targetDeleteConfirm(targetDraft())));
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Apaguei a meta \"Viagem\"." }),
+      );
+      create();
+      typeAndSend("apagar meta viagem");
+
+      expect(buttonWithText("Apagar de vez")).toBeDefined();
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      expect(text()).toContain("Os aportes já feitos continuam no extrato, soltos.");
+
+      clickCommand("Apagar de vez");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1, true);
+      expect(text()).toContain("Apaguei a meta");
+    });
+
+    it("cartão de apagar reserva repete o botão com o aviso dos depósitos", () => {
+      const d = targetDraft({
+        kind: "ENVELOPE_CHANGE",
+        title: "Apagar reserva",
+        rows: [
+          { label: "Reserva", value: "Lazer · 80,00/mês" },
+          { label: "Aviso", value: "Os depósitos dessa reserva somem; os gastos ligados continuam no extrato, soltos." },
+        ],
+      });
+      conversation.sendMessage.and.returnValue(of(targetDeleteConfirm(d)));
+      create();
+      typeAndSend("apagar reserva lazer");
+
+      expect(text()).toContain("Apagar reserva");
+      expect(buttonWithText("Apagar de vez")).toBeDefined();
+      expect(text()).toContain("os gastos ligados continuam no extrato, soltos.");
+    });
+
+    it("cartão de editar meta segue com Confirmar normal e confirm sem a flag", () => {
+      const d = targetDraft({
+        title: "Editar meta",
+        changeAction: "EDIT",
+        rows: [
+          { label: "Meta", value: "Viagem" },
+          { label: "Valor alvo", value: "R$ 500,00 → R$ 800,00" },
+        ],
+      });
+      conversation.sendMessage.and.returnValue(
+        of<ConversationReply>({
+          kind: "CONFIRM_DRAFT",
+          state: "AWAITING_CONFIRMATION",
+          text: "Editar a meta \"Viagem\".\nResponda confirmar.",
+          quickReplies: ["confirmar", "cancelar"],
+          draft: d,
+        }),
+      );
+      conversation.confirmDraft.and.returnValue(new Subject<ConversationReply>().asObservable());
+      create();
+      typeAndSend("valor 800");
+
+      expect(buttonWithText("Apagar de vez")).toBeUndefined();
+      clickCommand("Confirmar");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1);
+    });
+
+    it("sessão restaurada num apagar de meta traz o cartão com aviso e sem atalho apagar", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({ state: "AWAITING_CONFIRMATION", draft: targetDraft() }),
+      );
+      create();
+
+      expect(text()).toContain("Você tem um rascunho em andamento.");
+      expect(buttonWithText("Apagar de vez")).toBeDefined();
+      expect(buttonWithText("apagar")).toBeUndefined();
+    });
+
+    it("rascunho de mudança pedindo o alvo mostra 'Falta informar: meta ou reserva.'", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({
+          state: "COLLECTING_FIELDS",
+          draft: targetDraft({
+            title: "Editar meta",
+            changeAction: "EDIT",
+            pendingField: "targetChoice",
+            rows: [{ label: "Meta", value: "a informar" }],
+          }),
+        }),
+      );
+      create();
+
+      expect(text()).toContain("Falta informar: meta ou reserva.");
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+    });
+  });
 });
