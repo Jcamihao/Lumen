@@ -39,8 +39,12 @@ Contrato: `docs/superpowers/specs/2026-11-23-conversa-contrato-item-8b.md` (apro
 - `target-change` 15 execuções seguidas: 27 verdes em todas.
 - Frontend não foi tocado (a 8b-2 cuida de rótulos/karma).
 
-## NÃO verificado
+## Integração real (feita em 2026-11-23)
 
-- Integração real em Postgres/Redis descartáveis (pretendo rodar no fechamento da 8b junto com E2E do cartão — anotar no handoff se mergear antes).
-- Concorrência real do `updatedAt` (bloqueio Prisma só existe no update da tela; o apagar usa remove simples — mesma race aceitado no 8a).
+Postgres 16 + Redis 7 **descartáveis** (portas 5544/6390; o 5433 legado intocado), app com `dist/main.js` real, contas registradas por HTTP. Roteiro em `integracao-8b1.mjs` (mesma pasta): **37 checagens, duas corridas, 0 falhas**. Cobre: lista sem vazar meta de B, prévia antes→depois real, conflito de `updatedAt` do editar e do apagar com a tela mexendo no meio (Prisma real), recibo DONE + sessão fechada, apagar por palavra e pela flag do cartão (`delete:"x"` dá 400, `true` apaga), RESTORED com Aviso, aporte que fica solto no extrato ao apagar a meta, reserva: aviso do próximo depósito, valor gravado, apagar mantém o gasto solto, cancelar não grava, B confirmar rascunho de A = 404 sem revelar existência, draft inexistente = 404, meta de B intacta. Containers removidos ao final.
+
+## NÃO verificado (aceito)
+
+- Concorrência real do `updatedAt` no APAGAR (o remove da tela não bloqueia a linha; a janela é do preview até a aplicação — a mesma race aceitada no 8a; o teste real provou que a checagem fecha o cenário principal).
+- E2E no navegador com o cartão (vem com a 8b-2).
 - Comportamento de entitlement ao editar reserva pausada que reativa (fora do escopo aprovado — não mexemos em `isActive`).
