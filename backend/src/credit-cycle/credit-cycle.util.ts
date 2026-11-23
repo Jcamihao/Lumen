@@ -1,4 +1,32 @@
+import { Prisma } from '@prisma/client';
 import { addDaysUtc, daysInMonthUtc, utcDate } from '../recurring-transactions/recurrence.util';
+
+/** Nome do cartao criado para cada usuario (migration e cadastro). */
+export const PRINCIPAL_CARD_NAME = 'Principal';
+
+/**
+ * Serializa escritores de cartao, teto e configuracao do mesmo usuario:
+ * bloqueia a linha do User com FOR NO KEY UPDATE (nao bloqueia filhos).
+ */
+export async function lockUserForCredit(tx: Prisma.TransactionClient, userId: string): Promise<void> {
+  await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR NO KEY UPDATE`;
+}
+
+/**
+ * Campos do User que espelham o cartao padrao (contrato item 9, secao 4.2).
+ * Mantidos na mesma transacao enquanto o front nao migra (9c).
+ */
+export function userCycleFieldsFromCard(card: {
+  closingDay: number;
+  dueDay: number | null;
+  countAllPayments: boolean;
+}) {
+  return {
+    monthClosingDay: card.closingDay,
+    creditDueDay: card.dueDay,
+    creditCycleCountAllPayments: card.countAllPayments,
+  };
+}
 
 /**
  * Ocorrencia do dia de fechamento num mes especifico, clampada para meses

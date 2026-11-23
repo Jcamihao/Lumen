@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { CreditCycleService } from './credit-cycle.service';
 import { CreditLimitChangedError, CreditLimitWriteUncertainError } from './conversation-write.types';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 
 const decimal = (value: number) => new Prisma.Decimal(value);
 
@@ -14,17 +14,43 @@ describe('CreditCycleService', () => {
     previousCeilingRow?: { ceiling: any } | null;
     spentSum?: number | null;
     timezone?: string;
+    extraCards?: Array<Record<string, unknown>>;
   } = {}) => {
+    // Cartao padrao do user-1 e uma lista de cartoes com dono (isolamento).
+    const card: Record<string, unknown> = {
+      id: 'card-1',
+      userId: 'user-1',
+      name: 'Principal',
+      closingDay: options.monthClosingDay ?? 5,
+      dueDay: options.creditDueDay ?? null,
+      countAllPayments: options.countAllPayments ?? false,
+      isDefault: true,
+      archivedAt: null,
+    };
+    const cards: Array<Record<string, any>> = [card, ...(options.extraCards ?? [])];
+    const pick = (where: any) =>
+      cards.find(
+        (c) =>
+          (where.id === undefined || c.id === where.id) &&
+          (where.userId === undefined || c.userId === where.userId) &&
+          (where.isDefault === undefined || c.isDefault === where.isDefault) &&
+          (where.archivedAt === undefined || c.archivedAt === where.archivedAt),
+      ) ?? null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const prisma: any = {
       user: {
         findUniqueOrThrow: jest.fn().mockResolvedValue({
           timezone: options.timezone ?? 'America/Sao_Paulo',
-          monthClosingDay: options.monthClosingDay ?? 5,
-          creditDueDay: options.creditDueDay ?? null,
-          creditCycleCountAllPayments: options.countAllPayments ?? false,
         }),
         update: jest.fn().mockResolvedValue({}),
+      },
+      creditCard: {
+        findFirst: jest.fn(async ({ where }) => pick(where)),
+        update: jest.fn(async ({ where, data }) => {
+          const target = cards.find((c) => c.id === where.id)!;
+          Object.assign(target, Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)));
+          return { ...target };
+        }),
       },
       creditCycleCeiling: {
         findUnique: jest.fn().mockResolvedValue(options.ceilingRow ?? null),
@@ -184,7 +210,8 @@ describe('CreditCycleService', () => {
 
       await service.updateSettings('user-1', { dueDay: 5 });
 
-      expect(prisma.user.update.mock.calls[0][0].data.creditCycleCountAllPayments).toBeUndefined();
+      expect(prisma.creditCard.update.mock.calls[0][0].data.countAllPayments).toBeUndefined();
+      expect(prisma.user.update.mock.calls[0][0].data.creditCycleCountAllPayments).toBe(false);
     });
   });
 
@@ -195,7 +222,7 @@ describe('CreditCycleService', () => {
       await service.setCeiling('user-1', { ceiling: 1600 });
 
       const call = prisma.creditCycleCeiling.upsert.mock.calls[0][0];
-      expect(call.where.userId_closingDate.userId).toBe('user-1');
+      expect(call.where.cardId_closingDate.cardId).toBe('card-1');
       expect(Number(call.create.ceiling)).toBe(1600);
       expect(Number(call.update.ceiling)).toBe(1600);
     });
@@ -241,7 +268,7 @@ describe('CreditCycleService', () => {
       );
       expect(prisma.creditCycleCeiling.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { userId_closingDate: { userId: 'user-1', closingDate: new Date('2026-12-05T00:00:00.000Z') } },
+          where: { cardId_closingDate: { cardId: 'card-1', closingDate: new Date('2026-12-05T00:00:00.000Z') } },
         }),
       );
       expect(receipt).toEqual({
@@ -265,11 +292,11 @@ describe('CreditCycleService', () => {
       expect(values).toEqual(['user-1']);
       expect(prisma.user.findUniqueOrThrow).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'user-1' } }));
       expect(prisma.creditCycleCeiling.findUnique).toHaveBeenCalledWith({
-        where: { userId_closingDate: { userId: 'user-1', closingDate } },
+        where: { cardId_closingDate: { cardId: 'card-1', closingDate } },
       });
       expect(prisma.creditCycleCeiling.upsert).toHaveBeenCalledWith({
-        where: { userId_closingDate: { userId: 'user-1', closingDate } },
-        create: { userId: 'user-1', closingDate, ceiling: decimal(5000) },
+        where: { cardId_closingDate: { cardId: 'card-1', closingDate } },
+        create: { cardId: 'card-1', userId: 'user-1', closingDate, ceiling: decimal(5000) },
         update: { ceiling: decimal(5000) },
       });
     });
@@ -396,6 +423,104 @@ describe('CreditCycleService', () => {
 
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(response.ceiling).toBe(5000);
+    });
+  });
+describe('ciclo por cartao (9a-1)', () => {
+    beforeEach(() => jest.useFakeTimers({ now: new Date('2026-11-15T12:00:00.000Z') }));
+    afterEach(() => jest.useRealTimers());
+
+    const nubank = { id: 'card-2', userId: 'user-1', name: 'Nubank', closingDay: 20, dueDay: 27, countAllPayments: false, isDefault: false, archivedAt: null };
+
+    it('cartao nao padrao soma so CREDIT do proprio cartao e usa o fechamento dele', async () => {
+      const { service, prisma } = build({ extraCards: [nubank] });
+
+      const result = await service.getCycleForCard('user-1', 'card-2');
+
+      const where = prisma.transaction.aggregate.mock.calls[0][0].where;
+      expect(where).toMatchObject({ userId: 'user-1', type: 'EXPENSE', paymentMethod: 'CREDIT', cardId: 'card-2' });
+      expect(where.OR).toBeUndefined();
+      expect(result.closingDay).toBe(20);
+      expect(result.dueDay).toBe(27);
+      expect(result.cycleEnd).toBe('2026-11-20T00:00:00.000Z');
+    });
+
+    it('cartao padrao soma CREDIT com cardId igual ao dele ou nulo (lancamentos antigos)', async () => {
+      const { service, prisma } = build();
+
+      await service.getCycleForCard('user-1', 'card-1');
+
+      const where = prisma.transaction.aggregate.mock.calls[0][0].where;
+      expect(where).toMatchObject({ paymentMethod: 'CREDIT' });
+      expect(where.OR).toEqual([{ cardId: 'card-1' }, { cardId: null }]);
+    });
+
+    it('padrao com countAllPayments soma toda EXPENSE, sem filtro de cartao nem de forma de pagamento', async () => {
+      const { service, prisma } = build({ countAllPayments: true });
+
+      await service.getCurrent('user-1');
+
+      const where = prisma.transaction.aggregate.mock.calls[0][0].where;
+      expect(where.paymentMethod).toBeUndefined();
+      expect(where.OR).toBeUndefined();
+      expect(where.cardId).toBeUndefined();
+    });
+
+    it('cartao alheio responde 404 e o ciclo nao e lido', async () => {
+      const alheio = { id: 'card-x', userId: 'user-2', name: 'Alheio', closingDay: 3, dueDay: null, countAllPayments: false, isDefault: false, archivedAt: null };
+      const { service, prisma } = build({ extraCards: [alheio] });
+
+      await expect(service.getCycleForCard('user-1', 'card-x')).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.creditCard.findFirst.mock.calls[0][0].where).toMatchObject({ id: 'card-x', userId: 'user-1' });
+      expect(prisma.transaction.aggregate).not.toHaveBeenCalled();
+    });
+
+    it('sem cartao padrao ativo: falha de invariante, sem ler o ciclo', async () => {
+      const { service, prisma } = build();
+      prisma.creditCard.findFirst.mockResolvedValueOnce(null);
+
+      await expect(service.getCurrent('user-1')).rejects.toBeInstanceOf(InternalServerErrorException);
+      expect(prisma.transaction.aggregate).not.toHaveBeenCalled();
+    });
+
+    it('teto de cartao nao padrao grava por cardId_closingDate do proprio cartao', async () => {
+      const { service, prisma } = build({ extraCards: [nubank] });
+      prisma.creditCycleCeiling.upsert.mockResolvedValueOnce({ id: 'ceil-9', ceiling: decimal(800) });
+
+      const receipt = await service.setCeilingForCard('user-1', 'card-2', { ceiling: 800 });
+
+      expect(prisma.creditCycleCeiling.upsert.mock.calls[0][0].where).toEqual({
+        cardId_closingDate: { cardId: 'card-2', closingDate: new Date('2026-11-20T00:00:00.000Z') },
+      });
+      expect(receipt).toMatchObject({ id: 'ceil-9', ceilingCents: 80000, cycleEnd: '2026-11-20', refreshPending: false });
+    });
+
+    it('teto de cartao arquivado e recusado sem gravar', async () => {
+      const arquivado = { ...nubank, archivedAt: new Date('2026-11-01T00:00:00.000Z') };
+      const { service, prisma } = build({ extraCards: [arquivado] });
+
+      await expect(service.setCeilingForCard('user-1', 'card-2', { ceiling: 800 })).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.creditCycleCeiling.upsert).not.toHaveBeenCalled();
+    });
+
+    it('teto de cartao alheio responde 404 sem gravar', async () => {
+      const alheio = { id: 'card-x', userId: 'user-2', name: 'Alheio', closingDay: 3, dueDay: null, countAllPayments: false, isDefault: false, archivedAt: null };
+      const { service, prisma } = build({ extraCards: [alheio] });
+
+      await expect(service.setCeilingForCard('user-1', 'card-x', { ceiling: 800 })).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.creditCycleCeiling.upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sincronia User <-> cartao padrao (9a-1)', () => {
+    it('updateSettings grava cartao padrao e User na mesma transacao, depois do lock', async () => {
+      const { service, prisma } = build();
+
+      await service.updateSettings('user-1', { dueDay: 15, countAllPayments: true });
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(prisma.creditCard.update.mock.invocationCallOrder[0]);
+      expect(prisma.creditCard.update.mock.calls[0][0]).toMatchObject({ where: { id: 'card-1' }, data: { dueDay: 15, countAllPayments: true } });
+      expect(prisma.user.update.mock.calls[0][0].data).toEqual({ monthClosingDay: 5, creditDueDay: 15, creditCycleCountAllPayments: true });
     });
   });
 });

@@ -52,6 +52,9 @@ const buildPrisma = (
       upsert: jest.fn((args: any) => args),
     },
     $transaction: jest.fn().mockResolvedValue([]),
+    creditCard: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'card-1' }),
+    },
     creditCycleCeiling: {
       findUnique: jest.fn().mockResolvedValue(null),
     },
