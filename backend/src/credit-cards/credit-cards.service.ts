@@ -251,15 +251,15 @@ export class CreditCardsService {
 
   /** Nome unico entre ativos, sem diferenciar maiuscula. Chamado sob o lock do User. */
   private async assertNameFree(tx: Db, userId: string, name: string, exceptId?: string) {
-    const clash = await tx.creditCard.findFirst({
-      where: {
-        userId,
-        archivedAt: null,
-        name: { equals: name, mode: 'insensitive' },
-        ...(exceptId ? { id: { not: exceptId } } : {}),
-      },
-      select: { id: true },
+    // Nao usar `mode: 'insensitive'`: o Prisma traduz para ILIKE e "%" ou "_" no nome viram curinga
+    // (falso 409). Sao no maximo MAX_ACTIVE_CARDS_PER_USER linhas; o indice unico parcial
+    // (lower(name)) continua sendo a garantia final contra corrida.
+    const active = await tx.creditCard.findMany({
+      where: { userId, archivedAt: null },
+      select: { id: true, name: true },
     });
+    const wanted = name.toLowerCase();
+    const clash = active.some((card) => card.id !== exceptId && card.name.toLowerCase() === wanted);
     if (clash) throw new ConflictException('Ja existe um cartao com este nome.');
   }
 

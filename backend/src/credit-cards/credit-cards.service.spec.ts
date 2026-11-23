@@ -17,7 +17,11 @@ function matches(row: Row, where: Row = {}): boolean {
       const c = cond as Row;
       if ('not' in c) return !eq(value, c.not);
       if ('equals' in c) {
-        if (c.mode === 'insensitive') return String(value ?? '').toLowerCase() === String(c.equals).toLowerCase();
+        // O Prisma traduz equals+insensitive para ILIKE: "%" e "_" do valor viram curinga (como no Postgres real).
+        if (c.mode === 'insensitive') {
+          const pattern = String(c.equals).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.');
+          return new RegExp('^' + pattern + '$', 'is').test(String(value ?? ''));
+        }
         return eq(value, c.equals);
       }
       if ('lt' in c) return norm(value) < norm(c.lt);
@@ -294,6 +298,18 @@ describe('CreditCardsService', () => {
 
       await expect(service.create('user-a', { name: 'nubank', closingDay: 3 })).rejects.toBeInstanceOf(ConflictException);
       expect(db.snapshot()).toBe(before);
+    });
+
+    it('"_" e "%" no nome nao viram curinga: nao colidem com outro nome, mas o mesmo nome continua 409', async () => {
+      await expect(service.create('user-a', { name: 'N_bank', closingDay: 3 })).resolves.toMatchObject({ name: 'N_bank' });
+      await expect(service.create('user-a', { name: '%', closingDay: 3 })).resolves.toMatchObject({ name: '%' });
+      await expect(service.create('user-a', { name: 'Cartao 100%', closingDay: 3 })).resolves.toMatchObject({ name: 'Cartao 100%' });
+      await expect(service.create('user-a', { name: 'n_BANK', closingDay: 3 })).rejects.toBeInstanceOf(ConflictException);
+      await expect(service.create('user-a', { name: 'NxBank', closingDay: 3 })).resolves.toMatchObject({ name: 'NxBank' });
+    });
+
+    it('renomear para nome com "_" nao colide com outro nome parecido', async () => {
+      await expect(service.update('user-a', 'card-a2', { name: 'Pri_cipal' })).resolves.toMatchObject({ name: 'Pri_cipal' });
     });
 
     it('mesmo nome em outro usuario nao conflita', async () => {
