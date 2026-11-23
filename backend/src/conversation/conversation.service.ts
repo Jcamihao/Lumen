@@ -57,6 +57,18 @@ import type { TargetChangeDraft, TransactionChangeDraft } from './conversation.t
 import { UpdateTransactionDto } from '../transactions/dto/update-transaction.dto';
 import { UpdateGoalDto } from '../goals/dto/update-goal.dto';
 import { UpdateEnvelopeDto } from '../envelopes/dto/update-envelope.dto';
+import { UpdateRecurringTransactionDto } from '../recurring-transactions/dto/update-recurring-transaction.dto';
+import {
+  FREQ_PT,
+  RC_REPLIES,
+  describeInstallment,
+  describeRecurring,
+  formatInstallmentLine,
+  formatRecurringLine,
+  parseRecurringChange,
+  type InstallmentCandidate,
+  type RecurringCandidate,
+} from './recurring-change';
 import {
   TG_REPLIES,
   TARGET_CHANGE_MAX_CANDIDATES,
@@ -433,14 +445,30 @@ export class ConversationService {
       intent.intent === 'edit_goal' ||
       intent.intent === 'delete_goal' ||
       intent.intent === 'edit_envelope' ||
-      intent.intent === 'delete_envelope'
+      intent.intent === 'delete_envelope' ||
+      intent.intent === 'edit_recurring' ||
+      intent.intent === 'delete_recurring' ||
+      intent.intent === 'edit_installment' ||
+      intent.intent === 'delete_installment'
     ) {
-      // Editar/apagar meta ou reserva (contrato 8b, secoes 3 a 5).
-      const kind = intent.intent === 'edit_goal' || intent.intent === 'delete_goal' ? 'GOAL_CHANGE' : 'ENVELOPE_CHANGE';
+      // Editar/apagar meta, reserva, conta fixa ou parcelado (contratos 8b e 8c, secoes 3 a 5).
+      if (intent.intent === 'edit_installment') {
+        // D3 do dono: parcelado nao tem edicao nem na tela; pelo chat so apaga.
+        await this.recordEvent(input, 'edit_installment', ConversationOutcome.RECOGNIZED);
+        return this.reply('INFO', 'IDLE', RC_REPLIES.installmentNoEdit);
+      }
+      const kind: TargetChangeDraft['kind'] =
+        intent.intent === 'edit_goal' || intent.intent === 'delete_goal'
+          ? 'GOAL_CHANGE'
+          : intent.intent === 'edit_envelope' || intent.intent === 'delete_envelope'
+            ? 'ENVELOPE_CHANGE'
+            : intent.intent === 'edit_recurring' || intent.intent === 'delete_recurring'
+              ? 'RECURRING_CHANGE'
+              : 'INSTALLMENT_CHANGE';
       return this.startTargetChange({
         input,
         kind,
-        action: intent.intent === 'delete_goal' || intent.intent === 'delete_envelope' ? 'DELETE' : 'EDIT',
+        action: intent.intent.startsWith('delete_') ? 'DELETE' : 'EDIT',
         body: intent.body,
       });
     }
@@ -1824,12 +1852,14 @@ export class ConversationService {
   /** Editar/apagar meta ou reserva: busca e lista numerada, ou pergunta qual (contrato 8b, secao 3). */
   private async startTargetChange(args: {
     input: ConversationInput;
-    kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE';
+    kind: TargetChangeDraft['kind'];
     action: 'EDIT' | 'DELETE';
     body: string;
   }): Promise<ConversationReply> {
     const { input, kind, action, body } = args;
-    const intent = `${action === 'DELETE' ? 'delete' : 'edit'}_${kind === 'GOAL_CHANGE' ? 'goal' : 'envelope'}`;
+    const noun =
+      kind === 'GOAL_CHANGE' ? 'goal' : kind === 'ENVELOPE_CHANGE' ? 'envelope' : kind === 'RECURRING_CHANGE' ? 'recurring' : 'installment';
+    const intent = `${action === 'DELETE' ? 'delete' : 'edit'}_${noun}`;
     const draft: TargetChangeDraft = {
       kind,
       action,
@@ -1852,14 +1882,15 @@ export class ConversationService {
   }
 
   /**
-   * Busca do alvo (contrato 8b, secao 3): metas de qualquer status, sem janela de data, e reservas;
-   * nome sem acento e caixa filtrado em memoria (como no 8a), ate 5, mais recentes primeiro.
+   * Busca do alvo (contratos 8b e 8c, secoes 3): metas de qualquer status, reservas, contas fixas
+   * (todos os status) e parcelados que ainda tem o que gerar; nome sem acento e caixa filtrado em
+   * memoria (como no 8a), ate 5, mais recentes primeiro.
    */
   private async searchTargets(
     userId: string,
-    kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE',
+    kind: TargetChangeDraft['kind'],
     body: string,
-  ): Promise<Array<GoalCandidate | EnvelopeCandidate>> {
+  ): Promise<Array<GoalCandidate | EnvelopeCandidate | RecurringCandidate | InstallmentCandidate>> {
     const term = normalize(body.trim());
     if (term.length === 0) {
       return [];
@@ -1870,6 +1901,29 @@ export class ConversationService {
         .filter((row) => matchesName(row.title, term))
         .slice(0, TARGET_CHANGE_MAX_CANDIDATES)
         .map(toGoalCandidateRow);
+    }
+    if (kind === 'RECURRING_CHANGE') {
+      const rows = await this.prisma.recurringTransaction.findMany({
+        where: { userId },
+        select: RECURRING_CHANGE_SELECT,
+        orderBy: { updatedAt: 'desc' },
+      });
+      return rows
+        .filter((row) => matchesName(row.description, term))
+        .slice(0, TARGET_CHANGE_MAX_CANDIDATES)
+        .map(toRecurringCandidateRow);
+    }
+    if (kind === 'INSTALLMENT_CHANGE') {
+      // Lista so o que ainda tem parcela a gerar (contrato 8c, secao 3): apagar o resto nao tem efeito na conversa.
+      const rows = await this.prisma.installmentPurchase.findMany({
+        where: { userId, isActive: true, nextDueDate: { not: null } },
+        select: INSTALLMENT_CHANGE_SELECT,
+        orderBy: { updatedAt: 'desc' },
+      });
+      return rows
+        .filter((row) => matchesName(row.description, term))
+        .slice(0, TARGET_CHANGE_MAX_CANDIDATES)
+        .map(toInstallmentCandidateRow);
     }
     const rows = await this.prisma.envelope.findMany({
       where: { userId },
@@ -1882,23 +1936,61 @@ export class ConversationService {
       .map(toEnvelopeCandidateRow);
   }
 
-  /** Meta ou reserva do usuario pelo id (id + userId, nunca so o id). */
+  /** Alvo do usuario pelo id (id + userId, nunca so o id). */
   private async loadTargetCandidate(
     userId: string,
-    kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE',
+    kind: TargetChangeDraft['kind'],
     id: string,
-  ): Promise<GoalCandidate | EnvelopeCandidate | null> {
+  ): Promise<GoalCandidate | EnvelopeCandidate | RecurringCandidate | InstallmentCandidate | null> {
     if (kind === 'GOAL_CHANGE') {
       const row = await this.prisma.goal.findFirst({ where: { id, userId }, select: GOAL_CHANGE_SELECT });
       return row === null ? null : toGoalCandidateRow(row);
+    }
+    if (kind === 'RECURRING_CHANGE') {
+      const row = await this.prisma.recurringTransaction.findFirst({ where: { id, userId }, select: RECURRING_CHANGE_SELECT });
+      return row === null ? null : toRecurringCandidateRow(row);
+    }
+    if (kind === 'INSTALLMENT_CHANGE') {
+      // Sem filtro de status aqui: se a ultima parcela saiu do meio do fluxo, o conflito de updatedAt cuida.
+      const row = await this.prisma.installmentPurchase.findFirst({ where: { id, userId }, select: INSTALLMENT_CHANGE_SELECT });
+      return row === null ? null : toInstallmentCandidateRow(row);
     }
     const row = await this.prisma.envelope.findFirst({ where: { id, userId }, select: ENVELOPE_CHANGE_SELECT });
     return row === null ? null : toEnvelopeCandidateRow(row);
   }
 
   /** Lista numerada dos candidatos que ainda existem (sumido sai da lista, numeracao preserva a ordem). */
-  private async targetListText(userId: string, kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE', ids: string[]): Promise<string> {
-    const header = kind === 'GOAL_CHANGE' ? TG_REPLIES.pickHeaderGoal : TG_REPLIES.pickHeaderEnvelope;
+  private async targetListText(userId: string, kind: TargetChangeDraft['kind'], ids: string[]): Promise<string> {
+    const header =
+      kind === 'GOAL_CHANGE'
+        ? TG_REPLIES.pickHeaderGoal
+        : kind === 'ENVELOPE_CHANGE'
+          ? TG_REPLIES.pickHeaderEnvelope
+          : kind === 'RECURRING_CHANGE'
+            ? RC_REPLIES.pickHeaderRecurring
+            : RC_REPLIES.pickHeaderInstallment;
+    if (kind === 'RECURRING_CHANGE') {
+      const rows = await this.prisma.recurringTransaction.findMany({ where: { userId, id: { in: ids } }, select: RECURRING_CHANGE_SELECT });
+      const byId = new Map(rows.map((row) => [row.id, toRecurringCandidateRow(row)]));
+      const lines = ids
+        .map((id, index) => {
+          const candidate = byId.get(id);
+          return candidate ? formatRecurringLine(index, candidate) : null;
+        })
+        .filter((line): line is string => line !== null);
+      return [header, ...lines].join('\n');
+    }
+    if (kind === 'INSTALLMENT_CHANGE') {
+      const rows = await this.prisma.installmentPurchase.findMany({ where: { userId, id: { in: ids } }, select: INSTALLMENT_CHANGE_SELECT });
+      const byId = new Map(rows.map((row) => [row.id, toInstallmentCandidateRow(row)]));
+      const lines = ids
+        .map((id, index) => {
+          const candidate = byId.get(id);
+          return candidate ? formatInstallmentLine(index, candidate) : null;
+        })
+        .filter((line): line is string => line !== null);
+      return [header, ...lines].join('\n');
+    }
     if (kind === 'GOAL_CHANGE') {
       const rows = await this.prisma.goal.findMany({ where: { userId, id: { in: ids } }, select: GOAL_CHANGE_SELECT });
       const byId = new Map(rows.map((row) => [row.id, toGoalCandidateRow(row)]));
@@ -1961,7 +2053,12 @@ export class ConversationService {
     if (draft.targetId === null) {
       return { status: 'ERROR', text: gone };
     }
-    const parsed = parseTargetChange(draft.kind, value, today, amountErrorText);
+    const parsed =
+      draft.kind === 'RECURRING_CHANGE'
+        ? parseRecurringChange(value, today, amountErrorText)
+        : draft.kind === 'INSTALLMENT_CHANGE'
+          ? ({ ok: false, text: RC_REPLIES.installmentNoEdit } as const)
+          : parseTargetChange(draft.kind, value, today, amountErrorText);
     if (parsed.ok === false) {
       return { status: 'ERROR', text: parsed.text };
     }
@@ -1975,6 +2072,12 @@ export class ConversationService {
       draft.changes.targetDate = parsed.ymd;
     } else if (parsed.field === 'monthlyCents') {
       draft.changes.monthlyCents = parsed.cents;
+    } else if (parsed.field === 'description') {
+      draft.changes.description = parsed.text;
+    } else if (parsed.field === 'amountCents') {
+      draft.changes.amountCents = parsed.cents;
+    } else if (parsed.field === 'endDate') {
+      draft.changes.endDate = parsed.ymd;
     }
     draft.pendingField = null;
     return { status: 'UPDATED' };
@@ -1986,10 +2089,31 @@ export class ConversationService {
     if (target === null) {
       return this.targetGoneText(draft.kind);
     }
-    const noun = 'title' in target ? 'meta' : 'reserva';
-    const described = 'title' in target ? describeGoal(target) : describeEnvelope(target);
+    const noun =
+      draft.kind === 'GOAL_CHANGE'
+        ? 'meta'
+        : draft.kind === 'ENVELOPE_CHANGE'
+          ? 'reserva'
+          : draft.kind === 'RECURRING_CHANGE'
+            ? 'conta fixa'
+            : 'compra parcelada';
+    const described =
+      'title' in target
+        ? describeGoal(target)
+        : 'name' in target
+          ? describeEnvelope(target)
+          : 'frequency' in target
+            ? describeRecurring(target)
+            : describeInstallment(target);
     if (draft.action === 'DELETE') {
-      const note = 'title' in target ? TG_REPLIES.goalDeleteNote : TG_REPLIES.envelopeDeleteNote;
+      const note =
+        'title' in target
+          ? TG_REPLIES.goalDeleteNote
+          : 'name' in target
+            ? TG_REPLIES.envelopeDeleteNote
+            : 'frequency' in target
+              ? RC_REPLIES.recurringDeleteNote
+              : RC_REPLIES.installmentDeleteNote;
       return [`Apagar ${noun}: ${described}.`, note, TG_REPLIES.deleteWarning, TG_REPLIES.deleteNeedsWord].join('\n');
     }
     const rows = this.targetRows(draft.kind, 'EDIT', target, draft.changes);
@@ -2007,9 +2131,9 @@ export class ConversationService {
 
   /** Linhas do cartao: apagar mostra o alvo inteiro; editar, "antes -> depois" so do que muda (contrato 8b, secoes 4 e 5). */
   private targetRows(
-    kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE',
+    kind: TargetChangeDraft['kind'],
     action: 'EDIT' | 'DELETE',
-    target: GoalCandidate | EnvelopeCandidate,
+    target: GoalCandidate | EnvelopeCandidate | RecurringCandidate | InstallmentCandidate,
     changes: TargetChangeDraft['changes'],
   ): DraftView['rows'] {
     if (action === 'DELETE') {
@@ -2026,6 +2150,27 @@ export class ConversationService {
         rows.push({ label: 'Aviso', value: TG_REPLIES.goalDeleteNote });
         return rows;
       }
+      if ('frequency' in target) {
+        const rows: DraftView['rows'] = [
+          { label: 'Nome', value: target.description },
+          { label: 'Valor', value: `${formatBrl(target.amountCents)}/${FREQ_PT[target.frequency]}` },
+          { label: 'Situação', value: target.isActive ? 'ativa' : 'pausada' },
+          { label: 'Vence', value: formatDateFull(target.nextDueDate) },
+        ];
+        if (target.endDate !== null) {
+          rows.push({ label: 'Data final', value: formatDateFull(target.endDate) });
+        }
+        rows.push({ label: 'Aviso', value: RC_REPLIES.recurringDeleteNote });
+        return rows;
+      }
+      if ('installmentsTotal' in target) {
+        return [
+          { label: 'Nome', value: target.description },
+          { label: 'Valor total', value: formatBrl(target.totalCents) },
+          { label: 'Parcela', value: `${formatBrl(target.installmentCents)} · ${target.installmentsGenerated} de ${target.installmentsTotal}` },
+          { label: 'Aviso', value: RC_REPLIES.installmentDeleteNote },
+        ];
+      }
       return [
         { label: 'Nome', value: target.name },
         { label: 'Valor mensal', value: `${formatBrl(target.monthlyCents)}/mês` },
@@ -2034,6 +2179,23 @@ export class ConversationService {
       ];
     }
     const rows: DraftView['rows'] = [];
+    if ('frequency' in target) {
+      // Editar conta fixa (D2 do dono): descricao, valor e data final.
+      if (changes.description !== undefined && changes.description !== target.description) {
+        rows.push({ label: 'Nome', value: `${target.description} → ${changes.description}` });
+      }
+      if (changes.amountCents !== undefined && changes.amountCents !== target.amountCents) {
+        rows.push({ label: 'Valor', value: `${formatBrl(target.amountCents)} → ${formatBrl(changes.amountCents)}` });
+      }
+      if (changes.endDate !== undefined) {
+        const before = target.endDate === null ? 'sem prazo' : formatDateFull(target.endDate);
+        const after = changes.endDate === null ? 'sem prazo' : formatDateFull(changes.endDate);
+        if (before !== after) {
+          rows.push({ label: 'Data final', value: `${before} → ${after}` });
+        }
+      }
+      return rows;
+    }
     if ('title' in target) {
       if (changes.title !== undefined && changes.title !== target.title) {
         rows.push({ label: 'Título', value: `${target.title} → ${changes.title}` });
@@ -2054,14 +2216,17 @@ export class ConversationService {
       }
       return rows;
     }
-    if (changes.name !== undefined && changes.name !== target.name) {
-      rows.push({ label: 'Nome', value: `${target.name} → ${changes.name}` });
+    if ('name' in target) {
+      if (changes.name !== undefined && changes.name !== target.name) {
+        rows.push({ label: 'Nome', value: `${target.name} → ${changes.name}` });
+      }
+      if (changes.monthlyCents !== undefined && changes.monthlyCents !== target.monthlyCents) {
+        rows.push({ label: 'Valor mensal', value: `${formatBrl(target.monthlyCents)} → ${formatBrl(changes.monthlyCents)}` });
+        // Decisao do dono (contrato 8b, secao 5): o valor novo so vale do proximo deposito em diante.
+        rows.push({ label: 'Aviso', value: TG_REPLIES.envelopeAmountNote });
+      }
     }
-    if (changes.monthlyCents !== undefined && changes.monthlyCents !== target.monthlyCents) {
-      rows.push({ label: 'Valor mensal', value: `${formatBrl(target.monthlyCents)} → ${formatBrl(changes.monthlyCents)}` });
-      // Decisao do dono (contrato 8b, secao 5): o valor novo so vale do proximo deposito em diante.
-      rows.push({ label: 'Aviso', value: TG_REPLIES.envelopeAmountNote });
-    }
+    // 'installmentsTotal' in target: parcelado nao edita (D3); as linhas ficam vazias e o confirmar-sem-mudanca barraria.
     return rows;
   }
 
@@ -2097,7 +2262,7 @@ export class ConversationService {
       await this.goals.update(userId, target.id, dto);
       return { text: `Alterei a meta "${target.title}".`, data: { goalId: target.id }, resultRef: target.id };
     }
-    if (draft.kind === 'ENVELOPE_CHANGE' && !('title' in target)) {
+    if (draft.kind === 'ENVELOPE_CHANGE' && 'name' in target) {
       if (draft.action === 'DELETE') {
         await this.envelopes.remove(userId, target.id);
         return {
@@ -2113,20 +2278,67 @@ export class ConversationService {
       await this.envelopes.update(userId, target.id, dto);
       return { text: `Alterei a reserva "${target.name}".`, data: { envelopeId: target.id }, resultRef: target.id };
     }
+    if (draft.kind === 'RECURRING_CHANGE' && 'frequency' in target) {
+      if (draft.action === 'DELETE') {
+        // D4: o servico da tela solta os lancamentos ja gerados (SetNull) e mata as geracoes futuras.
+        await this.recurring.remove(userId, target.id);
+        return {
+          text: `Apaguei a conta fixa "${target.description}". ${RC_REPLIES.recurringDeleteNote}`,
+          data: { recurringTransactionId: target.id },
+          resultRef: target.id,
+        };
+      }
+      const dto: UpdateRecurringTransactionDto = {};
+      if (draft.changes.description !== undefined) dto.description = draft.changes.description;
+      if (draft.changes.amountCents !== undefined) dto.amount = draft.changes.amountCents / 100;
+      if (draft.changes.endDate !== undefined) dto.endDate = draft.changes.endDate;
+      // Sem isActive no DTO: nem pausamos nem retomamos (D5); sem checar entitlement (o servico so cobra na retomada).
+      await this.recurring.update(userId, target.id, dto);
+      return { text: `Alterei a conta fixa "${target.description}".`, data: { recurringTransactionId: target.id }, resultRef: target.id };
+    }
+    if (draft.kind === 'INSTALLMENT_CHANGE' && 'installmentsTotal' in target) {
+      // D3: parcelado pelo chat so apaga (editar vem barrado antes de existir rascunho).
+      if (draft.action === 'DELETE') {
+        await this.installments.remove(userId, target.id);
+        return {
+          text: `Apaguei a compra parcelada "${target.description}". ${RC_REPLIES.installmentDeleteNote}`,
+          data: { installmentPurchaseId: target.id },
+          resultRef: target.id,
+        };
+      }
+    }
     // kind e linha nao bateram (nao deve acontecer; leitura era do mesmo id): recusa como sumido.
     throw new NotFoundException(this.targetGoneText(draft.kind));
   }
 
-  private targetNotFoundText(kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE'): string {
-    return kind === 'GOAL_CHANGE' ? TG_REPLIES.goalNotFound : TG_REPLIES.envelopeNotFound;
+  private targetNotFoundText(kind: TargetChangeDraft['kind']): string {
+    return kind === 'GOAL_CHANGE'
+      ? TG_REPLIES.goalNotFound
+      : kind === 'ENVELOPE_CHANGE'
+        ? TG_REPLIES.envelopeNotFound
+        : kind === 'RECURRING_CHANGE'
+          ? RC_REPLIES.recurringNotFound
+          : RC_REPLIES.installmentNotFound;
   }
 
-  private targetGoneText(kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE'): string {
-    return kind === 'GOAL_CHANGE' ? TG_REPLIES.goalGone : TG_REPLIES.envelopeGone;
+  private targetGoneText(kind: TargetChangeDraft['kind']): string {
+    return kind === 'GOAL_CHANGE'
+      ? TG_REPLIES.goalGone
+      : kind === 'ENVELOPE_CHANGE'
+        ? TG_REPLIES.envelopeGone
+        : kind === 'RECURRING_CHANGE'
+          ? RC_REPLIES.recurringGone
+          : RC_REPLIES.installmentGone;
   }
 
-  private targetChangedText(kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE'): string {
-    return kind === 'GOAL_CHANGE' ? TG_REPLIES.goalChanged : TG_REPLIES.envelopeChanged;
+  private targetChangedText(kind: TargetChangeDraft['kind']): string {
+    return kind === 'GOAL_CHANGE'
+      ? TG_REPLIES.goalChanged
+      : kind === 'ENVELOPE_CHANGE'
+        ? TG_REPLIES.envelopeChanged
+        : kind === 'RECURRING_CHANGE'
+          ? RC_REPLIES.recurringChanged
+          : RC_REPLIES.installmentChanged;
   }
 
   private async applyTransaction(userId: string, draft: ExpenseOrIncomeDraft): Promise<AppliedAction> {
@@ -2684,8 +2896,22 @@ export class ConversationService {
       return this.transactionListText(userId, draft.candidateIds);
     }
     if (isTargetChangeDraft(draft)) {
-      if (draft.pendingField === 'change') return draft.kind === 'GOAL_CHANGE' ? TG_REPLIES.askChangeGoal : TG_REPLIES.askChangeEnvelope;
-      if (draft.candidateIds.length === 0) return draft.kind === 'GOAL_CHANGE' ? TG_REPLIES.askWhichGoal : TG_REPLIES.askWhichEnvelope;
+      if (draft.pendingField === 'change') {
+        return draft.kind === 'GOAL_CHANGE'
+          ? TG_REPLIES.askChangeGoal
+          : draft.kind === 'ENVELOPE_CHANGE'
+            ? TG_REPLIES.askChangeEnvelope
+            : RC_REPLIES.askChangeRecurring;
+      }
+      if (draft.candidateIds.length === 0) {
+        return draft.kind === 'GOAL_CHANGE'
+          ? TG_REPLIES.askWhichGoal
+          : draft.kind === 'ENVELOPE_CHANGE'
+            ? TG_REPLIES.askWhichEnvelope
+            : draft.kind === 'RECURRING_CHANGE'
+              ? RC_REPLIES.askWhichRecurring
+              : RC_REPLIES.askWhichInstallment;
+      }
       return this.targetListText(userId, draft.kind, draft.candidateIds);
     }
     if (draft.kind === 'RECURRING') {
@@ -2781,20 +3007,29 @@ export class ConversationService {
 
     if (isTargetChangeDraft(draft)) {
       // Prévia exata (contrato 8b, secoes 4 e 5): o alvo é relido com id + userId. Sumido: linha neutra; a aplicação recusa depois.
-      const isGoal = draft.kind === 'GOAL_CHANGE';
+      const noun =
+        draft.kind === 'GOAL_CHANGE'
+          ? 'meta'
+          : draft.kind === 'ENVELOPE_CHANGE'
+            ? 'reserva'
+            : draft.kind === 'RECURRING_CHANGE'
+              ? 'conta fixa'
+              : 'compra parcelada';
       const editing = draft.action === 'EDIT' && Object.keys(draft.changes).length > 0;
       const target =
         draft.targetId !== null && (draft.action === 'DELETE' || editing)
           ? await this.loadTargetCandidate(session.userId, draft.kind, draft.targetId)
           : null;
       const rows = target === null ? [] : this.targetRows(draft.kind, draft.action, target, draft.changes);
+      const fallbackLabel =
+        draft.kind === 'GOAL_CHANGE' ? 'Meta' : draft.kind === 'ENVELOPE_CHANGE' ? 'Reserva' : draft.kind === 'RECURRING_CHANGE' ? 'Conta fixa' : 'Compra parcelada';
       return {
         ...base,
         kind: draft.kind,
-        title: `${draft.action === 'DELETE' ? 'Apagar' : 'Editar'} ${isGoal ? 'meta' : 'reserva'}`,
+        title: `${draft.action === 'DELETE' ? 'Apagar' : 'Editar'} ${noun}`,
         changeAction: draft.action,
         pendingField: draft.pendingField,
-        rows: rows.length > 0 ? rows : [{ label: isGoal ? 'Meta' : 'Reserva', value: draft.targetId === null ? 'a escolher' : 'escolhido' }],
+        rows: rows.length > 0 ? rows : [{ label: fallbackLabel, value: draft.targetId === null ? 'a escolher' : 'escolhido' }],
       };
     }
 
@@ -3088,6 +3323,31 @@ const ENVELOPE_CHANGE_SELECT = {
   updatedAt: true,
 } as const;
 
+const RECURRING_CHANGE_SELECT = {
+  id: true,
+  description: true,
+  amount: true,
+  frequency: true,
+  nextDueDate: true,
+  endDate: true,
+  isActive: true,
+  card: { select: { name: true } },
+  updatedAt: true,
+} as const;
+
+const INSTALLMENT_CHANGE_SELECT = {
+  id: true,
+  description: true,
+  installmentAmount: true,
+  totalAmount: true,
+  installmentsTotal: true,
+  installmentsGenerated: true,
+  nextDueDate: true,
+  isActive: true,
+  card: { select: { name: true } },
+  updatedAt: true,
+} as const;
+
 type GoalChangeRow = {
   id: string;
   title: string;
@@ -3124,6 +3384,60 @@ function toEnvelopeCandidateRow(row: EnvelopeChangeRow): EnvelopeCandidate {
     name: row.name,
     monthlyCents: toCents(row.monthlyAmount),
     isActive: row.isActive,
+    updatedAt: row.updatedAt,
+  };
+}
+
+type RecurringChangeRow = {
+  id: string;
+  description: string;
+  amount: Prisma.Decimal;
+  frequency: RecurringCandidate['frequency'];
+  nextDueDate: Date;
+  endDate: Date | null;
+  isActive: boolean;
+  card: { name: string } | null;
+  updatedAt: Date;
+};
+
+function toRecurringCandidateRow(row: RecurringChangeRow): RecurringCandidate {
+  return {
+    id: row.id,
+    description: row.description,
+    amountCents: toCents(row.amount),
+    frequency: row.frequency,
+    nextDueDate: row.nextDueDate.toISOString().slice(0, 10),
+    endDate: row.endDate === null ? null : row.endDate.toISOString().slice(0, 10),
+    isActive: row.isActive,
+    cardName: row.card?.name ?? null,
+    updatedAt: row.updatedAt,
+  };
+}
+
+type InstallmentChangeRow = {
+  id: string;
+  description: string;
+  installmentAmount: Prisma.Decimal;
+  totalAmount: Prisma.Decimal;
+  installmentsTotal: number;
+  installmentsGenerated: number;
+  nextDueDate: Date | null;
+  isActive: boolean;
+  card: { name: string } | null;
+  updatedAt: Date;
+};
+
+function toInstallmentCandidateRow(row: InstallmentChangeRow): InstallmentCandidate {
+  return {
+    id: row.id,
+    description: row.description,
+    installmentCents: toCents(row.installmentAmount),
+    totalCents: toCents(row.totalAmount),
+    installmentsTotal: row.installmentsTotal,
+    installmentsGenerated: row.installmentsGenerated,
+    nextDueDate: row.nextDueDate === null ? null : row.nextDueDate.toISOString().slice(0, 10),
+    isActive: row.isActive,
+    cardName: row.card?.name ?? null,
     updatedAt: row.updatedAt,
   };
 }
@@ -3413,13 +3727,17 @@ function discardText(kind: DraftKind, error: unknown): string {
     // Lançamento sumiu ou mudou (404/409): a mensagem do motor já diz o que fazer.
     return error instanceof HttpException ? error.message : TX_REPLIES.gone;
   }
-  if (kind === 'GOAL_CHANGE' || kind === 'ENVELOPE_CHANGE') {
-    // Meta/reserva sumiram, mudaram ou o domínio recusou (nome repetido): mensagem conhecida passa; o resto é genérica.
+  if (kind === 'GOAL_CHANGE' || kind === 'ENVELOPE_CHANGE' || kind === 'RECURRING_CHANGE' || kind === 'INSTALLMENT_CHANGE') {
+    // Alvo sumiu, mudou ou o dominio recusou (nome repetido etc.): mensagem conhecida passa; o resto e a do alvo sumido.
     return error instanceof HttpException
       ? error.message
       : kind === 'GOAL_CHANGE'
         ? TG_REPLIES.goalGone
-        : TG_REPLIES.envelopeGone;
+        : kind === 'ENVELOPE_CHANGE'
+          ? TG_REPLIES.envelopeGone
+          : kind === 'RECURRING_CHANGE'
+            ? RC_REPLIES.recurringGone
+            : RC_REPLIES.installmentGone;
   }
   if (kind === 'ENVELOPE') {
     // Nome repetido (corrida com a tela): o domínio devolve a mensagem conhecida; as demais recusas são genéricas.

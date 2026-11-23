@@ -2,6 +2,7 @@ import { AmountFailure, parseAmountPrefix } from './parsers/amount.parser';
 import { parseDateToken } from './parsers/date.parser';
 import { normalize, normalizeWord } from './parsers/normalize';
 import { GOAL_TITLE_MAX, GOAL_TITLE_MIN } from './parsers/goal.parser';
+import type { InstallmentCandidate, RecurringCandidate } from './recurring-change';
 import { TargetChangeDraft } from './conversation.types';
 import { TX_REPLIES, formatCents } from './transaction-change';
 
@@ -68,7 +69,9 @@ export interface EnvelopeCandidate {
 
 export type TargetCandidate =
   | { target: 'GOAL'; goal: GoalCandidate }
-  | { target: 'ENVELOPE'; envelope: EnvelopeCandidate };
+  | { target: 'ENVELOPE'; envelope: EnvelopeCandidate }
+  | { target: 'RECURRING'; recurring: RecurringCandidate }
+  | { target: 'INSTALLMENT'; installment: InstallmentCandidate };
 
 /** Status da meta em português (lista, prévia e recibo — contrato 8b, secao 3). */
 export const STATUS_PT: Record<GoalCandidate['status'], string> = {
@@ -203,5 +206,5 @@ function parseAmount(
 
 export function isTargetChangeDraft(draft: unknown): draft is TargetChangeDraft {
   const kind = (draft as { kind?: string } | null)?.kind;
-  return kind === 'GOAL_CHANGE' || kind === 'ENVELOPE_CHANGE';
+  return kind === 'GOAL_CHANGE' || kind === 'ENVELOPE_CHANGE' || kind === 'RECURRING_CHANGE' || kind === 'INSTALLMENT_CHANGE';
 }
