@@ -271,3 +271,26 @@ describe('InstallmentMaterializerService', () => {
     });
   });
 });
+
+describe('InstallmentMaterializerService: cardId herdado da compra (contrato item 9, secao 2)', () => {
+  const now = new Date('2026-09-20T12:00:00.000Z');
+
+  it('parcela gerada leva o cardId da compra', async () => {
+    const { prisma, created } = buildPrisma([plan({ cardId: 'card-a1', nextDueDate: utcDate(2026, 8, 5) } as any)]);
+    const count = await service(prisma).materializeDue('user-1', now);
+    expect(count).toBe(1);
+    expect(created[0].cardId).toBe('card-a1');
+  });
+
+  it('compra sem cardId gera parcela sem cardId (conta no cartao padrao)', async () => {
+    const { prisma, created } = buildPrisma([plan({ nextDueDate: utcDate(2026, 8, 5) })]);
+    await service(prisma).materializeDue('user-1', now);
+    expect(created[0].cardId == null).toBe(true);
+  });
+
+  it('cartao arquivado depois nao impede materializar o que ja estava contratado', async () => {
+    const { prisma, created } = buildPrisma([plan({ cardId: 'card-arquivado', nextDueDate: utcDate(2026, 8, 5) } as any)]);
+    expect(await service(prisma).materializeDue('user-1', now)).toBe(1);
+    expect(created[0].cardId).toBe('card-arquivado');
+  });
+});

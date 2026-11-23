@@ -26,6 +26,7 @@ const build = (existing: any = stored(), options: { category?: any; timezone?: s
   const prisma: any = {
     // Transação interativa em memória: o callback recebe o mesmo cliente fake.
     $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
+    $queryRaw: jest.fn().mockResolvedValue([]),
     recurringTransaction: {
       findFirst: jest.fn().mockResolvedValue(existing),
       findMany: jest.fn().mockResolvedValue([]),

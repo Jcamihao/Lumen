@@ -103,6 +103,8 @@ export class RecurringMaterializerService {
                 date: due,
                 categoryId: template.categoryId,
                 paymentMethod: template.paymentMethod,
+                // Herda o cartao do modelo (nulo = cartao padrao). Arquivar depois nao impede.
+                cardId: template.cardId,
                 recurringTransactionId: template.id,
               },
             });

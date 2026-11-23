@@ -7,6 +7,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -39,6 +40,11 @@ export class UpdateRecurringTransactionDto {
   @IsOptional()
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod | null;
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true, description: 'null remove o cartao; fora de CREDIT vai para null sozinho.' })
+  @IsOptional()
+  @IsUUID()
+  cardId?: string | null;
 
   @IsOptional()
   @IsBoolean()

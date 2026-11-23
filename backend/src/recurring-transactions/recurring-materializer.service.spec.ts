@@ -293,3 +293,25 @@ describe('RecurringMaterializerService', () => {
     });
   });
 });
+
+describe('RecurringMaterializerService: cardId herdado do modelo (contrato item 9, secao 2)', () => {
+  const now = new Date('2026-09-20T12:00:00.000Z');
+
+  it('lancamento gerado leva o cardId do modelo', async () => {
+    const { prisma, created } = buildPrisma([template({ cardId: 'card-a1', nextDueDate: utcDate(2026, 8, 5) } as any)]);
+    expect(await service(prisma).materializeDue('user-1', now)).toBe(1);
+    expect(created[0].cardId).toBe('card-a1');
+  });
+
+  it('modelo sem cardId gera lancamento sem cardId (cartao padrao)', async () => {
+    const { prisma, created } = buildPrisma([template({ nextDueDate: utcDate(2026, 8, 5) })]);
+    await service(prisma).materializeDue('user-1', now);
+    expect(created[0].cardId == null).toBe(true);
+  });
+
+  it('cartao arquivado depois nao impede materializar a cobranca ja contratada', async () => {
+    const { prisma, created } = buildPrisma([template({ cardId: 'card-arquivado', nextDueDate: utcDate(2026, 8, 5) } as any)]);
+    expect(await service(prisma).materializeDue('user-1', now)).toBe(1);
+    expect(created[0].cardId).toBe('card-arquivado');
+  });
+});

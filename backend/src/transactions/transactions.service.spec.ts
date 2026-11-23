@@ -2,8 +2,8 @@ import { BadRequestException, ConflictException, NotFoundException } from "@nest
 import { TransactionsService } from "./transactions.service";
 
 describe("TransactionsService", () => {
-  const buildPrisma = (overrides: Partial<Record<string, any>> = {}) =>
-    ({
+  const buildPrisma = (overrides: Partial<Record<string, any>> = {}) => {
+    const prisma: any = ({
       transaction: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -29,6 +29,12 @@ describe("TransactionsService", () => {
       },
       ...overrides,
     }) as any;
+    // Troca de forma de pagamento pega o lock do User (transacao + FOR NO KEY UPDATE).
+    // Defaults so valem quando o teste nao passou o proprio mock (o override do item 8a tem que valer).
+    prisma.$transaction = overrides.$transaction ?? jest.fn(async (cb: any) => cb(prisma));
+    prisma.$queryRaw = overrides.$queryRaw ?? jest.fn().mockResolvedValue([]);
+    return prisma;
+  };
 
   const buildMaterializer = (created = 0) =>
     ({

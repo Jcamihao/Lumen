@@ -48,6 +48,11 @@ async function main() {
     },
   });
 
+  // Cartao padrao (contrato item 9): o ciclo de credito le dele.
+  await prisma.creditCard.create({
+    data: { userId: user.id, name: "Principal", closingDay: 28, isDefault: true },
+  });
+
   const [personalCategory, workCategory, homeCategory] = await Promise.all([
     prisma.taskCategory.create({
       data: {

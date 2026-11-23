@@ -1,9 +1,16 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { Prisma, TransactionType } from '@prisma/client';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { localToday } from '../recurring-transactions/recurrence.util';
-import { creditCycleBounds } from './credit-cycle.util';
+import { cardSpendWhere, creditCycleBounds, lockUserForCredit, userCycleFieldsFromCard } from './credit-cycle.util';
 import { SetCreditCycleCeilingDto } from './dto/set-credit-cycle-ceiling.dto';
 import { UpdateCreditCycleSettingsDto } from './dto/update-credit-cycle-settings.dto';
 import { CreditLimitChangedError, CreditLimitExpectation, CreditLimitWriteReceipt, CreditLimitWriteUncertainError } from './conversation-write.types';
@@ -14,6 +21,20 @@ export const CREDIT_CYCLE_OVER_PCT = 100;
 
 export type CreditCycleStatus = 'none' | 'ok' | 'near' | 'over';
 
+/** Campos do cartao usados pelo ciclo. */
+export const CREDIT_CYCLE_CARD_SELECT = {
+  id: true,
+  closingDay: true,
+  dueDay: true,
+  countAllPayments: true,
+  isDefault: true,
+  archivedAt: true,
+} satisfies Prisma.CreditCardSelect;
+
+export type CycleCard = Prisma.CreditCardGetPayload<{ select: typeof CREDIT_CYCLE_CARD_SELECT }>;
+
+type Db = Prisma.TransactionClient;
+
 @Injectable()
 export class CreditCycleService {
   private readonly logger = new Logger(CreditCycleService.name);
@@ -22,62 +43,35 @@ export class CreditCycleService {
     private readonly lifeEngineService: LifeEngineService,
   ) {}
 
+  /** Ciclo aberto do cartao padrao (mesma resposta de sempre). */
   async getCurrent(userId: string) {
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: {
-        timezone: true,
-        monthClosingDay: true,
-        creditDueDay: true,
-        creditCycleCountAllPayments: true,
-      },
-    });
-
-    const closingDay = user.monthClosingDay;
-    const { start, end } = creditCycleBounds(localToday(new Date(), user.timezone), closingDay);
-
-    const [ceilingRow, spentAggregate, previousCeilingRow] = await Promise.all([
-      this.prisma.creditCycleCeiling.findUnique({
-        where: { userId_closingDate: { userId, closingDate: end } },
-      }),
-      this.prisma.transaction.aggregate({
-        where: {
-          userId,
-          type: TransactionType.EXPENSE,
-          date: { gte: start, lte: end },
-          ...(user.creditCycleCountAllPayments ? {} : { paymentMethod: 'CREDIT' }),
-        },
-        _sum: { amount: true },
-      }),
-      // Sugestao para o formulario quando ainda nao ha teto definido neste ciclo.
-      this.prisma.creditCycleCeiling.findFirst({
-        where: { userId, closingDate: { lt: end } },
-        orderBy: { closingDate: 'desc' },
-      }),
-    ]);
-
-    const ceiling = ceilingRow ? Number(ceilingRow.ceiling) : null;
-    const spent = Number(spentAggregate._sum.amount ?? 0);
-
-    return this.buildResponse({
-      closingDay,
-      dueDay: user.creditDueDay,
-      countAllPayments: user.creditCycleCountAllPayments,
-      start,
-      end,
-      ceiling,
-      spent,
-      previousCeiling: previousCeilingRow ? Number(previousCeilingRow.ceiling) : null,
-    });
+    const card = await this.findDefaultCard(this.prisma, userId);
+    return this.getCycleOfCard(userId, card);
   }
 
+  /** Ciclo aberto de um cartao do proprio usuario; cartao alheio responde 404. */
+  async getCycleForCard(userId: string, cardId: string) {
+    const card = await this.findOwnedCard(this.prisma, userId, cardId);
+    return this.getCycleOfCard(userId, card);
+  }
+
+  /** Dia de vencimento e contagem de pagamentos vivem no cartao padrao; o User e espelho. */
   async updateSettings(userId: string, dto: UpdateCreditCycleSettingsDto) {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        creditDueDay: dto.dueDay === undefined ? undefined : dto.dueDay,
-        creditCycleCountAllPayments: dto.countAllPayments,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await lockUserForCredit(tx, userId);
+      const card = await this.findDefaultCard(tx, userId);
+      const updated = await tx.creditCard.update({
+        where: { id: card.id },
+        data: {
+          dueDay: dto.dueDay === undefined ? undefined : dto.dueDay,
+          countAllPayments: dto.countAllPayments,
+        },
+        select: CREDIT_CYCLE_CARD_SELECT,
+      });
+      await tx.user.update({
+        where: { id: userId },
+        data: userCycleFieldsFromCard(updated),
+      });
     });
 
     await this.lifeEngineService.touchUserData(userId);
@@ -99,8 +93,87 @@ export class CreditCycleService {
     return { ...receipt, refreshPending: await this.refreshAfterCeiling(userId) };
   }
 
-  /** A tela e o bot serializam seus escritores pelo mesmo dono, inclusive antes de existir teto. */
-  private async persistCeiling(userId: string, dto: SetCreditCycleCeilingDto, expected?: CreditLimitExpectation) {
+  /** Teto de um cartao do usuario (PUT /credit-cards/:id/ceiling). Devolve recibo. */
+  async setCeilingForCard(
+    userId: string,
+    cardId: string,
+    dto: SetCreditCycleCeilingDto,
+  ): Promise<CreditLimitWriteReceipt> {
+    const receipt = await this.persistCeiling(userId, dto, undefined, cardId);
+    return { ...receipt, refreshPending: await this.refreshAfterCeiling(userId) };
+  }
+
+  /** Cartao padrao ativo. Sem ele e' falha de invariante (migration e cadastro criam um). */
+  async findDefaultCard(db: Db, userId: string): Promise<CycleCard> {
+    const card = await db.creditCard.findFirst({
+      where: { userId, isDefault: true, archivedAt: null },
+      select: CREDIT_CYCLE_CARD_SELECT,
+    });
+    if (!card) {
+      this.logger.error({ operation: 'creditCycle.defaultCard', reason: 'missing' });
+      throw new InternalServerErrorException('Cartao padrao nao encontrado.');
+    }
+    return card;
+  }
+
+  /** Cartao do usuario ou 404 (nunca 403: nao revela cartao alheio). */
+  async findOwnedCard(db: Db, userId: string, cardId: string): Promise<CycleCard & { id: string }> {
+    const card = await db.creditCard.findFirst({
+      where: { id: cardId, userId },
+      select: CREDIT_CYCLE_CARD_SELECT,
+    });
+    if (!card) throw new NotFoundException('Cartao nao encontrado.');
+    return card;
+  }
+
+  private async getCycleOfCard(userId: string, card: CycleCard) {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { timezone: true },
+    });
+
+    const { start, end } = creditCycleBounds(localToday(new Date(), user.timezone), card.closingDay);
+
+    const [ceilingRow, spentAggregate, previousCeilingRow] = await Promise.all([
+      this.prisma.creditCycleCeiling.findUnique({
+        where: { cardId_closingDate: { cardId: card.id, closingDate: end } },
+      }),
+      this.prisma.transaction.aggregate({
+        where: cardSpendWhere(userId, card, start, end),
+        _sum: { amount: true },
+      }),
+      // Sugestao para o formulario quando ainda nao ha teto definido neste ciclo.
+      this.prisma.creditCycleCeiling.findFirst({
+        where: { cardId: card.id, closingDate: { lt: end } },
+        orderBy: { closingDate: 'desc' },
+      }),
+    ]);
+
+    const ceiling = ceilingRow ? Number(ceilingRow.ceiling) : null;
+    const spent = Number(spentAggregate._sum.amount ?? 0);
+
+    return this.buildResponse({
+      closingDay: card.closingDay,
+      dueDay: card.dueDay,
+      countAllPayments: card.countAllPayments,
+      start,
+      end,
+      ceiling,
+      spent,
+      previousCeiling: previousCeilingRow ? Number(previousCeilingRow.ceiling) : null,
+    });
+  }
+
+  /**
+   * Grava o teto do ciclo aberto do cartao (padrao quando cardId nao vier).
+   * A tela e o bot serializam seus escritores pelo mesmo dono, inclusive antes de existir teto.
+   */
+  private async persistCeiling(
+    userId: string,
+    dto: SetCreditCycleCeilingDto,
+    expected?: CreditLimitExpectation,
+    cardId?: string,
+  ) {
     if (!Number.isFinite(dto.ceiling) || dto.ceiling < 0.01 || dto.ceiling > 9_999_999_999 ||
       new Prisma.Decimal(dto.ceiling).decimalPlaces() > 2) {
       throw new BadRequestException('Informe um limite positivo com até duas casas decimais.');
@@ -108,29 +181,35 @@ export class CreditCycleService {
     let callbackFinished = false;
     try {
       return await this.prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR NO KEY UPDATE`;
+        await lockUserForCredit(tx, userId);
         const user = await tx.user.findUniqueOrThrow({
           where: { id: userId },
-          select: { timezone: true, monthClosingDay: true, creditCycleCountAllPayments: true },
+          select: { timezone: true },
         });
+        const card = cardId
+          ? await this.findOwnedCard(tx, userId, cardId)
+          : await this.findDefaultCard(tx, userId);
+        if (card.archivedAt) {
+          throw new ConflictException('Cartao arquivado nao recebe teto.');
+        }
         const now = new Date();
-        const { start, end } = creditCycleBounds(localToday(now, user.timezone), user.monthClosingDay);
+        const { start, end } = creditCycleBounds(localToday(now, user.timezone), card.closingDay);
         const current = await tx.creditCycleCeiling.findUnique({
-          where: { userId_closingDate: { userId, closingDate: end } },
+          where: { cardId_closingDate: { cardId: card.id, closingDate: end } },
         });
         const snapshot: CreditLimitExpectation = {
           cycleStart: start.toISOString().slice(0, 10),
           cycleEnd: end.toISOString().slice(0, 10),
           previousCeilingCents: current ? Math.round(Number(current.ceiling) * 100) : null,
-          countAllPayments: user.creditCycleCountAllPayments,
+          countAllPayments: card.countAllPayments,
         };
         if (expected && (expected.cycleStart !== snapshot.cycleStart || expected.cycleEnd !== snapshot.cycleEnd ||
           expected.previousCeilingCents !== snapshot.previousCeilingCents || expected.countAllPayments !== snapshot.countAllPayments)) {
           throw new CreditLimitChangedError(snapshot);
         }
         const saved = await tx.creditCycleCeiling.upsert({
-          where: { userId_closingDate: { userId, closingDate: end } },
-          create: { userId, closingDate: end, ceiling: new Prisma.Decimal(dto.ceiling) },
+          where: { cardId_closingDate: { cardId: card.id, closingDate: end } },
+          create: { cardId: card.id, userId, closingDate: end, ceiling: new Prisma.Decimal(dto.ceiling) },
           update: { ceiling: new Prisma.Decimal(dto.ceiling) },
         });
         callbackFinished = true;
