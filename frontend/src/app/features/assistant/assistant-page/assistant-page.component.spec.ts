@@ -1572,6 +1572,112 @@ describe("AssistantPageComponent — assistente manual", () => {
       expect(buttonWithText("Confirmar")).toBeUndefined();
     });
   });
+
+  describe("cartão de limpar o teto (8d-2)", () => {
+    const clearDraft = (overrides: Partial<DraftView> = {}) =>
+      draft({
+        kind: "CREDIT_LIMIT",
+        title: "Limpar limite do cartão",
+        changeAction: "CLEAR",
+        amount: null,
+        description: null,
+        category: null,
+        date: null,
+        rows: [
+          { label: "Cartão", value: "Nubank" },
+          { label: "Ciclo", value: "06/11/2026 a 05/12/2026" },
+          { label: "Teto atual", value: "R$ 2.500,00" },
+          { label: "Aviso", value: "Sem o teto, o Lumen para de avisar progresso e estouro neste ciclo." },
+        ],
+        ...overrides,
+      });
+
+    const clearConfirm = (): ConversationReply => ({
+      kind: "CONFIRM_DRAFT",
+      state: "AWAITING_CONFIRMATION",
+      text: "Remover o teto do cartão Nubank de R$ 2.500,00 do ciclo com fechamento em 05/12/2026.\nPara limpar, responda limpar.",
+      draft: clearDraft(),
+      quickReplies: ["limpar", "cancelar"],
+    });
+
+    const card = () => root().querySelector<HTMLElement>(".assistant-manual")!;
+
+    it("cartão de limpar mostra Limpar de vez e o aviso, sem Confirmar nem Apagar", () => {
+      conversation.sendMessage.and.returnValue(of(clearConfirm()));
+      create();
+
+      typeAndSend("limpar limite do nubank");
+
+      expect(buttonWithText("Limpar de vez")).toBeDefined();
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      expect(buttonWithText("Apagar de vez")).toBeUndefined();
+      expect(buttonWithText("Cancelar")).toBeDefined();
+      expect(text()).toContain("Isto remove o teto do ciclo.");
+      expect(card().textContent).toContain("Confira o cartão e o teto antes de limpar.");
+    });
+
+    it("Limpar de vez chama confirm com clear: true, e nunca sem a flag", () => {
+      conversation.sendMessage.and.returnValue(of(clearConfirm()));
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Teto do cartão Nubank removido." }),
+      );
+      create();
+      typeAndSend("limpar limite do nubank");
+
+      clickCommand("Limpar de vez");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledTimes(1);
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1, false, true);
+      expect(text()).toContain("Teto do cartão Nubank removido.");
+    });
+
+    it("atalho 'limpar' do texto não aparece como botão no cartão de limpar", () => {
+      conversation.sendMessage.and.returnValue(of(clearConfirm()));
+      create();
+
+      typeAndSend("limpar limite do nubank");
+
+      expect(buttonWithText("limpar")).toBeUndefined();
+      expect(buttonWithText("cancelar")).toBeUndefined();
+    });
+
+    it("sessão reaberta com limpar mostra Limpar de vez e manda clear: true", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({ state: "AWAITING_CONFIRMATION", draft: clearDraft() }),
+      );
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Teto removido." }),
+      );
+      create();
+
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      clickCommand("Limpar de vez");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1, false, true);
+    });
+
+    it("rascunho de definir limite (sem CLEAR) segue com Confirmar normal, sem a flag", () => {
+      conversation.sendMessage.and.returnValue(
+        of<ConversationReply>({
+          kind: "CONFIRM_DRAFT",
+          state: "AWAITING_CONFIRMATION",
+          text: "Limite de R$ 2.000,00 no cartão Nubank.",
+          draft: clearDraft({ title: "Limite do cartão", changeAction: undefined }),
+          quickReplies: ["confirmar", "cancelar"],
+        }),
+      );
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Limite definido." }),
+      );
+      create();
+      typeAndSend("definir limite do nubank 2000");
+
+      expect(buttonWithText("Limpar de vez")).toBeUndefined();
+      clickCommand("Confirmar");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1);
+    });
+  });
   describe("cartão de apagar/editar metas e reservas (8b-2)", () => {
     const targetDraft = (overrides: Partial<DraftView> = {}): DraftView => ({
       ...draft(),

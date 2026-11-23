@@ -78,8 +78,8 @@ export interface DraftView {
   date: string | null;
   paymentMethod: ConversationPaymentMethod | null;
   pendingField: PendingField | null;
-  /** Só no rascunho de editar ou apagar lançamento: 'DELETE' muda o botão para "Apagar de vez". */
-  changeAction?: 'EDIT' | 'DELETE';
+  /** No rascunho de editar/apagar lançamento: 'DELETE' muda o botão para "Apagar de vez". No de limite: 'CLEAR' pede "Limpar de vez" (8d). */
+  changeAction?: 'EDIT' | 'DELETE' | 'CLEAR';
 }
 
 /** Dados numéricos para a tela (centavos). Presentes em INFO e DONE. */
