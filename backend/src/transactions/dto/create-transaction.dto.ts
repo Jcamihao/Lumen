@@ -1,5 +1,6 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentMethod, TransactionType } from '@prisma/client';
-import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 
 export class CreateTransactionDto {
   @IsEnum(TransactionType)
@@ -31,6 +32,12 @@ export class CreateTransactionDto {
   @IsOptional()
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod;
+
+  /** Cartao usado (so com paymentMethod=CREDIT). Sem cardId, o lancamento conta no cartao padrao. */
+  @ApiPropertyOptional({ format: 'uuid', description: 'Cartao usado; so com paymentMethod=CREDIT.' })
+  @IsOptional()
+  @IsUUID()
+  cardId?: string;
 
   /** Marca o gasto como parte de um envelope (ex.: gasolina). */
   @IsOptional()

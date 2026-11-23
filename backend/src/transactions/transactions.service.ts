@@ -4,6 +4,12 @@ import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RecurringMaterializerService } from '../recurring-transactions/recurring-materializer.service';
 import { InstallmentMaterializerService } from '../installments/installment-materializer.service';
+import {
+  findOwnedCardForLink,
+  resolveCardForCreate,
+  resolveCardForUpdate,
+  withCardGuard,
+} from '../credit-cards/card-link';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { ListTransactionsQueryDto } from './dto/list-transactions-query.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
@@ -26,6 +32,9 @@ export class TransactionsService {
       await this.lifeEngineService.touchUserData(userId);
     }
 
+    // Cartao alheio ou inexistente: 404 antes de listar (nunca lista vazia que revele existencia).
+    if (query.cardId) await findOwnedCardForLink(this.prisma, userId, query.cardId);
+
     // Transacao tem data sem hora, gravada a meia-noite UTC. Os limites do mes
     // precisam ser UTC tambem: com startOfMonth() (fuso do servidor), um
     // lancamento de 01/09 cairia em agosto quando o servidor nao esta em UTC.
@@ -45,6 +54,7 @@ export class TransactionsService {
         categoryId: query.categoryId,
         paymentMethod: query.paymentMethod,
         envelopeId: query.envelopeId,
+        cardId: query.cardId,
         description: query.search
           ? {
               contains: query.search,
@@ -61,6 +71,7 @@ export class TransactionsService {
       include: {
         category: true,
         envelope: true,
+        card: { select: { name: true } },
       },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     });
@@ -78,23 +89,29 @@ export class TransactionsService {
       dto.envelopeId,
     );
 
-    const transaction = await this.prisma.transaction.create({
-      data: {
-        userId,
-        type: dto.type,
-        description: dto.description,
-        amount: new Prisma.Decimal(Math.abs(dto.amount)),
-        date: new Date(dto.date),
-        categoryId: dto.categoryId,
-        paymentMethod: dto.paymentMethod,
-        envelopeId: dto.envelopeId,
-        linkedTaskId: dto.linkedTaskId,
-        linkedGoalId: dto.linkedGoalId,
-      },
-      include: {
-        category: true,
-        envelope: true,
-      },
+    // Cartao so com CREDIT, do proprio usuario e nao arquivado; com cardId a escrita roda sob o lock do User.
+    const transaction = await withCardGuard(this.prisma, userId, dto.cardId, async (db) => {
+      const cardId = await resolveCardForCreate(db, userId, dto.cardId, dto.paymentMethod);
+      return db.transaction.create({
+        data: {
+          userId,
+          type: dto.type,
+          description: dto.description,
+          amount: new Prisma.Decimal(Math.abs(dto.amount)),
+          date: new Date(dto.date),
+          categoryId: dto.categoryId,
+          paymentMethod: dto.paymentMethod,
+          envelopeId: dto.envelopeId,
+          linkedTaskId: dto.linkedTaskId,
+          linkedGoalId: dto.linkedGoalId,
+          cardId,
+        },
+        include: {
+          category: true,
+          envelope: true,
+          card: { select: { name: true } },
+        },
+      });
     });
 
     await this.lifeEngineService.touchUserData(userId);
@@ -102,7 +119,7 @@ export class TransactionsService {
   }
 
   async update(userId: string, id: string, dto: UpdateTransactionDto) {
-    await this.findTransaction(userId, id);
+    await this.findTransaction(this.prisma, userId, id);
     await this.validateRelationships(
       userId,
       dto.categoryId === null ? undefined : dto.categoryId,
@@ -112,8 +129,11 @@ export class TransactionsService {
       dto.envelopeId === null ? undefined : dto.envelopeId,
     );
 
-    const transaction = await this.prisma.transaction
-      .update({
+    const transaction = await withCardGuard(this.prisma, userId, dto.cardId, async (db) => {
+      // Relido sob o lock: a regra de cartao depende do estado atual gravado.
+      const current = await this.findTransaction(db, userId, id);
+      const cardPatch = await resolveCardForUpdate(db, userId, current, dto);
+      return db.transaction.update({
         where: { id },
         data: {
           type: dto.type,
@@ -127,12 +147,15 @@ export class TransactionsService {
           envelopeId: dto.envelopeId === null ? null : dto.envelopeId,
           linkedTaskId: dto.linkedTaskId === null ? null : dto.linkedTaskId,
           linkedGoalId: dto.linkedGoalId === null ? null : dto.linkedGoalId,
+          ...cardPatch,
         },
         include: {
           category: true,
           envelope: true,
+          card: { select: { name: true } },
         },
-      })
+      });
+    })
       .catch((error) => {
         // Indice unico (conta fixa + data): mover um lancamento gerado para a
         // data de outro da mesma conta duplicaria aquele vencimento.
@@ -150,7 +173,7 @@ export class TransactionsService {
   }
 
   async remove(userId: string, id: string) {
-    await this.findTransaction(userId, id);
+    await this.findTransaction(this.prisma, userId, id);
     await this.prisma.transaction.delete({
       where: { id },
     });
@@ -159,8 +182,8 @@ export class TransactionsService {
     return { success: true };
   }
 
-  private async findTransaction(userId: string, id: string) {
-    const transaction = await this.prisma.transaction.findFirst({
+  private async findTransaction(db: Prisma.TransactionClient | PrismaService, userId: string, id: string) {
+    const transaction = await db.transaction.findFirst({
       where: { id, userId },
     });
 
@@ -227,10 +250,13 @@ export class TransactionsService {
     }
   }
 
+  /** cardName vem do include; o objeto card nao vai para a resposta (so acrescenta campos). */
   private serializeTransaction(transaction: any) {
+    const { card, ...rest } = transaction;
     return {
-      ...transaction,
+      ...rest,
       amount: Number(transaction.amount),
+      cardName: card?.name ?? null,
     };
   }
 }
