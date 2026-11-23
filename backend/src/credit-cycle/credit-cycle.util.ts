@@ -14,10 +14,17 @@ export function cardSpendWhere(
 ): Prisma.TransactionWhereInput {
   const range = { userId, type: TransactionType.EXPENSE, date: { gte: start, lte: end } };
   if (card.isDefault && card.countAllPayments) return range;
-  const cardScope = card.isDefault
-    ? { OR: [{ cardId: card.id }, { cardId: null }] }
-    : { cardId: card.id };
-  return { ...range, paymentMethod: 'CREDIT', ...cardScope };
+  return { ...range, paymentMethod: 'CREDIT', ...cardScopeWhere(card) };
+}
+
+/**
+ * Lancamentos de um cartao (listagem e gasto do ciclo usam a mesma regra). O padrao tambem
+ * pega CREDIT sem cartao (lancamento antigo, anterior aos cartoes nomeados). Cartao secundario
+ * so pega o proprio cardId. O userId fica fora deste helper, sempre AND no where de quem chama.
+ */
+export function cardScopeWhere(card: { id: string; isDefault: boolean }): Prisma.TransactionWhereInput {
+  if (!card.isDefault) return { cardId: card.id };
+  return { OR: [{ cardId: card.id }, { cardId: null, paymentMethod: 'CREDIT' }] };
 }
 
 /** Nome do cartao criado para cada usuario (migration e cadastro). */

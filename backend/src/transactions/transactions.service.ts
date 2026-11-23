@@ -10,6 +10,7 @@ import {
   resolveCardForUpdate,
   withCardGuard,
 } from '../credit-cards/card-link';
+import { cardScopeWhere } from '../credit-cycle/credit-cycle.util';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { ListTransactionsQueryDto } from './dto/list-transactions-query.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
@@ -25,7 +26,7 @@ export class TransactionsService {
 
   async list(userId: string, query: ListTransactionsQueryDto) {
     // Cartao alheio ou inexistente: 404 antes de qualquer trabalho (nunca lista vazia que revele existencia).
-    if (query.cardId) await findOwnedCardForLink(this.prisma, userId, query.cardId);
+    const filterCard = query.cardId ? await findOwnedCardForLink(this.prisma, userId, query.cardId) : undefined;
 
     // Contas fixas e parcelas vencidas viram lancamento antes de listar, para a
     // lista (e o saldo) nunca ficarem atras do calendario.
@@ -54,7 +55,8 @@ export class TransactionsService {
         categoryId: query.categoryId,
         paymentMethod: query.paymentMethod,
         envelopeId: query.envelopeId,
-        cardId: query.cardId,
+        // Padrao: inclui CREDIT sem cartao (mesma regra do gasto do ciclo). Sempre AND com userId.
+        ...(filterCard ? cardScopeWhere(filterCard) : {}),
         description: query.search
           ? {
               contains: query.search,
