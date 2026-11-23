@@ -73,14 +73,18 @@ export async function resolveCardForUpdate(
   return { cardId: card.id };
 }
 
-/** Escrita com cartao em transacao (com lock) ou direto no cliente quando nao ha cardId. */
+/**
+ * Escrita que mexe em cartao ou forma de pagamento roda em transacao com o lock do User.
+ * Trocar a forma de pagamento tambem precisa do lock: sem ele, um PATCH para PIX pode
+ * deixar um cardId que outro PATCH acabou de gravar (corrida, revisao sonnet 9a-2).
+ */
 export async function withCardGuard<T>(
   prisma: PrismaService,
   userId: string,
-  cardId: unknown,
+  needsLock: boolean,
   fn: (db: Db) => Promise<T>,
 ): Promise<T> {
-  if (typeof cardId !== 'string') return fn(prisma);
+  if (!needsLock) return fn(prisma);
   return prisma.$transaction(async (tx) => {
     await lockUserForCredit(tx, userId);
     return fn(tx);

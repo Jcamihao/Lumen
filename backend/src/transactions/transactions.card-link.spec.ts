@@ -133,6 +133,13 @@ describe('TransactionsService: cardId em lancamento (isolamento A/B/C)', () => {
       expect(prisma.transaction.update).not.toHaveBeenCalled();
     });
 
+    it('trocar a forma de pagamento pega o lock do User (corrida com vinculo de cartao)', async () => {
+      const { service, prisma } = build({ id: 'tx-1', userId: USER_A, paymentMethod: PaymentMethod.CREDIT, cardId: CARD_A1 });
+      await service.update(USER_A, 'tx-1', { paymentMethod: PaymentMethod.PIX } as any);
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(prisma.transaction.update.mock.calls[0][0].data.cardId).toBeNull();
+    });
+
     it('sair de CREDIT limpa o cardId', async () => {
       const { service, prisma } = build({ id: 'tx-1', userId: USER_A, paymentMethod: PaymentMethod.CREDIT, cardId: CARD_A1 });
       await service.update(USER_A, 'tx-1', { paymentMethod: PaymentMethod.PIX } as any);

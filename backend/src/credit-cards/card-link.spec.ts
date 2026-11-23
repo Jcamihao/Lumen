@@ -144,7 +144,7 @@ describe('card-link: regras de vinculo de cartao', () => {
     it('withCardGuard sem cardId roda direto no cliente, sem transacao', async () => {
       const prisma: any = { $transaction: jest.fn() };
       const fn = jest.fn().mockResolvedValue('ok');
-      expect(await withCardGuard(prisma, USER_A, undefined, fn)).toBe('ok');
+      expect(await withCardGuard(prisma, USER_A, false, fn)).toBe('ok');
       expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(fn).toHaveBeenCalledWith(prisma);
     });
@@ -154,7 +154,7 @@ describe('card-link: regras de vinculo de cartao', () => {
       const prisma: any = { $transaction: jest.fn(async (cb: any) => cb(tx)) };
       const order: string[] = [];
       tx.$queryRaw.mockImplementation(async () => order.push('lock'));
-      await withCardGuard(prisma, USER_A, CARD_A1, async () => {
+      await withCardGuard(prisma, USER_A, true, async () => {
         order.push('write');
         return 1;
       });

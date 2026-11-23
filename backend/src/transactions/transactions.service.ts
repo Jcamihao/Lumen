@@ -24,6 +24,9 @@ export class TransactionsService {
   ) {}
 
   async list(userId: string, query: ListTransactionsQueryDto) {
+    // Cartao alheio ou inexistente: 404 antes de qualquer trabalho (nunca lista vazia que revele existencia).
+    if (query.cardId) await findOwnedCardForLink(this.prisma, userId, query.cardId);
+
     // Contas fixas e parcelas vencidas viram lancamento antes de listar, para a
     // lista (e o saldo) nunca ficarem atras do calendario.
     const recurringCreated = await this.recurringMaterializer.materializeDue(userId);
@@ -31,9 +34,6 @@ export class TransactionsService {
     if (recurringCreated > 0 || installmentsCreated > 0) {
       await this.lifeEngineService.touchUserData(userId);
     }
-
-    // Cartao alheio ou inexistente: 404 antes de listar (nunca lista vazia que revele existencia).
-    if (query.cardId) await findOwnedCardForLink(this.prisma, userId, query.cardId);
 
     // Transacao tem data sem hora, gravada a meia-noite UTC. Os limites do mes
     // precisam ser UTC tambem: com startOfMonth() (fuso do servidor), um
@@ -90,7 +90,7 @@ export class TransactionsService {
     );
 
     // Cartao so com CREDIT, do proprio usuario e nao arquivado; com cardId a escrita roda sob o lock do User.
-    const transaction = await withCardGuard(this.prisma, userId, dto.cardId, async (db) => {
+    const transaction = await withCardGuard(this.prisma, userId, typeof dto.cardId === 'string', async (db) => {
       const cardId = await resolveCardForCreate(db, userId, dto.cardId, dto.paymentMethod);
       return db.transaction.create({
         data: {
@@ -129,7 +129,8 @@ export class TransactionsService {
       dto.envelopeId === null ? undefined : dto.envelopeId,
     );
 
-    const transaction = await withCardGuard(this.prisma, userId, dto.cardId, async (db) => {
+    const cardLock = dto.cardId !== undefined || dto.paymentMethod !== undefined;
+    const transaction = await withCardGuard(this.prisma, userId, cardLock, async (db) => {
       // Relido sob o lock: a regra de cartao depende do estado atual gravado.
       const current = await this.findTransaction(db, userId, id);
       const cardPatch = await resolveCardForUpdate(db, userId, current, dto);

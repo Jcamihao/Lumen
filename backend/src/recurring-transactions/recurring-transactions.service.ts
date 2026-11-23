@@ -260,15 +260,17 @@ export class RecurringTransactionsService {
     }
 
     // Cartao: com cardId o update roda sob o lock do User e relê o estado gravado.
-    await withCardGuard(this.prisma, userId, dto.cardId, async (db) => {
-      const current =
-        typeof dto.cardId === 'string'
-          ? await db.recurringTransaction.findFirst({
-              where: { id, userId },
-              select: { cardId: true, paymentMethod: true },
-            })
-          : existing;
-      const cardPatch = await resolveCardForUpdate(db, userId, current ?? existing, dto);
+    const cardLock = dto.cardId !== undefined || dto.paymentMethod !== undefined;
+    await withCardGuard(this.prisma, userId, cardLock, async (db) => {
+      // Relido sob o lock quando a regra de cartao depende do estado gravado.
+      const current = cardLock
+        ? await db.recurringTransaction.findFirst({
+            where: { id, userId },
+            select: { cardId: true, paymentMethod: true },
+          })
+        : existing;
+      if (!current) throw new NotFoundException('Conta fixa nao encontrada.');
+      const cardPatch = await resolveCardForUpdate(db, userId, current, dto);
       await db.recurringTransaction.update({ where: { id }, data: { ...data, ...cardPatch } });
     });
     await this.lifeEngineService.touchUserData(userId);
