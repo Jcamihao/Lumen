@@ -1319,3 +1319,35 @@ describe('InsightsService', () => {
     });
   });
 });
+
+describe('InsightsService: gasto do ciclo pelo cartao padrao (contrato item 9, secao 4.8)', () => {
+  // Todas as wheres de agregado feitas pelo servico (o insights tem mais de um agregado de mes).
+  const wheres = (prisma: any): any[] =>
+    prisma.transaction.aggregate.mock.calls.map(([args]: any) => args.where);
+
+  it('cartao padrao sem countAllPayments: o ciclo filtra CREDIT do proprio cartao ou sem cartao', async () => {
+    const prisma: any = buildPrisma([], [], { creditCycleCountAllPayments: false });
+    prisma.creditCard.findFirst.mockResolvedValue({ id: 'card-default', isDefault: true, countAllPayments: false });
+    await new InsightsService(prisma).refreshForUser('user-1');
+    expect(wheres(prisma)).toContainEqual(
+      expect.objectContaining({
+        paymentMethod: 'CREDIT',
+        OR: [{ cardId: 'card-default' }, { cardId: null }],
+      }),
+    );
+  });
+
+  it('cartao padrao com countAllPayments: nenhum agregado do ciclo filtra por forma ou cartao', async () => {
+    const prisma: any = buildPrisma([], [], { creditCycleCountAllPayments: true });
+    prisma.creditCard.findFirst.mockResolvedValue({ id: 'card-default', isDefault: true, countAllPayments: true });
+    await new InsightsService(prisma).refreshForUser('user-1');
+    expect(wheres(prisma).some((where) => where.OR !== undefined || where.paymentMethod === 'CREDIT')).toBe(false);
+  });
+
+  it('sem cartao padrao ativo nao ha filtro de ciclo de cartao (gasto zero)', async () => {
+    const prisma: any = buildPrisma([], [], {});
+    prisma.creditCard.findFirst.mockResolvedValue(null);
+    await new InsightsService(prisma).refreshForUser('user-1');
+    expect(wheres(prisma).some((where) => where.OR !== undefined || where.paymentMethod === 'CREDIT')).toBe(false);
+  });
+});
