@@ -7,6 +7,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -36,6 +37,12 @@ export class CreateRecurringTransactionDto {
   @IsOptional()
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod;
+
+  /** Os lancamentos gerados herdam o cartao (so com paymentMethod=CREDIT). Sem cardId, usam o padrao. */
+  @ApiPropertyOptional({ format: 'uuid', description: 'Cartao das cobrancas; so com paymentMethod=CREDIT.' })
+  @IsOptional()
+  @IsUUID()
+  cardId?: string;
 
   @ApiProperty({ enum: RecurrenceFrequency })
   @IsEnum(RecurrenceFrequency)
