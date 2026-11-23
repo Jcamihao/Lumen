@@ -1,3 +1,5 @@
+import { creditCycleBounds } from '../credit-cycle/credit-cycle.util';
+import { localToday } from '../recurring-transactions/recurrence.util';
 import { InsightSeverity, InsightType } from '@prisma/client';
 import { addDays, subDays } from 'date-fns';
 import { InsightsService } from './insights.service';
@@ -1349,5 +1351,16 @@ describe('InsightsService: gasto do ciclo pelo cartao padrao (contrato item 9, s
     prisma.creditCard.findFirst.mockResolvedValue(null);
     await new InsightsService(prisma).refreshForUser('user-1');
     expect(wheres(prisma).some((where) => where.OR !== undefined || where.paymentMethod === 'CREDIT')).toBe(false);
+  });
+});
+
+describe('InsightsService: ciclo pelo dia de fechamento do cartao padrao', () => {
+  it('usa o closingDay do cartao padrao, nao o espelho do User', async () => {
+    const prisma: any = buildPrisma([], [], { monthClosingDay: 30, creditCycleCountAllPayments: false });
+    prisma.creditCard.findFirst.mockResolvedValue({ id: 'card-default', isDefault: true, countAllPayments: false, closingDay: 5 });
+    await new InsightsService(prisma).refreshForUser('user-1');
+    const expectedStart = creditCycleBounds(localToday(new Date(), 'UTC'), 5).start;
+    const wheres = prisma.transaction.aggregate.mock.calls.map(([args]: any) => args.where);
+    expect(wheres).toContainEqual(expect.objectContaining({ date: { gte: expectedStart, lte: expect.any(Date) } }));
   });
 });
