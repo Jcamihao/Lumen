@@ -173,7 +173,7 @@ describe('editar/apagar: busca, lista e escolha (8a, secoes 3 e 4)', () => {
     const { send, db } = buildService(ROWS);
     const reply = await send('apagar conta fixa');
     expect(reply.kind).toBe('INFO');
-    expect(reply.text).toBe('Esse lançamento veio de conta fixa, parcelado, meta ou nota; altere pela tela.');
+    expect(reply.text).toBe('Esse lançamento veio de conta fixa, parcelado, meta, nota ou é transferência; altere pela tela.');
     expect(db.sessions).toHaveLength(0);
   });
 
@@ -895,5 +895,73 @@ describe('cartao de editar com antes -> depois (8a-2, contrato 5.3)', () => {
     transactions.splice(transactions.findIndex((row) => row.id === 't1'), 1);
     const gone = await service.getSession('A');
     expect(gone.draft?.rows).toEqual([{ label: 'Lançamento', value: 'escolhido' }]);
+  });
+});
+
+describe('decisoes do dono de 2026-11-23: apagar confere updatedAt e transferencia fora', () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: T0 });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const TRANSFER_ROWS: Row[] = [
+    txRow({ id: 'x1', userId: 'A', description: 'Mercado comum', amount: '40.00', date: day('2026-11-14') }),
+    txRow({ id: 'x2', userId: 'A', type: 'TRANSFER', description: 'Mercado transferência', amount: '80.00', date: day('2026-11-13') }),
+  ];
+
+  it('transferencia fica fora da lista de editar/apagar', async () => {
+    const { send, db } = buildService(TRANSFER_ROWS);
+    const reply = await send('apagar mercado');
+    expect(reply.kind).toBe('ASK_FIELD');
+    expect(reply.text).not.toContain('Mercado transferência');
+    expect((db.sessions[0].draft as Row).candidateIds).toEqual(['x1']);
+  });
+
+  it('busca que so casa com transferencia: mensagem de tela, sem sessao', async () => {
+    const { send, db } = buildService(TRANSFER_ROWS);
+    const reply = await send('apagar transferência');
+    expect(reply.kind).toBe('INFO');
+    expect(reply.text).toBe('Esse lançamento veio de conta fixa, parcelado, meta, nota ou é transferência; altere pela tela.');
+    expect(db.sessions).toHaveLength(0);
+  });
+
+  it('transferencia vira inelegivel na aplicacao: nada apagado', async () => {
+    const { send, txService, transactions } = buildService(ROWS);
+    await send('apagar mercado');
+    await send('2');
+    transactions.find((row) => row.id === 't2')!.type = 'TRANSFER';
+    const reply = await send('apagar');
+    expect(reply.kind).toBe('ERROR');
+    expect(reply.text).toBe('Esse lançamento veio de conta fixa, parcelado, meta, nota ou é transferência; altere pela tela.');
+    expect(txService.remove).not.toHaveBeenCalled();
+    expect(transactions.some((row) => row.id === 't2')).toBe(true);
+  });
+
+  it('apagar confere updatedAt: se o item mudou pela tela, recusa e nada é apagado', async () => {
+    const { send, txService, transactions, db } = buildService(ROWS);
+    await send('apagar mercado');
+    await send('2');
+    transactions.find((row) => row.id === 't2')!.updatedAt = new Date('2026-11-15T09:00:00.000Z');
+    const reply = await send('apagar');
+    expect(reply.kind).toBe('ERROR');
+    expect(reply.text).toBe('Esse lançamento mudou desde que você escolheu; refaça a busca.');
+    expect(txService.remove).not.toHaveBeenCalled();
+    expect(transactions.some((row) => row.id === 't2')).toBe(true);
+    expect(db.sessions).toHaveLength(0);
+  });
+
+  it('apagar pelo botao do cartao tambem confere updatedAt', async () => {
+    const { send, service, txService, transactions, db } = buildService(ROWS);
+    await send('apagar mercado');
+    await send('2');
+    const session = db.sessions[0];
+    transactions.find((row) => row.id === 't2')!.updatedAt = new Date('2026-11-15T09:00:00.000Z');
+    const reply = await service.confirmDraft('A', session.id, session.version, true);
+    expect(reply?.kind).toBe('ERROR');
+    expect(reply?.text).toBe('Esse lançamento mudou desde que você escolheu; refaça a busca.');
+    expect(txService.remove).not.toHaveBeenCalled();
+    expect(transactions.some((row) => row.id === 't2')).toBe(true);
   });
 });

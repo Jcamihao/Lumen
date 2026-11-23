@@ -1739,6 +1739,11 @@ export class ConversationService {
       // Rascunho antigo ou ids trocados: a regra de elegibilidade vale também na aplicação.
       throw new BadRequestException(TX_REPLIES.onlyNonEditable);
     }
+    // Conflito: o item mudou desde a escolha (ex.: editado pela tela). Vale tambem para apagar
+    // (decisao do dono em 2026-11-23: apagar confere updatedAt como editar). Nada é gravado (contrato 8a, secao 5).
+    if (target.updatedAt.toISOString() !== draft.targetUpdatedAt) {
+      throw new ConflictException(TX_REPLIES.changed);
+    }
     if (draft.action === 'DELETE') {
       await this.transactions.remove(userId, target.id);
       return {
@@ -1746,10 +1751,6 @@ export class ConversationService {
         data: { transactionId: target.id },
         resultRef: target.id,
       };
-    }
-    // Conflito: o item mudou desde a escolha (ex.: editado pela tela). Nada é gravado (contrato 8a, secao 5).
-    if (target.updatedAt.toISOString() !== draft.targetUpdatedAt) {
-      throw new ConflictException(TX_REPLIES.changed);
     }
     const dto: UpdateTransactionDto = {};
     if (draft.changes.amountCents !== undefined) dto.amount = draft.changes.amountCents / 100;
@@ -2714,7 +2715,10 @@ function toTxCandidate(row: {
     updatedAt: row.updatedAt,
     categoryId: row.categoryId,
     categoryName: row.category?.name ?? null,
+    // Decisao do dono em 2026-11-23: transferencia fica fora do editar/apagar por conversa
+    // (editar uma errado mexe em duas contas). Busca, lista, escolha, aplicacao e previa usam esta flag.
     eligible:
+      row.type !== 'TRANSFER' &&
       row.recurringTransactionId === null &&
       row.installmentPurchaseId === null &&
       row.linkedGoalId === null &&
