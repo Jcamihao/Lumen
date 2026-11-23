@@ -134,10 +134,11 @@ export function formatCandidateLine(index: number, candidate: TxCandidate): stri
   return `${index + 1}) ${formatCents(candidate.amountCents)} · ${candidate.description}${category} · ${formatDayMonth(candidate.date)}`;
 }
 
-/** Rascunho de apagar: a confirmação só vale com a palavra "apagar" (contrato 8a, secao 4). */
+/** Rascunho de apagar (lançamento, meta ou reserva): a confirmação só vale com a palavra "apagar" ou a flag do cartão. */
 export function isDeleteChange(draft: unknown): boolean {
   const value = draft as { kind?: string; action?: string } | null;
-  return value?.kind === 'TRANSACTION_CHANGE' && value.action === 'DELETE';
+  const kind = value?.kind ?? '';
+  return (kind === 'TRANSACTION_CHANGE' || kind === 'GOAL_CHANGE' || kind === 'ENVELOPE_CHANGE') && value?.action === 'DELETE';
 }
 
 export function isTransactionChangeDraft(draft: unknown): draft is TransactionChangeDraft {

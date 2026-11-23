@@ -25,7 +25,17 @@ export interface ConversationInput {
   receivedAt: Date;
 }
 
-export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION' | 'ENVELOPE' | 'CREDIT_LIMIT' | 'RECURRING' | 'INSTALLMENT' | 'TRANSACTION_CHANGE';
+export type DraftKind =
+  | 'TRANSACTION'
+  | 'GOAL'
+  | 'CONTRIBUTION'
+  | 'ENVELOPE'
+  | 'CREDIT_LIMIT'
+  | 'RECURRING'
+  | 'INSTALLMENT'
+  | 'TRANSACTION_CHANGE'
+  | 'GOAL_CHANGE'
+  | 'ENVELOPE_CHANGE';
 
 /**
  * Rascunho para a tela: valores formatados, sem ids internos alem de draftId/draftVersion.
@@ -46,7 +56,7 @@ export interface DraftView {
   date: string | null;
   paymentMethod: PaymentMethod | null;
   pendingField: PendingField | null;
-  /** Só no rascunho de editar ou apagar lançamento (kind TRANSACTION_CHANGE): a tela escolhe o cartão de apagar pelo valor. */
+  /** Nos rascunhos de mudar (TRANSACTION_CHANGE, GOAL_CHANGE, ENVELOPE_CHANGE): a tela escolhe o cartão de apagar pelo valor. */
   changeAction?: 'EDIT' | 'DELETE';
 }
 
@@ -61,6 +71,7 @@ export type PendingField =
   | 'installmentsTotal'
   | 'firstDueDate'
   | 'transaction'
+  | 'target'
   | 'change';
 
 /** Rascunho de lançamento. Sessões antigas não têm `kind`: ausente = TRANSACTION. Dinheiro em centavos. */
@@ -165,6 +176,23 @@ export interface TransactionChangeDraft {
   reviewReason?: string;
 }
 
+/**
+ * Editar ou apagar meta ou reserva por conversa (contrato 8b, secoes 3 a 6). Mesma forma do 8a: só ids,
+ * o alvo é relido do banco com id + userId. changes por alvo: meta usa title/targetCents/targetDate
+ * (null = "sem alvo"/"sem prazo"); reserva usa name/monthlyCents.
+ */
+export interface TargetChangeDraft {
+  kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE';
+  action: 'EDIT' | 'DELETE';
+  /** Ids da lista numerada (máx. 5), enquanto o usuário não escolhe. */
+  candidateIds: string[];
+  targetId: string | null;
+  targetUpdatedAt: string | null;
+  changes: { title?: string; targetCents?: number | null; targetDate?: string | null; name?: string; monthlyCents?: number };
+  pendingField: 'target' | 'change' | null;
+  reviewReason?: string;
+}
+
 export type SessionDraft =
   | ExpenseOrIncomeDraft
   | GoalDraft
@@ -173,7 +201,8 @@ export type SessionDraft =
   | CreditLimitDraft
   | RecurringDraft
   | InstallmentDraft
-  | TransactionChangeDraft;
+  | TransactionChangeDraft
+  | TargetChangeDraft;
 
 /** Dados numericos para a tela (centavos). Presentes em INFO e DONE. */
 export interface ReplyData {
