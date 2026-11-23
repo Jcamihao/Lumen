@@ -1334,7 +1334,7 @@ describe('InsightsService: gasto do ciclo pelo cartao padrao (contrato item 9, s
     expect(wheres(prisma)).toContainEqual(
       expect.objectContaining({
         paymentMethod: 'CREDIT',
-        OR: [{ cardId: 'card-default' }, { cardId: null, paymentMethod: 'CREDIT' }],
+        OR: [{ cardId: 'card-default' }, { cardId: null, paymentMethod: 'CREDIT', type: 'EXPENSE' }],
       }),
     );
   });

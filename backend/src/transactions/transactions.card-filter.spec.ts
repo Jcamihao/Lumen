@@ -41,6 +41,7 @@ const transactions = [
   row('a-debit-nulo', USER_A, PaymentMethod.DEBIT, null),
   row('a-sem-forma', USER_A, null, null),
   row('a-receita', USER_A, null, null, TransactionType.INCOME),
+  row('a-receita-credit', USER_A, PaymentMethod.CREDIT, null, TransactionType.INCOME), // receita CREDIT sem cartao: fora do padrao
   row('a-secundario', USER_A, PaymentMethod.CREDIT, CARD_A2),
   row('b-antigo-credit', USER_B, PaymentMethod.CREDIT, null),
   row('b-padrao', USER_B, PaymentMethod.CREDIT, CARD_B1),
@@ -78,6 +79,12 @@ describe('listagem por cartao: escopo do padrao e do secundario (isolamento A/B)
     const { service } = build();
     const list = await service.list(USER_A, { cardId: CARD_A1 } as any);
     expect(ids(list)).toEqual(['a-antigo-credit', 'a-padrao']);
+  });
+
+  it('padrao de A nao traz receita CREDIT sem cartao (so despesa entra no nulo)', async () => {
+    const { service } = build();
+    const list = await service.list(USER_A, { cardId: CARD_A1 } as any);
+    expect(ids(list)).not.toContain('a-receita-credit');
   });
 
   it('padrao de A nao traz o cardId do secundario nem nenhum lancamento de B', async () => {

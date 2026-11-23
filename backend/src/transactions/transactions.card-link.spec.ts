@@ -232,7 +232,7 @@ describe('TransactionsService: cardId em lancamento (isolamento A/B/C)', () => {
       const where = prisma.transaction.findMany.mock.calls[0][0].where;
       expect(where.cardId).toBeUndefined();
       expect(where.userId).toBe(USER_A);
-      expect(where.OR).toEqual([{ cardId: CARD_A1 }, { cardId: null, paymentMethod: 'CREDIT' }]);
+      expect(where.OR).toEqual([{ cardId: CARD_A1 }, { cardId: null, paymentMethod: 'CREDIT', type: 'EXPENSE' }]);
     });
 
     it('cartao inexistente no filtro = mesmo 404', async () => {

@@ -58,9 +58,9 @@ describe('cardScopeWhere / cardSpendWhere (escopo de cartao, listagem e ciclo)',
   const start = utcDate(2026, 9, 1);
   const end = utcDate(2026, 9, 31);
 
-  it('padrao: cardId dele ou CREDIT sem cartao', () => {
+  it('padrao: cardId dele ou DESPESA CREDIT sem cartao (receita CREDIT sem cartao nao entra)', () => {
     expect(cardScopeWhere({ id: 'c1', isDefault: true })).toEqual({
-      OR: [{ cardId: 'c1' }, { cardId: null, paymentMethod: 'CREDIT' }],
+      OR: [{ cardId: 'c1' }, { cardId: null, paymentMethod: 'CREDIT', type: 'EXPENSE' }],
     });
   });
 
@@ -77,7 +77,7 @@ describe('cardScopeWhere / cardSpendWhere (escopo de cartao, listagem e ciclo)',
   it('gasto do padrao sem countAllPayments: CREDIT + escopo do padrao', () => {
     expect(cardSpendWhere('u1', { id: 'c1', isDefault: true, countAllPayments: false }, start, end)).toEqual({
       userId: 'u1', type: 'EXPENSE', date: { gte: start, lte: end }, paymentMethod: 'CREDIT',
-      OR: [{ cardId: 'c1' }, { cardId: null, paymentMethod: 'CREDIT' }],
+      OR: [{ cardId: 'c1' }, { cardId: null, paymentMethod: 'CREDIT', type: 'EXPENSE' }],
     });
   });
 
