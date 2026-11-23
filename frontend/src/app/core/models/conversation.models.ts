@@ -26,7 +26,7 @@ export type ConversationTransactionType = 'INCOME' | 'EXPENSE' | 'TRANSFER';
 
 export type ConversationPaymentMethod = 'PIX' | 'CREDIT' | 'DEBIT';
 
-export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION' | 'ENVELOPE' | 'CREDIT_LIMIT' | 'RECURRING' | 'INSTALLMENT';
+export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION' | 'ENVELOPE' | 'CREDIT_LIMIT' | 'RECURRING' | 'INSTALLMENT' | 'TRANSACTION_CHANGE';
 
 export type PendingField =
   | 'amount'
@@ -37,7 +37,9 @@ export type PendingField =
   | 'goal'
   | 'name'
   | 'installmentsTotal'
-  | 'firstDueDate';
+  | 'firstDueDate'
+  | 'transaction'
+  | 'change';
 
 /** Linha do cartão do rascunho, já formatada pelo backend. Valor ausente vem como "a informar". */
 export interface DraftRow {
@@ -63,6 +65,8 @@ export interface DraftView {
   date: string | null;
   paymentMethod: ConversationPaymentMethod | null;
   pendingField: PendingField | null;
+  /** Só no rascunho de editar ou apagar lançamento: 'DELETE' muda o botão para "Apagar de vez". */
+  changeAction?: 'EDIT' | 'DELETE';
 }
 
 /** Dados numéricos para a tela (centavos). Presentes em INFO e DONE. */

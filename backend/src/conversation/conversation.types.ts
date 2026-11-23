@@ -46,6 +46,8 @@ export interface DraftView {
   date: string | null;
   paymentMethod: PaymentMethod | null;
   pendingField: PendingField | null;
+  /** Só no rascunho de editar ou apagar lançamento (kind TRANSACTION_CHANGE): a tela escolhe o cartão de apagar pelo valor. */
+  changeAction?: 'EDIT' | 'DELETE';
 }
 
 export type PendingField =

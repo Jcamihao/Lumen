@@ -73,6 +73,8 @@ const PENDING_FIELD_LABELS = {
   goal: "meta",
   installmentsTotal: "quantidade de parcelas",
   firstDueDate: "primeiro vencimento",
+  transaction: "lançamento",
+  change: "o que mudar",
 } as const;
 
 @Component({
@@ -568,6 +570,7 @@ export class AssistantPageComponent {
       });
   }
 
+  /** Cartão de apagar: o botão "Apagar de vez" manda `delete: true`. Nunca apaga sem essa ação explícita. */
   protected confirmDraft() {
     const draft = this.manualTurn()?.draft;
 
@@ -575,11 +578,12 @@ export class AssistantPageComponent {
       return;
     }
 
-    this.runDraftAction(
-      () => this.conversationApi.confirmDraft(draft.draftId, draft.draftVersion),
-      "Não foi possível confirmar agora.",
-      () => this.confirmDraft(),
-    );
+    const call =
+      draft.changeAction === "DELETE"
+        ? () => this.conversationApi.confirmDraft(draft.draftId, draft.draftVersion, true)
+        : () => this.conversationApi.confirmDraft(draft.draftId, draft.draftVersion);
+
+    this.runDraftAction(call, "Não foi possível confirmar agora.", () => this.confirmDraft());
   }
 
   protected cancelDraft() {
@@ -712,15 +716,19 @@ export class AssistantPageComponent {
     return turn.state === "AWAITING_CONFIRMATION" && !!turn.draft;
   }
 
-  /** Com botões na tela, "confirmar" e "cancelar" como atalho de texto só repetem os botões. */
+  protected isDeleteDraft(turn: ManualTurn) {
+    return turn.draft?.changeAction === "DELETE";
+  }
+
+  /** Com botões na tela, "confirmar" e "cancelar" como atalho de texto só repetem os botões. No cartão de apagar, "apagar" também (o botão já faz isso). */
   protected visibleQuickReplies(turn: ManualTurn) {
     if (!this.showConfirmButtons(turn)) {
       return turn.quickReplies;
     }
 
-    return turn.quickReplies.filter(
-      (reply) => !["confirmar", "cancelar"].includes(reply.trim().toLowerCase()),
-    );
+    const hidden = this.isDeleteDraft(turn) ? ["confirmar", "cancelar", "apagar"] : ["confirmar", "cancelar"];
+
+    return turn.quickReplies.filter((reply) => !hidden.includes(reply.trim().toLowerCase()));
   }
 
   private applyManualReply(question: string | null, reply: ConversationReply) {
