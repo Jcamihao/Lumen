@@ -8,6 +8,7 @@ import { AssistantModule } from "./assistant/assistant.module";
 import { AuthModule } from "./auth/auth.module";
 import { BillingModule } from "./billing/billing.module";
 import { CacheQueueModule } from "./cache-queue/cache-queue.module";
+import { CreditCardsModule } from "./credit-cards/credit-cards.module";
 import { CreditCycleModule } from "./credit-cycle/credit-cycle.module";
 import { ConversationModule } from "./conversation/conversation.module";
 import { EnvelopesModule } from "./envelopes/envelopes.module";
@@ -64,6 +65,7 @@ import { UsersModule } from "./users/users.module";
     RecurringTransactionsModule,
     InstallmentsModule,
     CreditCycleModule,
+    CreditCardsModule,
     EnvelopesModule,
     GoalsModule,
     RemindersModule,
