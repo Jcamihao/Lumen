@@ -571,7 +571,7 @@ export class AssistantPageComponent {
       });
   }
 
-  /** Cartão de apagar: o botão "Apagar de vez" manda `delete: true`. Nunca apaga sem essa ação explícita. */
+  /** Cartões de ação explícita: apagar manda `delete: true`, limpar teto manda `clear: true` (8a/8d). Nunca gravam sem essa ação. */
   protected confirmDraft() {
     const draft = this.manualTurn()?.draft;
 
@@ -582,7 +582,9 @@ export class AssistantPageComponent {
     const call =
       draft.changeAction === "DELETE"
         ? () => this.conversationApi.confirmDraft(draft.draftId, draft.draftVersion, true)
-        : () => this.conversationApi.confirmDraft(draft.draftId, draft.draftVersion);
+        : draft.changeAction === "CLEAR"
+          ? () => this.conversationApi.confirmDraft(draft.draftId, draft.draftVersion, false, true)
+          : () => this.conversationApi.confirmDraft(draft.draftId, draft.draftVersion);
 
     this.runDraftAction(call, "Não foi possível confirmar agora.", () => this.confirmDraft());
   }
@@ -728,13 +730,22 @@ export class AssistantPageComponent {
     return turn.draft?.changeAction === "DELETE";
   }
 
-  /** Com botões na tela, "confirmar" e "cancelar" como atalho de texto só repetem os botões. No cartão de apagar, "apagar" também (o botão já faz isso). */
+  /** Cartão de limpar o teto do cartão (8d): botão "Limpar de vez". */
+  protected isClearDraft(turn: ManualTurn) {
+    return turn.draft?.changeAction === "CLEAR";
+  }
+
+  /** Com botões na tela, "confirmar" e "cancelar" como atalho de texto só repetem os botões. Nos cartões de ação explícita, "apagar"/"limpar" também (o botão já faz isso). */
   protected visibleQuickReplies(turn: ManualTurn) {
     if (!this.showConfirmButtons(turn)) {
       return turn.quickReplies;
     }
 
-    const hidden = this.isDeleteDraft(turn) ? ["confirmar", "cancelar", "apagar"] : ["confirmar", "cancelar"];
+    const hidden = this.isDeleteDraft(turn)
+      ? ["confirmar", "cancelar", "apagar"]
+      : this.isClearDraft(turn)
+        ? ["confirmar", "cancelar", "limpar"]
+        : ["confirmar", "cancelar"];
 
     return turn.quickReplies.filter((reply) => !hidden.includes(reply.trim().toLowerCase()));
   }

@@ -39,6 +39,7 @@ export type IntentMatch =
   | { intent: 'create_goal'; body: string; cofrinho?: true }
   | { intent: 'contribute_goal'; body: string }
   | { intent: 'create_envelope' | 'set_credit_limit' | 'create_recurring' | 'create_installment'; body: string }
+  | { intent: 'clear_credit_limit'; body: string }
   | { intent: 'edit_transaction' | 'delete_transaction'; body: string }
   | { intent: 'edit_goal' | 'delete_goal' | 'edit_envelope' | 'delete_envelope'; body: string }
   | {
@@ -174,9 +175,26 @@ function matchEnvelopeOrLimit(raw: string, tokens: string[], words: string[]): I
       return { intent: 'create_envelope', body: tokens.slice(expected.split(' ').length).join(' ') };
     }
   }
-  for (const expected of ['definir limite do cartao', 'definir limite']) {
+  const phrases = ['definir limite do cartao', 'definir limite', 'mudar limite do cartao', 'mudar limite', 'alterar limite', 'novo limite'];
+  /** Formas curtas (8d): "limite do nubank 2000". "cartao/credito" depois fica com a leitura. */
+  const bareLimit = ['limite do', 'limite da', 'limite no', 'limite na'];
+  for (const expected of phrases) {
     if (startsWithPhrase(phrase, expected)) {
       return { intent: 'set_credit_limit', body: tokens.slice(expected.split(' ').length).join(' ') };
+    }
+  }
+  for (const expected of bareLimit) {
+    if (!startsWithPhrase(phrase, expected)) continue;
+    const next = words[expected.split(' ').length] ?? '';
+    if (next === 'cartao' || next === 'cartoes' || next === 'credito') continue;
+    const rest = tokens.slice(expected.split(' ').length);
+    // Sem valor na frase, "limite do X" nao e comando de escrita (e reclamacao/pergunta: ajuda ou IA).
+    if (!rest.some((token) => /\d/.test(token))) continue;
+    return { intent: 'set_credit_limit', body: rest.join(' ') };
+  }
+  for (const expected of ['limpar limite', 'limpar o limite', 'remover limite', 'tirar limite', 'limpar teto', 'remover teto']) {
+    if (startsWithPhrase(phrase, expected)) {
+      return { intent: 'clear_credit_limit', body: tokens.slice(expected.split(' ').length).join(' ') };
     }
   }
   for (const expected of ['criar conta fixa', 'nova conta fixa']) {

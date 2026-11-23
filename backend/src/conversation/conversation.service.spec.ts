@@ -43,11 +43,21 @@ function buildFakeDb() {
     { id: 'cat-mercado-b', userId: 'B', name: 'Mercado', type: 'EXPENSE' },
   ];
   const timezones: Record<string, string> = { A: 'America/Sao_Paulo', B: 'America/Sao_Paulo' };
+  // Cartao de verdade so a partir do 9a; o chat (8d) busca por nome aqui.
+  const cards: Row[] = [
+    { id: 'cr-nubank', userId: 'A', name: 'Nubank', isDefault: true, archivedAt: null },
+    { id: 'cr-itau', userId: 'A', name: 'Itaú', isDefault: false, archivedAt: null },
+    { id: 'cr-nubank-b', userId: 'B', name: 'Nubank', isDefault: true, archivedAt: null },
+  ];
 
   const prisma = {
     envelope: {
       // Nome exato por dono (unicidade userId + name). Os testes trocam o retorno quando precisam.
       findFirst: jest.fn(async () => null),
+    },
+    creditCard: {
+      findMany: jest.fn(async ({ where }: { where: Row }) => clone(cards.filter((row) => matches(row, where)))),
+      findFirst: jest.fn(async ({ where }: { where: Row }) => clone(cards.find((row) => matches(row, where)) ?? null)),
     },
     user: {
       findUniqueOrThrow: jest.fn(async ({ where }: { where: { id: string } }) => ({
@@ -109,7 +119,7 @@ function buildFakeDb() {
     },
   };
 
-  return { prisma, sessions, events, categories };
+  return { prisma, sessions, events, categories, cards };
 }
 
 const T0 = new Date('2026-11-15T12:00:00.000Z');
@@ -1912,6 +1922,7 @@ describe('ConversationService', () => {
       envelopes.createForConversation = envelopeWrite;
       (creditCycle as Record<string, unknown>).setCeilingForConversation = limitWrite;
       creditCycle.getCurrent = jest.fn(async () => CYCLE);
+      (creditCycle as Record<string, unknown>).getCycleForCard = jest.fn(async (_userId: string, _cardId: string) => CYCLE);
     });
 
     const send = (userId: string, text: string, at: Date = T0) => service.handleMessage(msg(userId, text, at));
@@ -2280,6 +2291,7 @@ describe('ConversationService', () => {
           'A',
           { ceiling: 5000 },
           { cycleStart: '2026-11-06', cycleEnd: '2026-12-05', previousCeilingCents: 200000, countAllPayments: false },
+          undefined,
         );
         expect(reply).toMatchObject({
           kind: 'DONE',
@@ -2328,6 +2340,7 @@ describe('ConversationService', () => {
           'A',
           { ceiling: 5000 },
           { cycleStart: '2026-12-06', cycleEnd: '2027-01-05', previousCeilingCents: null, countAllPayments: false },
+          undefined,
         );
       });
 
@@ -2381,10 +2394,20 @@ describe('ConversationService', () => {
         expect(db.sessions[0].draft).toMatchObject({ ceilingCents: null, pendingField: 'amount' });
       });
 
-      it('"definir limite 5000 Nubank" pede reenvio, sem ignorar o banco', async () => {
+      it('"definir limite 5000 Nubank" escolhe o cartao pelo nome e pega o valor (8d)', async () => {
         const reply = await send('A', 'definir limite 5000 Nubank');
 
-        expect(reply).toMatchObject({ kind: 'ERROR', text: REPLIES.creditLimitValueOnly });
+        expect(reply.kind).toBe('CONFIRM_DRAFT');
+        expect(db.sessions[0].draft).toMatchObject({ kind: 'CREDIT_LIMIT', action: 'set', cardId: 'cr-nubank', cardName: 'Nubank', ceilingCents: 500_000 });
+        expect(rowValue(reply, 'Cartão')).toEqual(['Nubank']);
+      });
+
+      it('nome que nao e cartao nenhum devolve a lista de cartoes (8d)', async () => {
+        const reply = await send('A', 'definir limite 5000 picapau');
+
+        expect(reply.kind).toBe('ERROR');
+        expect(reply.text).toContain('Não achei cartão com "picapau"');
+        expect(reply.text).toContain('Nubank, Itaú');
         expect(db.sessions).toHaveLength(0);
       });
 

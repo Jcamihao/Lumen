@@ -48,6 +48,14 @@ describe("ConversationApiService", () => {
     req.flush({ kind: "DONE", state: "IDLE", text: "" });
   });
 
+  it("confirmDraft de limpar teto manda clear: true no corpo (8d)", () => {
+    service.confirmDraft("draft-1", 2, false, true).subscribe();
+
+    const req = httpMock.expectOne(`${base}/confirm`);
+    expect(req.request.body).toEqual({ draftId: "draft-1", draftVersion: 2, clear: true });
+    req.flush({ kind: "DONE", state: "IDLE", text: "" });
+  });
+
   it("cancelDraft faz POST em /cancel só com draftId", () => {
     service.cancelDraft("draft-1").subscribe();
 

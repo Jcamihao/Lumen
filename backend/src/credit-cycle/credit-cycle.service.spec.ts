@@ -10,7 +10,7 @@ describe('CreditCycleService', () => {
     monthClosingDay?: number;
     creditDueDay?: number | null;
     countAllPayments?: boolean;
-    ceilingRow?: { ceiling: any } | null;
+    ceilingRow?: { ceiling: any; id?: string } | null;
     previousCeilingRow?: { ceiling: any } | null;
     spentSum?: number | null;
     timezone?: string;
@@ -56,6 +56,7 @@ describe('CreditCycleService', () => {
         findUnique: jest.fn().mockResolvedValue(options.ceilingRow ?? null),
         findFirst: jest.fn().mockResolvedValue(options.previousCeilingRow ?? null),
         upsert: jest.fn().mockResolvedValue({}),
+        delete: jest.fn().mockResolvedValue({}),
       },
       transaction: {
         aggregate: jest.fn().mockResolvedValue({ _sum: { amount: options.spentSum ?? null } }),
@@ -518,6 +519,88 @@ describe('ciclo por cartao (9a-1)', () => {
 
       await expect(service.setCeilingForCard('user-1', 'card-x', { ceiling: 800 })).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.creditCycleCeiling.upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('removeCeilingForConversation (limpar teto do bot, 8d)', () => {
+    const expected = {
+      cycleStart: '2026-11-06',
+      cycleEnd: '2026-12-05',
+      previousCeilingCents: 200000,
+      countAllPayments: false,
+    };
+    beforeEach(() => jest.useFakeTimers({ now: new Date('2026-11-15T12:00:00.000Z') }));
+    afterEach(() => jest.useRealTimers());
+
+    it('confere snapshot sob bloqueio e apaga a linha do teto do cartao no ciclo aberto', async () => {
+      const { service, prisma } = build({ ceilingRow: { id: 'ceil-1', ceiling: decimal(2000) } });
+
+      const receipt = await service.removeCeilingForConversation('user-1', expected, 'card-1');
+
+      expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(prisma.creditCycleCeiling.delete.mock.invocationCallOrder[0]);
+      expect(prisma.creditCycleCeiling.delete).toHaveBeenCalledWith({ where: { id: 'ceil-1' } });
+      expect(receipt).toEqual({ id: 'ceil-1', removedCents: 200000, cycleStart: '2026-11-06', cycleEnd: '2026-12-05', refreshPending: false });
+    });
+
+    it('remove no cartao escolhido pelo nome, nao no padrao', async () => {
+      const extra = { id: 'card-2', userId: 'user-1', name: 'Nubank', closingDay: 5, dueDay: null, countAllPayments: false, isDefault: false, archivedAt: null };
+      const { service, prisma } = build({ extraCards: [extra], ceilingRow: { id: 'ceil-2', ceiling: decimal(1200) } });
+
+      const receipt = await service.removeCeilingForConversation('user-1', { ...expected, previousCeilingCents: 120000 }, 'card-2');
+
+      expect(receipt.id).toBe('ceil-2');
+      expect(receipt.removedCents).toBe(120000);
+      expect(prisma.creditCycleCeiling.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { cardId_closingDate: { cardId: 'card-2', closingDate: new Date('2026-12-05T00:00:00.000Z') } } }),
+      );
+    });
+
+    it('teto mudou na tela no meio: conflito com o snapshot atual, sem apagar', async () => {
+      const { service, prisma } = build({ ceilingRow: { id: 'ceil-1', ceiling: decimal(2500) } });
+
+      const error = await service.removeCeilingForConversation('user-1', expected, 'card-1').catch((e) => e);
+
+      expect(error).toBeInstanceOf(CreditLimitChangedError);
+      expect(error.current.previousCeilingCents).toBe(250000);
+      expect(prisma.creditCycleCeiling.delete).not.toHaveBeenCalled();
+    });
+
+    it('sem teto no ciclo (a tela removeu antes): conflito, nada a apagar', async () => {
+      const { service, prisma } = build({ ceilingRow: null });
+
+      await expect(service.removeCeilingForConversation('user-1', expected, 'card-1')).rejects.toBeInstanceOf(CreditLimitChangedError);
+      expect(prisma.creditCycleCeiling.delete).not.toHaveBeenCalled();
+    });
+
+    it('rascunho sem teto previo (snapshot null) nunca chega ao delete', async () => {
+      const { service, prisma } = build({ ceilingRow: null });
+
+      await expect(
+        service.removeCeilingForConversation('user-1', { ...expected, previousCeilingCents: null }, 'card-1'),
+      ).rejects.toBeInstanceOf(CreditLimitChangedError);
+      expect(prisma.creditCycleCeiling.delete).not.toHaveBeenCalled();
+    });
+
+    it('cartao alheio responde 404 e arquivado responde 409, sem apagar', async () => {
+      const alheio = { id: 'card-x', userId: 'user-2', name: 'Alheio', closingDay: 3, dueDay: null, countAllPayments: false, isDefault: false, archivedAt: null };
+      const arquivado = { id: 'card-2', userId: 'user-1', name: 'Velho', closingDay: 3, dueDay: null, countAllPayments: false, isDefault: false, archivedAt: new Date('2026-11-01T00:00:00.000Z') };
+      const comAlheio = build({ extraCards: [alheio], ceilingRow: { id: 'ceil-1', ceiling: decimal(2000) } });
+      await expect(comAlheio.service.removeCeilingForConversation('user-1', expected, 'card-x')).rejects.toBeInstanceOf(NotFoundException);
+      expect(comAlheio.prisma.creditCycleCeiling.delete).not.toHaveBeenCalled();
+
+      const comArquivado = build({ extraCards: [arquivado], ceilingRow: { id: 'ceil-1', ceiling: decimal(2000) } });
+      await expect(comArquivado.service.removeCeilingForConversation('user-1', expected, 'card-2')).rejects.toBeInstanceOf(ConflictException);
+      expect(comArquivado.prisma.creditCycleCeiling.delete).not.toHaveBeenCalled();
+    });
+
+    it('queda no commit depois do delete: resultado desconhecido, nao erro simples', async () => {
+      const { service, prisma } = build({ ceilingRow: { id: 'ceil-1', ceiling: decimal(2000) } });
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        await fn(prisma);
+        throw new Error('connection lost');
+      });
+
+      await expect(service.removeCeilingForConversation('user-1', expected, 'card-1')).rejects.toBeInstanceOf(CreditLimitWriteUncertainError);
     });
   });
 

@@ -100,6 +100,7 @@ import {
   parseChange,
   parseSearch,
 } from './transaction-change';
+import { CL_REPLIES, ChatCard, cleanCardTerm, isClearLimitDraft, matchCardsByTerm, parseLimitBody } from './credit-limit';
 import { parseEnvelopeBody } from './parsers/envelope.parser';
 import { IntentMatch, ReadIntent, matchIntent } from './parsers/intent.matcher';
 import {
@@ -110,6 +111,8 @@ import {
   categoryTotalText,
   contributionDoneText,
   contributionDraftText,
+  creditLimitClearDraftText,
+  creditLimitClearText,
   creditLimitDraftText,
   creditLimitSetText,
   doneText,
@@ -347,7 +350,7 @@ export class ConversationService {
    * (inexistente, outra conta, versao antiga ou já consumido). Rascunho de apagar só aplica com deleteExplicit,
    * que equivale à palavra "apagar" digitada (contrato 8a, secao 4). Sem a flag, o texto de sempre, sem gravar.
    */
-  async confirmDraft(userId: string, draftId: string, draftVersion: number, deleteExplicit = false): Promise<ConversationReply | null> {
+  async confirmDraft(userId: string, draftId: string, draftVersion: number, deleteExplicit = false, clearExplicit = false): Promise<ConversationReply | null> {
     const session = await this.prisma.conversationSession.findFirst({
       where: { id: draftId, userId, state: ConversationState.AWAITING_CONFIRMATION },
     });
@@ -357,6 +360,10 @@ export class ConversationService {
     if (isDeleteChange(session.draft) && !deleteExplicit) {
       // Botão "Confirmar" não apaga: a ação de apagar é a palavra "apagar" ou a ação explícita do cartão (decisão do dono).
       return this.reply('ERROR', this.stateView(session), TX_REPLIES.deleteNeedsWord);
+    }
+    if (isClearLimitDraft(session.draft) && !clearExplicit) {
+      // 8d (D3 do dono): limpar teto so com a palavra "limpar" ou a acao explicita do cartao.
+      return this.reply('ERROR', this.stateView(session), CL_REPLIES.clearNeedsWord);
     }
     const now = new Date();
     if (session.expiresAt < now) {
@@ -420,6 +427,9 @@ export class ConversationService {
     }
     if (intent.intent === 'set_credit_limit') {
       return this.startCreditLimitDraft({ input, body: intent.body });
+    }
+    if (intent.intent === 'clear_credit_limit') {
+      return this.startCreditLimitClearDraft({ input, body: intent.body });
     }
     if (intent.intent === 'create_recurring') {
       return this.startRecurringDraft({ input, body: intent.body });
@@ -737,33 +747,34 @@ export class ConversationService {
   }
 
   /**
-   * Definir limite do cartão. Corpo vazio pergunta o valor; qualquer texto além de um valor completo
-   * (nome de banco, data, regra) pede reenvio. O ciclo e o teto vigente são lidos agora e conferidos
-   * de novo na confirmação, sob bloqueio (EnvelopesService/CreditCycleService).
+   * Definir limite do cartao (8d): o corpo aceita "valor", "cartao valor", "cartao" ou nada. O cartao
+   * e escolhido pelo nome (termo desconhecido ou ambiguo pede reenvio listando os cartões; sem nome = padrao).
+   * O ciclo e o teto vigente sao lidos agora, do cartao escolhido, e conferidos de novo na confirmacao
+   * sob bloqueio (CreditCycleService).
    */
   private async startCreditLimitDraft(args: { input: ConversationInput; body: string }): Promise<ConversationReply> {
     const { input, body } = args;
     const { userId, receivedAt } = input;
-    const text = body.trim();
 
-    let ceilingCents: number | null = null;
-    if (text !== '') {
-      const parsed = parseAmountPrefix(text);
-      if (parsed.ok === false) {
-        await this.recordEvent(input, 'set_credit_limit', ConversationOutcome.ERROR);
-        return this.reply('ERROR', 'IDLE', parsed.reason === 'NOT_AMOUNT' ? REPLIES.creditLimitValueOnly : amountErrorText(parsed.reason));
-      }
-      if (parsed.rest !== '') {
-        await this.recordEvent(input, 'set_credit_limit', ConversationOutcome.ERROR);
-        return this.reply('ERROR', 'IDLE', REPLIES.creditLimitValueOnly);
-      }
-      ceilingCents = parsed.cents;
+    const parsed = parseLimitBody(body);
+    if (parsed.status === 'error') {
+      await this.recordEvent(input, 'set_credit_limit', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', amountErrorText(parsed.reason));
     }
+    const ceilingCents =
+      parsed.status === 'amount' ? parsed.cents : parsed.status === 'card' ? parsed.cents : null;
+
+    const chosen = await this.resolveChatCard(userId, parsed.status === 'card' ? parsed.term : '');
+    if ('errorText' in chosen) {
+      await this.recordEvent(input, 'set_credit_limit', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', chosen.errorText);
+    }
+    const card = chosen.card;
 
     // Leitura do ciclo antes de gravar o rascunho: falha vira ERROR genérico, como nas leituras (runRead).
     let cycle: Awaited<ReturnType<CreditCycleService['getCurrent']>>;
     try {
-      cycle = await this.creditCycle.getCurrent(userId);
+      cycle = card ? await this.creditCycle.getCycleForCard(userId, card.id) : await this.creditCycle.getCurrent(userId);
     } catch (error) {
       // Só o id da intenção e o nome do erro: nunca a mensagem, o texto do usuário ou valores.
       this.logger.warn(`Leitura falhou: intent=set_credit_limit erro=${error instanceof Error ? error.name : typeof error}`);
@@ -772,7 +783,10 @@ export class ConversationService {
     }
     const draft: CreditLimitDraft = {
       kind: 'CREDIT_LIMIT',
+      action: 'set',
       ceilingCents,
+      cardId: card?.id ?? null,
+      cardName: card?.name ?? null,
       cycleStart: toYmd(new Date(cycle.cycleStart)),
       cycleEnd: toYmd(new Date(cycle.cycleEnd)),
       previousCeilingCents: cycle.ceiling === null ? null : toCents(cycle.ceiling),
@@ -780,6 +794,76 @@ export class ConversationService {
       pendingField: ceilingCents === null ? 'amount' : null,
     };
     return this.saveNewDraft({ input, intent: 'set_credit_limit', draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  /**
+   * Limpar o teto do ciclo (D1 do 8d): cartao pelo nome ou padrao — no padrao o cartao fica salvo no
+   * rascunho, entao trocar o padrao no meio nao limpa o teto de outro. Ciclo sem teto e recusa imediata,
+   * sem rascunho; com teto, a previa pede a palavra "limpar" (D3).
+   */
+  private async startCreditLimitClearDraft(args: { input: ConversationInput; body: string }): Promise<ConversationReply> {
+    const { input, body } = args;
+    const { userId, receivedAt } = input;
+
+    const chosen = await this.resolveChatCard(userId, cleanCardTerm(body.trim()));
+    if ('errorText' in chosen) {
+      await this.recordEvent(input, 'clear_credit_limit', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', chosen.errorText);
+    }
+    let card = chosen.card;
+    if (card === null) {
+      card = await this.prisma.creditCard.findFirst({
+        where: { userId, isDefault: true, archivedAt: null },
+        select: { id: true, name: true },
+      });
+      if (!card) {
+        this.logger.warn('Leitura falhou: intent=clear_credit_limit erro=semCartaoPadrao');
+        await this.recordEvent(input, 'clear_credit_limit', ConversationOutcome.ERROR);
+        return this.reply('ERROR', 'IDLE', REPLIES.consultError);
+      }
+    }
+
+    let cycle: Awaited<ReturnType<CreditCycleService['getCurrent']>>;
+    try {
+      cycle = await this.creditCycle.getCycleForCard(userId, card.id);
+    } catch (error) {
+      this.logger.warn(`Leitura falhou: intent=clear_credit_limit erro=${error instanceof Error ? error.name : typeof error}`);
+      await this.recordEvent(input, 'clear_credit_limit', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', REPLIES.consultError);
+    }
+
+    if (cycle.ceiling === null) {
+      await this.recordEvent(input, 'clear_credit_limit', ConversationOutcome.RECOGNIZED);
+      return this.reply('INFO', 'IDLE', CL_REPLIES.alreadyClear);
+    }
+
+    const draft: CreditLimitDraft = {
+      kind: 'CREDIT_LIMIT',
+      action: 'clear',
+      ceilingCents: null,
+      cardId: card.id,
+      cardName: card.name,
+      cycleStart: toYmd(new Date(cycle.cycleStart)),
+      cycleEnd: toYmd(new Date(cycle.cycleEnd)),
+      previousCeilingCents: toCents(cycle.ceiling),
+      countAllPayments: cycle.countAllPayments,
+      pendingField: null,
+    };
+    return this.saveNewDraft({ input, intent: 'clear_credit_limit', draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  /** Cartao do chat pelo nome (8d). Termo vazio = null (= cartao padrao, resolvido por quem chama). */
+  private async resolveChatCard(userId: string, term: string): Promise<{ card: ChatCard | null } | { errorText: string }> {
+    if (term === '') return { card: null };
+    const cards = await this.prisma.creditCard.findMany({
+      where: { userId, archivedAt: null },
+      orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+      select: { id: true, name: true },
+    });
+    const hits = matchCardsByTerm(cards, term);
+    if (hits.length === 0) return { errorText: CL_REPLIES.cardNotFound(term, cards.map((row) => row.name)) };
+    if (hits.length > 1) return { errorText: CL_REPLIES.cardAmbiguous(term, hits.map((row) => row.name)) };
+    return { card: hits[0] };
   }
 
   /**
@@ -1150,10 +1234,13 @@ export class ConversationService {
       return this.cancelSession(userId, session, input.messageId);
     }
     const deleteAwaiting = awaiting && isDeleteChange(session.draft);
-    if (deleteAwaiting && CONFIRM_WORDS.has(words)) {
-      // Apagar só vale com a palavra "apagar" (contrato 8a, secao 4): confirmar/sim/ok não apagam.
+    const clearAwaiting = awaiting && isClearLimitDraft(session.draft);
+    if ((deleteAwaiting || clearAwaiting) && CONFIRM_WORDS.has(words)) {
+      // Apagar so vale com a palavra "apagar"; limpar teto, com "limpar" (contratos 8a sec.4 e 8d D3): confirmar/sim/ok nao gravam.
       await this.recordEvent(input, session.intent, ConversationOutcome.UNRECOGNIZED);
-      return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: TX_REPLIES.deleteNeedsWord });
+      return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), {
+        prefix: deleteAwaiting ? TX_REPLIES.deleteNeedsWord : CL_REPLIES.clearNeedsWord,
+      });
     }
     // Editar sem nenhuma mudança: confirmar não grava (contrato 8a, secao 5; vale tambem para meta e reserva, 8b).
     const editNothing = isEditWithoutChanges(session.draft);
@@ -1161,7 +1248,7 @@ export class ConversationService {
       await this.recordEvent(input, session.intent, ConversationOutcome.UNRECOGNIZED);
       return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: TX_REPLIES.nothingToChange });
     }
-    if (CONFIRM_WORDS.has(words) || (deleteAwaiting && words === 'apagar')) {
+    if (CONFIRM_WORDS.has(words) || (deleteAwaiting && words === 'apagar') || (clearAwaiting && words === 'limpar')) {
       if (awaiting) {
         // Trava de escrita do WhatsApp (contrato 8): o app continua gravando normalmente.
         if (input.channel === 'WHATSAPP' && !this.configService.get<boolean>('whatsapp.writesEnabled')) {
@@ -1714,8 +1801,29 @@ export class ConversationService {
     };
   }
 
-  /** Teto do ciclo: o serviço confere ciclo, teto vigente e opção sob bloqueio antes de gravar. */
+  /** Teto do ciclo: o serviço confere ciclo, teto vigente e opção sob bloqueio antes de gravar (8d: por cartao). */
   private async applyCreditLimit(userId: string, draft: CreditLimitDraft): Promise<AppliedAction> {
+    if (draft.action === 'clear') {
+      if (draft.cardId === null || draft.previousCeilingCents === null) {
+        throw new Error('rascunho de limpeza de limite incompleto');
+      }
+      const removed = await this.creditCycle.removeCeilingForConversation(
+        userId,
+        {
+          cycleStart: draft.cycleStart,
+          cycleEnd: draft.cycleEnd,
+          previousCeilingCents: draft.previousCeilingCents,
+          countAllPayments: draft.countAllPayments,
+        },
+        draft.cardId,
+      );
+      return {
+        text: creditLimitClearText({ previousCents: removed.removedCents, cycleEnd: removed.cycleEnd, cardName: draft.cardName }),
+        data: {},
+        resultRef: removed.id,
+        refreshPending: removed.refreshPending,
+      };
+    }
     if (draft.ceilingCents === null) {
       throw new Error('rascunho de limite incompleto');
     }
@@ -1728,9 +1836,10 @@ export class ConversationService {
         previousCeilingCents: draft.previousCeilingCents,
         countAllPayments: draft.countAllPayments,
       },
+      draft.cardId ?? undefined,
     );
     return {
-      text: creditLimitSetText({ ceilingCents: receipt.ceilingCents, cycleEnd: receipt.cycleEnd }),
+      text: creditLimitSetText({ ceilingCents: receipt.ceilingCents, cycleEnd: receipt.cycleEnd, cardName: draft.cardName }),
       data: {},
       resultRef: receipt.id,
       refreshPending: receipt.refreshPending,
@@ -2822,7 +2931,7 @@ export class ConversationService {
       state: ConversationState.AWAITING_CONFIRMATION,
       text: [options.prefix, body].filter(Boolean).join('\n'),
       draft: view,
-      quickReplies: isDeleteChange(draft) ? ['apagar', 'cancelar'] : ['confirmar', 'cancelar'],
+      quickReplies: isDeleteChange(draft) ? ['apagar', 'cancelar'] : isClearLimitDraft(draft) ? ['limpar', 'cancelar'] : ['confirmar', 'cancelar'],
     };
   }
 
@@ -2847,7 +2956,9 @@ export class ConversationService {
       });
     }
     if (draft.kind === 'CREDIT_LIMIT') {
-      return creditLimitDraftText({ ceilingCents: draft.ceilingCents ?? 0, cycleEnd: draft.cycleEnd });
+      return draft.action === 'clear'
+        ? creditLimitClearDraftText({ previousCents: draft.previousCeilingCents ?? 0, cycleEnd: draft.cycleEnd, cardName: draft.cardName })
+        : creditLimitDraftText({ ceilingCents: draft.ceilingCents ?? 0, cycleEnd: draft.cycleEnd, cardName: draft.cardName });
     }
     if (draft.kind === 'RECURRING') {
       return recurringDraftText({
@@ -3049,17 +3160,27 @@ export class ConversationService {
       };
     }
     if (draft.kind === 'CREDIT_LIMIT') {
+      const clear = draft.action === 'clear';
       return {
         ...base,
         kind: 'CREDIT_LIMIT',
-        title: 'Limite do cartão',
+        title: clear ? 'Limpar limite do cartão' : 'Limite do cartão',
+        changeAction: clear ? 'CLEAR' : undefined,
         pendingField: draft.pendingField,
         rows: [
+          ...(draft.cardName ? [{ label: 'Cartão', value: draft.cardName }] : []),
           { label: 'Ciclo', value: `${longDate(draft.cycleStart)} a ${longDate(draft.cycleEnd)}` },
-          { label: 'Limite atual', value: draft.previousCeilingCents === null ? 'não definido' : formatBrl(draft.previousCeilingCents) },
-          { label: 'Novo limite', value: draft.ceilingCents === null ? 'a informar' : formatBrl(draft.ceilingCents) },
-          { label: 'Aviso', value: REPLIES.creditLimitCycleWarning },
-          ...(draft.countAllPayments ? [{ label: 'Aviso', value: REPLIES.creditLimitAllPaymentsWarning }] : []),
+          ...(clear
+            ? [
+                { label: 'Teto atual', value: draft.previousCeilingCents === null ? 'não definido' : formatBrl(draft.previousCeilingCents) },
+                { label: 'Aviso', value: REPLIES.creditLimitClearWarning },
+              ]
+            : [
+                { label: 'Limite atual', value: draft.previousCeilingCents === null ? 'não definido' : formatBrl(draft.previousCeilingCents) },
+                { label: 'Novo limite', value: draft.ceilingCents === null ? 'a informar' : formatBrl(draft.ceilingCents) },
+                { label: 'Aviso', value: REPLIES.creditLimitCycleWarning },
+                ...(draft.countAllPayments ? [{ label: 'Aviso', value: REPLIES.creditLimitAllPaymentsWarning }] : []),
+              ]),
           ...reviewRows(draft.reviewReason),
         ],
       };

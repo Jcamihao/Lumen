@@ -111,7 +111,7 @@
         <!-- Com rascunho para confirmar, o texto do motor repete a lista abaixo: mostra só uma chamada curta. -->
         <p class="assistant-manual__text" *ngIf="!(turn.kind === 'CONFIRM_DRAFT' && turn.draft); else confirmLead">{{ turn.text }}</p>
         <ng-template #confirmLead>
-          <p class="assistant-manual__text">{{ isDeleteDraft(turn) ? "Confira o lançamento antes de apagar." : "Confira os dados antes de confirmar." }}</p>
+          <p class="assistant-manual__text">{{ isDeleteDraft(turn) ? "Confira o lançamento antes de apagar." : isClearDraft(turn) ? "Confira o cartão e o teto antes de limpar." : "Confira os dados antes de confirmar." }}</p>
         </ng-template>
 
         <p class="proto-muted" *ngIf="turn.kind === 'RESTORED' && turn.draft?.pendingField as pending">
@@ -157,14 +157,15 @@
         </ng-container>
 
         <p class="proto-muted" *ngIf="showConfirmButtons(turn) && isDeleteDraft(turn)">Isto apaga de vez e não dá para desfazer.</p>
+        <p class="proto-muted" *ngIf="showConfirmButtons(turn) && isClearDraft(turn)">Isto remove o teto do ciclo. Sem ele, o Lumen para de avisar progresso e estouro.</p>
 
         <div class="proto-actions-row" *ngIf="showConfirmButtons(turn)">
-          <button *ngIf="!isDeleteDraft(turn); else deleteConfirm" type="button" class="proto-button" [disabled]="manualBusy()" (click)="confirmDraft()">
+          <button *ngIf="!isDeleteDraft(turn) && !isClearDraft(turn); else actionConfirm" type="button" class="proto-button" [disabled]="manualBusy()" (click)="confirmDraft()">
             Confirmar
           </button>
-          <ng-template #deleteConfirm>
+          <ng-template #actionConfirm>
             <button type="button" class="proto-button" [disabled]="manualBusy()" (click)="confirmDraft()">
-              Apagar de vez
+              {{ isDeleteDraft(turn) ? "Apagar de vez" : "Limpar de vez" }}
             </button>
           </ng-template>
           <button type="button" class="proto-button proto-button--secondary" [disabled]="manualBusy()" (click)="cancelDraft()">
