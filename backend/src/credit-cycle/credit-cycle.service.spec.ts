@@ -461,7 +461,7 @@ describe('ciclo por cartao (9a-1)', () => {
 
       const where = prisma.transaction.aggregate.mock.calls[0][0].where;
       expect(where).toMatchObject({ paymentMethod: 'CREDIT' });
-      expect(where.OR).toEqual([{ cardId: 'card-1' }, { cardId: null }]);
+      expect(where.OR).toEqual([{ cardId: 'card-1' }, { cardId: null, paymentMethod: 'CREDIT' }]);
     });
 
     it('padrao com countAllPayments soma toda EXPENSE, sem filtro de cartao nem de forma de pagamento', async () => {

@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PaymentMethod, TransactionType } from '@prisma/client';
 import { TransactionsService } from './transactions.service';
-import { CARD_ARCHIVED_MESSAGE, CARD_NEEDS_CREDIT_MESSAGE, CARD_NOT_FOUND_MESSAGE } from '../credit-cards/card-link';
+import { CARD_ARCHIVED_MESSAGE, CARD_NEEDS_CREDIT_MESSAGE, CARD_NOT_FOUND_MESSAGE, CARD_ONLY_EXPENSE_MESSAGE } from '../credit-cards/card-link';
 
 const USER_A = 'user-a';
 const USER_B = 'user-b';
@@ -170,6 +170,55 @@ describe('TransactionsService: cardId em lancamento (isolamento A/B/C)', () => {
     });
   });
 
+  describe('receita nunca tem cartao', () => {
+    const income = { type: TransactionType.INCOME, description: 'Salario', amount: 5000, date: '2026-10-05' };
+    const cardExpense = { id: 'tx-1', userId: USER_A, type: TransactionType.EXPENSE, paymentMethod: PaymentMethod.CREDIT, cardId: CARD_A1 };
+
+    it('criar receita com cardId = 400 com a mensagem de despesa, qualquer que seja a forma ou o cartao', async () => {
+      for (const extra of [
+        { paymentMethod: PaymentMethod.CREDIT, cardId: CARD_A1 },
+        { paymentMethod: PaymentMethod.PIX, cardId: CARD_A1 },
+        { cardId: CARD_B1 },
+      ]) {
+        const { service, prisma } = build();
+        await expect(service.create(USER_A, { ...income, ...extra } as any)).rejects.toThrow(CARD_ONLY_EXPENSE_MESSAGE);
+        expect(prisma.transaction.create).not.toHaveBeenCalled();
+      }
+    });
+
+    it('criar receita sem cardId nao escreve cardId e nao pega o lock', async () => {
+      const { service, prisma } = build();
+      await service.create(USER_A, { ...income, paymentMethod: PaymentMethod.PIX } as any);
+      expect(prisma.transaction.create.mock.calls[0][0].data.cardId).toBeUndefined();
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('editar com cardId no corpo sobre receita = 400 e nao grava', async () => {
+      const { service, prisma } = build({ ...cardExpense, type: TransactionType.INCOME, paymentMethod: null, cardId: null });
+      await expect(service.update(USER_A, 'tx-1', { cardId: CARD_A1 } as any)).rejects.toThrow(CARD_ONLY_EXPENSE_MESSAGE);
+      expect(prisma.transaction.update).not.toHaveBeenCalled();
+    });
+
+    it('virar receita (sem cardId no corpo) limpa o cardId gravado, sob o lock', async () => {
+      const { service, prisma } = build(cardExpense);
+      await service.update(USER_A, 'tx-1', { type: TransactionType.INCOME } as any);
+      expect(prisma.transaction.update.mock.calls[0][0].data.cardId).toBeNull();
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    });
+
+    it('virar receita com cardId null no corpo tambem limpa', async () => {
+      const { service, prisma } = build(cardExpense);
+      await service.update(USER_A, 'tx-1', { type: TransactionType.INCOME, cardId: null } as any);
+      expect(prisma.transaction.update.mock.calls[0][0].data.cardId).toBeNull();
+    });
+
+    it('receita que ja nao tem cartao: editar a descricao nao mexe em cardId', async () => {
+      const { service, prisma } = build({ ...cardExpense, type: TransactionType.INCOME, paymentMethod: null, cardId: null });
+      await service.update(USER_A, 'tx-1', { description: 'Salario de outubro' } as any);
+      expect(prisma.transaction.update.mock.calls[0][0].data.cardId).toBeUndefined();
+    });
+  });
+
   describe('listagem filtrada por cartao', () => {
     it('cartao alheio no filtro = 404 e nem consulta os lancamentos', async () => {
       const { service, prisma } = build();
@@ -177,10 +226,13 @@ describe('TransactionsService: cardId em lancamento (isolamento A/B/C)', () => {
       expect(prisma.transaction.findMany).not.toHaveBeenCalled();
     });
 
-    it('cartao proprio filtra por cardId', async () => {
+    it('cartao padrao no filtro: escopo OR (cardId dele ou CREDIT sem cartao), userId sempre no where', async () => {
       const { service, prisma } = build();
       await service.list(USER_A, { cardId: CARD_A1 } as any);
-      expect(prisma.transaction.findMany.mock.calls[0][0].where.cardId).toBe(CARD_A1);
+      const where = prisma.transaction.findMany.mock.calls[0][0].where;
+      expect(where.cardId).toBeUndefined();
+      expect(where.userId).toBe(USER_A);
+      expect(where.OR).toEqual([{ cardId: CARD_A1 }, { cardId: null, paymentMethod: 'CREDIT' }]);
     });
 
     it('cartao inexistente no filtro = mesmo 404', async () => {

@@ -1,6 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { RecurrenceFrequency, TransactionType } from '@prisma/client';
-import { CARD_ARCHIVED_MESSAGE, CARD_NEEDS_CREDIT_MESSAGE, CARD_NOT_FOUND_MESSAGE } from '../credit-cards/card-link';
+import { CARD_ARCHIVED_MESSAGE, CARD_NEEDS_CREDIT_MESSAGE, CARD_NOT_FOUND_MESSAGE, CARD_ONLY_EXPENSE_MESSAGE } from '../credit-cards/card-link';
 import { utcDate } from './recurrence.util';
 import { RecurringTransactionsService } from './recurring-transactions.service';
 
@@ -160,6 +160,34 @@ describe('RecurringTransactionsService: cardId em conta fixa (isolamento A/B/C)'
     it('usuario B nao edita conta de A (404 antes de qualquer cartao)', async () => {
       const { service } = build(null);
       await expect(service.update(USER_B, 'rec-1', { cardId: CARD_B1 } as any)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('receita nunca tem cartao', () => {
+    const income = { ...base, type: TransactionType.INCOME, paymentMethod: undefined };
+    const incomeStored = () => stored({ type: TransactionType.INCOME, paymentMethod: null, cardId: null });
+
+    it('criar conta de receita com cardId (proprio ou alheio) = 400 e nao cria', async () => {
+      for (const cardId of [CARD_A1, CARD_B1]) {
+        const { service, prisma } = build();
+        await expect(service.create(USER_A, { ...income, cardId } as any)).rejects.toThrow(CARD_ONLY_EXPENSE_MESSAGE);
+        expect(prisma.recurringTransaction.create).not.toHaveBeenCalled();
+      }
+    });
+
+    it('editar conta de receita com cardId no corpo = 400 e nao grava', async () => {
+      const { service, prisma } = build(incomeStored());
+      await expect(service.update(USER_A, 'rec-1', { cardId: CARD_A1 } as any)).rejects.toThrow(CARD_ONLY_EXPENSE_MESSAGE);
+      expect(prisma.recurringTransaction.update).not.toHaveBeenCalled();
+      // A regra depende do tipo gravado: o lock sob o User tem que pedir o type (fake ignora select).
+      const lockRead = prisma.recurringTransaction.findFirst.mock.calls[prisma.recurringTransaction.findFirst.mock.calls.length - 1][0];
+      expect(lockRead.select).toEqual(expect.objectContaining({ type: true }));
+    });
+
+    it('editar conta de receita sem cardId no corpo nao mexe em cardId', async () => {
+      const { service, prisma } = build(incomeStored());
+      await service.update(USER_A, 'rec-1', { description: 'Salario fixo' } as any);
+      expect(prisma.recurringTransaction.update.mock.calls[0][0].data.cardId).toBeUndefined();
     });
   });
 

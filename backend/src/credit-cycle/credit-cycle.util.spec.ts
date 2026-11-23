@@ -1,4 +1,4 @@
-import { creditCycleBounds } from './credit-cycle.util';
+import { cardScopeWhere, cardSpendWhere, creditCycleBounds } from './credit-cycle.util';
 import { utcDate } from '../recurring-transactions/recurrence.util';
 
 const iso = (date: Date) => date.toISOString().slice(0, 10);
@@ -51,5 +51,39 @@ describe('creditCycleBounds', () => {
     } finally {
       process.env.TZ = original;
     }
+  });
+});
+
+describe('cardScopeWhere / cardSpendWhere (escopo de cartao, listagem e ciclo)', () => {
+  const start = utcDate(2026, 9, 1);
+  const end = utcDate(2026, 9, 31);
+
+  it('padrao: cardId dele ou CREDIT sem cartao', () => {
+    expect(cardScopeWhere({ id: 'c1', isDefault: true })).toEqual({
+      OR: [{ cardId: 'c1' }, { cardId: null, paymentMethod: 'CREDIT' }],
+    });
+  });
+
+  it('secundario: so o proprio cardId, sem nulos', () => {
+    expect(cardScopeWhere({ id: 'c2', isDefault: false })).toEqual({ cardId: 'c2' });
+  });
+
+  it('gasto do padrao com countAllPayments: toda EXPENSE do usuario, sem filtro de forma ou cartao', () => {
+    expect(cardSpendWhere('u1', { id: 'c1', isDefault: true, countAllPayments: true }, start, end)).toEqual({
+      userId: 'u1', type: 'EXPENSE', date: { gte: start, lte: end },
+    });
+  });
+
+  it('gasto do padrao sem countAllPayments: CREDIT + escopo do padrao', () => {
+    expect(cardSpendWhere('u1', { id: 'c1', isDefault: true, countAllPayments: false }, start, end)).toEqual({
+      userId: 'u1', type: 'EXPENSE', date: { gte: start, lte: end }, paymentMethod: 'CREDIT',
+      OR: [{ cardId: 'c1' }, { cardId: null, paymentMethod: 'CREDIT' }],
+    });
+  });
+
+  it('gasto do secundario: CREDIT + so o cardId dele', () => {
+    expect(cardSpendWhere('u1', { id: 'c2', isDefault: false, countAllPayments: true }, start, end)).toEqual({
+      userId: 'u1', type: 'EXPENSE', date: { gte: start, lte: end }, paymentMethod: 'CREDIT', cardId: 'c2',
+    });
   });
 });
