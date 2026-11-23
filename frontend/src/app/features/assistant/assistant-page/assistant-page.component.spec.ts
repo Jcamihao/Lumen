@@ -1475,6 +1475,38 @@ describe("AssistantPageComponent — assistente manual", () => {
       expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1);
     });
 
+    it("cartão de editar mostra antes → depois por campo e Confirmar normal", () => {
+      conversation.sendMessage.and.returnValue(
+        of<ConversationReply>({
+          kind: "CONFIRM_DRAFT",
+          state: "AWAITING_CONFIRMATION",
+          text: "Editar: 50,00 · Mercado.\nValor: 50,00 -> 45,00\nResponda confirmar.",
+          draft: draft({
+            kind: "TRANSACTION_CHANGE",
+            title: "Editar lançamento",
+            changeAction: "EDIT",
+            amount: null,
+            description: null,
+            category: null,
+            date: null,
+            rows: [
+              { label: "Valor", value: "R$ 50,00 → R$ 45,00" },
+              { label: "Data", value: "14/11/2026 → 15/11/2026" },
+            ],
+          }),
+          quickReplies: ["confirmar", "cancelar"],
+        }),
+      );
+      create();
+
+      typeAndSend("corrigir mercado");
+
+      expect(rowValues()).toEqual(["R$ 50,00 → R$ 45,00", "14/11/2026 → 15/11/2026"]);
+      expect(buttonWithText("Confirmar")).toBeDefined();
+      expect(buttonWithText("Apagar de vez")).toBeUndefined();
+      expect(text()).not.toContain("Isto apaga de vez");
+    });
+
     it("Apagar de vez em voo fica desabilitado: duplo clique chama o servidor uma vez", () => {
       const pending = new Subject<ConversationReply>();
       conversation.sendMessage.and.returnValue(of(deleteConfirm()));
@@ -1488,6 +1520,7 @@ describe("AssistantPageComponent — assistente manual", () => {
       fixture.detectChanges();
 
       expect(buttonWithText("Apagar de vez")!.disabled).toBe(true);
+      expect(buttonWithText("Cancelar")!.disabled).toBe(true);
       expect(conversation.confirmDraft).toHaveBeenCalledTimes(1);
       expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1, true);
     });
