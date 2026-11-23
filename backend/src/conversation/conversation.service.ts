@@ -313,16 +313,20 @@ export class ConversationService {
     return this.handleWithoutSession({ input, text });
   }
 
-  /** Botao "Confirmar". Null = 404 no controller (inexistente, outra conta, versao antiga ou já consumido). */
-  async confirmDraft(userId: string, draftId: string, draftVersion: number): Promise<ConversationReply | null> {
+  /**
+   * Botao "Confirmar" (deleteExplicit = botão "Apagar de vez" do cartão de apagar). Null = 404 no controller
+   * (inexistente, outra conta, versao antiga ou já consumido). Rascunho de apagar só aplica com deleteExplicit,
+   * que equivale à palavra "apagar" digitada (contrato 8a, secao 4). Sem a flag, o texto de sempre, sem gravar.
+   */
+  async confirmDraft(userId: string, draftId: string, draftVersion: number, deleteExplicit = false): Promise<ConversationReply | null> {
     const session = await this.prisma.conversationSession.findFirst({
       where: { id: draftId, userId, state: ConversationState.AWAITING_CONFIRMATION },
     });
     if (!session || session.version !== draftVersion) {
       return null;
     }
-    if (isDeleteChange(session.draft)) {
-      // Botão "Confirmar" não apaga: a ação de apagar é a palavra "apagar" (contrato 8a, secao 4; decisão do dono).
+    if (isDeleteChange(session.draft) && !deleteExplicit) {
+      // Botão "Confirmar" não apaga: a ação de apagar é a palavra "apagar" ou a ação explícita do cartão (decisão do dono).
       return this.reply('ERROR', this.stateView(session), TX_REPLIES.deleteNeedsWord);
     }
     const now = new Date();
@@ -2361,12 +2365,24 @@ export class ConversationService {
     };
 
     if (isTransactionChangeDraft(draft)) {
+      // Apagar mostra o lançamento escolhido (prévia exata, contrato 8a, secao 4): relido com id + userId da sessão.
+      const target =
+        draft.action === 'DELETE' && draft.targetId !== null ? await this.loadTxCandidate(session.userId, draft.targetId) : null;
       return {
         ...base,
         kind: 'TRANSACTION_CHANGE',
         title: draft.action === 'DELETE' ? 'Apagar lançamento' : 'Editar lançamento',
+        changeAction: draft.action,
         pendingField: draft.pendingField,
-        rows: [{ label: 'Lançamento', value: draft.targetId === null ? 'a escolher' : 'escolhido' }],
+        rows:
+          target?.eligible === true
+            ? [
+                { label: 'Valor', value: formatBrl(target.amountCents) },
+                { label: 'Descrição', value: target.description },
+                { label: 'Categoria', value: target.categoryName ?? 'sem categoria' },
+                { label: 'Data', value: target.date.split('-').reverse().join('/') },
+              ]
+            : [{ label: 'Lançamento', value: draft.targetId === null ? 'a escolher' : 'escolhido' }],
       };
     }
 

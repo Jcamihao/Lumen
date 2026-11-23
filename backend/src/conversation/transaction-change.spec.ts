@@ -637,3 +637,165 @@ describe('revisao 8a-1: travas de apagar e editar', () => {
     expect((db.sessions[0].draft as Row).candidateIds).toEqual([]);
   });
 });
+
+describe('apagar pelo botao do cartao (8a-2, contrato 4.4)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: T0 });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /** Escolhe "apagar mercado" -> 2 (120,00 · Mercado grande) e devolve o rascunho de apagar. */
+  async function draftToDelete(send: (text: string, userId?: string, channel?: 'APP' | 'WHATSAPP') => Promise<ConversationReplyLike>) {
+    await send('apagar mercado');
+    return send('2');
+  }
+
+  it('DraftView leva changeAction DELETE no cartao de apagar e EDIT no de editar', async () => {
+    const { send } = buildService(ROWS);
+    const deleteReply = await draftToDelete(send);
+    expect(deleteReply.draft?.changeAction).toBe('DELETE');
+    const { send: sendEdit } = buildService(ROWS);
+    await sendEdit('corrigir mercado');
+    const editReply = await sendEdit('1');
+    expect(editReply.draft?.changeAction).toBe('EDIT');
+  });
+
+  it('previa do apagar mostra valor, descricao, categoria e data do lancamento escolhido', async () => {
+    const { send } = buildService(ROWS);
+    const reply = await draftToDelete(send);
+    expect(reply.draft?.rows).toEqual([
+      { label: 'Valor', value: expect.stringContaining('120,00') },
+      { label: 'Descrição', value: 'Mercado grande' },
+      { label: 'Categoria', value: 'sem categoria' },
+      { label: 'Data', value: '12/11/2026' },
+    ]);
+  });
+
+  it('rascunho de lancamento comum nao traz changeAction', async () => {
+    const { send } = buildService(ROWS);
+    const reply = await send('gastei 32,90 mercado');
+    expect(reply.draft).toBeDefined();
+    expect(reply.draft).not.toHaveProperty('changeAction');
+  });
+
+  it('GET de sessao (restaurada) traz changeAction DELETE e nao grava nada', async () => {
+    const { send, service, txService } = buildService(ROWS);
+    await draftToDelete(send);
+    const restored = await service.getSession('A');
+    expect(restored.state).toBe('AWAITING_CONFIRMATION');
+    expect(restored.draft?.changeAction).toBe('DELETE');
+    expect(txService.remove).not.toHaveBeenCalled();
+  });
+
+  it('confirmDraft de apagar SEM flag: texto da palavra, nada gravado, sessao mantida', async () => {
+    const { send, service, txService, db } = buildService(ROWS);
+    await draftToDelete(send);
+    const session = db.sessions[0];
+    const reply = await service.confirmDraft('A', session.id, session.version, false);
+    expect(reply?.kind).toBe('ERROR');
+    expect(reply?.text).toBe('Para apagar, responda apagar.');
+    expect(txService.remove).not.toHaveBeenCalled();
+    expect(db.sessions).toHaveLength(1);
+  });
+
+  it('confirmDraft de apagar COM flag: apaga 1x pelo mesmo servico, com recibo', async () => {
+    const { send, service, txService, transactions, db } = buildService(ROWS);
+    await draftToDelete(send);
+    const session = db.sessions[0];
+    const reply = await service.confirmDraft('A', session.id, session.version, true);
+    expect(reply?.kind).toBe('DONE');
+    expect(reply?.state).toBe('IDLE');
+    expect(reply?.text).toBe('Apaguei: 120,00 · Mercado grande.');
+    expect(reply?.data?.transactionId).toBe('t2');
+    expect(txService.remove).toHaveBeenCalledTimes(1);
+    expect(txService.remove).toHaveBeenCalledWith('A', 't2');
+    expect(transactions.some((row) => row.id === 't2')).toBe(false);
+    expect(db.sessions).toHaveLength(0);
+  });
+
+  it('reconfirmar o mesmo rascunho com flag nao apaga de novo (sessao ja consumida)', async () => {
+    const { send, service, txService, db } = buildService(ROWS);
+    await draftToDelete(send);
+    const session = db.sessions[0];
+    await service.confirmDraft('A', session.id, session.version, true);
+    await expect(service.confirmDraft('A', session.id, session.version, true)).resolves.toBeNull();
+    expect(txService.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('dois cliques paralelos com flag: uma so aplicacao', async () => {
+    const { send, service, txService, db } = buildService(ROWS);
+    await draftToDelete(send);
+    const session = db.sessions[0];
+    const results = await Promise.all([
+      service.confirmDraft('A', session.id, session.version, true),
+      service.confirmDraft('A', session.id, session.version, true),
+    ]);
+    expect(results.filter((result) => result?.kind === 'DONE')).toHaveLength(1);
+    expect(txService.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('versao antiga com flag: 404 (null), nada apagado', async () => {
+    const { send, service, txService, db } = buildService(ROWS);
+    await draftToDelete(send);
+    const session = db.sessions[0];
+    await expect(service.confirmDraft('A', session.id, session.version + 1, true)).resolves.toBeNull();
+    expect(txService.remove).not.toHaveBeenCalled();
+    expect(db.sessions).toHaveLength(1);
+  });
+
+  it('flag com rascunho de apagar de outra conta: null, nada apagado', async () => {
+    const { send, service, txService, db } = buildService(ROWS);
+    await draftToDelete(send);
+    const session = db.sessions[0];
+    await expect(service.confirmDraft('B', session.id, session.version, true)).resolves.toBeNull();
+    expect(txService.remove).not.toHaveBeenCalled();
+  });
+
+  it('flag com lancamento que sumiu: erro, nada apagado e sessao descartada', async () => {
+    const { send, service, txService, db } = buildService(ROWS);
+    await draftToDelete(send);
+    const session = db.sessions[0];
+    txService.remove.mockRejectedValueOnce(new NotFoundException('Lançamento não encontrado'));
+    const reply = await service.confirmDraft('A', session.id, session.version, true);
+    expect(reply?.kind).toBe('ERROR');
+    expect(reply?.text).toBe('Lançamento não encontrado');
+    expect(db.sessions).toHaveLength(0);
+  });
+
+  it('botao do app com flag nao passa pela trava do WhatsApp, como o confirmar comum', async () => {
+    const { send, service, txService, db } = buildService(ROWS, false);
+    await send('apagar mercado', 'A', 'WHATSAPP');
+    await send('2', 'A', 'WHATSAPP');
+    const session = db.sessions[0];
+    const reply = await service.confirmDraft('A', session.id, session.version, true);
+    expect(reply?.kind).toBe('DONE');
+    expect(txService.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('flag em rascunho de editar e ignorada: confirma a edicao normal, uma vez', async () => {
+    const { send, service, txService, db } = buildService(ROWS);
+    await send('corrigir mercado');
+    await send('1');
+    await send('valor 45');
+    const session = db.sessions[0];
+    const reply = await service.confirmDraft('A', session.id, session.version, true);
+    expect(reply?.kind).toBe('DONE');
+    expect(reply?.text).toBe('Alterei: 45,00 · Mercado do bairro.');
+    expect(txService.update).toHaveBeenCalledTimes(1);
+    expect(txService.remove).not.toHaveBeenCalled();
+  });
+
+  it('flag em rascunho comum e ignorada (confirmar normal)', async () => {
+    const { send, service, txService, db } = buildService(ROWS);
+    txService.create.mockResolvedValueOnce({ id: 'new-1' });
+    await send('gastei 32,90 mercado');
+    const session = db.sessions[0];
+    expect(session.state).toBe('AWAITING_CONFIRMATION');
+    const reply = await service.confirmDraft('A', session.id, session.version, true);
+    expect(reply?.kind).toBe('DONE');
+    expect(txService.create).toHaveBeenCalledTimes(1);
+    expect(txService.remove).not.toHaveBeenCalled();
+  });
+});

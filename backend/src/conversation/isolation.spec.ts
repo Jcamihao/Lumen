@@ -747,6 +747,33 @@ describe('Isolamento A/B/C do motor de conversa', () => {
       expect(world.transactions.some((tx) => tx.id === 'b-1')).toBe(true);
     });
 
+    it('A confirma o apagar de B com a flag de apagar explicita: null igual ao inexistente, B intacto', async () => {
+      addTx('B', 'b-1', 'Mercado Teste B', 20);
+      await send('B', 'apagar mercado teste');
+      await send('B', '1');
+      const session = sessionOf('B')!;
+      const forged = await engine.service.confirmDraft(USER_ID.A, session.id, session.version, true);
+      const missing = await engine.service.confirmDraft(USER_ID.A, 'nao-existe', session.version, true);
+      expect(forged).toBeNull();
+      expect(forged).toEqual(missing);
+      expect(sessionOf('B')).toBeDefined();
+      expect(world.transactions.some((tx) => tx.id === 'b-1')).toBe(true);
+      expect(world.services.transactions.remove).not.toHaveBeenCalled();
+    });
+
+    it('B confirma o proprio apagar com flag: so o item de B sai; A nao e tocado', async () => {
+      addTx('A', 'a-1', 'Mercado Teste A', 10);
+      addTx('B', 'b-1', 'Mercado Teste B', 20);
+      await send('B', 'apagar mercado teste');
+      await send('B', '1');
+      const session = sessionOf('B')!;
+      const reply = await engine.service.confirmDraft(USER_ID.B, session.id, session.version, true);
+      expect(reply?.kind).toBe('DONE');
+      expect(world.services.transactions.remove).toHaveBeenCalledWith(USER_ID.B, 'b-1');
+      expect(world.transactions.some((tx) => tx.id === 'b-1')).toBe(false);
+      expect(world.transactions.some((tx) => tx.id === 'a-1')).toBe(true);
+    });
+
     it('logs do fluxo de apagar e editar nao carregam descricao nem valor', async () => {
       addTx('A', 'a-1', 'Descricao secreta XYZ', 777.77);
       await send('A', 'apagar secreta xyz');
