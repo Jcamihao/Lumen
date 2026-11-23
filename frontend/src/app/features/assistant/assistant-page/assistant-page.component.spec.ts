@@ -1390,4 +1390,153 @@ describe("AssistantPageComponent — assistente manual", () => {
       expect(card().querySelector(".proto-tag")?.textContent?.trim()).toBe("Lançado");
     });
   });
+
+  describe("apagar lançamento pelo cartão (8a-2)", () => {
+    const apagarRows = (): Array<{ label: string; value: string }> => [
+      { label: "Valor", value: "R$ 120,00" },
+      { label: "Descrição", value: "Mercado grande" },
+      { label: "Categoria", value: "sem categoria" },
+      { label: "Data", value: "12/11/2026" },
+    ];
+
+    const deleteDraft = (overrides: Partial<DraftView> = {}) =>
+      draft({
+        kind: "TRANSACTION_CHANGE",
+        title: "Apagar lançamento",
+        changeAction: "DELETE",
+        amount: null,
+        description: null,
+        category: null,
+        date: null,
+        rows: apagarRows(),
+        ...overrides,
+      });
+
+    const deleteConfirm = (): ConversationReply => ({
+      kind: "CONFIRM_DRAFT",
+      state: "AWAITING_CONFIRMATION",
+      text: "Apagar: 120,00 · Mercado grande.\nIsto apaga de vez e não dá para desfazer.\nPara apagar, responda apagar.",
+      draft: deleteDraft(),
+      quickReplies: ["apagar", "cancelar"],
+    });
+
+    const card = () => root().querySelector<HTMLElement>(".assistant-manual")!;
+    const rowValues = () =>
+      Array.from(card().querySelectorAll(".assistant-draft__row dd")).map((dd) => dd.textContent?.trim());
+
+    it("cartão de apagar mostra Apagar de vez, o aviso e Cancelar, sem Confirmar", () => {
+      conversation.sendMessage.and.returnValue(of(deleteConfirm()));
+      create();
+
+      typeAndSend("apagar mercado");
+
+      expect(buttonWithText("Apagar de vez")).toBeDefined();
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      expect(buttonWithText("Cancelar")).toBeDefined();
+      expect(text()).toContain("Isto apaga de vez e não dá para desfazer.");
+      expect(rowValues()).toEqual(["R$ 120,00", "Mercado grande", "sem categoria", "12/11/2026"]);
+      expect(card().textContent).not.toContain("Confira os dados antes de confirmar.");
+    });
+
+    it("Apagar de vez chama confirm com delete: true, e nunca sem a flag", () => {
+      conversation.sendMessage.and.returnValue(of(deleteConfirm()));
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Apaguei: 120,00 · Mercado grande.", data: { transactionId: "t2" } }),
+      );
+      create();
+      typeAndSend("apagar mercado");
+
+      clickCommand("Apagar de vez");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledTimes(1);
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1, true);
+      expect(text()).toContain("Apaguei: 120,00 · Mercado grande.");
+    });
+
+    it("atalho 'apagar' e 'cancelar' do texto não aparecem como botão no cartão de apagar", () => {
+      conversation.sendMessage.and.returnValue(of(deleteConfirm()));
+      create();
+
+      typeAndSend("apagar mercado");
+
+      expect(buttonWithText("apagar")).toBeUndefined();
+      expect(buttonWithText("cancelar")).toBeUndefined();
+    });
+
+    it("cartão de editar segue com Confirmar normal, sem Apagar de vez, e confirm sem a flag", () => {
+      conversation.sendMessage.and.returnValue(of(confirmReply()));
+      conversation.confirmDraft.and.returnValue(new Subject<ConversationReply>().asObservable());
+      create();
+      typeAndSend("50 mercado");
+
+      expect(buttonWithText("Apagar de vez")).toBeUndefined();
+      clickCommand("Confirmar");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1);
+    });
+
+    it("Apagar de vez em voo fica desabilitado: duplo clique chama o servidor uma vez", () => {
+      const pending = new Subject<ConversationReply>();
+      conversation.sendMessage.and.returnValue(of(deleteConfirm()));
+      conversation.confirmDraft.and.returnValue(pending.asObservable());
+      create();
+      typeAndSend("apagar mercado");
+
+      const apagar = buttonWithText("Apagar de vez")!;
+      apagar.click();
+      apagar.click();
+      fixture.detectChanges();
+
+      expect(buttonWithText("Apagar de vez")!.disabled).toBe(true);
+      expect(conversation.confirmDraft).toHaveBeenCalledTimes(1);
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1, true);
+    });
+
+    it("sessão reaberta com apagar mostra Apagar de vez e manda delete: true", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({ state: "AWAITING_CONFIRMATION", draft: deleteDraft() }),
+      );
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Apaguei.", data: { transactionId: "t2" } }),
+      );
+      create();
+
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      expect(rowValues()).toContain("Mercado grande");
+      clickCommand("Apagar de vez");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1, true);
+    });
+
+    it("falha de transporte no apagar mantém Tentar de novo com delete: true", () => {
+      conversation.sendMessage.and.returnValue(of(deleteConfirm()));
+      conversation.confirmDraft.and.returnValues(
+        throwError(() => ({ status: 0 })),
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Apaguei.", data: { transactionId: "t2" } }),
+      );
+      create();
+      typeAndSend("apagar mercado");
+
+      clickCommand("Apagar de vez");
+      expect(buttonWithText("Tentar de novo")).toBeDefined();
+      clickCommand("Tentar de novo");
+
+      expect(conversation.confirmDraft.calls.argsFor(1)).toEqual(["draft-1", 1, true]);
+      expect(text()).toContain("Apaguei.");
+    });
+
+    it("restaurado na escolha do lançamento: Falta informar e nenhum botão de apagar", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({
+          state: "COLLECTING_FIELDS",
+          draft: deleteDraft({ pendingField: "transaction", rows: [{ label: "Lançamento", value: "a escolher" }] }),
+        }),
+      );
+      create();
+
+      expect(text()).toContain("Falta informar: lançamento.");
+      expect(buttonWithText("Apagar de vez")).toBeUndefined();
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+    });
+  });
 });

@@ -26,10 +26,12 @@ export class ConversationApiService {
     });
   }
 
-  confirmDraft(draftId: string, draftVersion: number): Observable<ConversationReply> {
+  /** `remove` só vai no corpo quando é apagar de vez (botão do cartão de apagar). Sem ele, o corpo não tem `delete`. */
+  confirmDraft(draftId: string, draftVersion: number, remove = false): Observable<ConversationReply> {
     return this.http.post<ConversationReply>(`${this.baseUrl}/confirm`, {
       draftId,
       draftVersion,
+      ...(remove ? { delete: true as const } : {}),
     });
   }
 
