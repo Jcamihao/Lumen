@@ -774,6 +774,34 @@ describe('Isolamento A/B/C do motor de conversa', () => {
       expect(world.transactions.some((tx) => tx.id === 'a-1')).toBe(true);
     });
 
+    it('cartao com id de B plantado (apagar e editar): linha neutra no turno e no GET, sem descricao nem valor de B', async () => {
+      addTx('A', 'a-1', 'Mercado Teste A', 10);
+      addTx('B', 'b-1', 'Segredo de B', 987.65);
+      await send('A', 'apagar mercado teste');
+      await send('A', '1');
+      sessionOf('A')!.draft.targetId = 'b-1';
+      const restoredDelete = await engine.service.getSession(USER_ID.A);
+      expect(restoredDelete.draft?.rows).toEqual([{ label: 'Lançamento', value: 'escolhido' }]);
+      expect(JSON.stringify(restoredDelete)).not.toMatch(/Segredo|987/);
+      world.sessions.splice(0, world.sessions.length);
+      await send('A', 'corrigir mercado teste');
+      await send('A', '1');
+      sessionOf('A')!.draft.targetId = 'b-1';
+      sessionOf('A')!.draft.changes = { amountCents: 4500, categoryId: 'cat-B-main' };
+      const restoredEdit = await engine.service.getSession(USER_ID.A);
+      expect(restoredEdit.draft?.rows).toEqual([{ label: 'Lançamento', value: 'escolhido' }]);
+      expect(JSON.stringify(restoredEdit)).not.toMatch(/Segredo|987/);
+    });
+
+    it('cartao de editar com categoria de B plantada na mudanca: nunca mostra o nome da categoria de B', async () => {
+      addTx('A', 'a-1', 'Mercado Teste A', 10);
+      await send('A', 'corrigir mercado teste');
+      await send('A', '1');
+      sessionOf('A')!.draft.changes = { categoryId: 'cat-B-main' };
+      const restored = await engine.service.getSession(USER_ID.A);
+      expect(restored.draft?.rows).toEqual([{ label: 'Categoria', value: 'sem categoria → sem categoria' }]);
+    });
+
     it('logs do fluxo de apagar e editar nao carregam descricao nem valor', async () => {
       addTx('A', 'a-1', 'Descricao secreta XYZ', 777.77);
       await send('A', 'apagar secreta xyz');

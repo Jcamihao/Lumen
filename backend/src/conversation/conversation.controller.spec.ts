@@ -75,6 +75,29 @@ describe('ConversationController', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  describe('delete com as opcoes reais do pipe global (enableImplicitConversion)', () => {
+    const realPipe = new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+      transformOptions: { enableImplicitConversion: true },
+    });
+    const run = (extra: Record<string, unknown>) =>
+      realPipe.transform(
+        { draftId: randomUUID(), draftVersion: 1, ...extra },
+        { type: 'body', metatype: ConfirmConversationDraftDto },
+      ) as Promise<ConfirmConversationDraftDto>;
+
+    it('sem delete passa (confirmar normal) e delete: true passa como true', async () => {
+      expect((await run({})).delete).toBeUndefined();
+      expect((await run({ delete: true })).delete).toBe(true);
+    });
+
+    it.each([false, 'false', 'true', 0, 1, 'x', []])('delete %p e rejeitado com 400 (so o booleano true vale)', async (value) => {
+      await expect(run({ delete: value })).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
   it('cancel de rascunho alheio vira 404', async () => {
     await expect(controller.cancel(user, { draftId: randomUUID() })).rejects.toThrow(NotFoundException);
   });

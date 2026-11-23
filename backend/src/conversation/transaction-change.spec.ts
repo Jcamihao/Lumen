@@ -799,3 +799,101 @@ describe('apagar pelo botao do cartao (8a-2, contrato 4.4)', () => {
     expect(txService.remove).not.toHaveBeenCalled();
   });
 });
+
+describe('cartao de editar com antes -> depois (8a-2, contrato 5.3)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: T0 });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  async function pickEdit(send: (text: string, userId?: string) => Promise<ConversationReplyLike>) {
+    await send('corrigir mercado');
+    return send('1');
+  }
+
+  it('sem mudanca ainda: linha neutra, sem dados do lancamento', async () => {
+    const { send } = buildService(ROWS);
+    const reply = await pickEdit(send);
+    expect(reply.draft?.rows).toEqual([{ label: 'Lançamento', value: 'escolhido' }]);
+  });
+
+  it('valor: mostra o atual e o novo, formatados', async () => {
+    const { send } = buildService(ROWS);
+    await pickEdit(send);
+    const reply = await send('valor 45');
+    expect(reply.draft?.rows).toEqual([{ label: 'Valor', value: expect.stringMatching(/^R\$\s50,00 → R\$\s45,00$/) }]);
+  });
+
+  it('varios campos: uma linha por campo alterado, categoria e data com antes e depois', async () => {
+    const { send } = buildService(ROWS);
+    await pickEdit(send);
+    await send('valor 45');
+    await send('descrição padaria');
+    await send('categoria padaria');
+    const reply = await send('data 15/11');
+    expect(reply.draft?.rows).toEqual([
+      { label: 'Valor', value: expect.stringMatching(/^R\$\s50,00 → R\$\s45,00$/) },
+      { label: 'Descrição', value: 'Mercado do bairro → padaria' },
+      { label: 'Categoria', value: 'Mercado → Padaria' },
+      { label: 'Data', value: '14/11/2026 → 15/11/2026' },
+    ]);
+  });
+
+  it('categoria sem antes mostra "sem categoria" como valor atual', async () => {
+    const { send } = buildService(ROWS);
+    await send('corrigir mercado');
+    await send('2');
+    const reply = await send('categoria padaria');
+    expect(reply.draft?.rows).toEqual([{ label: 'Categoria', value: 'sem categoria → Padaria' }]);
+  });
+
+  it('campo igual ao atual nao vira linha: volta a linha neutra', async () => {
+    const { send } = buildService(ROWS);
+    await pickEdit(send);
+    const reply = await send('descrição Mercado do bairro');
+    expect(reply.draft?.rows).toEqual([{ label: 'Lançamento', value: 'escolhido' }]);
+  });
+
+  it.each(['valor 50', 'data 14/11', 'categoria mercado'])('"%s" igual ao atual nao vira linha', async (change) => {
+    const { send } = buildService(ROWS);
+    await pickEdit(send);
+    const reply = await send(change);
+    expect(reply.draft?.rows).toEqual([{ label: 'Lançamento', value: 'escolhido' }]);
+  });
+
+  it('GET de sessao restaurada traz as mesmas linhas, sem ids internos', async () => {
+    const { send, service } = buildService(ROWS);
+    await pickEdit(send);
+    await send('valor 45');
+    const restored = await service.getSession('A');
+    expect(restored.draft?.changeAction).toBe('EDIT');
+    expect(restored.draft?.rows).toEqual([{ label: 'Valor', value: expect.stringMatching(/50,00 → R\$\s45,00/) }]);
+    expect(JSON.stringify(restored.draft?.rows)).not.toMatch(/t1|cat-/);
+  });
+
+  it('a releitura do lancamento leva id + userId', async () => {
+    const { send, db } = buildService(ROWS);
+    await pickEdit(send);
+    db.prisma.transaction.findFirst.mockClear();
+    await send('valor 45');
+    const calls = db.prisma.transaction.findFirst.mock.calls.map((call: unknown[]) => (call[0] as Row).where);
+    expect(calls.length).toBeGreaterThan(0);
+    for (const where of calls) {
+      expect(where).toEqual({ id: 't1', userId: 'A' });
+    }
+  });
+
+  it('lancamento que virou nao elegivel ou sumiu: linha neutra, sem vazar o valor', async () => {
+    const { send, service, transactions } = buildService(ROWS);
+    await pickEdit(send);
+    await send('valor 45');
+    transactions.find((row) => row.id === 't1')!.recurringTransactionId = 'rec-9';
+    const ineligible = await service.getSession('A');
+    expect(ineligible.draft?.rows).toEqual([{ label: 'Lançamento', value: 'escolhido' }]);
+    transactions.splice(transactions.findIndex((row) => row.id === 't1'), 1);
+    const gone = await service.getSession('A');
+    expect(gone.draft?.rows).toEqual([{ label: 'Lançamento', value: 'escolhido' }]);
+  });
+});

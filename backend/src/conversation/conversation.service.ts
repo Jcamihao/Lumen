@@ -1016,6 +1016,29 @@ export class ConversationService {
     return lines;
   }
 
+  /** Linhas do cartão de editar: valor atual e novo por campo que muda de fato (sem ids). */
+  private async changeDiffRows(
+    userId: string,
+    target: TxCandidate,
+    changes: TransactionChangeDraft['changes'],
+  ): Promise<DraftView['rows']> {
+    const rows: DraftView['rows'] = [];
+    if (changes.amountCents !== undefined && changes.amountCents !== target.amountCents) {
+      rows.push({ label: 'Valor', value: `${formatBrl(target.amountCents)} → ${formatBrl(changes.amountCents)}` });
+    }
+    if (changes.description !== undefined && changes.description !== target.description) {
+      rows.push({ label: 'Descrição', value: `${target.description} → ${changes.description}` });
+    }
+    if (changes.categoryId !== undefined && changes.categoryId !== target.categoryId) {
+      const after = changes.categoryId === null ? null : (await this.categoryNames(userId, [changes.categoryId]))[0] || null;
+      rows.push({ label: 'Categoria', value: `${target.categoryName ?? 'sem categoria'} → ${after ?? 'sem categoria'}` });
+    }
+    if (changes.date !== undefined && changes.date !== target.date) {
+      rows.push({ label: 'Data', value: `${formatDmy(target.date)} → ${formatDmy(changes.date)}` });
+    }
+    return rows;
+  }
+
   private async saveNewDraft(args: {
     input: ConversationInput;
     intent: string;
@@ -2365,24 +2388,33 @@ export class ConversationService {
     };
 
     if (isTransactionChangeDraft(draft)) {
-      // Apagar mostra o lançamento escolhido (prévia exata, contrato 8a, secao 4): relido com id + userId da sessão.
-      const target =
-        draft.action === 'DELETE' && draft.targetId !== null ? await this.loadTxCandidate(session.userId, draft.targetId) : null;
+      // Prévia exata (contrato 8a, secoes 4 e 5): o lançamento escolhido é relido com id + userId da sessão.
+      // Apagar mostra o lançamento; editar mostra "antes -> depois" só dos campos que mudam. Inelegível ou sumido: linha neutra.
+      const editing = draft.action === 'EDIT' && Object.keys(draft.changes).length > 0;
+      const loaded =
+        draft.targetId !== null && (draft.action === 'DELETE' || editing)
+          ? await this.loadTxCandidate(session.userId, draft.targetId)
+          : null;
+      const target = loaded?.eligible === true ? loaded : null;
+      let rows: DraftView['rows'] = [];
+      if (target !== null) {
+        rows =
+          draft.action === 'DELETE'
+            ? [
+                { label: 'Valor', value: formatBrl(target.amountCents) },
+                { label: 'Descrição', value: target.description },
+                { label: 'Categoria', value: target.categoryName ?? 'sem categoria' },
+                { label: 'Data', value: formatDmy(target.date) },
+              ]
+            : await this.changeDiffRows(session.userId, target, draft.changes);
+      }
       return {
         ...base,
         kind: 'TRANSACTION_CHANGE',
         title: draft.action === 'DELETE' ? 'Apagar lançamento' : 'Editar lançamento',
         changeAction: draft.action,
         pendingField: draft.pendingField,
-        rows:
-          target?.eligible === true
-            ? [
-                { label: 'Valor', value: formatBrl(target.amountCents) },
-                { label: 'Descrição', value: target.description },
-                { label: 'Categoria', value: target.categoryName ?? 'sem categoria' },
-                { label: 'Data', value: target.date.split('-').reverse().join('/') },
-              ]
-            : [{ label: 'Lançamento', value: draft.targetId === null ? 'a escolher' : 'escolhido' }],
+        rows: rows.length > 0 ? rows : [{ label: 'Lançamento', value: draft.targetId === null ? 'a escolher' : 'escolhido' }],
       };
     }
 
@@ -2691,6 +2723,11 @@ function toTxCandidate(row: {
 }
 
 // ---------- funcoes puras do motor ----------
+
+/** 'AAAA-MM-DD' vira 'dd/mm/aaaa'. */
+function formatDmy(ymd: string): string {
+  return ymd.split('-').reverse().join('/');
+}
 
 function isReadIntent(match: IntentMatch): boolean {
   return match.intent === 'spend_by_category' || (READ_INTENTS as string[]).includes(match.intent);
