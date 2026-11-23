@@ -56,8 +56,9 @@ Rodada: suites de transactions, recurring card-link, credit-cycle e insights.
 - Sobreviventes: 0 (apos a correcao do M13). Equivalentes: nenhum identificado.
 
 ## Migration: como conferir (NAO automatizado)
-Em banco com User de monthClosingDay e creditDueDay iguais a 0, 40, -3 e NULL, depois de aplicar a migration:
-SELECT "closingDay", "dueDay" FROM "CreditCard" WHERE "name" = 'Principal'; esperado: closingDay 1, 31, 1, 1 (para 0, 40, -3, 1 conforme o caso) e dueDay 1, 31, 1, NULL.
+Com User de monthClosingDay = 0, 40, -3 e creditDueDay = 0, 40, -3, NULL (um usuario por valor), depois de aplicar a migration:
+SELECT u."monthClosingDay", c."closingDay", u."creditDueDay", c."dueDay" FROM "CreditCard" c JOIN "User" u ON u."id" = c."userId" WHERE c."name" = 'Principal';
+Esperado: closingDay 1 (para 0), 31 (para 40), 1 (para -3); dueDay 1, 31, 1 e NULL para o NULL. closingDay nunca fica NULL (coluna NOT NULL).
 Antes de aplicar em producao: SELECT monthClosingDay, creditDueDay FROM "User" WHERE monthClosingDay NOT BETWEEN 1 AND 31 OR creditDueDay NOT BETWEEN 1 AND 31;
 
 ## NAO verificado
