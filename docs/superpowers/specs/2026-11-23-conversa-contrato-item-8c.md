@@ -1,6 +1,6 @@
 # Contrato do item 8c: editar e apagar contas fixas e compras parceladas por conversa
 
-Rascunhado pelo Qwen em 2026-11-23 a partir do código da `develop`. **Status: aguardando decisão do dono sobre D1–D5** (as propostas já são o texto, salvo onde o dono mudar).
+Rascunhado pelo Qwen em 2026-11-23 a partir do código da `develop`. **Status: APROVADO pelo dono em 2026-11-23 ("sim" em D1–D5 — as propostas viraram o texto definitivo).**
 
 ## 1. Situação hoje (lido no código em 2026-11-23)
 
@@ -43,7 +43,7 @@ Fora de novo (mesmo item futuro registrado no contrato do 8b) — D5. O serviço
 
 Fatia backend (spec da máquina + mutantes + integração real em Postgres/Redis descartáveis) e fatia frontend (karma do cartão + rótulos), do mesmo jeito das 8b-1/8b-2. Materialização não roda no caminho do chat (é worker) — só conferir que nada no chat a dispara sem querer.
 
-## 9. Decisões abertas (perguntadas ao dono em 2026-11-23)
+## 9. Decisões do dono (APROVADAS em 2026-11-23 — "sim" em D1–D5; não perguntar de novo)
 
 - **D1** — `conta` sozinha fica sendo lançamento (só "conta fixa"/"fixa" caem aqui)?
 - **D2** — editar conta fixa no chat limitado a descrição, valor e data final?

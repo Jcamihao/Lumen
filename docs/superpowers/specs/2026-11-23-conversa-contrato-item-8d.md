@@ -1,6 +1,6 @@
 # Contrato do item 8d: mexer no limite do cartão por conversa (com os cartões do 9a)
 
-Rascunhado pelo Qwen em 2026-11-23 a partir do código da `develop`. **Status: aguardando decisão do dono sobre D1–D3.**
+Rascunhado pelo Qwen em 2026-11-23 a partir do código da `develop`. **Status: APROVADO pelo dono em 2026-11-23 ("sim" em D1–D3 — as propostas viraram o texto definitivo).**
 
 ## 1. Situação hoje (lido no código em 2026-11-23)
 
@@ -14,7 +14,7 @@ Rascunhado pelo Qwen em 2026-11-23 a partir do código da `develop`. **Status: a
 - **Limpar** o teto do ciclo: nova semântica — D1. Se aprovada: método novo no `CreditCycleService` (`removeCeilingForConversation`) com o mesmo lock/snapshot, e no chat `limpar limite [do <nome>]` com prévia + palavra de confirmação (jeito do 8a: resposta exata `limpar`), porque destrói um controle financeiro.
 - Frontend: nada além de rótulos se algo novo aparecer (cartão é o mesmo).
 
-## 3. Decisões abertas (perguntadas ao dono em 2026-11-23)
+## 3. Decisões do dono (APROVADAS em 2026-11-23 — "sim" em D1–D3; não perguntar de novo)
 
 - **D1** — `limpar limite` pode existir? Sem teto o ciclo passa a não ter aviso de estouro. Se não, 8d fica só "mudar/definir por cartão".
 - **D2** — escolha de cartão pelo nome no chat (termo sem acento/caixa, como a busca do 8b), ou o chat segue só no cartão padrão?
