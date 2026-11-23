@@ -1,6 +1,6 @@
 # Contrato do item 8b: editar e apagar metas e reservas por conversa
 
-Status: **RASCUNHO — aguarda aprovação do dono** (decisões abertas na seção 8). Base: padrões do 8a (contrato 2026-11-19) já fechados na `develop`. Entrega sugerida em duas fatias: 8b-1 backend, 8b-2 frontend (o cartão do 8a-2 já faz quase tudo).
+Status: **aprovado pelo dono em 2026-11-23** ("sim" nas 5 decisões da seção 8; não pedir aprovação de novo). Base: padrões do 8a (contrato 2026-11-19) já fechados na `develop`. Entrega em duas fatias: 8b-1 backend, 8b-2 frontend (o cartão do 8a-2 já faz quase tudo).
 
 ## 1. Situação hoje (lido no código em 2026-11-23)
 
@@ -50,13 +50,13 @@ Status: **RASCUNHO — aguarda aprovação do dono** (decisões abertas na seç�
 
 O cartão do 8a-2 já renderiza qualquer rascunho com `changeAction` + `rows`: "Apagar de vez" com flag explícita, "antes → depois", RESTORED. Basta o `DraftView` dos novos rascunhos trazer `changeAction` e `kind` novo (`GOAL_CHANGE`/`ENVELOPE_CHANGE` ou `kind` mantido com substantivo — deixar `DraftKind` do app bater) e os títulos ("Editar meta"/"Editar reserva"). Karma cobre rótulo, flag, busy e quickReplies filtrados.
 
-## 8. Decisões abertas do dono (perguntar antes de implementar)
+## 8. Decisões do dono (aprovadas em 2026-11-23 — não perguntar de novo)
 
-1. **Semântica do apagar igual à tela** (meta mantém aportes soltos; reserva apaga depósitos e mantém gastos), sem bloquear alvo com saldo/depósitos? Recomendo: sim, igual à tela, com aviso na prévia.
-2. **Campos de meta pelo chat**: só título/alvo/prazo (sem recorrente, sem status, sem saldo)? Recomendo: sim.
-3. **Reserva pelo chat**: só nome e valor mensal (sem pausar/reativar)? Recomendo: sim.
-4. **Aportes e saques** (as transferências ligadas à meta) continuam fora do editar/apagar? Recomendo: sim, ficam fora.
-5. **"pausar/retomar" meta ou reserva por conversa** vira item próprio depois (por causa do entitlement na reativação) — registrar como pendência ou já descartar? Recomendo: registrar como item futuro.
+1. **Semântica do apagar igual à tela** (meta mantém aportes soltos no extrato; reserva apaga topups e mantém gastos soltos), sem bloquear alvo com saldo/depósitos — a prévia avisa o que some e o que fica.
+2. **Meta editável pelo chat**: só título, valor alvo (inclui "sem alvo") e prazo. Fora: saldo, descrição, status, recorrente.
+3. **Reserva editável pelo chat**: só nome e valor mensal. Fora: pausar/reativar (reativação consome entitlement), cor/ícone.
+4. **Aportes e saques** continuam fora do editar/apagar por conversa.
+5. **"pausar/retomar" por conversa** registrado como item futuro da conversa (decidir quando houver pedido; a reativação de reserva consome entitlement).
 
 ## 9. Fatias e verificação
 
