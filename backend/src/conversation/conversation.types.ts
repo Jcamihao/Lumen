@@ -59,7 +59,7 @@ export interface DraftView {
   paymentMethod: PaymentMethod | null;
   pendingField: PendingField | null;
   /** Nos rascunhos de mudar (TRANSACTION_CHANGE, GOAL_CHANGE, ENVELOPE_CHANGE): a tela escolhe o cartão de apagar pelo valor. */
-  changeAction?: 'EDIT' | 'DELETE';
+  changeAction?: 'EDIT' | 'DELETE' | 'CLEAR';
 }
 
 export type PendingField =
@@ -137,6 +137,11 @@ export interface CreditLimitDraft {
   countAllPayments: boolean;
   pendingField: 'amount' | null;
   reviewReason?: string;
+  /** 8d: 'clear' remove o teto (confirmacao com a palavra limpar). Ausente em rascunho antigo = 'set'. */
+  action?: 'set' | 'clear';
+  /** 8d: cartao escolhido pelo nome (no clear, sempre resolve para um cartao). null = padrao no confirmar. */
+  cardId?: string | null;
+  cardName?: string | null;
 }
 
 /** Conta fixa (contrato 3b2b, secao 5): só despesa; categoria e pagamento ficam não informados. */

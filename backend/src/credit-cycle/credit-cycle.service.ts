@@ -35,6 +35,12 @@ export type CycleCard = Prisma.CreditCardGetPayload<{ select: typeof CREDIT_CYCL
 
 type Db = Prisma.TransactionClient;
 
+/** Snapshot visto no rascunho deve bater campo a campo com o lido sob bloqueio (set e remove, 8d). */
+function sameCeilingSnapshot(expected: CreditLimitExpectation, snapshot: CreditLimitExpectation): boolean {
+  return expected.cycleStart === snapshot.cycleStart && expected.cycleEnd === snapshot.cycleEnd &&
+    expected.previousCeilingCents === snapshot.previousCeilingCents && expected.countAllPayments === snapshot.countAllPayments;
+}
+
 @Injectable()
 export class CreditCycleService {
   private readonly logger = new Logger(CreditCycleService.name);
@@ -88,8 +94,9 @@ export class CreditCycleService {
     userId: string,
     dto: SetCreditCycleCeilingDto,
     expected: CreditLimitExpectation,
+    cardId?: string,
   ): Promise<CreditLimitWriteReceipt> {
-    const receipt = await this.persistCeiling(userId, dto, expected);
+    const receipt = await this.persistCeiling(userId, dto, expected, cardId);
     return { ...receipt, refreshPending: await this.refreshAfterCeiling(userId) };
   }
 
@@ -101,6 +108,58 @@ export class CreditCycleService {
   ): Promise<CreditLimitWriteReceipt> {
     const receipt = await this.persistCeiling(userId, dto, undefined, cardId);
     return { ...receipt, refreshPending: await this.refreshAfterCeiling(userId) };
+  }
+
+  /**
+   * 8d (D1 do dono): remove o teto do ciclo aberto do cartao, com o MESMO bloqueio e snapshot do set.
+   * Sem teto para remover (a tela removeu no meio) ou ciclo/teto diferentes do rascunho: conflito, sem gravar.
+   */
+  async removeCeilingForConversation(
+    userId: string,
+    expected: CreditLimitExpectation,
+    cardId: string,
+  ): Promise<{ id: string; removedCents: number; cycleStart: string; cycleEnd: string; refreshPending: boolean }> {
+    let callbackFinished = false;
+    let result: { id: string; removedCents: number; cycleStart: string; cycleEnd: string };
+    try {
+      result = await this.prisma.$transaction(async (tx) => {
+        await lockUserForCredit(tx, userId);
+        const user = await tx.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: { timezone: true },
+        });
+        const card = await this.findOwnedCard(tx, userId, cardId);
+        if (card.archivedAt) {
+          throw new ConflictException('Cartao arquivado nao tem teto para limpar.');
+        }
+        const now = new Date();
+        const { start, end } = creditCycleBounds(localToday(now, user.timezone), card.closingDay);
+        const current = await tx.creditCycleCeiling.findUnique({
+          where: { cardId_closingDate: { cardId: card.id, closingDate: end } },
+        });
+        const snapshot: CreditLimitExpectation = {
+          cycleStart: start.toISOString().slice(0, 10),
+          cycleEnd: end.toISOString().slice(0, 10),
+          previousCeilingCents: current ? Math.round(Number(current.ceiling) * 100) : null,
+          countAllPayments: card.countAllPayments,
+        };
+        if (!sameCeilingSnapshot(expected, snapshot) || !current) {
+          throw new CreditLimitChangedError(snapshot);
+        }
+        await tx.creditCycleCeiling.delete({ where: { id: current.id } });
+        callbackFinished = true;
+        return {
+          id: current.id,
+          removedCents: snapshot.previousCeilingCents ?? 0,
+          cycleStart: snapshot.cycleStart,
+          cycleEnd: snapshot.cycleEnd,
+        };
+      });
+    } catch (error) {
+      if (callbackFinished) throw new CreditLimitWriteUncertainError();
+      throw error;
+    }
+    return { ...result, refreshPending: await this.refreshAfterCeiling(userId) };
   }
 
   /** Cartao padrao ativo. Sem ele e' falha de invariante (migration e cadastro criam um). */
@@ -203,8 +262,7 @@ export class CreditCycleService {
           previousCeilingCents: current ? Math.round(Number(current.ceiling) * 100) : null,
           countAllPayments: card.countAllPayments,
         };
-        if (expected && (expected.cycleStart !== snapshot.cycleStart || expected.cycleEnd !== snapshot.cycleEnd ||
-          expected.previousCeilingCents !== snapshot.previousCeilingCents || expected.countAllPayments !== snapshot.countAllPayments)) {
+        if (expected && !sameCeilingSnapshot(expected, snapshot)) {
           throw new CreditLimitChangedError(snapshot);
         }
         const saved = await tx.creditCycleCeiling.upsert({

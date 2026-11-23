@@ -33,7 +33,7 @@ export class ConversationController {
   @HttpCode(200)
   @ApiOperation({ summary: 'Confirma o rascunho (botao Confirmar)' })
   async confirm(@CurrentUser() user: AuthenticatedUser, @Body() dto: ConfirmConversationDraftDto) {
-    const reply = await this.conversationService.confirmDraft(user.sub, dto.draftId, dto.draftVersion, dto.delete === true);
+    const reply = await this.conversationService.confirmDraft(user.sub, dto.draftId, dto.draftVersion, dto.delete === true, dto.clear === true);
     if (!reply) {
       throw new NotFoundException(DRAFT_NOT_FOUND);
     }

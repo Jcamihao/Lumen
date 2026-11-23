@@ -15,4 +15,11 @@ export class ConfirmConversationDraftDto {
   @IsOptional()
   @Equals(true)
   delete?: true;
+
+  /** Só `true` vale: confirmação explícita de limpar o teto pelo botão (contrato 8d, D3). Ausente = não limpa. */
+  // Mesma regra do delete: com enableImplicitConversion no pipe global, só o booleano literal do corpo vale.
+  @Transform(({ obj }: { obj: { clear?: unknown } }) => obj.clear)
+  @IsOptional()
+  @Equals(true)
+  clear?: true;
 }

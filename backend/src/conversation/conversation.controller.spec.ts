@@ -53,7 +53,7 @@ describe('ConversationController', () => {
     await expect(controller.confirm(user, { draftId: randomUUID(), draftVersion: 1 })).rejects.toThrow(
       NotFoundException,
     );
-    expect(service.confirmDraft).toHaveBeenCalledWith('user-a', expect.any(String), 1, false);
+    expect(service.confirmDraft).toHaveBeenCalledWith('user-a', expect.any(String), 1, false, false);
   });
 
   it('confirm com delete: true repassa a flag de apagar explicita; sem flag segue false', async () => {
@@ -61,9 +61,23 @@ describe('ConversationController', () => {
     const done = { kind: 'DONE', state: 'IDLE', text: 'Apaguei' };
     service.confirmDraft.mockResolvedValueOnce(done).mockResolvedValueOnce(done);
     await controller.confirm(user, { draftId, draftVersion: 2, delete: true });
-    expect(service.confirmDraft).toHaveBeenLastCalledWith('user-a', draftId, 2, true);
+    expect(service.confirmDraft).toHaveBeenLastCalledWith('user-a', draftId, 2, true, false);
     await controller.confirm(user, { draftId, draftVersion: 2 });
-    expect(service.confirmDraft).toHaveBeenLastCalledWith('user-a', draftId, 2, false);
+    expect(service.confirmDraft).toHaveBeenLastCalledWith('user-a', draftId, 2, false, false);
+  });
+
+  it('confirm com clear: true repassa a flag de limpar teto (8d); string nao vale', async () => {
+    const draftId = randomUUID();
+    const done = { kind: 'DONE', state: 'IDLE', text: 'Teto removido' };
+    service.confirmDraft.mockResolvedValueOnce(done);
+    await controller.confirm(user, { draftId, draftVersion: 2, clear: true });
+    expect(service.confirmDraft).toHaveBeenLastCalledWith('user-a', draftId, 2, false, true);
+    await expect(
+      globalPipe.transform(
+        { draftId: randomUUID(), draftVersion: 1, clear: 'true' },
+        { type: 'body', metatype: ConfirmConversationDraftDto },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('confirm com delete diferente de true e rejeitado pelo ValidationPipe', async () => {
