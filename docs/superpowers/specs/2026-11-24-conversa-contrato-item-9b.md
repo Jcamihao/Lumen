@@ -1,4 +1,4 @@
-# Contrato do item 9b: o bot conhece os cartões (decisões do dono de 2026-11-24 aplicadas; falta 1 pergunta, ver seção 7)
+# Contrato do item 9b: o bot conhece os cartões (APROVADO pelo dono em 2026-11-24)
 
 Data: 2026-11-24. Base: develop com 9a (cartões no backend) e 8d (limite por cartão pelo nome, "limpar teto"). Só backend (bot); telas são a 9c.
 
@@ -32,5 +32,11 @@ Unitários dos parsers (acentos, conectores, nome ambíguo, nome que é também 
 3. Parcelado e conta fixa: **fora da 9b**, entram numa 9b2.
 4. Trocar cartão de lançamento existente: **fora**.
 
-## 7. Pergunta aberta
-"Nomear os cartões" = (a) só pelas telas/API (já pronto na 9a; telas na 9c) ou (b) também **criar/renomear cartão por conversa** ("criar cartão Nubank", "renomear Principal para Nubank")? Recomendação: **(b) em fatia própria 9b-nomear** (precisa de limite técnico de 10, nome único, confirmação), porque sem isso o usuário que só tem o "Principal" não consegue falar pelo nome antes da 9c.
+## 7. Nomear cartões (decisão do dono, 2026-11-24: "renomear e criar pela conversa")
+Entra na 9b: "criar cartão Nubank" e "renomear <cartão> para <novo nome>" por conversa, com rascunho + confirmação (como as outras escritas), nome único sem caixa entre ativos, teto técnico de 10, cartão alheio = não achei. Usa o mesmo serviço da API (`CreditCardsService`), sem regra nova. Não inclui arquivar, trocar padrão nem fechamento/vencimento por conversa.
+
+## 8. Fatias
+- 9b-1: lançar despesa no cartão (nome, lista quando há mais de um, cartão inexistente).
+- 9b-2: leitura por cartão ("limite do Nubank", "quanto sobrou no Nubank") e "meus cartões".
+- 9b-3: criar e renomear cartão por conversa.
+Cada uma: haiku implementa, sonnet revisa com Postgres/Redis descartáveis e mutantes, agente principal confere.
