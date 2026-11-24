@@ -134,6 +134,21 @@ describe('LandingPageComponent', () => {
     expect(text()).not.toContain('Compartilhado');
   });
 
+  it('SHARED vendavel (D8): a landing mostra o card Compartilhado com preco e a conta de pessoas', () => {
+    billing.setPlansResponse({
+      enabled: true,
+      plans: [freePlan(), individualPlan(), { ...sharedPlan(), sellable: true }],
+    });
+
+    create();
+
+    const sectionText = root().querySelector('#precos')?.textContent ?? '';
+    expect(sectionText).toContain('Compartilhado');
+    expect(sectionText).toContain('para 2 pessoas');
+    expect(sectionText).toContain(currency.format(49.9));
+    expect(sectionText).toContain(currency.format(499));
+  });
+
   it('checa sellable de verdade, nao so o id: um plano INDIVIDUAL com sellable:false tambem nao renderiza o card', () => {
     billing.setPlansResponse({
       enabled: true,

@@ -251,6 +251,19 @@ describe('PlanPageComponent', () => {
     expect(navigateSpy).toHaveBeenCalledWith('https://asaas.example/checkout/123');
   });
 
+  it('botões "Assinar Compartilhado" chamam checkout com o plano SHARED (D8)', () => {
+    billing.enabledSignal.set(true);
+    billing.meSignal.set(meFree());
+    create();
+    spyOn(fixture.componentInstance as any, 'navigateToExternal');
+
+    clickButton('Assinar Compartilhado mensal');
+    expect(billing.checkout).toHaveBeenCalledWith({ plan: 'SHARED', interval: 'MONTHLY' });
+
+    clickButton('Assinar Compartilhado anual');
+    expect(billing.checkout).toHaveBeenCalledWith({ plan: 'SHARED', interval: 'YEARLY' });
+  });
+
   it('clicar "Cancelar" com confirmacao aceita chama cancel() e recarrega billing.me()', () => {
     billing.enabledSignal.set(true);
     billing.meSignal.set(meIndividualAsaas());

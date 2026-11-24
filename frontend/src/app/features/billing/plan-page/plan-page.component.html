@@ -42,9 +42,15 @@
 
         <div class="plan-actions" *ngIf="!confirmingCheckout()">
           <ng-container *ngIf="me.plan === 'FREE'">
-            <button type="button" class="proto-button" (click)="subscribe('MONTHLY')">Assinar mensal</button>
-            <button type="button" class="proto-button proto-button--secondary" (click)="subscribe('YEARLY')">
+            <button type="button" class="proto-button" (click)="subscribe('INDIVIDUAL', 'MONTHLY')">Assinar mensal</button>
+            <button type="button" class="proto-button proto-button--secondary" (click)="subscribe('INDIVIDUAL', 'YEARLY')">
               Assinar anual
+            </button>
+            <button type="button" class="proto-button" (click)="subscribe('SHARED', 'MONTHLY')">
+              Assinar Compartilhado mensal
+            </button>
+            <button type="button" class="proto-button proto-button--secondary" (click)="subscribe('SHARED', 'YEARLY')">
+              Assinar Compartilhado anual
             </button>
           </ng-container>
 

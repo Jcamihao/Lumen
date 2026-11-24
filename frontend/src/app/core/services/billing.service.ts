@@ -38,7 +38,7 @@ export class BillingService {
     return this.http.delete<GrantView>(`${environment.apiBaseUrl}/billing/admin/grants/${id}`);
   }
 
-  checkout(body: { plan: 'INDIVIDUAL'; interval: 'MONTHLY' | 'YEARLY' }): Observable<{ link: string }> {
+  checkout(body: { plan: 'INDIVIDUAL' | 'SHARED'; interval: 'MONTHLY' | 'YEARLY' }): Observable<{ link: string }> {
     return this.http.post<{ link: string }>(`${environment.apiBaseUrl}/billing/checkout`, body);
   }
 

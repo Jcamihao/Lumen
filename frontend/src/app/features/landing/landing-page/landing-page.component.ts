@@ -29,10 +29,24 @@ export class LandingPageComponent implements AfterViewInit {
   /** Catálogo público de planos (GET /billing/plans, @Public no backend) — carregado uma vez ao abrir a landing. */
   protected readonly plans = signal<PublicPlan[]>([]);
 
-  // Só o plano Individual é vendido na landing; SHARED tem sellable: false no catálogo.
+  // Cards vendidos na landing: Individual sempre; Compartilhado quando o catalogo libera (D8).
   protected readonly individualPlan = computed(() =>
     this.plans().find((plan) => plan.id === 'INDIVIDUAL' && plan.sellable) ?? null,
   );
+
+  protected readonly sharedPlan = computed(() =>
+    this.plans().find((plan) => plan.id === 'SHARED' && plan.sellable) ?? null,
+  );
+
+  protected readonly sharedMonthlyLabel = computed(() => {
+    const plan = this.sharedPlan();
+    return plan?.prices ? formatCurrency(plan.prices.MONTHLY, 'BRL') : '';
+  });
+
+  protected readonly sharedYearlyLabel = computed(() => {
+    const plan = this.sharedPlan();
+    return plan?.prices ? formatCurrency(plan.prices.YEARLY, 'BRL') : '';
+  });
 
   protected readonly individualMonthlyLabel = computed(() => {
     const plan = this.individualPlan();
