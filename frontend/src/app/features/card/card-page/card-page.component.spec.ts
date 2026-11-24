@@ -322,6 +322,14 @@ describe('CardPageComponent', () => {
       expect(text()).toContain('Confira os dados');
     });
 
+    it('Esc fecha o formulario sem chamar a API', () => {
+      field('#new-name').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      fixture.detectChanges();
+
+      expect(field('#new-name')).toBeNull();
+      expect(api.createCreditCard).not.toHaveBeenCalled();
+    });
+
     it('cancelar fecha o formulario sem chamar a API', () => {
       click('Cancelar');
 
@@ -450,6 +458,15 @@ describe('CardPageComponent', () => {
     it('cancelar a confirmacao nao arquiva', () => {
       clickIn('Inter', 'Arquivar');
       click('Cancelar');
+
+      expect(api.archiveCreditCard).not.toHaveBeenCalled();
+      expect(buttons('Confirmar arquivamento').length).toBe(0);
+    });
+
+    it('Esc cancela a confirmacao sem arquivar', () => {
+      clickIn('Inter', 'Arquivar');
+      buttons('Confirmar arquivamento')[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      fixture.detectChanges();
 
       expect(api.archiveCreditCard).not.toHaveBeenCalled();
       expect(buttons('Confirmar arquivamento').length).toBe(0);
