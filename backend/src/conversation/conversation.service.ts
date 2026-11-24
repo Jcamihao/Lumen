@@ -103,6 +103,7 @@ import {
 } from './transaction-change';
 import { CL_REPLIES, ChatCard, cleanCardTerm, isClearLimitDraft, matchCardsByTerm, parseLimitBody } from './credit-limit';
 import { CARD_EXPENSE_REPLIES, findCardPhrase, removeTokenRange } from './card-expense';
+import { CARD_READ_REPLIES, cardListText, namedCardText } from './card-read';
 import { CARD_ARCHIVED_MESSAGE, CARD_NEEDS_CREDIT_MESSAGE, CARD_NOT_FOUND_MESSAGE } from '../credit-cards/card-link';
 import { parseEnvelopeBody } from './parsers/envelope.parser';
 import { IntentMatch, ReadIntent, matchIntent } from './parsers/intent.matcher';
@@ -183,7 +184,7 @@ const RECURRING_WRITE_RULES: ConversationWriteRules = { notBefore: 'today' };
 const MAX_GOAL_OPTIONS = 5;
 const DESCRIPTION_MIN = 2;
 const DESCRIPTION_MAX = 120;
-const READ_INTENTS: ReadIntent[] = [
+const READ_INTENTS: Array<ReadIntent | 'credit_card'> = [
   'balance',
   'month_summary',
   'spend_total',
@@ -193,6 +194,7 @@ const READ_INTENTS: ReadIntent[] = [
   'goals',
   'envelopes',
   'credit_card',
+  'list_cards',
 ];
 /** Janela de "o que vence" em dias, a partir de hoje no fuso do usuário (contrato D4). */
 const UPCOMING_WINDOW_DAYS = 30;
@@ -414,7 +416,7 @@ export class ConversationService {
 
   private async handleWithoutSession(args: { input: ConversationInput; text: string }): Promise<ConversationReply> {
     const { input, text } = args;
-    const intent = text.length > 0 ? matchIntent(text) : null;
+    const intent = await this.resolveLooseCardRead(input.userId, text.length > 0 ? matchIntent(text) : null);
 
     if (!intent) {
       const word = normalize(text);
@@ -1263,7 +1265,7 @@ export class ConversationService {
     const { input, session, text } = args;
     const { userId } = input;
     const words = normalize(text);
-    const intent = text.length > 0 ? matchIntent(text) : null;
+    const intent = await this.resolveLooseCardRead(userId, text.length > 0 ? matchIntent(text) : null);
     const awaiting = session.state === ConversationState.AWAITING_CONFIRMATION;
 
     if (CANCEL_WORDS.has(words)) {
@@ -2713,18 +2715,10 @@ export class ConversationService {
       }
       case 'spend_by_category':
         return this.spendByCategory(userId, intent.categoryQuery);
-      case 'credit_card': {
-        const cycle = await this.creditCycle.getCurrent(userId);
-        const card = {
-          ceilingCents: cycle.ceiling === null ? null : toCents(cycle.ceiling),
-          spentCents: toCents(cycle.spent),
-          remainingCents: cycle.remaining === null ? null : toCents(cycle.remaining),
-          percentUsed: cycle.percentUsed,
-          closingDay: cycle.closingDay,
-          dueDay: cycle.dueDay,
-        };
-        return this.infoReply(cardText(card), { card });
-      }
+      case 'credit_card':
+        return this.creditCardReply(userId, intent.cardTerm);
+      case 'list_cards':
+        return this.listCardsReply(userId);
       case 'help':
         return this.reply('HELP', 'IDLE', REPLIES.help);
       default:
@@ -2932,6 +2926,47 @@ export class ConversationService {
 
   /** Escolhe categoria pela descrição: unica = define; varias ou nenhuma = pergunta. */
   /** Cartoes ativos do dono, na ordem do 8d (padrao primeiro, depois nome). Sempre pelo userId do vinculo. */
+  /**
+   * Leitura por cartao (9b-2). Sem nome: cartao padrao, como antes. Com nome: o cartao do dono que casa;
+   * nome que nao casa ou casa mais de um responde a lista (nunca erro). Sempre pelo userId do vinculo.
+   */
+  private async creditCardReply(userId: string, cardTerm?: string): Promise<ConversationReply> {
+    if (cardTerm === undefined) {
+      const card = cycleCardView(await this.creditCycle.getCurrent(userId));
+      return this.infoReply(cardText(card), { card });
+    }
+    const cards = await this.activeCards(userId);
+    if (cards.length === 0) return this.infoReply(CARD_READ_REPLIES.none, {});
+    const hits = matchCardsByTerm(cards, cardTerm);
+    const names = cards.map((card) => card.name);
+    if (hits.length === 0) return this.infoReply(CARD_READ_REPLIES.notFound(cardTerm, names), {});
+    if (hits.length > 1) return this.infoReply(CARD_READ_REPLIES.ambiguous(cardTerm, hits.map((card) => card.name)), {});
+    const [chosen] = hits;
+    const view = cycleCardView(await this.creditCycle.getCycleForCard(userId, chosen.id));
+    return this.infoReply(namedCardText(chosen.name, cardText(view)), { card: view });
+  }
+
+  /** "Meus cartoes": so leitura, cartoes ativos do dono (padrao primeiro, depois nome). */
+  private async listCardsReply(userId: string): Promise<ConversationReply> {
+    const cards = await this.prisma.creditCard.findMany({
+      where: { userId, archivedAt: null },
+      orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+      select: { name: true, isDefault: true, closingDay: true, dueDay: true },
+    });
+    return this.infoReply(cardListText(cards), {});
+  }
+
+  /**
+   * Forma sem a palavra cartao ("limite do X", "quanto sobrou no X", "fatura do X") so vira leitura com nome EXATO
+   * de cartao do dono; senao devolve null e segue o caminho de hoje (ajuda ou IA), como antes da 9b-2.
+   */
+  private async resolveLooseCardRead(userId: string, intent: IntentMatch | null): Promise<IntentMatch | null> {
+    if (!intent || !('loose' in intent) || intent.loose !== true) return intent;
+    const term = normalize(intent.cardTerm ?? '');
+    const exact = (await this.activeCards(userId)).filter((card) => normalize(card.name) === term);
+    return exact.length === 1 ? { intent: 'credit_card', cardTerm: intent.cardTerm } : null;
+  }
+
   private async activeCards(userId: string): Promise<ChatCard[]> {
     return this.prisma.creditCard.findMany({
       where: { userId, archivedAt: null },
@@ -3921,6 +3956,18 @@ function isEditWithoutChanges(draft: unknown): boolean {
     return false;
   }
   return draft.action === 'EDIT' && draft.targetId !== null && Object.keys(draft.changes).length === 0;
+}
+
+/** Cartao de leitura (9b-2 e padrao) a partir do ciclo: centavos, como a tela. */
+function cycleCardView(cycle: Awaited<ReturnType<CreditCycleService['getCurrent']>>) {
+  return {
+    ceilingCents: cycle.ceiling === null ? null : toCents(cycle.ceiling),
+    spentCents: toCents(cycle.spent),
+    remainingCents: cycle.remaining === null ? null : toCents(cycle.remaining),
+    percentUsed: cycle.percentUsed,
+    closingDay: cycle.closingDay,
+    dueDay: cycle.dueDay,
+  };
 }
 
 function discardText(kind: DraftKind, error: unknown): string {
