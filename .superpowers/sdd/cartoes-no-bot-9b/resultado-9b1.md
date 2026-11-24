@@ -39,7 +39,7 @@ Mortos (16):
 
 Sobreviventes: nenhum.
 Equivalentes: nenhum identificado.
-Nota: tres mutantes foram descartados por nao compilarem (M5 e M5b com if(false)/narrowing do TS; M9 com "&& false"); foram substituidos por M5c, M9b e a variante M5b-com-ambiguo. Nao contam como mortos.
+Nota: tres variantes nao compilaram (M5 com if(false); M5b com comparacao impossivel apos o narrowing do TS; M9 com "&& false") e nao contam como mortos. Foram substituidas por M5c (notFound grava sem erro, morto) e M9b (recusa generica, morto).
 
 ## Decisoes tomadas (sem duvida de produto no contrato)
 - Cartao explicito "no cartao X" com X inexistente ou ambiguo responde a lista e nao grava (contrato, secao 2 do brief).
