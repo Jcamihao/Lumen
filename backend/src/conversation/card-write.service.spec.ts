@@ -99,6 +99,34 @@ describe('Renomear cartao pela conversa (9b-3)', () => {
     expect(world.sessions).toHaveLength(0);
   });
 
+  it('nome novo igual a outro cartao ativo so no acento ou na pontuacao final: recusa sem rascunho (o chat nao distinguiria os dois)', async () => {
+    world.cards.push({ id: 'cr-A-roxo', userId: USER_ID.A, name: 'Roxinho', isDefault: false, archivedAt: null, closingDay: 3, dueDay: null });
+    for (const name of ['Róxinho', 'ROXÍNHO', 'Roxinho!']) {
+      const reply = await say('A', `renomear cartao Nubank para ${name}`);
+      expect(reply.kind).toBe('ERROR');
+      expect(reply.text).toBe(CARD_WRITE_REPLIES.nameTaken);
+    }
+    expect(world.sessions).toHaveLength(0);
+    expect(updateSpy()).not.toHaveBeenCalled();
+  });
+
+  it('trocar so acento do proprio cartao e permitido (o proprio cartao nao conta)', async () => {
+    const draft = await say('A', 'renomear cartao Nubank para Nübank');
+    expect(draft.kind).toBe('CONFIRM_DRAFT');
+    await say('A', 'confirmar');
+    expect(cardRow('cr-A-nubank')?.name).toBe('Nübank');
+  });
+
+  it('corrida com nome parecido (acento) entre o rascunho e a confirmacao: recusa, nada gravado', async () => {
+    await say('A', 'renomear cartao Nubank para Roxinho');
+    world.cards.push({ id: 'cr-A-roxo', userId: USER_ID.A, name: 'Róxinho', isDefault: false, archivedAt: null, closingDay: 3, dueDay: null });
+    const reply = await say('A', 'confirmar');
+    expect(reply.kind).toBe('ERROR');
+    expect(reply.text).toBe(CARD_WRITE_REPLIES.nameTaken);
+    expect(cardRow('cr-A-nubank')?.name).toBe('Nubank');
+    expect(updateSpy()).not.toHaveBeenCalled();
+  });
+
   it('nome novo com mais de 40 caracteres: recusa sem rascunho', async () => {
     const reply = await say('A', `renomear cartao Nubank para ${'x'.repeat(41)}`);
     expect(reply.kind).toBe('ERROR');

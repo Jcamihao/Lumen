@@ -56,6 +56,16 @@ describe('nameTakenBy (mesma regra da API: sem diferenciar maiuscula, entre ativ
     expect(nameTakenBy(cards, 'NUBANK', 'c1')).toBe(false);
   });
 
+  it('acha o nome que so difere no acento ou na pontuacao final (igualdade normalizada da busca do chat)', () => {
+    expect(nameTakenBy(cards, 'Itau', 'c1')).toBe(true);
+    expect(nameTakenBy(cards, 'nubánk', 'c2')).toBe(true);
+    expect(nameTakenBy(cards, 'Nubank!', 'c2')).toBe(true);
+  });
+
+  it('nome so de pontuacao nao conflita por chave vazia', () => {
+    expect(nameTakenBy([{ id: 'c1', name: '???' }], '!!!', 'c2')).toBe(false);
+  });
+
   it('nome livre nao conflita', () => {
     expect(nameTakenBy(cards, 'Roxinho', 'c1')).toBe(false);
   });
