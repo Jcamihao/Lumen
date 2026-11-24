@@ -18,8 +18,8 @@ Data: 2026-11-24. Branch: feat/cartoes-telas-9c (nao trocada). Executor: agente 
 Backend (8, um por vez, restaurados): B1 sem guarda de teto ausente; B2 arquivado liberado; B3 sem marca de commit; B4 sem lock do User; B5 snapshot do rascunho ignorado (bot); B6 removedCents zerado; B7 conflito vira 500; B8 dono nao checado no clear. Mortos: 8/8. Sobreviventes: 0.
 Frontend (11, um por vez, restaurados): F1 Confirmar nunca aparece; F2 Esc nao cancela; F3 5xx nao vira desconhecido; F4 Cancelar durante envio permitido; F5 segundo envio permitido; F6 sem recarregar; F7 botao aparece offline; F8 botao com 1 cartao; F9 botao sem teto; F10 404 sem texto proprio; F11 botao nao desligado durante envio.
 - Primeira rodada: F4 e F5 sobreviveram (a UI desliga o botao, so o metodo expunha a falta). Dois testes de metodo adicionados: F4 e F5 mortos.
-- Final: 10 mortos de primeira + F4/F5 depois = 12 mortos (frontend), 0 sobreviventes, 1 equivalente: F8 (o bloco inteiro ja some com 1 cartao pelo ngIf de canEdit, entao a condicao extra nao muda a tela).
-- Total: 20 mutantes, 19 mortos, 0 sobreviventes, 1 equivalente. (Frontend 11 mutantes: 10 mortos de primeira ou depois, F4/F5 mortos apos testes novos, F8 equivalente.)
+- Frontend final: 10 mortos, 1 equivalente (F8: o bloco inteiro ja some com 1 cartao pelo ngIf de canEdit, entao a condicao extra nao muda a tela).
+- Total: 19 mutantes. 18 mortos, 0 sobreviventes, 1 equivalente.
 
 ## Decisoes de implementacao
 - Sem teto vigente: 409 (segue o motor do bot, que trata como conflito). Nao virou 200 idempotente.
