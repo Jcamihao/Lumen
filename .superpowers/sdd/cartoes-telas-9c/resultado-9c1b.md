@@ -4,6 +4,7 @@ Data: 2026-11-24. Branch: feat/cartoes-telas-9c (não trocada). Executor: agente
 
 ## Mudanças
 - `frontend/src/app/core/utils/credit-card.utils.ts`: `activeCards` (sem arquivados, padrão primeiro), `isCreditExpense`, `pickCardId` (valor do seletor: vazio com 1 cartao, offline ou fora de despesa no crédito), `cardIdForPayload`.
+- Escrita de teto por aba (ajuste do coordenador, decisão 3 do contrato 9c): no card do ciclo, com 2+ cartões ativos e online, botão "Definir teto"/"Alterar teto" por aba. Envia `PUT /credit-cards/:id/ceiling` com `{ ceiling }`; validação antes de enviar (positivo, até 2 casas, limite do servidor); botão "Salvando..." e desligado durante o envio; recarrega o ciclo ao salvar; erro 400/409 mostra a mensagem do servidor; 404 mostra "Cartão não encontrado. Atualize a tela."; 5xx é resultado desconhecido: mensagem de conferir a tela, Salvar desligado, sem nova tentativa; Cancelar fecha sem gravar. Com um cartão só, nada muda.
 - `frontend/src/app/shared/credit-card-select/`: seletor de cartão. Aparece só com despesa no crédito, online e com 2+ cartões ativos; pré-seleciona o padrão; zera o valor quando não vale.
 - Lançamento (`finances-page`): seletor (`#transaction-card`), envia `cardId` só em crédito+despesa; filtro "Todos os cartões" (só com 2+), envia `cardId` na lista (busca e mês); chip com `cardName`.
 - Compra parcelada e conta fixa: seletor e `cardId` no corpo; lista mostra "Crédito · Nome do cartão".
@@ -26,15 +27,18 @@ Data: 2026-11-24. Branch: feat/cartoes-telas-9c (não trocada). Executor: agente
 - Backend (2): M16 mapeamento `/cartoes` removido; M20 mapeamento sem normalização (`/Cartao` com maiúscula).
 - Primeira rodada: 17 mortos, 3 sobreviventes (M12, M18, M19). Cobertos com testes novos (filtro na busca; payload com controle preenchido fora de crédito). Segunda rodada: 3 mortos.
 - Final: 20 mortos, 0 sobreviventes, 0 equivalentes.
+- Ajuste teto por aba (mutantes novos, 9): C1 canEdit sem abas; C2 canEdit sem online; C3 envia `Math.trunc`; C4 sem checagem de casas decimais; C5 aceita zero; C6 sem recarregar ao salvar; C7 limiar 5xx errado; C8 sem guarda de resultado desconhecido; C9 sem guarda de envio em andamento. Primeira rodada: 8 mortos, C9 vivo; teste de envio duplo adicionado; C9 morto. Final: 9 de 9 mortos.
 - Obs.: M07 e M08 morrem pelos testes de offline (seletor some e cardId não sai offline). M18 e M19 morrem pelo teste que põe cardId no controle com PIX e confere o payload.
 
 ## Desvios e decisões de implementação
-- Brief pedia "cada aba usa :id/cycle e :id/ceiling". Implementado só `:id/cycle`: o card do ciclo continua só de leitura (edição de teto por cartão não tem tela). Ver duvidas.md, item 4.
+- Teto por aba: implementado (definir/alterar) com `:id/ceiling`. Limpar: bloqueado, ver "NÃO verificado". Duvida 4 do duvidas.md resolvida por este ajuste.
 - "Edição de item existente carrega o cartão gravado": não se aplica. Lançamento, parcelado e conta fixa não têm tela de edição (conta fixa só pausa/retoma e exclui). Ver duvidas.md, item 5.
 - Menu do Telegram: `/cartao` agora também vira "cartao" (antes chegava ao motor com a barra). Comportamento novo para esse comando; ver duvidas.md, item 6.
 - Offline: listagem de cartões não roda offline; seletor some; cardId não sai.
 
 ## NÃO verificado
+- Teto por aba: sem Chrome real; o PUT, a validação e o estado de erro são testados só com mock do LifeApiService.
+- Limpar teto: não implementado (ver acima).
 - Chrome real contra backend real (seletor, abas e rascunhos ponta a ponta). Sem Docker nesta fatia.
 - Visual em 390 px e 1280 px, claro e escuro.
 - Teclado e leitor de tela nos novos controles (só label/id e select nativo).
@@ -45,3 +49,6 @@ Data: 2026-11-24. Branch: feat/cartoes-telas-9c (não trocada). Executor: agente
 - Abas de ciclo com `:id/ceiling`: não implementado (decisão pendente).
 - Rascunhos de cartão: não testados contra o motor real; só renderização com draft montado no teste.
 - Mapeamento de `/saldo`, `/gastos` e `/ajuda`: não verifiquei se o motor já trata a barra; fora desta fatia.
+
+## Ajuste: teto por aba
+- `ng test` suíte inteira: 510 SUCCESS, 0 FAILED. `ng build`: OK. `graphify update .`: OK.

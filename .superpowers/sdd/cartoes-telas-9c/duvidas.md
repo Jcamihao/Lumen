@@ -6,6 +6,5 @@
 
 # Dúvidas de produto da 9c-1b
 
-4. Abas do ciclo: o brief pedia também `PUT /credit-cards/:id/ceiling` por aba. Não implementei: o card do ciclo segue só de leitura e o teto continua editado em /card (que edita só o padrão). Confirmar se a troca de teto por cartão entra agora ou depois.
-5. Edição com cartão: lançamento, parcelado e conta fixa não têm tela de edição (conta fixa só pausa/retoma e exclui). Não há "item existente" para carregar o cartão gravado. Confirmar se isso fica para a 9c-2.
-6. Menu do Telegram: `/cartao` agora vira "cartao" no motor (antes ia com a barra). `/cartoes` vira "meus cartoes". Confirmar se é esse o comportamento desejado para `/cartao`.
+5. (Aceita pelo dono, recomendação.) Edição com cartão: lançamento, parcelado e conta fixa não têm tela de edição (conta fixa só pausa/retoma e exclui). Não há "item existente" para carregar o cartão gravado. Confirmar se isso fica para a 9c-2.
+6. (Aceita pelo dono, recomendação.) Menu do Telegram: `/cartao` agora vira "cartao" no motor (antes ia com a barra). `/cartoes` vira "meus cartoes". Confirmar se é esse o comportamento desejado para `/cartao`.
