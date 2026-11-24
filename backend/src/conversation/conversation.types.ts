@@ -37,7 +37,8 @@ export type DraftKind =
   | 'GOAL_CHANGE'
   | 'ENVELOPE_CHANGE'
   | 'RECURRING_CHANGE'
-  | 'INSTALLMENT_CHANGE';
+  | 'INSTALLMENT_CHANGE'
+  | 'CARD_RENAME';
 
 /**
  * Rascunho para a tela: valores formatados, sem ids internos alem de draftId/draftVersion.
@@ -150,6 +151,18 @@ export interface CreditLimitDraft {
   cardName?: string | null;
 }
 
+/**
+ * Renomear cartao por conversa (9b-3, secao 7). So guarda o id e o nome novo: a gravacao e do CreditCardsService,
+ * que confere nome unico e cartao ativo sob o lock do User na confirmacao. pendingField nunca e usado (sempre confirmacao).
+ */
+export interface CardRenameDraft {
+  kind: 'CARD_RENAME';
+  cardId: string | null;
+  currentName: string;
+  newName: string;
+  pendingField: null;
+}
+
 /** Conta fixa (contrato 3b2b, secao 5): só despesa; categoria e pagamento ficam não informados. */
 export interface RecurringDraft {
   kind: 'RECURRING';
@@ -225,7 +238,8 @@ export type SessionDraft =
   | RecurringDraft
   | InstallmentDraft
   | TransactionChangeDraft
-  | TargetChangeDraft;
+  | TargetChangeDraft
+  | CardRenameDraft;
 
 /** Dados numericos para a tela (centavos). Presentes em INFO e DONE. */
 export interface ReplyData {
@@ -250,6 +264,8 @@ export interface ReplyData {
     dueDay: number | null;
   };
   transactionId?: string;
+  /** 9b-3: cartao renomeado (DONE). */
+  cardId?: string;
   /** Consultas do item 3a (contrato secao 4). Centavos; datas 'AAAA-MM-DD'. */
   dues?: Array<{ date: string; label: string; kind: 'FIXED' | 'INSTALLMENT'; amountCents: number }>;
   installments?: Array<{ label: string; number: number; total: number; amountCents: number; nextDate: string | null }>;

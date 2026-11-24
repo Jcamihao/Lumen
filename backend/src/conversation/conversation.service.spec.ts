@@ -228,6 +228,7 @@ describe('ConversationService', () => {
       entitlements as unknown as Deps[8],
       configService as unknown as Deps[9],
       assistant as unknown as Deps[10],
+      { update: jest.fn() } as unknown as Deps[11],
     );
   });
 

@@ -43,6 +43,9 @@ export type IntentMatch =
   | { intent: 'contribute_goal'; body: string }
   | { intent: 'create_envelope' | 'set_credit_limit' | 'create_recurring' | 'create_installment'; body: string }
   | { intent: 'clear_credit_limit'; body: string }
+  // Cartao pela conversa (9b-3): criar (recusado por ora) e renomear (rascunho com confirmacao).
+  | { intent: 'create_card'; body: string }
+  | { intent: 'rename_card'; body: string }
   | { intent: 'edit_transaction' | 'delete_transaction'; body: string }
   | { intent: 'edit_goal' | 'delete_goal' | 'edit_envelope' | 'delete_envelope'; body: string }
   | {
@@ -77,6 +80,9 @@ export function matchIntent(raw: string): IntentMatch | null {
 
   const envelopeOrLimit = matchEnvelopeOrLimit(raw, tokens, words);
   if (envelopeOrLimit) return envelopeOrLimit;
+
+  const cardWrite = matchCardWrite(raw, tokens, words);
+  if (cardWrite) return cardWrite;
 
   const transactionChange = matchTransactionChange(raw, tokens, words);
   if (transactionChange) return transactionChange;
@@ -163,6 +169,33 @@ function matchCardRead(raw: string, tokens: string[], words: string[]): IntentMa
     if (explicit) return { intent: 'credit_card', cardTerm: term };
     if (raw.includes('?') || term.split(/\s+/).length > CARD_LOOSE_MAX_WORDS) continue;
     return { intent: 'credit_card', cardTerm: term, loose: true };
+  }
+  return null;
+}
+
+/** Criar e renomear cartao (9b-3, secao 7). Renomear exige "para" (sem ele, a frase segue o caminho de hoje). */
+const CARD_CREATE_PHRASES = ['criar cartao', 'novo cartao', 'adicionar cartao', 'cadastrar cartao'];
+/** "renomear X" so e cartao quando X nao e outro substantivo de financa ("renomear meta X para Y" e outro assunto). */
+const RENAME_NOT_CARD = new Set(['meta', 'metas', 'cofrinho', 'reserva', 'reservas', 'envelope', 'conta', 'contas', 'parcela', 'parcelas', 'parcelado', 'parcelados', 'compra', 'compras', 'lancamento', 'fixa', 'fixas']);
+
+function matchCardWrite(raw: string, tokens: string[], words: string[]): IntentMatch | null {
+  if (raw.length > RAW_MAX_CHARS || tokens.length > NEW_WRITE_MAX_WORDS || raw.includes('?')) return null;
+  const phrase = words.join(' ');
+  for (const expected of CARD_CREATE_PHRASES) {
+    if (startsWithPhrase(phrase, expected)) {
+      return { intent: 'create_card', body: tokens.slice(expected.split(' ').length).join(' ') };
+    }
+  }
+  if (startsWithPhrase(phrase, 'renomear cartao') && words.includes('para')) {
+    return { intent: 'rename_card', body: tokens.slice(2).join(' ') };
+  }
+  if (startsWithPhrase(phrase, 'renomear') && words.includes('para') && !RENAME_NOT_CARD.has(words[1] ?? '')) {
+    return { intent: 'rename_card', body: tokens.slice(1).join(' ') };
+  }
+  for (const expected of ['mudar nome do', 'mudar nome da']) {
+    if (startsWithPhrase(phrase, expected) && words[3] === 'cartao' && words.includes('para')) {
+      return { intent: 'rename_card', body: tokens.slice(3).join(' ') };
+    }
   }
   return null;
 }

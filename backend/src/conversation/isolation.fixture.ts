@@ -15,6 +15,7 @@ import { randomUUID } from 'crypto';
 import { ConversationService } from './conversation.service';
 import { WhatsappLinkService } from '../whatsapp/whatsapp-link.service';
 import { WhatsappAdapterService } from '../whatsapp/whatsapp-adapter.service';
+import { CreditCardsService } from '../credit-cards/credit-cards.service';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Row = Record<string, any>;
@@ -260,6 +261,7 @@ export class World {
 
   /** Servicos de dominio fake: leem e gravam so linhas do userId recebido. */
   services = {
+    creditCards: realCreditCardsService(this),
     dashboard: {
       getSummary: jest.fn(async (userId: string) => {
         this.track('dashboard.getSummary', userId);
@@ -454,6 +456,44 @@ export class World {
 }
 
 /** Contas A, B e C, cada uma com saldo, categoria, meta, cartao, conta fixa e parcelado proprios. */
+/**
+ * CreditCardsService REAL sobre o mundo fake (9b-3): nome unico, cartao ativo e lock do User vem do servico de verdade.
+ * O fake de Prisma honra `where` (matches) e a transacao interativa roda sobre o mesmo mundo.
+ */
+export function realCreditCardsService(world: World): CreditCardsService {
+  const creditCard = {
+    count: jest.fn(async ({ where }: { where: Row }) => world.cards.filter((row) => matches(row, where)).length),
+    findMany: jest.fn(async ({ where }: { where: Row }) => clone(world.cards.filter((row) => matches(row, where)))),
+    findFirst: jest.fn(async ({ where }: { where: Row }) => clone(world.cards.find((row) => matches(row, where)) ?? null)),
+    create: jest.fn(async ({ data }: { data: Row }) => {
+      const row = { id: randomUUID(), archivedAt: null, ...data };
+      world.cards.push(row);
+      return clone(row);
+    }),
+    update: jest.fn(async ({ where, data }: { where: Row; data: Row }) => {
+      const row = world.cards.find((card) => matches(card, where));
+      if (!row) throw new Error('registro de cartao nao encontrado no fake');
+      for (const [key, value] of Object.entries(data)) if (value !== undefined) row[key] = value;
+      return clone(row);
+    }),
+    updateMany: jest.fn(async ({ where, data }: { where: Row; data: Row }) => {
+      const targets = world.cards.filter((row) => matches(row, where));
+      targets.forEach((row) => Object.assign(row, data));
+      return { count: targets.length };
+    }),
+  };
+  const prisma: Row = {
+    creditCard,
+    user: { update: jest.fn(async () => ({})) },
+    $queryRaw: jest.fn(async () => []),
+    $transaction: jest.fn(async (fn: (tx: Row) => Promise<unknown>) => fn(prisma)),
+  };
+  const service = new CreditCardsService(prisma as never, { touchUserData: jest.fn(async () => undefined) } as never, {} as never);
+  // Spy que mantem a implementacao real: o teste conta chamadas e pode forcar uma falha pontual.
+  jest.spyOn(service, 'update');
+  return service;
+}
+
 export function seedWorld(): World {
   const world = new World();
   const plan: Record<Who, { income: number; expense: number; ceiling: number; goalTarget: number; goalCurrent: number; dueAmount: number }> = {
@@ -518,6 +558,7 @@ export function buildEngine(world: World, writesEnabled = true): Engine {
     s.entitlements as unknown as Deps[8],
     config as unknown as Deps[9],
     { tryFallbackAnswer: jest.fn(async () => ({ status: 'unavailable' })) } as unknown as Deps[10],
+    s.creditCards as unknown as Deps[11],
   );
   return { service, settings };
 }

@@ -104,6 +104,8 @@ import {
 import { CL_REPLIES, ChatCard, cleanCardTerm, isClearLimitDraft, matchCardsByTerm, parseLimitBody } from './credit-limit';
 import { CARD_EXPENSE_REPLIES, findCardPhrase, removeTokenRange } from './card-expense';
 import { CARD_READ_REPLIES, cardListText, namedCardText } from './card-read';
+import { CARD_WRITE_REPLIES, cardRenameDraftText, cardRenamedText, nameTakenBy, parseCardRename } from './card-write';
+import { CreditCardsService, CreditCardWriteUncertainError } from '../credit-cards/credit-cards.service';
 import { CARD_ARCHIVED_MESSAGE, CARD_NEEDS_CREDIT_MESSAGE, CARD_NOT_FOUND_MESSAGE } from '../credit-cards/card-link';
 import { parseEnvelopeBody } from './parsers/envelope.parser';
 import { IntentMatch, ReadIntent, matchIntent } from './parsers/intent.matcher';
@@ -151,6 +153,7 @@ import {
   ConversationStateView,
   ContributionDraft,
   CreditLimitDraft,
+  CardRenameDraft,
   DraftKind,
   DraftView,
   EnvelopeDraft,
@@ -325,6 +328,7 @@ export class ConversationService {
     private readonly entitlements: EntitlementsService,
     private readonly configService: ConfigService,
     private readonly assistant: AssistantService,
+    private readonly creditCards: CreditCardsService,
   ) {}
 
   /** Mensagem digitada (canal APP ou WhatsApp). Ordem de decisao: contrato secao 6 e motor. */
@@ -440,6 +444,12 @@ export class ConversationService {
     }
     if (intent.intent === 'clear_credit_limit') {
       return this.startCreditLimitClearDraft({ input, body: intent.body });
+    }
+    if (intent.intent === 'create_card') {
+      return this.createCardUnavailable(input);
+    }
+    if (intent.intent === 'rename_card') {
+      return this.startCardRenameDraft({ input, body: intent.body });
     }
     if (intent.intent === 'create_recurring') {
       return this.startRecurringDraft({ input, body: intent.body });
@@ -888,6 +898,73 @@ export class ConversationService {
       pendingField: null,
     };
     return this.saveNewDraft({ input, intent: 'clear_credit_limit', draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  /** Criar cartao pela conversa: recusado por ora (dia de fechamento obrigatorio no schema; duvida de produto). Nada e gravado. */
+  private async createCardUnavailable(input: ConversationInput): Promise<ConversationReply> {
+    await this.recordEvent(input, 'create_card', ConversationOutcome.RECOGNIZED);
+    return this.reply('INFO', 'IDLE', CARD_WRITE_REPLIES.createUnavailable);
+  }
+
+  /**
+   * Renomear cartao (9b-3, secao 7): cartao ativo achado pelo nome (busca do 8d). Termo vazio, ambiguo, inexistente,
+   * nome igual ao atual ou nome ja usado por outro cartao ativo recusa sem rascunho. Na confirmacao o servico confere de novo.
+   */
+  private async startCardRenameDraft(args: { input: ConversationInput; body: string }): Promise<ConversationReply> {
+    const { input, body } = args;
+    const { userId, receivedAt } = input;
+
+    const parsed = parseCardRename(body);
+    if (parsed.ok === false) {
+      await this.recordEvent(input, 'rename_card', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', parsed.text);
+    }
+    const cards = await this.activeCards(userId);
+    if (cards.length === 0) {
+      await this.recordEvent(input, 'rename_card', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', CARD_READ_REPLIES.none);
+    }
+    const hits = matchCardsByTerm(cards, parsed.term);
+    if (hits.length === 0 || hits.length > 1) {
+      await this.recordEvent(input, 'rename_card', ConversationOutcome.ERROR);
+      const names = cards.map((card) => card.name);
+      const text =
+        hits.length === 0
+          ? CARD_WRITE_REPLIES.notFound(parsed.term, names)
+          : CARD_WRITE_REPLIES.ambiguous(parsed.term, hits.map((card) => card.name));
+      return this.reply('ERROR', 'IDLE', text);
+    }
+    const [card] = hits;
+    if (card.name === parsed.newName) {
+      await this.recordEvent(input, 'rename_card', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', CARD_WRITE_REPLIES.sameName);
+    }
+    if (nameTakenBy(cards, parsed.newName, card.id)) {
+      await this.recordEvent(input, 'rename_card', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', CARD_WRITE_REPLIES.nameTaken);
+    }
+    const draft: CardRenameDraft = {
+      kind: 'CARD_RENAME',
+      cardId: card.id,
+      currentName: card.name,
+      newName: parsed.newName,
+      pendingField: null,
+    };
+    return this.saveNewDraft({ input, intent: 'rename_card', draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  /** Renomear cartao: o CreditCardsService confere nome unico e cartao ativo sob o lock; o texto sai do recibo. */
+  private async applyCardRename(userId: string, draft: CardRenameDraft): Promise<AppliedAction> {
+    if (draft.cardId === null) {
+      throw new Error('rascunho de renomear cartao incompleto');
+    }
+    const receipt = await this.creditCards.update(userId, draft.cardId, { name: draft.newName });
+    return {
+      text: cardRenamedText({ from: draft.currentName, to: receipt.name }),
+      data: { cardId: receipt.id },
+      resultRef: receipt.id,
+      refreshPending: receipt.refreshPending,
+    };
   }
 
   /** Cartao do chat pelo nome (8d). Termo vazio = null (= cartao padrao, resolvido por quem chama). */
@@ -1422,6 +1499,9 @@ export class ConversationService {
     if (draft.kind === 'ENVELOPE') {
       return this.answerEnvelope(userId, draft, value);
     }
+    if (draft.kind === 'CARD_RENAME') {
+      return { status: 'ERROR', text: REPLIES.collectingReminder };
+    }
     if (draft.kind === 'CREDIT_LIMIT') {
       return this.answerCreditLimit(draft, value);
     }
@@ -1831,6 +1911,9 @@ export class ConversationService {
     }
     if (draft.kind === 'ENVELOPE') {
       return this.applyEnvelope(userId, draft);
+    }
+    if (draft.kind === 'CARD_RENAME') {
+      return this.applyCardRename(userId, draft);
     }
     if (draft.kind === 'CREDIT_LIMIT') {
       return this.applyCreditLimit(userId, draft);
@@ -3067,6 +3150,9 @@ export class ConversationService {
         provisionMonth: draft.provisionMonth,
       });
     }
+    if (draft.kind === 'CARD_RENAME') {
+      return cardRenameDraftText({ from: draft.currentName, to: draft.newName });
+    }
     if (draft.kind === 'CREDIT_LIMIT') {
       return draft.action === 'clear'
         ? creditLimitClearDraftText({ previousCents: draft.previousCeilingCents ?? 0, cycleEnd: draft.cycleEnd, cardName: draft.cardName })
@@ -3151,6 +3237,9 @@ export class ConversationService {
     }
     if (draft.kind === 'ENVELOPE') {
       return draft.pendingField === 'name' ? REPLIES.askEnvelopeName : REPLIES.askEnvelopeAmount;
+    }
+    if (draft.kind === 'CARD_RENAME') {
+      return REPLIES.collectingReminder;
     }
     if (draft.kind === 'CREDIT_LIMIT') {
       return REPLIES.askCreditLimit;
@@ -3273,6 +3362,18 @@ export class ConversationService {
           { label: 'Início', value: `${monthYearUtc(draft.provisionMonth)} (UTC)` },
           { label: 'Aviso', value: REPLIES.envelopeProvisionWarning },
           ...reviewRows(draft.reviewReason),
+        ],
+      };
+    }
+    if (draft.kind === 'CARD_RENAME') {
+      return {
+        ...base,
+        kind: 'CARD_RENAME',
+        title: 'Renomear cartão',
+        pendingField: null,
+        rows: [
+          { label: 'Cartão', value: draft.currentName },
+          { label: 'Novo nome', value: draft.newName },
         ],
       };
     }
@@ -3750,7 +3851,7 @@ function numberedOptions(draft: SessionDraft): string[] {
   if (isTargetChangeDraft(draft)) {
     return [];
   }
-  if (draft.kind === 'GOAL' || draft.kind === 'ENVELOPE' || draft.kind === 'CREDIT_LIMIT' || draft.kind === 'RECURRING' || draft.kind === 'INSTALLMENT') {
+  if (draft.kind === 'GOAL' || draft.kind === 'ENVELOPE' || draft.kind === 'CREDIT_LIMIT' || draft.kind === 'RECURRING' || draft.kind === 'INSTALLMENT' || draft.kind === 'CARD_RENAME') {
     return [];
   }
   if (draft.kind === 'CONTRIBUTION') {
@@ -3940,7 +4041,8 @@ function isWriteUncertain(error: unknown): boolean {
     error instanceof EnvelopeWriteUncertainError ||
     error instanceof CreditLimitWriteUncertainError ||
     error instanceof RecurringWriteUncertainError ||
-    error instanceof InstallmentWriteUncertainError
+    error instanceof InstallmentWriteUncertainError ||
+    error instanceof CreditCardWriteUncertainError
   );
 }
 
@@ -3996,6 +4098,15 @@ function discardText(kind: DraftKind, error: unknown): string {
       ? REPLIES.envelopeNameTaken
       : REPLIES.envelopeRejected;
   }
+  if (kind === 'CARD_RENAME') {
+    // 9b-3: recusa do CreditCardsService vira texto claro; nada foi gravado (4xx).
+    if (error instanceof HttpException) {
+      if (error.getStatus() === 404) return CARD_WRITE_REPLIES.cardGone;
+      if (error.message === 'Ja existe um cartao com este nome.') return CARD_WRITE_REPLIES.nameTaken;
+      if (error.message === 'Cartao arquivado nao pode ser alterado.') return CARD_WRITE_REPLIES.cardArchived;
+    }
+    return CARD_WRITE_REPLIES.renameRejected;
+  }
   if (kind === 'CREDIT_LIMIT') {
     return REPLIES.creditLimitRejected;
   }
@@ -4016,6 +4127,9 @@ function discardText(kind: DraftKind, error: unknown): string {
 function saveFailedText(kind: DraftKind, restored: boolean): string {
   if (kind === 'ENVELOPE') {
     return restored ? REPLIES.envelopeSaveFailed : REPLIES.envelopeSaveFailedRestoreLost;
+  }
+  if (kind === 'CARD_RENAME') {
+    return restored ? CARD_WRITE_REPLIES.renameSaveFailed : CARD_WRITE_REPLIES.renameSaveFailedRestoreLost;
   }
   if (kind === 'CREDIT_LIMIT') {
     return restored ? REPLIES.creditLimitSaveFailed : REPLIES.creditLimitSaveFailedRestoreLost;
