@@ -40,7 +40,14 @@ function buildService(initialCards: Row[] = CARDS) {
   const prisma = {
     user: { findUniqueOrThrow: jest.fn(async () => ({ timezone: 'America/Sao_Paulo' })) },
     creditCard: {
-      findMany: jest.fn(async ({ where }: { where: Row }) => clone(cards.filter((row) => matches(row, where)))),
+      // Honra o orderBy do servico (padrao primeiro, depois nome), como o banco.
+      findMany: jest.fn(async ({ where }: { where: Row }) =>
+        clone(
+          cards
+            .filter((row) => matches(row, where))
+            .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || String(a.name).localeCompare(String(b.name))),
+        ),
+      ),
       findFirst: jest.fn(async ({ where }: { where: Row }) => clone(cards.find((row) => matches(row, where)) ?? null)),
     },
     financeCategory: {
@@ -227,6 +234,32 @@ describe('despesa no cartao pela conversa (9b-1)', () => {
     const chosen = await send('2');
     expect(chosen.kind).toBe('CONFIRM_DRAFT');
     expect(sessions[0].draft).toMatchObject({ paymentMethod: 'CREDIT', cardId: 'cr-itau', cardName: 'Itaú', pendingField: null });
+  });
+
+  it('padrao trocado depois da lista: o numero vale na ordem em que a lista foi mostrada', async () => {
+    const { send, sessions, cards } = buildService();
+    await send('gastei 50 mercado no credito');
+    // Itaú vira o padrao: na ordem do 8d a lista passaria a ser Itaú, Nubank.
+    cards.find((card) => card.id === 'cr-nubank')!.isDefault = false;
+    cards.find((card) => card.id === 'cr-itau')!.isDefault = true;
+    await send('1');
+    expect(sessions[0].draft).toMatchObject({ cardId: 'cr-nubank', cardName: 'Nubank', pendingField: null });
+  });
+
+  it('cartao oferecido arquivado depois da lista: a resposta nao e usada e a lista nova e mostrada', async () => {
+    const { send, sessions, cards } = buildService([
+      { id: 'c1', userId: 'A', name: 'Nubank', isDefault: true, archivedAt: null },
+      { id: 'c2', userId: 'A', name: 'Itaú', isDefault: false, archivedAt: null },
+      { id: 'c3', userId: 'A', name: 'Bradesco', isDefault: false, archivedAt: null },
+    ]);
+    await send('gastei 50 mercado no credito');
+    cards.find((card) => card.id === 'c1')!.archivedAt = new Date();
+    const refreshed = await send('1');
+    expect(refreshed.kind).toBe('ASK_FIELD');
+    expect(refreshed.text).toContain('Em qual cartão? 1) Bradesco 2) Itaú');
+    expect(sessions[0].draft).toMatchObject({ cardId: null, pendingField: 'card' });
+    await send('1');
+    expect(sessions[0].draft).toMatchObject({ cardId: 'c3', cardName: 'Bradesco', pendingField: null });
   });
 
   it('"credito" sem nome: a escolha tambem aceita o nome do cartao', async () => {
