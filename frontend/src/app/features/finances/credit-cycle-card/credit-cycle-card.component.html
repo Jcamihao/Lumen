@@ -75,7 +75,7 @@
           {{ data.ceiling === null ? 'Definir teto' : 'Alterar teto' }}
         </button>
 
-        <form *ngIf="editing()" class="credit-cycle-card__form" (submit)="$event.preventDefault(); saveCeiling()" novalidate>
+        <form *ngIf="editing()" class="credit-cycle-card__form" (submit)="$event.preventDefault(); saveCeiling()" (keydown.escape)="cancelCeilingEdit()" novalidate>
           <div class="proto-field">
             <label for="credit-cycle-ceiling">Teto do ciclo</label>
             <input

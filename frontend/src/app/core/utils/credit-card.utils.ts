@@ -67,6 +67,9 @@ export function ceilingSaveMessage(error: unknown, readMessage: ReadMessage): st
   return 'Não foi possível salvar o teto agora.';
 }
 
+/** Sem resposta (status 0: rede caiu no meio) ou 5xx: o servidor pode ter gravado. Nao repetir. */
 export function isUncertainSave(error: unknown): boolean {
-  return ((error as { status?: number } | null)?.status ?? 0) >= 500;
+  const status = (error as { status?: number } | null)?.status ?? 0;
+
+  return status === 0 || status >= 500;
 }

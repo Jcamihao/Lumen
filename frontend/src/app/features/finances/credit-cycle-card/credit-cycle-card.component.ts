@@ -92,6 +92,8 @@ export class CreditCycleCardComponent {
   }
 
   protected cancelCeilingEdit() {
+    if (this.saving()) return;
+
     this.editing.set(false);
     this.saveError.set(null);
     this.uncertain.set(false);
