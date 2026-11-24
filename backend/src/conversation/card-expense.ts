@@ -19,12 +19,14 @@ const CREDIT_WORDS = new Set(['credito', 'cartao']);
 /**
  * Resultado da busca no texto da despesa. from e to sao indices (to incluido) dos tokens a tirar da descricao.
  * - card: cartao casou (de forma unica).
- * - credit: "no credito" sem nome; quem chama decide pela quantidade de cartoes.
+ * - credit: "no credito" sem nome; quem chama decide pela quantidade de cartoes (0: CREDIT sem cardId).
+ * - creditDefault: "no credito <palavra que nao e cartao>": so "no credito" sai do texto; CREDIT sem cardId (cartao padrao).
  * - notFound / ambiguous: termo com cara de cartao explicito ("no cartao X") que nao casa; nada e gravado.
  */
 export type CardPhrase =
   | { kind: 'card'; card: ChatCard; from: number; to: number }
   | { kind: 'credit'; from: number; to: number }
+  | { kind: 'creditDefault'; from: number; to: number }
   | { kind: 'notFound'; term: string; from: number; to: number }
   | { kind: 'ambiguous'; term: string; hits: ChatCard[]; from: number; to: number };
 
@@ -53,6 +55,8 @@ export function findCardPhrase(tokens: string[], cards: ChatCard[]): CardPhrase 
         if (hits.length === 1) return { kind: 'card', card: hits[0], from: start, to: end };
         if (hits.length > 1) return { kind: 'ambiguous', term, hits, from: start, to: end };
       }
+      // "no credito padaria": a palavra nao e cartao, entao vira descricao; so "no credito" sai do texto.
+      if (words[first - 1] === 'credito') return { kind: 'creditDefault', from: start, to: first - 1 };
       return { kind: 'notFound', term: tokens[first], from: start, to: first };
     }
 

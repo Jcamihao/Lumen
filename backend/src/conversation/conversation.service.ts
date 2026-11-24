@@ -576,10 +576,7 @@ export class ConversationService {
           : CL_REPLIES.cardAmbiguous(phrase.term, phrase.hits.map((card) => card.name)),
       );
     }
-    // "credito" sem nome e sem nenhum cartao nao mexe no texto (fica como descricao, como antes).
-    const cardTokens = phrase && !(phrase.kind === 'credit' && cards.length === 0)
-      ? removeTokenRange(dateResult.rest, phrase.from, phrase.to)
-      : dateResult.rest;
+    const cardTokens = phrase ? removeTokenRange(dateResult.rest, phrase.from, phrase.to) : dateResult.rest;
     const description = stripConnectors(cardTokens).join(' ');
     if (description.length > DESCRIPTION_MAX) {
       await this.recordEvent(input, intent.intent, ConversationOutcome.ERROR);
@@ -606,6 +603,9 @@ export class ConversationService {
       pickCard(draft, cards[0]);
     } else if (phrase && phrase.kind === 'credit' && cards.length > 1) {
       draft.cardOptions = cards.map((card) => card.id);
+    } else if (phrase && (phrase.kind === 'creditDefault' || (phrase.kind === 'credit' && cards.length === 0))) {
+      // Sem cartao nomeado e sem escolha: CREDIT sem cardId, a conta cai no cartao padrao (regra da 9a).
+      draft.paymentMethod = PaymentMethod.CREDIT;
     }
 
     if (intent.missingAmount === true) {
