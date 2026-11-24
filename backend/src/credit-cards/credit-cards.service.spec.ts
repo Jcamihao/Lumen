@@ -196,6 +196,13 @@ function createFakeDb() {
         state.ceilings.push(row);
         return { ...row };
       },
+      delete: async ({ where }: Row) => {
+        const index = state.ceilings.findIndex((c) => c.id === where.id);
+        if (index < 0) throw new Error('teto nao encontrado');
+        log.push('ceiling.delete');
+        const [row] = state.ceilings.splice(index, 1);
+        return { ...row };
+      },
     },
     transaction: {
       aggregate: async () => ({ _sum: { amount: null } }),
@@ -369,6 +376,7 @@ describe('CreditCardsService', () => {
       ['make-default', (u, id) => service.makeDefault(u, id)],
       ['GET :id/cycle', (u, id) => service.cycle(u, id)],
       ['PUT :id/ceiling', (u, id) => service.setCeiling(u, id, { ceiling: 100 })],
+      ['DELETE :id/ceiling', (u, id) => service.clearCeiling(u, id)],
     ];
 
     for (const [name, call] of routes) {
@@ -511,6 +519,72 @@ describe('CreditCardsService', () => {
         refreshPending: false,
       });
       expect(db.state.ceilings.find((c) => c.cardId === 'card-a2')).toMatchObject({ userId: 'user-a' });
+    });
+
+    describe('limpar teto (DELETE :id/ceiling)', () => {
+      const ceilingOf = (cardId: string, closingDate: string, ceiling: number) => ({
+        id: `ceil-${cardId}-${closingDate}`,
+        cardId,
+        userId: cardId.startsWith('card-a') ? 'user-a' : 'user-b',
+        closingDate: new Date(closingDate),
+        ceiling,
+      });
+
+      it('remove so o teto do ciclo aberto e devolve recibo do valor que saiu', async () => {
+        db.state.ceilings.push(ceilingOf('card-a2', '2026-11-20T00:00:00.000Z', 800));
+        db.state.ceilings.push(ceilingOf('card-a2', '2026-10-20T00:00:00.000Z', 500));
+
+        const receipt = await service.clearCeiling('user-a', 'card-a2');
+
+        expect(receipt).toEqual({
+          cardId: 'card-a2',
+          id: 'ceil-card-a2-2026-11-20T00:00:00.000Z',
+          removedCents: 80000,
+          cycleStart: '2026-10-21',
+          cycleEnd: '2026-11-20',
+          refreshPending: false,
+        });
+        expect(db.state.ceilings.map((c) => c.closingDate.toISOString())).toEqual(['2026-10-20T00:00:00.000Z']);
+      });
+
+      it('bloqueia o User antes de apagar o teto (mesma ordem do set)', async () => {
+        db.state.ceilings.push(ceilingOf('card-a2', '2026-11-20T00:00:00.000Z', 800));
+
+        await service.clearCeiling('user-a', 'card-a2');
+
+        expect(db.log.indexOf('lock:user-a')).toBeLessThan(db.log.indexOf('ceiling.delete'));
+        expect(lifeEngine.touchUserData).toHaveBeenCalledWith('user-a');
+      });
+
+      it('sem teto vigente no ciclo: 409 e nada apagado', async () => {
+        db.state.ceilings.push(ceilingOf('card-a2', '2026-10-20T00:00:00.000Z', 500));
+        const before = db.snapshot();
+
+        await expect(service.clearCeiling('user-a', 'card-a2')).rejects.toBeInstanceOf(ConflictException);
+        expect(db.snapshot()).toBe(before);
+      });
+
+      it('cartao arquivado: 409 e teto intacto', async () => {
+        db.state.ceilings.push(ceilingOf('card-a2', '2026-11-20T00:00:00.000Z', 800));
+        await service.archive('user-a', 'card-a2');
+        const before = db.snapshot();
+
+        await expect(service.clearCeiling('user-a', 'card-a2')).rejects.toBeInstanceOf(ConflictException);
+        expect(db.snapshot()).toBe(before);
+      });
+
+      it('cartao inexistente ou alheio: 404 (coberto pelo isolamento A/B/C)', async () => {
+        await expect(service.clearCeiling('user-a', 'card-nao-existe')).rejects.toBeInstanceOf(NotFoundException);
+      });
+
+      it('queda no commit depois do delete: resultado desconhecido, sem repetir', async () => {
+        db.state.ceilings.push(ceilingOf('card-a2', '2026-11-20T00:00:00.000Z', 800));
+        db.faults.failAfterCommit = true;
+
+        await expect(service.clearCeiling('user-a', 'card-a2')).rejects.toBeInstanceOf(CreditCardWriteUncertainError);
+        expect(db.log.filter((entry) => entry === 'ceiling.delete')).toHaveLength(1);
+        expect(db.state.ceilings.some((c) => c.cardId === 'card-a2')).toBe(false);
+      });
     });
 
     it('cycle devolve o ciclo do proprio cartao', async () => {
