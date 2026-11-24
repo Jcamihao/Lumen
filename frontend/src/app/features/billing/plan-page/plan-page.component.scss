@@ -23,3 +23,40 @@
   color: var(--text-medium);
   font-size: 0.8125rem;
 }
+
+.plan-group {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.plan-group .proto-list-item__top button {
+  margin-left: auto;
+}
+
+.plan-group__invite {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 0.5rem;
+}
+
+.plan-group__invite input {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.plan-group__link {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.plan-group__link .proto-button {
+  justify-self: start;
+}
+
+.plan-group__link-input {
+  width: 100%;
+  font-size: 0.8125rem;
+}

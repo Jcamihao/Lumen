@@ -14,7 +14,7 @@ describe('BillingService', () => {
     label: 'Grátis',
     sellable: false,
     seats: 1,
-    limits: { goals: 2, envelopes: 1, recurringTransactions: 3, installmentPurchases: 2 },
+    limits: { goals: 2, envelopes: 1, recurringTransactions: 3, installmentPurchases: 2, creditCards: 1 },
     selahQuestionsPerMonth: 5,
     prices: null,
   };
@@ -27,6 +27,7 @@ describe('BillingService', () => {
     currentPeriodEnd: null,
     cancelAtPeriodEnd: false,
     latestInvoiceUrl: null,
+    group: null,
     usage: {
       enforced: true,
       plan: 'FREE',
@@ -35,6 +36,7 @@ describe('BillingService', () => {
         envelopes: { used: 0, limit: 1 },
         recurringTransactions: { used: 0, limit: 3 },
         installmentPurchases: { used: 0, limit: 2 },
+        creditCards: { used: 1, limit: 1 },
       },
       selahQuestions: { used: 3, limit: 5, resetsAt: '2026-10-01T03:00:00.000Z' },
     },
@@ -145,6 +147,68 @@ describe('BillingService', () => {
     const req = httpMock.expectOne(`${environment.apiBaseUrl}/billing/sync`);
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toBeNull();
+    req.flush(null);
+  });
+
+  // --- Grupo do plano Compartilhado (contrato 11, 11a-2) ---
+
+  const ownerView = {
+    role: 'owner' as const,
+    planActive: true,
+    seats: 2,
+    members: [{ id: 'm-1', email: 'bruno@exemplo.com', name: 'Bruno', joinedAt: '2026-11-20T12:00:00.000Z' }],
+    invites: [{ id: 'i-1', email: 'dani@exemplo.com', createdAt: '2026-11-23T12:00:00.000Z', expiresAt: '2026-11-30T12:00:00.000Z' }],
+  };
+
+  it('loadGroup faz GET em /billing/group', () => {
+    service.loadGroup().subscribe((view) => expect(view).toEqual(ownerView));
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/billing/group`);
+    expect(req.request.method).toBe('GET');
+    req.flush(ownerView);
+  });
+
+  it('createGroupInvite faz POST em /billing/group/invites e devolve o token da resposta', () => {
+    const created = { ...ownerView.invites[0], token: 'token-unico' };
+    service.createGroupInvite('dani@exemplo.com').subscribe((result) => expect(result).toEqual(created));
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/billing/group/invites`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ email: 'dani@exemplo.com' });
+    req.flush(created);
+  });
+
+  it('revokeGroupInvite faz DELETE em /billing/group/invites/:id', () => {
+    service.revokeGroupInvite('i-1').subscribe();
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/billing/group/invites/i-1`);
+    expect(req.request.method).toBe('DELETE');
+    req.flush(null);
+  });
+
+  it('acceptGroupInvite faz POST em /billing/group/invite/accept com o token', () => {
+    service.acceptGroupInvite('token-x').subscribe((view) => expect(view).toEqual(ownerView));
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/billing/group/invite/accept`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ token: 'token-x' });
+    req.flush(ownerView);
+  });
+
+  it('leaveGroup faz POST em /billing/group/leave sem corpo', () => {
+    service.leaveGroup().subscribe();
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/billing/group/leave`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toBeNull();
+    req.flush(null);
+  });
+
+  it('removeGroupMember faz DELETE em /billing/group/members/:id', () => {
+    service.removeGroupMember('m-1').subscribe();
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/billing/group/members/m-1`);
+    expect(req.request.method).toBe('DELETE');
     req.flush(null);
   });
 });

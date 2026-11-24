@@ -115,6 +115,101 @@
           </div>
         </div>
       </article>
+
+      <ng-container *ngIf="group() as g">
+        <article class="proto-surface plan-group" *ngIf="g.role === 'owner'">
+          <div class="proto-surface__head">
+            <div>
+              <h3>Membros</h3>
+              <p>{{ g.members.length }} de {{ g.seats }} lugares usados. O plano é cobrado só de você.</p>
+            </div>
+            <span class="proto-tag" data-tone="warning" *ngIf="!g.planActive">Sem pagamento ativo</span>
+          </div>
+
+          <div class="proto-surface__body">
+            <p class="proto-muted" *ngIf="!g.planActive">
+              Com o pagamento do grupo parado, os membros usam o Grátis até você regularizar — ninguém perde
+              dados.
+            </p>
+
+            <div class="proto-list" *ngIf="g.members.length; else noMembers">
+              <article class="proto-list-item" *ngFor="let m of g.members">
+                <div class="proto-list-item__top">
+                  <strong>{{ m.name || m.email }}</strong>
+                  <span class="proto-chip">membro</span>
+                  <button
+                    type="button"
+                    class="proto-button proto-button--secondary"
+                    (click)="removeMember(m.id, m.email)"
+                  >
+                    Remover
+                  </button>
+                </div>
+                <p class="plan-usage-row__hint">{{ m.email }} · entrou em {{ dayLabel(m.joinedAt) }}</p>
+              </article>
+            </div>
+            <ng-template #noMembers>
+              <p class="proto-muted">Nenhum membro ainda. Convide alguém pelo e-mail dela.</p>
+            </ng-template>
+
+            <div class="proto-list" *ngIf="g.invites.length">
+              <article class="proto-list-item" *ngFor="let i of g.invites">
+                <div class="proto-list-item__top">
+                  <strong>{{ i.email }}</strong>
+                  <span class="proto-chip" data-tone="warning">convite pendente</span>
+                  <button type="button" class="proto-button proto-button--secondary" (click)="revokeInvite(i.id)">
+                    Revogar
+                  </button>
+                </div>
+                <p class="plan-usage-row__hint">Expira em {{ dayLabel(i.expiresAt) }}</p>
+              </article>
+            </div>
+
+            <form class="plan-group__invite" (submit)="inviteMember(inviteInput.value); $event.preventDefault()">
+              <input
+                #inviteInput
+                type="email"
+                placeholder="E-mail da pessoa"
+                autocomplete="email"
+                aria-label="E-mail do convite"
+              />
+              <button type="submit" class="proto-button" [disabled]="groupBusy()">Convidar</button>
+            </form>
+
+            <div class="plan-group__link" *ngIf="createdInvite() as invite">
+              <p>
+                Convite criado para <strong>{{ invite.email }}</strong>. Envie o link abaixo — ele aparece só
+                esta vez e vale até {{ dayLabel(invite.expiresAt) }}.
+              </p>
+              <input
+                class="plan-group__link-input"
+                [value]="inviteLink(invite.token)"
+                readonly
+                (focus)="$any($event.target).select()"
+              />
+              <button type="button" class="proto-button proto-button--secondary" (click)="copyInviteLink()">
+                Copiar link
+              </button>
+              <p class="proto-muted" *ngIf="copyMessage() as msg">{{ msg }}</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="proto-surface plan-group" *ngIf="g.role === 'member'">
+          <div class="proto-surface__head">
+            <div>
+              <h3>{{ groupTitle() }}</h3>
+              <p *ngIf="memberSinceLabel() as since">No grupo desde {{ since }}.</p>
+            </div>
+          </div>
+          <div class="proto-surface__body">
+            <p class="proto-muted">Quem administra os membros e o pagamento é o dono do plano.</p>
+            <button type="button" class="proto-button proto-button--secondary" (click)="leaveGroup()">
+              Sair do grupo
+            </button>
+          </div>
+        </article>
+      </ng-container>
     </ng-container>
 
     <ng-template #planLoading>
