@@ -1465,6 +1465,13 @@ export class ConversationService {
     }
     if (draft.pendingField === 'card') {
       const options = await this.cardChoiceOptions(userId, draft);
+      if (options.length !== (draft.cardOptions ?? []).length) {
+        // Algum cartao oferecido foi arquivado depois da lista: o numero que o usuario viu nao vale mais.
+        // A resposta nao e usada; a lista nova e mostrada (e passa a ser a que vale).
+        draft.cardOptions = options.map((card) => card.id);
+        if (options.length === 0) draft.pendingField = null;
+        return { status: 'UPDATED' };
+      }
       const picked = pickCardAnswer(options, value);
       if (picked === null) {
         return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: CARD_EXPENSE_REPLIES.choose(options.map((card) => card.name)) };
@@ -2935,8 +2942,10 @@ export class ConversationService {
 
   /** Opcoes da escolha de cartao, na ordem em que foram oferecidas. */
   private async cardChoiceOptions(userId: string, draft: ExpenseOrIncomeDraft): Promise<ChatCard[]> {
+    // Na ordem em que foram oferecidas (o numero que o usuario viu), nao na do 8d: o padrao pode mudar no meio da conversa.
     const offered = draft.cardOptions ?? [];
-    return (await this.activeCards(userId)).filter((card) => offered.includes(card.id));
+    const active = await this.activeCards(userId);
+    return offered.flatMap((id) => active.filter((card) => card.id === id));
   }
 
   private async resolveCategory(userId: string, draft: ExpenseOrIncomeDraft, query: string): Promise<void> {
