@@ -1,5 +1,5 @@
 import { CreditCard } from '../models/domain.models';
-import { activeCards, cardIdForPayload, isCreditExpense, pickCardId } from './credit-card.utils';
+import { activeCards, cardIdForPayload, isCreditExpense, isUncertainSave, pickCardId } from './credit-card.utils';
 
 const card = (overrides: Partial<CreditCard> = {}): CreditCard => ({
   id: 'c-principal',
@@ -62,6 +62,16 @@ describe('credit-card.utils', () => {
 
     it('sem padrao marcado, volta ao primeiro ativo', () => {
       expect(pickCardId('', [nubank, inter], true)).toBe('c-inter');
+    });
+  });
+
+  describe('isUncertainSave', () => {
+    it('sem resposta (0) e 5xx sao desconhecidos; 4xx nao', () => {
+      expect(isUncertainSave({ status: 0 })).toBeTrue();
+      expect(isUncertainSave({ status: 500 })).toBeTrue();
+      expect(isUncertainSave({ status: 503 })).toBeTrue();
+      expect(isUncertainSave({ status: 400 })).toBeFalse();
+      expect(isUncertainSave({ status: 409 })).toBeFalse();
     });
   });
 

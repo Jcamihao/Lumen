@@ -432,6 +432,46 @@ describe('CreditCycleCardComponent - escrita de teto por aba (9c-1b)', () => {
     expect(api.setCreditCardCeiling).toHaveBeenCalledTimes(1);
   });
 
+  it('rede caida (status 0): resultado desconhecido, texto de conferir e nenhuma nova tentativa', () => {
+    api.setCreditCardCeiling.and.returnValue(throwError(() => ({ status: 0 })));
+    create();
+    button('Alterar teto')!.click();
+    fixture.detectChanges();
+    typeValue('800');
+    submitForm();
+
+    expect(text()).toContain('Não sei se o teto foi salvo. Confira a tela antes de tentar de novo.');
+    expect(button('Salvar teto')!.disabled).toBeTrue();
+    submitForm();
+    expect(api.setCreditCardCeiling).toHaveBeenCalledTimes(1);
+  });
+
+  it('Esc fecha o formulario sem gravar', () => {
+    create();
+    button('Alterar teto')!.click();
+    fixture.detectChanges();
+    input()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+
+    expect(input()).toBeNull();
+    expect(api.setCreditCardCeiling).not.toHaveBeenCalled();
+  });
+
+  it('Esc durante o envio nao fecha o formulario', () => {
+    const pending$ = new Subject<{ cardId: string; refreshPending: boolean }>();
+    api.setCreditCardCeiling.and.returnValue(pending$.asObservable());
+    create();
+    button('Alterar teto')!.click();
+    fixture.detectChanges();
+    typeValue('800');
+    submitForm();
+    input()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+
+    expect(input()).not.toBeNull();
+    pending$.complete();
+  });
+
   it('cancelar fecha o formulario sem gravar', () => {
     create();
     button('Alterar teto')!.click();
