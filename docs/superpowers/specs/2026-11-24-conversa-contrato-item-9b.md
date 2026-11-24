@@ -1,4 +1,4 @@
-# Contrato do item 9b: o bot conhece os cartões (PROPOSTA, aguarda aprovação do dono)
+# Contrato do item 9b: o bot conhece os cartões (decisões do dono de 2026-11-24 aplicadas; falta 1 pergunta, ver seção 7)
 
 Data: 2026-11-24. Base: develop com 9a (cartões no backend) e 8d (limite por cartão pelo nome, "limpar teto"). Só backend (bot); telas são a 9c.
 
@@ -26,8 +26,11 @@ Criar, renomear, arquivar ou trocar o padrão de cartão por conversa (fica nas 
 ## 5. Verificação
 Unitários dos parsers (acentos, conectores, nome ambíguo, nome que é também descrição), isolamento A/B/C pelo fixture da conversa, integração real em Postgres/Redis descartáveis (rascunho → confirma → `cardId` gravado; cartão arquivado no meio; concorrência com make-default), mutantes (≥10), 3 fusos, suíte inteira, conferência independente.
 
-## 6. Decisões para o dono (recomendação em negrito)
-1. "No <cartão>" na despesa grava crédito + cartão sem perguntar mais nada? **Sim.**
-2. Com mais de um cartão e "gastei 50 no crédito" sem nome: usa o padrão e avisa o nome no recibo, ou pergunta qual? **Usa o padrão e mostra o nome no recibo** (menos atrito no WhatsApp).
-3. Incluir parcelado e conta fixa já na 9b, ou só despesa simples agora? **Só despesa simples + leitura + listar na 9b; parcelado/conta fixa numa 9b2 depois.**
-4. Trocar cartão de lançamento existente por conversa: fora (**sim, fora**).
+## 6. Decisões do dono (2026-11-24)
+1. "No <cartão>": o bot confere se o cartão existe. Existindo, grava crédito + cartão. Não existindo, **pergunta/lista os cartões** e não grava. O usuário precisa poder **nomear os cartões** para falar com o bot pelo nome (nome já existe na 9a; ver seção 7).
+2. Crédito sem nome de cartão: com **um** cartão, usa ele e mostra o nome no recibo; com **mais de um**, o bot **mostra a lista** e o usuário escolhe em qual gastou (rascunho espera a escolha, como os outros campos pendentes).
+3. Parcelado e conta fixa: **fora da 9b**, entram numa 9b2.
+4. Trocar cartão de lançamento existente: **fora**.
+
+## 7. Pergunta aberta
+"Nomear os cartões" = (a) só pelas telas/API (já pronto na 9a; telas na 9c) ou (b) também **criar/renomear cartão por conversa** ("criar cartão Nubank", "renomear Principal para Nubank")? Recomendação: **(b) em fatia própria 9b-nomear** (precisa de limite técnico de 10, nome único, confirmação), porque sem isso o usuário que só tem o "Principal" não consegue falar pelo nome antes da 9c.
