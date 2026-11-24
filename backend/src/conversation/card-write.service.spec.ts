@@ -1,6 +1,7 @@
 import { ConversationChannel } from '@prisma/client';
 import { CreditCardWriteUncertainError } from '../credit-cards/credit-cards.service';
 import { CARD_WRITE_REPLIES } from './card-write';
+import { CL_REPLIES } from './credit-limit';
 import { CARD_READ_REPLIES } from './card-read';
 import { REPLIES } from './replies';
 import { Engine, T0, USER_ID, World, buildEngine, seedWorld } from './isolation.fixture';
@@ -190,6 +191,16 @@ describe('Renomear cartao pela conversa (9b-3)', () => {
     expect(reply.kind).toBe('ERROR');
     expect(reply.text).toBe(CARD_WRITE_REPLIES.cardArchived);
     expect(cardRow('cr-A-nubank')?.name).toBe('Nubank');
+  });
+
+  it('regressao 8d: definir limite por nome nao casa cartao arquivado nem de outro dono (sobrevivente da revisao 9b-2/3)', async () => {
+    cardRow('cr-B-bradesco')!.archivedAt = T0;
+    const archived = await say('B', 'definir limite do bradesco 100');
+    expect(archived.text).toBe(CL_REPLIES.cardNotFound('bradesco', ['Itaú']));
+    expect(world.sessions).toHaveLength(0);
+    const alien = await say('A', 'definir limite do itau 100');
+    expect(alien.text).toBe(CL_REPLIES.cardNotFound('itau', ['Nubank']));
+    expect(world.sessions).toHaveLength(0);
   });
 
   it('cartao removido entre o rascunho e a confirmacao: "nao encontrado", nada gravado', async () => {
