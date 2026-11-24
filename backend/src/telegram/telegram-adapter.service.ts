@@ -42,6 +42,9 @@ const BOT_COMMANDS = [
 
 /** Comando do menu que vira a frase equivalente do motor. */
 const COMMAND_PHRASES: Record<string, string> = {
+  '/saldo': 'saldo',
+  '/gastos': 'gastos',
+  '/ajuda': 'ajuda',
   '/cartao': 'cartao',
   '/cartoes': 'meus cartoes',
 };
