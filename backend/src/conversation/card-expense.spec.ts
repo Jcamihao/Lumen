@@ -120,6 +120,11 @@ describe('findCardPhrase (9b-1, parser puro)', () => {
     expect(findCardPhrase(['mercado', 'no', 'cartao'], cards)).toEqual({ kind: 'credit', from: 1, to: 2 });
   });
 
+  it('"no credito <palavra que nao e cartao>" vira creditDefault: so "no credito" sai do texto', () => {
+    expect(findCardPhrase(['no', 'credito', 'padaria'], cards)).toEqual({ kind: 'creditDefault', from: 0, to: 1 });
+    expect(findCardPhrase(['no', 'credito', 'farmacia', 'centro'], cards)).toEqual({ kind: 'creditDefault', from: 0, to: 1 });
+  });
+
   it('"no credito" com nome casa o cartao e tira o trecho inteiro', () => {
     expect(findCardPhrase(['no', 'credito', 'nubank'], cards)).toEqual({ kind: 'card', card: cards[0], from: 0, to: 2 });
   });
@@ -241,10 +246,35 @@ describe('despesa no cartao pela conversa (9b-1)', () => {
     expect(sessions[0].draft).toMatchObject({ amountCents: 3000, pendingField: 'card' });
   });
 
-  it('"credito" sem nenhum cartao: nada muda (sem forma de pagamento e texto preservado)', async () => {
+  it('"no credito" sem nenhum cartao ativo: CREDIT sem cardId (conta no padrao), trecho sai do texto', async () => {
     const { send, sessions } = buildService([]);
     await send('gastei 50 mercado no credito');
-    expect(sessions[0].draft).toMatchObject({ paymentMethod: null, cardId: null, description: 'mercado no credito' });
+    expect(sessions[0].draft).toMatchObject({ paymentMethod: 'CREDIT', cardId: null, description: 'mercado' });
+  });
+
+  it('"no credito padaria" nao recusa: vira descricao com CREDIT sem cardId', async () => {
+    const { send, sessions } = buildService();
+    const reply = await send('gastei 50 no credito padaria');
+    expect(reply.kind).not.toBe('ERROR');
+    expect(sessions[0].draft).toMatchObject({ paymentMethod: 'CREDIT', cardId: null, description: 'padaria' });
+  });
+
+  it('"no credito padaria" confirmado grava CREDIT sem cardId (cartao padrao)', async () => {
+    const { send, transactions } = buildService();
+    await send('gastei 50 no credito padaria');
+    await send('sem categoria');
+    const done = await send('confirmar');
+    expect(done.kind).toBe('DONE');
+    const dto = (transactions.create.mock.calls as unknown as Array<[string, Row]>)[0][1];
+    expect(dto).toMatchObject({ paymentMethod: 'CREDIT', description: 'padaria' });
+    expect(dto.cardId).toBeUndefined();
+  });
+
+  it('"no cartao <inexistente>" continua recusando mesmo com "credito" na frase', async () => {
+    const { send, sessions } = buildService();
+    const reply = await send('gastei 50 no cartao bradesco');
+    expect(reply.kind).toBe('ERROR');
+    expect(sessions).toHaveLength(0);
   });
 
   it('receita nao usa cartao: "recebi 800 no nubank" segue sem cartao', async () => {
