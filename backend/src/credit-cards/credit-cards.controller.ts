@@ -60,6 +60,14 @@ export class CreditCardsController {
     return this.creditCards.cycle(user.sub, id);
   }
 
+  @Delete(':id/ceiling')
+  @ApiOperation({
+    summary: 'Limpa o teto do ciclo aberto do cartao. Devolve recibo (cardId, id, removedCents, cycleStart, cycleEnd, refreshPending). Sem teto vigente: 409.',
+  })
+  clearCeiling(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.creditCards.clearCeiling(user.sub, id);
+  }
+
   @Put(':id/ceiling')
   @ApiOperation({ summary: 'Define o teto do ciclo aberto do cartao. Devolve recibo (cardId, id, ceilingCents, ciclo, refreshPending).' })
   setCeiling(

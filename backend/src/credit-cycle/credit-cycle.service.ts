@@ -21,6 +21,14 @@ export const CREDIT_CYCLE_OVER_PCT = 100;
 
 export type CreditCycleStatus = 'none' | 'ok' | 'near' | 'over';
 
+export interface CeilingRemovalReceipt {
+  id: string;
+  removedCents: number;
+  cycleStart: string;
+  cycleEnd: string;
+  refreshPending: boolean;
+}
+
 /** Campos do cartao usados pelo ciclo. */
 export const CREDIT_CYCLE_CARD_SELECT = {
   id: true,
@@ -114,15 +122,20 @@ export class CreditCycleService {
    * 8d (D1 do dono): remove o teto do ciclo aberto do cartao, com o MESMO bloqueio e snapshot do set.
    * Sem teto para remover (a tela removeu no meio) ou ciclo/teto diferentes do rascunho: conflito, sem gravar.
    */
-  async removeCeilingForConversation(
-    userId: string,
-    expected: CreditLimitExpectation,
-    cardId: string,
-  ): Promise<{ id: string; removedCents: number; cycleStart: string; cycleEnd: string; refreshPending: boolean }> {
+  async removeCeilingForConversation(userId: string, expected: CreditLimitExpectation, cardId: string): Promise<CeilingRemovalReceipt> {
+    return this.clearCeiling(userId, cardId, expected);
+  }
+
+  /** Limpar teto da tela (DELETE /credit-cards/:id/ceiling): mesma regra do bot, sem snapshot do rascunho. */
+  async clearCeilingForCard(userId: string, cardId: string): Promise<CeilingRemovalReceipt> {
+    return this.clearCeiling(userId, cardId);
+  }
+
+  private async clearCeiling(userId: string, cardId: string, expected?: CreditLimitExpectation): Promise<CeilingRemovalReceipt> {
     let callbackFinished = false;
-    let result: { id: string; removedCents: number; cycleStart: string; cycleEnd: string };
+    let removed: Omit<CeilingRemovalReceipt, 'refreshPending'>;
     try {
-      result = await this.prisma.$transaction(async (tx) => {
+      removed = await this.prisma.$transaction(async (tx) => {
         await lockUserForCredit(tx, userId);
         const user = await tx.user.findUniqueOrThrow({
           where: { id: userId },
@@ -143,7 +156,7 @@ export class CreditCycleService {
           previousCeilingCents: current ? Math.round(Number(current.ceiling) * 100) : null,
           countAllPayments: card.countAllPayments,
         };
-        if (!sameCeilingSnapshot(expected, snapshot) || !current) {
+        if ((expected && !sameCeilingSnapshot(expected, snapshot)) || !current) {
           throw new CreditLimitChangedError(snapshot);
         }
         await tx.creditCycleCeiling.delete({ where: { id: current.id } });
@@ -159,7 +172,7 @@ export class CreditCycleService {
       if (callbackFinished) throw new CreditLimitWriteUncertainError();
       throw error;
     }
-    return { ...result, refreshPending: await this.refreshAfterCeiling(userId) };
+    return { ...removed, refreshPending: await this.refreshAfterCeiling(userId) };
   }
 
   /** Cartao padrao ativo. Sem ele e' falha de invariante (migration e cadastro criam um). */

@@ -8,6 +8,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { CreditLimitChangedError, CreditLimitWriteUncertainError } from '../credit-cycle/conversation-write.types';
 import { CreditCycleService } from '../credit-cycle/credit-cycle.service';
 import { lockUserForCredit, userCycleFieldsFromCard } from '../credit-cycle/credit-cycle.util';
 import { SetCreditCycleCeilingDto } from '../credit-cycle/dto/set-credit-cycle-ceiling.dto';
@@ -205,6 +206,24 @@ export class CreditCardsService {
   async setCeiling(userId: string, id: string, dto: SetCreditCycleCeilingDto) {
     const receipt = await this.creditCycle.setCeilingForCard(userId, id, dto);
     return { cardId: id, ...receipt };
+  }
+
+  /** Limpa o teto do ciclo aberto do cartao. Sem teto vigente: 409. Recibo do que foi removido. */
+  async clearCeiling(userId: string, id: string) {
+    try {
+      const receipt = await this.creditCycle.clearCeilingForCard(userId, id);
+      return { cardId: id, ...receipt };
+    } catch (error) {
+      throw this.mapCeilingClearError(error);
+    }
+  }
+
+  private mapCeilingClearError(error: unknown): unknown {
+    if (error instanceof CreditLimitChangedError) {
+      return new ConflictException('Nao ha teto neste ciclo para limpar. Atualize a tela.');
+    }
+    if (error instanceof CreditLimitWriteUncertainError) return new CreditCardWriteUncertainError();
+    return error;
   }
 
   /**
