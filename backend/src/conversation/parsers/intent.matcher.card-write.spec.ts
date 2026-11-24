@@ -18,6 +18,19 @@ describe('Matcher: criar e renomear cartao (9b-3)', () => {
     expect(matchIntent(text)).toEqual({ intent: 'rename_card', body });
   });
 
+  it.each([
+    ['criar cartao Nubank fecha dia 10', 'Nubank fecha dia 10'],
+    ['criar cartao Nubank fecha dia 10 vence dia 17', 'Nubank fecha dia 10 vence dia 17'],
+    ['novo cartao Nubank fechamento 10', 'Nubank fechamento 10'],
+    ['cadastrar cartao Nubank vence dia 17', 'Nubank vence dia 17'],
+  ])('"%s" vira criar cartao com o trecho depois do nome (dias na frase)', (text, body) => {
+    expect(matchIntent(text)).toEqual({ intent: 'create_card', body });
+  });
+
+  it('"criar cartao" sem nome vira criar cartao com corpo vazio (o motor pede o nome)', () => {
+    expect(matchIntent('criar cartao')).toEqual({ intent: 'create_card', body: '' });
+  });
+
   it('renomear sem "para" nao e comando de cartao (segue o caminho de hoje)', () => {
     expect(matchIntent('renomear cartao Principal')).toBeNull();
     expect(matchIntent('renomear Principal')).toBeNull();

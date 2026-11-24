@@ -1,5 +1,5 @@
 import { ConversationChannel } from '@prisma/client';
-import { CreditCardWriteUncertainError } from '../credit-cards/credit-cards.service';
+import { CreditCardWriteUncertainError, MAX_ACTIVE_CARDS_PER_USER } from '../credit-cards/credit-cards.service';
 import { CARD_WRITE_REPLIES } from './card-write';
 import { CL_REPLIES } from './credit-limit';
 import { CARD_READ_REPLIES } from './card-read';
@@ -7,8 +7,8 @@ import { REPLIES } from './replies';
 import { Engine, T0, USER_ID, World, buildEngine, seedWorld } from './isolation.fixture';
 
 /**
- * Renomear e criar cartao pela conversa (9b-3). Motor real sobre o mundo fake; o CreditCardsService e o real
- * (nome unico, cartao ativo, lock), so o Prisma por baixo e fake. Criar cartao e recusado (ver resultado-9b3.md).
+ * Renomear e criar cartao pela conversa (9b-3 e 9b-3b). Motor real sobre o mundo fake; o CreditCardsService e o real
+ * (teto, nome unico, cartao ativo, lock), so o Prisma por baixo e fake.
  */
 type Who = 'A' | 'B' | 'C';
 
@@ -279,18 +279,215 @@ describe('Renomear cartao pela conversa (9b-3)', () => {
   });
 });
 
-describe('Criar cartao pela conversa: recusado por ora (9b-3)', () => {
-  it.each(['criar cartao Nubank', 'novo cartao Nubank', 'adicionar cartao Nubank', 'cadastrar cartao Nubank'])(
-    '"%s" responde que ainda nao esta disponivel, sem rascunho e sem gravar',
-    async (text) => {
-      const before = world.cards.length;
-      const reply = await say('A', text);
-      expect(reply.kind).toBe('INFO');
-      expect(reply.text).toBe(CARD_WRITE_REPLIES.createUnavailable);
-      expect(reply.state).toBe('IDLE');
-      expect(world.sessions).toHaveLength(0);
-      expect(world.cards.length).toBe(before);
-      expect(updateSpy()).not.toHaveBeenCalled();
+describe('Criar cartao pela conversa (9b-3b)', () => {
+  const createSpy = () => (world.services.creditCards as unknown as { create: jest.Mock }).create;
+  const C_CARD = (id: string, name: string) => ({ id, userId: USER_ID.C, name, isDefault: false, archivedAt: null, closingDay: 3, dueDay: null });
+  const cardsOf = (who: Who) => world.cards.filter((card) => card.userId === USER_ID[who]);
+
+  it.each(['criar cartao', 'novo cartao', 'adicionar cartao', 'cadastrar cartao'])(
+    '"%s Roxinho" abre rascunho e pergunta o fechamento, sem gravar',
+    async (verb) => {
+      const reply = await say('C', `${verb} Roxinho`);
+      expect(reply.kind).toBe('ASK_FIELD');
+      expect(reply.state).toBe('COLLECTING_FIELDS');
+      expect(reply.text).toBe(CARD_WRITE_REPLIES.askClosingDay('Roxinho'));
+      expect(reply.draft).toMatchObject({ kind: 'CARD_CREATE', title: 'Criar cartão', pendingField: 'closingDay' });
+      expect(reply.draft?.rows).toEqual([
+        { label: 'Cartão', value: 'Roxinho' },
+        { label: 'Fechamento', value: 'a informar' },
+        { label: 'Vencimento', value: 'sem vencimento' },
+        { label: 'Padrão', value: 'não' },
+      ]);
+      expect(cardsOf('C')).toHaveLength(0);
+      expect(createSpy()).not.toHaveBeenCalled();
     },
   );
+
+  it('pergunta do fechamento: "dia 10" completa o rascunho; confirmar grava pelo CreditCardsService e responde com o recibo', async () => {
+    await say('C', 'criar cartao Roxinho');
+    const asked = await say('C', 'dia 10');
+    expect(asked.kind).toBe('CONFIRM_DRAFT');
+    expect(asked.state).toBe('AWAITING_CONFIRMATION');
+    expect(asked.draft?.rows?.[1]).toEqual({ label: 'Fechamento', value: 'dia 10' });
+    expect(asked.text).toContain('Não será o cartão padrão.');
+    expect(createSpy()).not.toHaveBeenCalled();
+
+    const done = await say('C', 'confirmar');
+    expect(done.kind).toBe('DONE');
+    expect(done.text).toBe('Cartão Roxinho criado, fecha dia 10.');
+    expect(done.data?.cardId).toEqual(expect.any(String));
+    expect(createSpy()).toHaveBeenCalledWith(USER_ID.C, { name: 'Roxinho', closingDay: 10, dueDay: null });
+    const created = cardsOf('C');
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ name: 'Roxinho', closingDay: 10, dueDay: null, isDefault: false });
+    expect(world.sessions).toHaveLength(0);
+  });
+
+  it('dia de fechamento e vencimento na frase: sem pergunta, confirmar grava os dois', async () => {
+    const draft = await say('C', 'criar cartao Roxinho fecha dia 10 vence dia 17');
+    expect(draft.kind).toBe('CONFIRM_DRAFT');
+    expect(draft.text).toContain('Vence: dia 17.');
+    const done = await say('C', 'confirmar');
+    expect(done.text).toBe('Cartão Roxinho criado, fecha dia 10, vence dia 17.');
+    expect(createSpy()).toHaveBeenCalledWith(USER_ID.C, { name: 'Roxinho', closingDay: 10, dueDay: 17 });
+    expect(cardsOf('C')[0]).toMatchObject({ closingDay: 10, dueDay: 17 });
+  });
+
+  it('resposta so com o numero ("10", sem a palavra dia) completa o rascunho', async () => {
+    await say('C', 'criar cartao Roxinho');
+    const asked = await say('C', '10');
+    expect(asked.kind).toBe('CONFIRM_DRAFT');
+    expect(asked.draft?.rows?.[1]).toEqual({ label: 'Fechamento', value: 'dia 10' });
+  });
+
+  it('resposta invalida repete a pergunta e segue no rascunho; nada e gravado', async () => {
+    await say('C', 'criar cartao Roxinho');
+    for (const value of ['40', '0', 'abc', '10 e 12']) {
+      const again = await say('C', value);
+      expect(again.kind).toBe('ASK_FIELD');
+      expect(again.state).toBe('COLLECTING_FIELDS');
+      expect(again.text).toBe(`${CARD_WRITE_REPLIES.closingDayInvalid}\n${CARD_WRITE_REPLIES.askClosingDay('Roxinho')}`);
+    }
+    expect(world.sessions).toHaveLength(1);
+    expect(createSpy()).not.toHaveBeenCalled();
+    expect(cardsOf('C')).toHaveLength(0);
+  });
+
+  it('cancelar o rascunho nao grava', async () => {
+    await say('C', 'criar cartao Roxinho fecha dia 10');
+    const cancelled = await say('C', 'cancelar');
+    expect(cancelled.kind).toBe('CANCELLED');
+    expect(createSpy()).not.toHaveBeenCalled();
+    expect(cardsOf('C')).toHaveLength(0);
+  });
+
+  it('rascunho vencido nao grava na confirmacao', async () => {
+    await say('C', 'criar cartao Roxinho fecha dia 10');
+    const late = await say('C', 'confirmar', 'APP' as ConversationChannel, LATER);
+    expect(late.kind).toBe('EXPIRED');
+    expect(createSpy()).not.toHaveBeenCalled();
+    expect(cardsOf('C')).toHaveLength(0);
+  });
+
+  it('dia invalido na frase recusa sem rascunho e sem gravar', async () => {
+    const reply = await say('C', 'criar cartao Roxinho fecha dia 40');
+    expect(reply.kind).toBe('ERROR');
+    expect(reply.text).toBe(CARD_WRITE_REPLIES.createBadDay('fechamento'));
+    expect(reply.state).toBe('IDLE');
+    expect(world.sessions).toHaveLength(0);
+  });
+
+  it('sem nome: recusa pedindo o nome, sem rascunho', async () => {
+    const reply = await say('C', 'criar cartao fecha dia 10');
+    expect(reply.text).toBe(CARD_WRITE_REPLIES.createNeedsName);
+    expect(world.sessions).toHaveLength(0);
+  });
+
+  it('nome com mais de 40 caracteres: recusa sem rascunho', async () => {
+    const reply = await say('C', `criar cartao ${'x'.repeat(41)}`);
+    expect(reply.text).toBe(CARD_WRITE_REPLIES.nameLength);
+    expect(world.sessions).toHaveLength(0);
+  });
+
+  it('nome igual a um cartao ativo (sem caixa, sem acento): recusa sem rascunho', async () => {
+    const reply = await say('A', 'criar cartao NÚBANK fecha dia 10');
+    expect(reply.kind).toBe('ERROR');
+    expect(reply.text).toBe(CARD_WRITE_REPLIES.createNameTaken);
+    expect(world.sessions).toHaveLength(0);
+    expect(createSpy()).not.toHaveBeenCalled();
+  });
+
+  it('teto de 10 cartoes ativos: recusa sem rascunho', async () => {
+    for (let i = 0; i < MAX_ACTIVE_CARDS_PER_USER; i += 1) world.cards.push(C_CARD(`cr-C-${i}`, `Cartao ${i}`));
+    const reply = await say('C', 'criar cartao Roxinho fecha dia 10');
+    expect(reply.kind).toBe('ERROR');
+    expect(reply.text).toBe(CARD_WRITE_REPLIES.createLimit(MAX_ACTIVE_CARDS_PER_USER));
+    expect(world.sessions).toHaveLength(0);
+    expect(createSpy()).not.toHaveBeenCalled();
+  });
+
+  it('teto atingido entre o rascunho e a confirmacao: recusa clara, nada gravado', async () => {
+    for (let i = 0; i < MAX_ACTIVE_CARDS_PER_USER - 1; i += 1) world.cards.push(C_CARD(`cr-C-${i}`, `Cartao ${i}`));
+    await say('C', 'criar cartao Roxinho fecha dia 10');
+    world.cards.push(C_CARD('cr-C-extra', 'Cartao extra'));
+    const reply = await say('C', 'confirmar');
+    expect(reply.kind).toBe('ERROR');
+    expect(reply.text).toBe(CARD_WRITE_REPLIES.createLimit(MAX_ACTIVE_CARDS_PER_USER));
+    expect(reply.state).toBe('IDLE');
+    expect(cardsOf('C')).toHaveLength(MAX_ACTIVE_CARDS_PER_USER);
+    expect(world.sessions).toHaveLength(0);
+  });
+
+  it('nome tomado entre o rascunho e a confirmacao (sem acento): recusa, nada gravado', async () => {
+    await say('C', 'criar cartao Roxinho fecha dia 10');
+    world.cards.push(C_CARD('cr-C-roxo', 'Róxinho'));
+    const reply = await say('C', 'confirmar');
+    expect(reply.kind).toBe('ERROR');
+    expect(reply.text).toBe(CARD_WRITE_REPLIES.createNameTaken);
+    expect(createSpy()).not.toHaveBeenCalled();
+    expect(cardsOf('C').map((card) => card.name)).toEqual(['Róxinho']);
+  });
+
+  it('resultado desconhecido (commit sem confirmacao): nao restaura, nao oferece nova gravacao', async () => {
+    await say('C', 'criar cartao Roxinho fecha dia 10');
+    createSpy().mockRejectedValueOnce(new CreditCardWriteUncertainError());
+    const reply = await say('C', 'confirmar');
+    expect(reply.kind).toBe('ERROR');
+    expect(reply.text).toBe(REPLIES.writeUncertain);
+    expect(reply.state).toBe('IDLE');
+    expect(world.sessions).toHaveLength(0);
+    const again = await say('C', 'confirmar');
+    expect(again.kind).not.toBe('DONE');
+    expect(createSpy()).toHaveBeenCalledTimes(1);
+  });
+
+  it('falha antes do commit: o rascunho fica e pode ser confirmado de novo', async () => {
+    await say('C', 'criar cartao Roxinho fecha dia 10');
+    createSpy().mockRejectedValueOnce(new Error('queda antes do commit'));
+    const failed = await say('C', 'confirmar');
+    expect(failed.kind).toBe('ERROR');
+    expect(failed.text).toBe(CARD_WRITE_REPLIES.createSaveFailed);
+    expect(failed.state).toBe('AWAITING_CONFIRMATION');
+    expect(cardsOf('C')).toHaveLength(0);
+    const done = await say('C', 'confirmar');
+    expect(done.kind).toBe('DONE');
+    expect(cardsOf('C').map((card) => card.name)).toEqual(['Roxinho']);
+  });
+
+  it('canal Telegram com a trava desligada: nada e gravado, so orienta o app', async () => {
+    await say('C', 'criar cartao Roxinho fecha dia 10', 'TELEGRAM' as ConversationChannel);
+    const reply = await say('C', 'confirmar', 'TELEGRAM' as ConversationChannel);
+    expect(reply.kind).toBe('INFO');
+    expect(reply.text).toBe(REPLIES.whatsappWritesOff);
+    expect(createSpy()).not.toHaveBeenCalled();
+    expect(cardsOf('C')).toHaveLength(0);
+  });
+
+  it('isolamento: A cria "Itaú" mesmo com o nome de B; o cartao e de A; B nao muda', async () => {
+    await say('A', 'criar cartao Itaú fecha dia 5');
+    const done = await say('A', 'confirmar');
+    expect(done.kind).toBe('DONE');
+    expect(createSpy()).toHaveBeenCalledWith(USER_ID.A, { name: 'Itaú', closingDay: 5, dueDay: null });
+    expect(cardsOf('A').map((card) => card.name).sort()).toEqual(['Itaú', 'Nubank']);
+    expect(cardsOf('B').map((card) => card.name).sort()).toEqual(['Bradesco', 'Itaú']);
+    expect(cardRow('cr-B-itau')?.name).toBe('Itaú');
+  });
+
+  it('cartao criado nao vira padrao: o padrao de quem ja tinha cartao continua o mesmo', async () => {
+    await say('A', 'criar cartao Roxinho fecha dia 10');
+    await say('A', 'confirmar');
+    const created = cardsOf('A').find((card) => card.name === 'Roxinho');
+    expect(created?.isDefault).toBe(false);
+    expect(cardRow('cr-A-nubank')?.isDefault).toBe(true);
+  });
+
+  it('cartao criado aparece em "meus cartoes" e na leitura por nome da 9b-2', async () => {
+    await say('C', 'criar cartao Roxinho fecha dia 10');
+    await say('C', 'confirmar');
+    const read = await say('C', 'cartao Roxinho');
+    expect(read.kind).toBe('INFO');
+    expect(read.text.startsWith('Cartão: Roxinho')).toBe(true);
+    const list = await say('C', 'meus cartoes');
+    expect(list.text).toContain('Roxinho');
+  });
 });

@@ -491,6 +491,7 @@ export function realCreditCardsService(world: World): CreditCardsService {
   const service = new CreditCardsService(prisma as never, { touchUserData: jest.fn(async () => undefined) } as never, {} as never);
   // Spy que mantem a implementacao real: o teste conta chamadas e pode forcar uma falha pontual.
   jest.spyOn(service, 'update');
+  jest.spyOn(service, 'create');
   return service;
 }
 
