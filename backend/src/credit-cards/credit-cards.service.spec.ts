@@ -254,6 +254,7 @@ function createFakeDb() {
 describe('CreditCardsService', () => {
   let db: ReturnType<typeof createFakeDb>;
   let lifeEngine: { touchUserData: jest.Mock };
+  let entitlements: { assertCanCreate: jest.Mock };
   let service: CreditCardsService;
 
   /** Usuarios A, B e C. A tem padrao (Principal, dia 5) e Nubank (dia 20, nao padrao). */
@@ -269,7 +270,9 @@ describe('CreditCardsService', () => {
     db.addCard({ id: 'card-c1', userId: 'user-c', name: 'Principal', closingDay: 15, isDefault: true });
     lifeEngine = { touchUserData: jest.fn().mockResolvedValue(undefined) };
     const creditCycle = new CreditCycleService(db.prisma as any, lifeEngine as any);
-    service = new CreditCardsService(db.prisma as any, lifeEngine as any, creditCycle);
+    // Limite por plano (D7): no-op neste spec (testa o teto tecnico); assert específico no bloco do plano.
+    entitlements = { assertCanCreate: jest.fn().mockResolvedValue(undefined) };
+    service = new CreditCardsService(db.prisma as any, lifeEngine as any, creditCycle, entitlements as any);
   });
   afterEach(() => jest.useRealTimers());
 
@@ -278,6 +281,15 @@ describe('CreditCardsService', () => {
   const user = (id: string) => db.state.users.get(id)!;
 
   describe('criar', () => {
+    it('pergunta o limite do plano (creditCards) antes de gravar e nao grava se barrar (D7)', async () => {
+      entitlements.assertCanCreate.mockRejectedValue(new Error('PLAN_LIMIT'));
+      const before = db.snapshot();
+
+      await expect(service.create('user-a', { name: 'Inter', closingDay: 10 })).rejects.toThrow('PLAN_LIMIT');
+      expect(entitlements.assertCanCreate).toHaveBeenCalledWith('user-a', 'creditCards');
+      expect(db.snapshot()).toBe(before);
+    });
+
     it('cria cartao nao padrao com nome aparado e devolve recibo', async () => {
       const receipt = await service.create('user-a', { name: '  Inter  ', closingDay: 10, dueDay: 17 });
 
