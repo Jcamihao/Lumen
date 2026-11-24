@@ -123,6 +123,16 @@ describe('FinancesPageComponent - cartao no lancamento e filtro (9c-1b)', () => 
     expect(sentCardId()).toBeUndefined();
   });
 
+  it('transferencia no credito: sem seletor e sem cardId', () => {
+    api.listCreditCards.and.returnValue(of([nubank, card()]));
+    create();
+    fill({ type: 'TRANSFER', paymentMethod: 'CREDIT' });
+
+    expect(cardSelect()).toBeNull();
+    submitForm();
+    expect(sentCardId()).toBeUndefined();
+  });
+
   it('um cartao so: sem seletor e sem cardId', () => {
     api.listCreditCards.and.returnValue(of([card()]));
     create();

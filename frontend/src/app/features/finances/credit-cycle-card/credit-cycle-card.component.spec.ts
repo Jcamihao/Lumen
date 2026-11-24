@@ -215,6 +215,17 @@ describe('CreditCycleCardComponent - um cartao por vez (9c-1b)', () => {
     expect(api.getCurrentCreditCycle).not.toHaveBeenCalled();
   });
 
+  it('clicar na aba ja selecionada nao recarrega o ciclo', () => {
+    api.listCreditCards.and.returnValue(of([card({ id: 'c-nubank', name: 'Nubank', isDefault: false }), card()]));
+    create();
+    api.getCreditCardCycle.calls.reset();
+
+    tabs()[0].click();
+    fixture.detectChanges();
+
+    expect(api.getCreditCardCycle).not.toHaveBeenCalled();
+  });
+
   it('trocar de aba carrega o ciclo daquele cartao', () => {
     api.listCreditCards.and.returnValue(of([card({ id: 'c-nubank', name: 'Nubank', isDefault: false }), card()]));
     create();

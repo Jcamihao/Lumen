@@ -1,5 +1,5 @@
 import { CreditCard } from '../models/domain.models';
-import { activeCards, cardIdForPayload, isCreditExpense, isUncertainSave, pickCardId } from './credit-card.utils';
+import { activeCards, cardIdForPayload, ceilingError, isCreditExpense, isUncertainSave, pickCardId } from './credit-card.utils';
 
 const card = (overrides: Partial<CreditCard> = {}): CreditCard => ({
   id: 'c-principal',
@@ -30,6 +30,7 @@ describe('credit-card.utils', () => {
     it('so despesa no credito', () => {
       expect(isCreditExpense('EXPENSE', 'CREDIT')).toBeTrue();
       expect(isCreditExpense('INCOME', 'CREDIT')).toBeFalse();
+      expect(isCreditExpense('TRANSFER', 'CREDIT')).toBeFalse();
       expect(isCreditExpense('EXPENSE', 'PIX')).toBeFalse();
       expect(isCreditExpense('EXPENSE', 'DEBIT')).toBeFalse();
       expect(isCreditExpense('EXPENSE', '')).toBeFalse();
@@ -62,6 +63,13 @@ describe('credit-card.utils', () => {
 
     it('sem padrao marcado, volta ao primeiro ativo', () => {
       expect(pickCardId('', [nubank, inter], true)).toBe('c-inter');
+    });
+  });
+
+  describe('ceilingError', () => {
+    it('aceita o limite do servidor e recusa acima dele', () => {
+      expect(ceilingError(9_999_999_999)).toBeNull();
+      expect(ceilingError(10_000_000_000)).toBe('Use um valor menor que dez bilhões.');
     });
   });
 
