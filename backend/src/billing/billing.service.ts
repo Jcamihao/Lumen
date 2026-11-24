@@ -6,7 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { SubscriptionSource, SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { pickEffectivePlan, subscriptionGrantsAccess } from './access.util';
+import { subscriptionGrantsAccess } from './access.util';
 import { CreateGrantDto } from './dto/create-grant.dto';
 import { EntitlementsService, UsageReport } from './entitlements.service';
 import {
@@ -14,6 +14,12 @@ import {
   LimitedResource,
   PlanId,
 } from './plans.catalog';
+
+/** Primeiro nome (1º token) — unica coisa que um membro ve do pagador (D10). */
+function firstNameOf(name: string | null): string | null {
+  const first = name?.trim().split(/\s+/)[0];
+  return first ? first : null;
+}
 
 export interface PublicPlan {
   id: PlanId;
@@ -25,6 +31,12 @@ export interface PublicPlan {
   prices: { MONTHLY: number; YEARLY: number } | null;
 }
 
+export interface BillingGroupView {
+  role: 'owner' | 'member';
+  /** Primeiro nome do pagador (membro ve so isso — D10); null para o proprio pagador. */
+  ownerFirstName: string | null;
+}
+
 export interface BillingMe {
   enabled: boolean;
   plan: PlanId;
@@ -34,6 +46,7 @@ export interface BillingMe {
   cancelAtPeriodEnd: boolean;
   latestInvoiceUrl: string | null;
   usage: UsageReport;
+  group: BillingGroupView | null;
 }
 
 export interface GrantView {
@@ -92,9 +105,11 @@ export class BillingService {
     const subscriptions = await this.prisma.subscription.findMany({
       where: { ownerUserId: userId },
     });
-    const plan = pickEffectivePlan(subscriptions, now);
+    // Plano efetivo com grupo (mesma resolucao dos limites — ponto unico, D12).
+    const plan = await this.entitlements.resolvePlan(userId);
 
-    // Assinatura que sustenta o plano efetivo (a de maior fim, se houver empate).
+    // Assinatura PROPRIA que sustenta o plano (membro em grupo de outra pessoa nao ve nada de
+    // cobranca alheia — os campos de status ficam null e o bloco `group` conta a historia, D10).
     const effective = subscriptions
       .filter((s) => subscriptionGrantsAccess(s, now) && s.plan === plan)
       .sort(
@@ -102,6 +117,29 @@ export class BillingService {
           (b.currentPeriodEnd?.getTime() ?? Infinity) -
           (a.currentPeriodEnd?.getTime() ?? Infinity),
       )[0];
+
+    const [memberMembership, ownedActive] = await Promise.all([
+      this.prisma.groupMembership.findFirst({
+        where: { memberUserId: userId, leftAt: null },
+        include: { owner: { select: { name: true } } },
+      }),
+      this.prisma.groupMembership.count({ where: { ownerUserId: userId, leftAt: null } }),
+    ]);
+    const ownSharedActive = subscriptions.some(
+      (s) => s.plan === 'SHARED' && subscriptionGrantsAccess(s, now),
+    );
+
+    let group: BillingGroupView | null = null;
+    if (memberMembership) {
+      group = {
+        role: 'member',
+        ownerFirstName: firstNameOf(memberMembership.owner.name),
+      };
+    } else if (ownSharedActive || ownedActive > 0) {
+      // Pagador: tem SHARED ativo e/ou membros ativos (mesmo com o plano caido, para poder
+      // reassinar e reconvidar); as acoes de gestao continuam gateadas pela assinatura ativa.
+      group = { role: 'owner', ownerFirstName: null };
+    }
 
     const usage = await this.entitlements.getUsage(userId);
 
@@ -114,6 +152,7 @@ export class BillingService {
       cancelAtPeriodEnd: effective?.cancelAtPeriodEnd ?? false,
       latestInvoiceUrl: effective?.latestInvoiceUrl ?? null,
       usage,
+      group,
     };
   }
 

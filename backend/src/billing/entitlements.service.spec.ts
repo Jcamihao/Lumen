@@ -9,10 +9,12 @@ const DAY = 24 * 60 * 60 * 1000;
 function makePrisma() {
   return {
     subscription: { findMany: jest.fn().mockResolvedValue([]) },
+    groupMembership: { findFirst: jest.fn().mockResolvedValue(null) },
     goal: { count: jest.fn().mockResolvedValue(0) },
     envelope: { count: jest.fn().mockResolvedValue(0) },
     recurringTransaction: { count: jest.fn().mockResolvedValue(0) },
     installmentPurchase: { count: jest.fn().mockResolvedValue(0) },
+    creditCard: { count: jest.fn().mockResolvedValue(0) },
     selahUsage: {
       count: jest.fn().mockResolvedValue(0),
       create: jest.fn().mockResolvedValue({}),
@@ -130,6 +132,125 @@ describe('EntitlementsService', () => {
       });
     });
 
+    it('sem membership nao procura grupo nem assinatura alheia', async () => {
+      const { prisma, service } = build(true);
+      await service.resolvePlan('u1');
+      expect(prisma.groupMembership.findFirst).toHaveBeenCalledWith({
+        where: { memberUserId: 'u1', leftAt: null },
+      });
+      expect(prisma.subscription.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    describe('resolvePlan com grupo (contrato 11, D6/D11)', () => {
+      const membership = (overrides: Record<string, unknown> = {}) => ({
+        id: 'm-1',
+        ownerUserId: 'owner-1',
+        memberUserId: 'u1',
+        leftAt: null,
+        ...overrides,
+      });
+      const sharedOf = (overrides: Record<string, unknown> = {}) =>
+        paidSub({ plan: 'SHARED', ...overrides });
+
+      it('membro de pagador com SHARED ativo resolve SHARED', async () => {
+        const { prisma, service } = build(true);
+        prisma.groupMembership.findFirst.mockResolvedValue(membership());
+        prisma.subscription.findMany.mockImplementation(({ where }: any) =>
+          Promise.resolve(where.plan === 'SHARED' ? [sharedOf()] : []),
+        );
+        await expect(service.resolvePlan('u1')).resolves.toBe('SHARED');
+      });
+
+      it('busca do pagador so traz linhas SHARED (INDIVIDUAL dele nao empresta plano)', async () => {
+        const { prisma, service } = build(true);
+        prisma.groupMembership.findFirst.mockResolvedValue(membership());
+        prisma.subscription.findMany.mockImplementation(({ where }: any) =>
+          Promise.resolve(where.plan === 'SHARED' ? [sharedOf()] : []),
+        );
+        await service.resolvePlan('u1');
+        expect(prisma.subscription.findMany).toHaveBeenLastCalledWith({
+          where: { ownerUserId: 'owner-1', plan: 'SHARED' },
+        });
+      });
+
+      it('SHARED do pagador vencido: membro resolve FREE (todo o grupo cai junto, D11)', async () => {
+        const { prisma, service } = build(true);
+        prisma.groupMembership.findFirst.mockResolvedValue(membership());
+        prisma.subscription.findMany.mockImplementation(({ where }: any) =>
+          Promise.resolve(
+            where.plan === 'SHARED'
+              ? [sharedOf({ currentPeriodEnd: new Date(NOW.getTime() - 8 * DAY) })]
+              : [],
+          ),
+        );
+        await expect(service.resolvePlan('u1')).resolves.toBe('FREE');
+      });
+
+      it('dois caminhos ativos: proprio INDIVIDUAL + SHARED do grupo, vence o maior (PLAN_RANK)', async () => {
+        const { prisma, service } = build(true);
+        prisma.groupMembership.findFirst.mockResolvedValue(membership());
+        prisma.subscription.findMany.mockImplementation(({ where }: any) =>
+          Promise.resolve(where.plan === 'SHARED' ? [sharedOf()] : [paidSub()]),
+        );
+        await expect(service.resolvePlan('u1')).resolves.toBe('SHARED');
+      });
+
+      it('membro com SHARED do grupo usa o limite de 10 cartoes', async () => {
+        const { prisma, service } = build(true);
+        prisma.groupMembership.findFirst.mockResolvedValue(membership());
+        prisma.subscription.findMany.mockImplementation(({ where }: any) =>
+          Promise.resolve(where.plan === 'SHARED' ? [sharedOf()] : []),
+        );
+        prisma.creditCard.count.mockResolvedValue(10);
+        const err = await limitError(service.assertCanCreate('u1', 'creditCards'));
+        expect(err.getResponse()).toMatchObject({ limit: 10, used: 10, plan: 'SHARED' });
+      });
+    });
+
+    describe('cartoes por plano (D7)', () => {
+      it('FREE com 1 cartao rejeita o segundo', async () => {
+        const { prisma, service } = build(true);
+        prisma.creditCard.count.mockResolvedValue(1);
+        const err = await limitError(service.assertCanCreate('u1', 'creditCards'));
+        expect(err.getResponse()).toMatchObject({
+          code: 'PLAN_LIMIT',
+          resource: 'creditCards',
+          limit: 1,
+          plan: 'FREE',
+        });
+        expect((err.getResponse() as any).message).toContain('cartões ativos');
+      });
+
+      it('INDIVIDUAL libera ate 5 e rejeita no 6o', async () => {
+        const { prisma, service } = build(true);
+        prisma.subscription.findMany.mockResolvedValue([paidSub()]);
+        prisma.creditCard.count.mockResolvedValue(4);
+        await expect(service.assertCanCreate('u1', 'creditCards')).resolves.toBeUndefined();
+        prisma.creditCard.count.mockResolvedValue(5);
+        const err = await limitError(service.assertCanCreate('u1', 'creditCards'));
+        expect(err.getResponse()).toMatchObject({ limit: 5, plan: 'INDIVIDUAL' });
+      });
+
+      it('SHARED libera ate 10 (o teto tecnico do 9a virou limite do plano)', async () => {
+        const { prisma, service } = build(true);
+        prisma.subscription.findMany.mockResolvedValue([paidSub({ plan: 'SHARED' })]);
+        prisma.creditCard.count.mockResolvedValue(9);
+        await expect(service.assertCanCreate('u1', 'creditCards')).resolves.toBeUndefined();
+        prisma.creditCard.count.mockResolvedValue(10);
+        await expect(service.assertCanCreate('u1', 'creditCards')).rejects.toBeInstanceOf(
+          PlanLimitException,
+        );
+      });
+
+      it('conta cartoes filtrando userId e archivedAt nulo', async () => {
+        const { prisma, service } = build(true);
+        await service.assertCanCreate('u1', 'creditCards');
+        expect(prisma.creditCard.count).toHaveBeenCalledWith({
+          where: { userId: 'u1', archivedAt: null },
+        });
+      });
+    });
+
     it('concessão vencida há 2 dias (sem outra assinatura) cai nos limites FREE', async () => {
       const { prisma, service } = build(true);
       prisma.subscription.findMany.mockResolvedValue([
@@ -193,6 +314,7 @@ describe('EntitlementsService', () => {
       prisma.envelope.count.mockResolvedValue(3);
       prisma.recurringTransaction.count.mockResolvedValue(4);
       prisma.installmentPurchase.count.mockResolvedValue(1);
+      prisma.creditCard.count.mockResolvedValue(2);
       prisma.selahUsage.count.mockResolvedValue(12);
 
       const usage = await service.getUsage('u1');
@@ -205,6 +327,7 @@ describe('EntitlementsService', () => {
           envelopes: { used: 3, limit: null },
           recurringTransactions: { used: 4, limit: null },
           installmentPurchases: { used: 1, limit: null },
+          creditCards: { used: 2, limit: 5 },
         },
         selahQuestions: {
           used: 12,

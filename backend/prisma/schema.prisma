@@ -200,6 +200,9 @@ model User {
   conversationEvents            ConversationEvent[]
   whatsappLink                  WhatsappLink?
   whatsappLinkCodes             WhatsappLinkCode[]
+  groupMembershipsOwned         GroupMembership[]  @relation("GroupOwner")
+  groupMemberships              GroupMembership[]  @relation("GroupMember")
+  groupInvitesSent              GroupInvite[]      @relation("GroupInvites")
   telegramLink                  TelegramLink?
   telegramLinkCodes             TelegramLinkCode[]
 
@@ -927,6 +930,40 @@ model WhatsappLinkCode {
 
 // Item 10 (Telegram): vinculo entre um chat.id (privado) do Telegram e uma conta Lumen.
 // O chat.id e BigInt (ate 2^63 no Telegram). Desvincular apaga a linha. Um chat em uma so conta; uma conta tem um vinculo.
+// Grupo do plano Compartilhado (contrato 11, 11a): o pagador e a propria assinatura (Subscription);
+// membros sao linhas ativas (leftAt null) apontando para o pagador. O unique de membro ativo so
+// existe na SQL da migration (indice unico parcial) — `prisma migrate dev` vai querer remove-lo, nao rodar sem revisar.
+model GroupMembership {
+  id           String    @id @default(uuid())
+  ownerUserId  String
+  memberUserId String
+  joinedAt     DateTime  @default(now())
+  leftAt       DateTime?
+  createdAt    DateTime  @default(now())
+  owner        User      @relation("GroupOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  member       User      @relation("GroupMember", fields: [memberUserId], references: [id], onDelete: Cascade)
+
+  @@index([ownerUserId, leftAt])
+  @@index([memberUserId, leftAt])
+}
+
+// Convite de grupo (contrato 11, D4): so o hash SHA-256 do token fica no banco (mesma forma dos
+// codigos de vinculo do 5b/10b). O token em claro so aparece na resposta que cria o convite.
+model GroupInvite {
+  id             String    @id @default(uuid())
+  ownerUserId    String
+  email          String
+  tokenHash      String    @unique
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  acceptedAt     DateTime?
+  acceptedUserId String?
+  createdAt      DateTime  @default(now())
+  owner          User      @relation("GroupInvites", fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([ownerUserId])
+}
+
 model TelegramLink {
   id        String   @id @default(uuid())
   userId    String   @unique

@@ -3,7 +3,10 @@ export type LimitedResource =
   | 'goals'
   | 'envelopes'
   | 'recurringTransactions'
-  | 'installmentPurchases';
+  | 'installmentPurchases'
+  // Cartões ativos (contrato 11, D7): fecha a pendencia do item 9 — o teto tecnico de 10 do 9a
+  // virou o limite do SHARED; 11a-1 aplica no CreditCardsService.
+  | 'creditCards';
 
 export interface PlanDefinition {
   id: PlanId;
@@ -37,11 +40,12 @@ function price(
 export function getCatalog(
   env: NodeJS.ProcessEnv = process.env,
 ): Record<PlanId, PlanDefinition> {
-  const unlimited = (): Record<LimitedResource, number | null> => ({
+  const unlimited = (creditCards: number): Record<LimitedResource, number | null> => ({
     goals: null,
     envelopes: null,
     recurringTransactions: null,
     installmentPurchases: null,
+    creditCards,
   });
 
   return {
@@ -55,6 +59,7 @@ export function getCatalog(
         envelopes: 1,
         recurringTransactions: 3,
         installmentPurchases: 2,
+        creditCards: 1,
       },
       selahQuestionsPerMonth: 5,
       prices: null,
@@ -64,7 +69,7 @@ export function getCatalog(
       label: 'Individual',
       sellable: true,
       seats: 1,
-      limits: unlimited(),
+      limits: unlimited(5),
       selahQuestionsPerMonth: 300,
       prices: {
         MONTHLY: price(env, 'INDIVIDUAL', 'MONTHLY', 14.9),
@@ -75,8 +80,9 @@ export function getCatalog(
       id: 'SHARED',
       label: 'Compartilhado',
       sellable: false,
-      seats: 4,
-      limits: unlimited(),
+      // D2 (dono, 2026-11-24): 2 pessoas no lancamento; para evoluir ate 4 e trocar aqui.
+      seats: 2,
+      limits: unlimited(10),
       selahQuestionsPerMonth: 300,
       prices: {
         MONTHLY: price(env, 'SHARED', 'MONTHLY', 24.9),
