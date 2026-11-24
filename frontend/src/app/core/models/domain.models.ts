@@ -591,7 +591,8 @@ export type LimitedResource =
   | 'goals'
   | 'envelopes'
   | 'recurringTransactions'
-  | 'installmentPurchases';
+  | 'installmentPurchases'
+  | 'creditCards';
 
 export type SubscriptionStatus = 'PENDING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'EXPIRED';
 
@@ -628,7 +629,41 @@ export type BillingMe = {
   cancelAtPeriodEnd: boolean;
   latestInvoiceUrl: string | null;
   usage: UsageReport;
+  group: BillingGroupView | null;
 };
+
+/** Bloco de grupo do /billing/me (contrato 11, D10): membro so ve o primeiro nome do pagador. */
+export type BillingGroupView =
+  | { role: 'owner'; ownerFirstName: null }
+  | { role: 'member'; ownerFirstName: string | null };
+
+/** GET /billing/group (pagador ve membros e convites; membro ve quase nada — D6). */
+export type GroupView =
+  | {
+      role: 'owner';
+      planActive: boolean;
+      seats: number;
+      members: GroupMemberView[];
+      invites: GroupInviteView[];
+    }
+  | { role: 'member'; ownerFirstName: string | null; joinedAt: string };
+
+export type GroupMemberView = {
+  id: string;
+  email: string;
+  name: string | null;
+  joinedAt: string;
+};
+
+export type GroupInviteView = {
+  id: string;
+  email: string;
+  createdAt: string;
+  expiresAt: string;
+};
+
+/** Resposta que cria o convite: o token em claro so existe aqui (no banco vive o hash — D4). */
+export type CreatedGroupInvite = GroupInviteView & { token: string };
 
 export type GrantView = {
   id: string;
