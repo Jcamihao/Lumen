@@ -502,3 +502,207 @@ describe('CreditCycleCardComponent - escrita de teto por aba (9c-1b)', () => {
     expect(button('Definir teto')).toBeUndefined();
   });
 });
+
+describe('CreditCycleCardComponent - limpar teto por cartao (9c-1c)', () => {
+  let api: jasmine.SpyObj<LifeApiService>;
+  let fixture: ComponentFixture<CreditCycleCardComponent>;
+  const online = signal(true);
+
+  const root = () => fixture.nativeElement as HTMLElement;
+  const tabs = () => Array.from(root().querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+  const button = (label: string) =>
+    Array.from(root().querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.trim() === label);
+  const card = (overrides: Partial<CreditCard> = {}): CreditCard => ({
+    id: 'c-principal',
+    name: 'Principal',
+    closingDay: 5,
+    dueDay: null,
+    countAllPayments: false,
+    isDefault: true,
+    archivedAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  });
+  const nubank = card({ id: 'c-nubank', name: 'Nubank', isDefault: false });
+  const create = () => {
+    fixture = TestBed.createComponent(CreditCycleCardComponent);
+    fixture.detectChanges();
+  };
+  const startClear = () => {
+    button('Limpar teto')!.click();
+    fixture.detectChanges();
+  };
+  const confirmClear = () => {
+    button('Confirmar')!.click();
+    fixture.detectChanges();
+  };
+
+  beforeEach(() => {
+    online.set(true);
+    api = jasmine.createSpyObj('LifeApiService', ['getCurrentCreditCycle', 'getCreditCardCycle', 'listCreditCards', 'clearCreditCardCeiling']);
+    api.getCurrentCreditCycle.and.returnValue(of(cycle({ ceiling: 1000, remaining: 400, spent: 600, percentUsed: 60, status: 'ok' })));
+    api.getCreditCardCycle.and.callFake((id: string) =>
+      of(cycle({ ceiling: id === 'c-principal' ? 1000 : null, previousCeiling: 500, remaining: 400, spent: 0, percentUsed: 0, status: 'ok' })),
+    );
+    api.listCreditCards.and.returnValue(of([nubank, card()]));
+    api.clearCreditCardCeiling.and.returnValue(of({ cardId: 'c-principal', removedCents: 100000, refreshPending: false }));
+
+    TestBed.configureTestingModule({
+      imports: [CreditCycleCardComponent],
+      providers: [
+        provideRouter([]),
+        { provide: LifeApiService, useValue: api },
+        { provide: AuthService, useValue: { currentUser: () => ({ preferredCurrency: 'BRL' }) } },
+        { provide: NetworkService, useValue: { isOnline: online.asReadonly() } },
+      ],
+    });
+  });
+
+  afterEach(() => online.set(true));
+
+  it('um cartao so: sem botao Limpar teto', () => {
+    api.listCreditCards.and.returnValue(of([card()]));
+    create();
+
+    expect(button('Limpar teto')).toBeUndefined();
+  });
+
+  it('dois cartoes sem teto na aba: sem Limpar teto nessa aba', () => {
+    create();
+    tabs()[1].click();
+    fixture.detectChanges();
+
+    expect(button('Limpar teto')).toBeUndefined();
+  });
+
+  it('abrir Limpar teto pede confirmacao e nao chama a API', () => {
+    create();
+    startClear();
+
+    expect(button('Confirmar')).toBeDefined();
+    expect(button('Cancelar')).toBeDefined();
+    expect(api.clearCreditCardCeiling).not.toHaveBeenCalled();
+  });
+
+  it('Confirmar envia a limpeza do cartao da aba e recarrega o ciclo', () => {
+    create();
+    startClear();
+    confirmClear();
+
+    expect(api.clearCreditCardCeiling).toHaveBeenCalledOnceWith('c-principal');
+    expect(api.getCreditCardCycle).toHaveBeenCalledTimes(2);
+    expect(button('Confirmar')).toBeUndefined();
+  });
+
+  it('Cancelar fecha a confirmacao sem chamar a API', () => {
+    create();
+    startClear();
+    button('Cancelar')!.click();
+    fixture.detectChanges();
+
+    expect(api.clearCreditCardCeiling).not.toHaveBeenCalled();
+    expect(button('Confirmar')).toBeUndefined();
+    expect(button('Limpar teto')).toBeDefined();
+  });
+
+  it('Esc fecha a confirmacao sem chamar a API', () => {
+    create();
+    startClear();
+    root().querySelector('.credit-cycle-card__clear')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+
+    expect(api.clearCreditCardCeiling).not.toHaveBeenCalled();
+    expect(button('Confirmar')).toBeUndefined();
+  });
+
+  it('enquanto limpa: botao vira Limpando... e fica desligado; segundo envio nao faz outra chamada', () => {
+    const pending$ = new Subject<{ cardId: string; removedCents: number; refreshPending: boolean }>();
+    api.clearCreditCardCeiling.and.returnValue(pending$.asObservable());
+    create();
+    startClear();
+    confirmClear();
+
+    expect(button('Limpando...')!.disabled).toBeTrue();
+    button('Limpando...')!.click();
+    expect(api.clearCreditCardCeiling).toHaveBeenCalledTimes(1);
+
+    pending$.next({ cardId: 'c-principal', removedCents: 100000, refreshPending: false });
+    pending$.complete();
+  });
+
+  it('404 mostra texto proprio e mantem a confirmacao disponivel', () => {
+    api.clearCreditCardCeiling.and.returnValue(throwError(() => ({ status: 404 })));
+    create();
+    startClear();
+    confirmClear();
+
+    expect(root().textContent).toContain('Cartão não encontrado. Atualize a tela.');
+    expect(button('Confirmar')!.disabled).toBeFalse();
+  });
+
+  it('erro 422: texto generico e confirmacao continua disponivel', () => {
+    api.clearCreditCardCeiling.and.returnValue(throwError(() => ({ status: 422 })));
+    create();
+    startClear();
+    confirmClear();
+
+    expect(root().textContent).toContain('Não foi possível limpar o teto agora.');
+    expect(button('Confirmar')!.disabled).toBeFalse();
+  });
+
+  it('5xx: resultado desconhecido, texto de conferir e nenhuma nova tentativa', () => {
+    api.clearCreditCardCeiling.and.returnValue(throwError(() => ({ status: 500 })));
+    create();
+    startClear();
+    confirmClear();
+
+    expect(root().textContent).toContain('Não sei se o teto foi limpo. Confira a tela antes de tentar de novo.');
+    expect(button('Confirmar')!.disabled).toBeTrue();
+    confirmClear();
+    expect(api.clearCreditCardCeiling).toHaveBeenCalledTimes(1);
+  });
+
+  it('rede caida (status 0): resultado desconhecido e nenhuma nova tentativa', () => {
+    api.clearCreditCardCeiling.and.returnValue(throwError(() => ({ status: 0 })));
+    create();
+    startClear();
+    confirmClear();
+
+    expect(root().textContent).toContain('Não sei se o teto foi limpo.');
+    expect(button('Confirmar')!.disabled).toBeTrue();
+    expect(api.clearCreditCardCeiling).toHaveBeenCalledTimes(1);
+  });
+
+  it('offline: sem botao Limpar teto', () => {
+    online.set(false);
+    create();
+
+    expect(button('Limpar teto')).toBeUndefined();
+  });
+
+  it('Cancelar pelo metodo durante o envio nao fecha a confirmacao', () => {
+    const pending$ = new Subject<{ cardId: string; removedCents: number; refreshPending: boolean }>();
+    api.clearCreditCardCeiling.and.returnValue(pending$.asObservable());
+    create();
+    startClear();
+    confirmClear();
+    fixture.componentInstance['cancelClear']();
+    fixture.detectChanges();
+
+    expect(button('Limpando...')).toBeDefined();
+    pending$.complete();
+  });
+
+  it('segundo envio pelo metodo durante a limpeza nao faz outra chamada', () => {
+    const pending$ = new Subject<{ cardId: string; removedCents: number; refreshPending: boolean }>();
+    api.clearCreditCardCeiling.and.returnValue(pending$.asObservable());
+    create();
+    startClear();
+    confirmClear();
+    fixture.componentInstance['confirmClear']();
+
+    expect(api.clearCreditCardCeiling).toHaveBeenCalledTimes(1);
+    pending$.complete();
+  });
+});
