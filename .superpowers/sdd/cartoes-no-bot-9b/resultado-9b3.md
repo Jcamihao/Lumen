@@ -25,7 +25,7 @@ Data: 2026-11-24. Branch: feat/cartoes-no-bot (sem troca). Implementado por Clau
 - backend/src/conversation/conversation.module.ts: importa CreditCardsModule.
 - backend/src/conversation/isolation.fixture.ts: realCreditCardsService (CreditCardsService REAL sobre fake de Prisma que honra where; update com spy) e o 12o argumento no buildEngine.
 - backend/src/conversation/conversation.service.spec.ts: 12o argumento no construtor.
-- Testes novos: card-write.spec.ts (parser e nameTakenBy), parsers/intent.matcher.card-write.spec.ts (matcher e regressao), card-write.service.spec.ts (motor, 37 casos entre renomear e criar).
+- Testes novos: card-write.spec.ts (parser e nameTakenBy), parsers/intent.matcher.card-write.spec.ts (matcher e regressao), card-write.service.spec.ts (motor: 27 casos, renomear e criar).
 
 ## Comandos e numeros (2026-11-24)
 - cd backend && npx tsc --noEmit: limpo (exit 0).
@@ -33,7 +33,7 @@ Data: 2026-11-24. Branch: feat/cartoes-no-bot (sem troca). Implementado por Clau
 - npx jest --maxWorkers=2 (suite inteira, TZ=UTC): 90 suites, 2240 testes verdes (antes: 2190; +50).
 - Os 50 testes novos repetidos 15 vezes seguidas: 0 falhas.
 - graphify update .: ok (6120 nos, 13620 arestas).
-- Antes da fatia, o conjunto conversa rodou 873 testes verdes (verificacao intermediaria).
+- Verificacao intermediaria, apos o codigo e antes dos testes novos: conjunto src/conversation com 873 testes verdes (20 suites).
 
 ## Mutantes (revisao com mutantes, alvo: card-write, matcher, service, isolamento, conversation.service.spec, credit-cards)
 Total 25: mortos 25, sobreviventes 0, equivalentes 0.
