@@ -248,6 +248,48 @@ describe('long polling: offset e ciclo (D2)', () => {
     expect(client.setMyCommands).toHaveBeenCalled();
   });
 
+  it('menu de comandos inclui "Meus cartões" (cartoes)', async () => {
+    const { adapter, client, prisma } = buildStack();
+    client.getUpdates.mockImplementation(async () => {
+      await adapter.onModuleDestroy();
+      return [];
+    });
+    (prisma.telegramBotState.findUnique as jest.Mock).mockResolvedValueOnce(null);
+
+    await adapter.onModuleInit();
+    await adapter.stopped();
+
+    expect(client.setMyCommands).toHaveBeenCalledWith(
+      expect.arrayContaining([{ command: 'cartoes', description: 'Meus cartões' }]),
+    );
+  });
+
+  it('/cartoes do menu vira "meus cartoes" no motor', async () => {
+    const { adapter, conversation } = buildStack();
+
+    await adapter.process(inbound({ text: '/cartoes' }));
+
+    expect(conversation.handleMessage).toHaveBeenCalledWith(expect.objectContaining({ text: 'meus cartoes' }));
+  });
+
+  it('/cartao do menu vira "cartao" e a barra some so no comando', async () => {
+    const { adapter, conversation } = buildStack();
+
+    await adapter.process(inbound({ text: ' /Cartao ' }));
+    await adapter.process(inbound({ updateId: 8, messageId: 'tg-8', text: 'meus cartoes' }));
+
+    expect(conversation.handleMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({ text: 'cartao' }));
+    expect(conversation.handleMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ text: 'meus cartoes' }));
+  });
+
+  it('texto que nao e comando segue igual, mesmo com barra no meio', async () => {
+    const { adapter, conversation } = buildStack();
+
+    await adapter.process(inbound({ text: '/cartoes do nubank' }));
+
+    expect(conversation.handleMessage).toHaveBeenCalledWith(expect.objectContaining({ text: '/cartoes do nubank' }));
+  });
+
   it('retoma do offset gravado: o proximo getUpdates pede offset+1 do ultimo lido', async () => {
     const { adapter, client, prisma } = buildStack();
     (prisma.telegramBotState.findUnique as jest.Mock).mockResolvedValueOnce({ id: 'poll', lastUpdateId: 42n });

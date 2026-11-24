@@ -1,8 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { FormGroup } from '@angular/forms';
+import { signal } from '@angular/core';
+import { CreditCard } from '../../../core/models/domain.models';
 import { of, throwError } from 'rxjs';
 import { InstallmentPurchase } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
+import { NetworkService } from '../../../core/services/network.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { InstallmentPurchasesCardComponent } from './installment-purchases-card.component';
 
@@ -46,13 +50,48 @@ describe('InstallmentPurchasesCardComponent', () => {
     button?.click();
   };
 
+  const online = signal(true);
+  const form = () => (fixture.componentInstance as unknown as { form: FormGroup }).form;
+  const card = (overrides: Partial<CreditCard> = {}): CreditCard => ({
+    id: 'c-principal',
+    name: 'Principal',
+    closingDay: 5,
+    dueDay: null,
+    countAllPayments: false,
+    isDefault: true,
+    archivedAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  });
+  const nubank = card({ id: 'c-nubank', name: 'Nubank', isDefault: false });
+  const cardSelect = () => root().querySelector<HTMLSelectElement>('#installment-card');
+  const fillForm = (paymentMethod: string) => {
+    clickButton('Nova compra parcelada');
+    fixture.detectChanges();
+    form().patchValue({ description: 'iPhone', totalAmount: 1000, installmentsTotal: 2 });
+    form().controls['paymentMethod'].setValue(paymentMethod as 'CREDIT');
+    fixture.detectChanges();
+  };
+  const fillAndSubmit = (paymentMethod: string) => {
+    fillForm(paymentMethod);
+    clickButton('Registrar compra');
+  };
+  const sentCardId = () => api.createInstallmentPurchase.calls.mostRecent().args[0].cardId;
+
+  afterEach(() => online.set(true));
+
   beforeEach(() => {
+    online.set(true);
     api = jasmine.createSpyObj('LifeApiService', [
       'listInstallmentPurchases',
       'createInstallmentPurchase',
       'deleteInstallmentPurchase',
+      'listCreditCards',
     ]);
     api.listInstallmentPurchases.and.returnValue(of([]));
+    api.listCreditCards.and.returnValue(of([]));
+    api.createInstallmentPurchase.and.returnValue(of(plan()));
 
     TestBed.configureTestingModule({
       imports: [InstallmentPurchasesCardComponent],
@@ -60,6 +99,7 @@ describe('InstallmentPurchasesCardComponent', () => {
         { provide: LifeApiService, useValue: api },
         { provide: AuthService, useValue: { currentUser: () => ({ preferredCurrency: 'BRL', financeCategories: [] }) } },
         { provide: ToastService, useValue: { success: () => {}, error: () => {}, errorWithAction: () => {} } },
+        { provide: NetworkService, useValue: { isOnline: online.asReadonly() } },
       ],
     });
   });
@@ -234,5 +274,78 @@ describe('InstallmentPurchasesCardComponent', () => {
       { label: 'Ver planos', route: '/plano' },
     );
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('dois cartoes e credito: seletor aparece com o padrao marcado e a compra leva o cardId', () => {
+    api.listCreditCards.and.returnValue(of([nubank, card()]));
+    create();
+
+    fillAndSubmit('CREDIT');
+
+    expect(cardSelect()).not.toBeNull();
+    expect(cardSelect()!.value).toBe('c-principal');
+    expect(sentCardId()).toBe('c-principal');
+  });
+
+  it('o cartao escolhido e o que vai no corpo', () => {
+    api.listCreditCards.and.returnValue(of([nubank, card()]));
+    create();
+
+    fillForm('CREDIT');
+    cardSelect()!.value = 'c-nubank';
+    cardSelect()!.dispatchEvent(new Event('change'));
+    clickButton('Registrar compra');
+
+    expect(sentCardId()).toBe('c-nubank');
+  });
+
+  it('PIX: sem seletor e sem cardId', () => {
+    api.listCreditCards.and.returnValue(of([nubank, card()]));
+    create();
+
+    fillAndSubmit('PIX');
+
+    expect(cardSelect()).toBeNull();
+    expect(sentCardId()).toBeUndefined();
+  });
+
+  it('um cartao so: sem seletor e sem cardId (o servidor usa o padrao)', () => {
+    api.listCreditCards.and.returnValue(of([card()]));
+    create();
+
+    fillAndSubmit('CREDIT');
+
+    expect(cardSelect()).toBeNull();
+    expect(sentCardId()).toBeUndefined();
+  });
+
+  it('offline: some o seletor e nao envia cardId', () => {
+    api.listCreditCards.and.returnValue(of([nubank, card()]));
+    create();
+    fillForm('CREDIT');
+    expect(cardSelect()).not.toBeNull();
+    online.set(false);
+    fixture.detectChanges();
+
+    expect(cardSelect()).toBeNull();
+    clickButton('Registrar compra');
+    expect(sentCardId()).toBeUndefined();
+  });
+
+  it('payload nunca leva cardId fora de credito, mesmo com o controle preenchido', () => {
+    api.listCreditCards.and.returnValue(of([nubank, card()]));
+    create();
+    fillForm('PIX');
+    form().controls['cardId'].setValue('c-nubank', { emitEvent: false });
+    clickButton('Registrar compra');
+
+    expect(sentCardId()).toBeUndefined();
+  });
+
+  it('a lista mostra o nome do cartao junto da forma de pagamento', () => {
+    api.listInstallmentPurchases.and.returnValue(of([plan({ paymentMethod: 'CREDIT', cardName: 'Nubank' })]));
+    create();
+
+    expect(text()).toContain('Crédito · Nubank');
   });
 });
