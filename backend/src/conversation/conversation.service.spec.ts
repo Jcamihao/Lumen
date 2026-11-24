@@ -129,6 +129,7 @@ describe('ConversationService', () => {
   let transactions: { create: jest.Mock };
   let configService: { get: jest.Mock };
   let writesEnabled = true;
+  let telegramWritesEnabled = true;
   let aiMode: 'off' | 'fallback' = 'off';
   let dashboard: { getSummary: jest.Mock };
   let creditCycle: { getCurrent: jest.Mock; setCeilingForConversation?: jest.Mock };
@@ -205,11 +206,13 @@ describe('ConversationService', () => {
     envelopes = { list: jest.fn(async () => []), createForConversation: jest.fn(async () => ({})) };
     entitlements = { assertCanCreate: jest.fn(async () => undefined) };
     writesEnabled = true;
+    telegramWritesEnabled = true;
     aiMode = 'off';
     assistant = { tryFallbackAnswer: jest.fn(async () => ({ status: 'unavailable' })) };
     configService = {
       get: jest.fn((key: string) => {
         if (key === 'app.assistantAiMode') return aiMode;
+        if (key === 'telegram.writesEnabled') return telegramWritesEnabled;
         return key === 'whatsapp.writesEnabled' ? writesEnabled : undefined;
       }),
     };
@@ -3106,6 +3109,81 @@ describe('ConversationService', () => {
       const reply = await service.confirmDraft('A', draft.id, draft.version);
       expect(reply?.kind).toBe('DONE');
       expect(transactions.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('trava de escrita do Telegram (contrato 10, D3) e sessao do canal', () => {
+    const tmsg = (text: string, messageId = randomUUID()): ConversationInput => ({
+      userId: 'A',
+      channel: ConversationChannel.TELEGRAM,
+      messageId,
+      text,
+      receivedAt: T0,
+    });
+
+    async function telegramDraft() {
+      const reply = await service.handleMessage(tmsg('gastei 32,90 mercado'));
+      expect(reply.kind).toBe('CONFIRM_DRAFT');
+      return db.sessions.find((row) => row.channel === ConversationChannel.TELEGRAM)!;
+    }
+
+    it('TELEGRAM com escrita desligada: "confirmar" nao grava, sessao fica, evento RECOGNIZED', async () => {
+      telegramWritesEnabled = false;
+      await telegramDraft();
+
+      const reply = await service.handleMessage(tmsg('confirmar'));
+
+      expect(transactions.create).not.toHaveBeenCalled();
+      expect(reply).toMatchObject({ kind: 'INFO', state: ConversationState.AWAITING_CONFIRMATION });
+      const session = db.sessions.find((row) => row.channel === ConversationChannel.TELEGRAM)!;
+      expect(session.state).toBe(ConversationState.AWAITING_CONFIRMATION);
+      expect(db.events.at(-1)).toMatchObject({ channel: ConversationChannel.TELEGRAM, outcome: ConversationOutcome.RECOGNIZED });
+    });
+
+    it('TELEGRAM com escrita ligada: "confirmar" grava', async () => {
+      await telegramDraft();
+      const reply = await service.handleMessage(tmsg('confirmar'));
+      expect(reply.kind).toBe('DONE');
+      expect(transactions.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('a trava do Telegram nao confunde com a do WhatsApp: cada canal tem a sua', async () => {
+      writesEnabled = false;
+      telegramWritesEnabled = true;
+      await telegramDraft();
+      expect((await service.handleMessage(tmsg('confirmar'))).kind).toBe('DONE');
+
+      telegramWritesEnabled = false;
+      writesEnabled = true;
+      const wreply = await service.handleMessage({ ...tmsg('x'), channel: ConversationChannel.WHATSAPP, text: 'gastei 10,00 mercado' });
+      expect(wreply.kind).toBe('CONFIRM_DRAFT');
+      expect((await service.handleMessage({ ...tmsg('confirmar'), channel: ConversationChannel.WHATSAPP })).kind).toBe('DONE');
+    });
+
+    it('rascunho TELEGRAM pendente aparece no app (D9 estendido) e o botao grava', async () => {
+      telegramWritesEnabled = false;
+      const draft = await telegramDraft();
+
+      const view = await service.getSession('A');
+      expect(view.state).toBe(ConversationState.AWAITING_CONFIRMATION);
+      expect(view.draft?.kind).toBe('TRANSACTION');
+
+      const done = await service.confirmDraft('A', draft.id, draft.version);
+      expect(done?.kind).toBe('DONE');
+      expect(transactions.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('WhatsApp e Telegram pendurados juntos: o app ve primeiro o do WhatsApp (ordem da casa)', async () => {
+      await telegramDraft();
+      await service.handleMessage({ ...tmsg('gastei 5,00 padaria'), channel: ConversationChannel.WHATSAPP, messageId: randomUUID() });
+
+      const view = await service.getSession('A');
+      expect(view.state).toBe(ConversationState.AWAITING_CONFIRMATION);
+    });
+
+    it('conta B nunca ve o rascunho TELEGRAM de A', async () => {
+      await telegramDraft();
+      await expect(service.getSession('B')).resolves.toEqual({ state: 'IDLE' });
     });
   });
 

@@ -200,6 +200,8 @@ model User {
   conversationEvents            ConversationEvent[]
   whatsappLink                  WhatsappLink?
   whatsappLinkCodes             WhatsappLinkCode[]
+  telegramLink                  TelegramLink?
+  telegramLinkCodes             TelegramLinkCode[]
 
   @@index([email])
 }
@@ -835,6 +837,7 @@ model SelahUsage {
 enum ConversationChannel {
   APP
   WHATSAPP
+  TELEGRAM
 }
 
 enum ConversationState {
@@ -920,4 +923,36 @@ model WhatsappLinkCode {
 
   @@index([userId, createdAt])
   @@index([codeHash])
+}
+
+// Item 10 (Telegram): vinculo entre um chat.id (privado) do Telegram e uma conta Lumen.
+// O chat.id e BigInt (ate 2^63 no Telegram). Desvincular apaga a linha. Um chat em uma so conta; uma conta tem um vinculo.
+model TelegramLink {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  chatId    BigInt   @unique
+  linkedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Codigo de vinculo do Telegram (mesma forma do WhatsApp: so o hash SHA-256 fica no banco).
+model TelegramLinkCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([codeHash])
+}
+
+// Estado do long polling: offset unico do bot (linha 'poll'), para nao reprocessar apos restart.
+model TelegramBotState {
+  id           String   @id
+  lastUpdateId BigInt   @default(0)
+  updatedAt    DateTime @updatedAt
 }

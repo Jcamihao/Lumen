@@ -402,6 +402,11 @@ export class ConversationService {
     if (whatsapp && whatsapp.expiresAt >= now && whatsapp.state === ConversationState.AWAITING_CONFIRMATION) {
       return { state: whatsapp.state, draft: await this.toDraftView(whatsapp) };
     }
+    // Rascunho do Telegram tambem espera confirmacao no app (D9 do item 5 estendido ao canal do item 10).
+    const telegram = await this.loadSession(userId, ConversationChannel.TELEGRAM);
+    if (telegram && telegram.expiresAt >= now && telegram.state === ConversationState.AWAITING_CONFIRMATION) {
+      return { state: telegram.state, draft: await this.toDraftView(telegram) };
+    }
     return { state: 'IDLE' };
   }
 
@@ -1281,8 +1286,12 @@ export class ConversationService {
     }
     if (CONFIRM_WORDS.has(words) || (deleteAwaiting && words === 'apagar') || (clearAwaiting && words === 'limpar')) {
       if (awaiting) {
-        // Trava de escrita do WhatsApp (contrato 8): o app continua gravando normalmente.
-        if (input.channel === 'WHATSAPP' && !this.configService.get<boolean>('whatsapp.writesEnabled')) {
+        // Trava de escrita por canal (contratos 8 e 10/D3): o app continua gravando normalmente.
+        // O texto nao cita canal, entao o do WhatsApp serve aos dois.
+        const writesOff =
+          (input.channel === 'WHATSAPP' && !this.configService.get<boolean>('whatsapp.writesEnabled')) ||
+          (input.channel === 'TELEGRAM' && !this.configService.get<boolean>('telegram.writesEnabled'));
+        if (writesOff) {
           await this.recordEvent(input, session.intent, ConversationOutcome.RECOGNIZED);
           return this.reply('INFO', this.stateView(session), REPLIES.whatsappWritesOff);
         }
