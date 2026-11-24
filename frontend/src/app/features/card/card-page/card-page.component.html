@@ -12,7 +12,7 @@
 
   <!-- Formulario compartilhado: criar (no topo) ou editar (dentro do cartao). -->
   <ng-template #cardFormTpl let-prefix="prefix" let-submitLabel="submitLabel">
-    <form class="card-page__form" [formGroup]="cardForm" (ngSubmit)="submitForm()" novalidate>
+    <form class="card-page__form" [formGroup]="cardForm" (ngSubmit)="submitForm()" (keydown.escape)="cancelForm()" novalidate>
       <div class="proto-field">
         <label [attr.for]="prefix + '-name'">Apelido do cartão</label>
         <input
@@ -138,7 +138,7 @@
                 @if (mode() === 'edit' && editingId() === card.id) {
                   <ng-container *ngTemplateOutlet="cardFormTpl; context: { prefix: 'edit-' + card.id, submitLabel: 'Salvar cartão' }" />
                 } @else {
-                  <div class="card-page__actions">
+                  <div class="card-page__actions" (keydown.escape)="cancelArchive()">
                     <button
                       type="button"
                       class="proto-button proto-button--secondary"
