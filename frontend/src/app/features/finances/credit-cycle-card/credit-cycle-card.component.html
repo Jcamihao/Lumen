@@ -84,7 +84,7 @@
           Limpar teto
         </button>
 
-        <div class="credit-cycle-card__clear" *ngIf="confirmingClear()" (keydown.escape)="cancelClear()">
+        <div class="credit-cycle-card__clear" *ngIf="confirmingClear()">
           <p class="proto-muted">Tirar o teto deste ciclo? O cartão fica sem teto até você definir outro.</p>
           <p class="proto-muted" role="alert" *ngIf="clearError() as message">{{ message }}</p>
           <div class="credit-cycle-card__actions">

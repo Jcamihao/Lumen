@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, HostListener, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -141,6 +141,17 @@ export class CreditCycleCardComponent {
     this.confirmingClear.set(true);
     this.clearError.set(null);
     this.clearUncertain.set(false);
+  }
+
+  /**
+   * Esc fecha a confirmacao de limpar teto onde quer que o foco estiver:
+   * quem abre a confirmacao e um clique de botao, e o foco cai no body — num Chrome real o
+   * keydown.escape no bloco nunca chegava (revisao 9c-1c achou isso no navegador).
+   * O bloco de EDICAO de teto mantem o listener proprio (tem campo com foco).
+   */
+  @HostListener('window:keydown.escape')
+  onWindowEscape() {
+    if (this.confirmingClear()) this.cancelClear();
   }
 
   protected cancelClear() {

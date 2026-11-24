@@ -606,10 +606,20 @@ describe('CreditCycleCardComponent - limpar teto por cartao (9c-1c)', () => {
     expect(button('Limpar teto')).toBeDefined();
   });
 
-  it('Esc fecha a confirmacao sem chamar a API', () => {
+  it('Esc vindo de dentro do bloco fecha a confirmacao sem chamar a API', () => {
     create();
     startClear();
-    root().querySelector('.credit-cycle-card__clear')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    root().querySelector('.credit-cycle-card__clear')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+
+    expect(api.clearCreditCardCeiling).not.toHaveBeenCalled();
+    expect(button('Confirmar')).toBeUndefined();
+  });
+
+  it('Esc com o foco fora do bloco (body, foco real de quem clicou com mouse) tambem fecha', () => {
+    create();
+    startClear();
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     fixture.detectChanges();
 
     expect(api.clearCreditCardCeiling).not.toHaveBeenCalled();
