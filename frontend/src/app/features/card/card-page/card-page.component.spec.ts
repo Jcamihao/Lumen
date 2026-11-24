@@ -548,6 +548,94 @@ describe('CardPageComponent', () => {
     });
   });
 
+  describe('guardas de modelo (caminhos que a UI esconde)', () => {
+    type Model = {
+      makeDefault(c: CreditCard): void;
+      startEdit(c: CreditCard): void;
+      confirmArchive(c: CreditCard): void;
+      submitForm(): void;
+      saveCeiling(): void;
+      mode(): string;
+      formError(): string | null;
+    };
+    const model = () => fixture.componentInstance as unknown as Model;
+    const other = () => card({ id: 'c2', name: 'Inter', isDefault: false });
+
+    it('makeDefault no cartao que ja e padrao nao chama a API', () => {
+      create();
+      model().makeDefault(card());
+
+      expect(api.makeDefaultCreditCard).not.toHaveBeenCalled();
+    });
+
+    it('startEdit de cartao arquivado nao abre o formulario', () => {
+      create();
+      model().startEdit(card({ id: 'c3', archivedAt: '2026-02-01T00:00:00.000Z', isDefault: false }));
+
+      expect(model().mode()).toBe('idle');
+    });
+
+    it('submitForm offline mostra a mensagem e nao chama a API', () => {
+      create();
+      click('Novo cartão');
+      setVal('#new-name', 'Inter');
+      setVal('#new-closing', '10');
+      offline.set(true);
+      model().submitForm();
+
+      expect(model().formError()).toContain('Sem conexão');
+      expect(api.createCreditCard).not.toHaveBeenCalled();
+    });
+
+    it('segundo submit com a gravacao pendente nao duplica a chamada', () => {
+      const pending = new Subject<CreditCardReceipt>();
+      api.createCreditCard.and.returnValue(pending.asObservable());
+      create();
+      click('Novo cartão');
+      setVal('#new-name', 'Inter');
+      setVal('#new-closing', '10');
+      model().submitForm();
+      model().submitForm();
+
+      expect(api.createCreditCard).toHaveBeenCalledTimes(1);
+    });
+
+    it('confirmArchive com outro arquivamento em andamento nao chama a API de novo', () => {
+      const pending = new Subject<CreditCardReceipt>();
+      api.listCreditCards.and.returnValue(of([card(), other()]));
+      api.archiveCreditCard.and.returnValue(pending.asObservable());
+      create();
+      model().confirmArchive(other());
+      model().confirmArchive(other());
+
+      expect(api.archiveCreditCard).toHaveBeenCalledTimes(1);
+    });
+
+    it('saveCeiling com gravacao pendente nao duplica a chamada', () => {
+      const pending = new Subject<CreditCycle>();
+      api.setCreditCycleCeiling.and.returnValue(pending.asObservable());
+      create();
+      cycle$.next(cycle());
+      fixture.detectChanges();
+      setVal('#card-ceiling', '1000');
+      model().saveCeiling();
+      model().saveCeiling();
+
+      expect(api.setCreditCycleCeiling).toHaveBeenCalledTimes(1);
+    });
+
+    it('o interruptor de arquivados reflete o estado (desmarcado ao abrir, marcado depois de ligar)', () => {
+      create();
+      const box = () => root().querySelector<HTMLInputElement>('.card-page__toggle input')!;
+      expect(box().checked).toBeFalse();
+
+      box().click();
+      fixture.detectChanges();
+
+      expect(box().checked).toBeTrue();
+    });
+  });
+
   describe('ciclo do cartao padrao', () => {
     it('mostra o ciclo, quanto resta e o aviso de carregando antes da resposta', () => {
       create();
