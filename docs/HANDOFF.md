@@ -143,6 +143,7 @@ Ordem atual do bot, conforme `docs/superpowers/specs/2026-11-14-assistente-manua
 4. Item 5 (adaptador WhatsApp) feito e na `develop`, faltando só o 5d (número real, pedido do dono, D1 e host HTTPS). Item 6 (isolamento) feito e na `develop`. Redis que cai: resolvido em 2026-11-19. Item 7 fechado em 2026-11-19 (ver ponto de retomada). Item 8: FECHADO em 2026-11-23 (8a a 8d na develop; 8d no merge `29c42c1` = `v1.15.0`). Item 9: 9a (backend) fechado e na `develop` em 2026-11-23; faltam 9b (bot) e 9c (telas), mais limite por plano depois do billing. Item 10 (Telegram): planejado e DELEGADO pelo dono à sessão Qwen de 2026-11-23 — fazer por fatias (10a backend, 10b app, 10c integração), fechando em `v1.16.0`.
 5. Ajustes do 8a decididos pelo dono em 2026-11-23: feitos e na develop desde `aa8f485` (apagar confere `updatedAt`; TRANSFER fora da lista; `apagar` sem termo repetido fica como está).
 6. Item 8: edição e exclusão explícitas por conversa. Feito por inteiro em 2026-11-23 (8a a 8d na develop).
+7. **Item 11 (NOVO, pedido do dono em 2026-11-24): billing — rever os planos do app e fazer o plano Compartilhado/Família.** Escopo inicial (ainda sem contrato): (a) revisar o catálogo e os limites dos planos Grátis/Individual/Compartilhado (hoje em `backend/src/billing/plans.catalog.ts` e na spec `2026-09-27-billing-design.md`); (b) tirar o Compartilhado de "só estrutura, em breve" e entregar de verdade: membros, convites, dados compartilhados, cobrança de um plano para vários usuários; (c) fechar o que depende do billing: limite de cartões por plano (item 9) e as pendências de billing abaixo. Precisa de contrato próprio com decisões do dono (o que é compartilhado, papéis, privacidade entre membros, preço, o que acontece ao sair/cair de plano) antes de qualquer código. Atenção ao isolamento A/B/C: compartilhar dado entre usuários muda a regra "identidade vem do token, dado é do dono". Ordem sugerida: contrato do item 11 -> 11a backend -> app -> sandbox real do Asaas. Não começou.
 
 Pendências de billing, a retomar depois da prioridade atual e das decisões do dono:
 1. Rodar `ng test` e o build do frontend, e olhar `/plano` e a landing no navegador.
@@ -152,7 +153,7 @@ Pendências de billing, a retomar depois da prioridade atual e das decisões do 
 5. Atualizar a Política de Privacidade (o Asaas é operador dos dados de pagamento). A spec cita isso na Fase 3.
 6. Escolher quais contas atuais ganham concessão de fundador (feito pela tela de admin). Depende do dono.
 7. Ligar `BILLING_ENABLED=true` em produção. Só depois dos itens 2 a 5.
-8. Projeto futuro: plano Compartilhado (membros, convites, dados compartilhados).
+8. Plano Compartilhado (membros, convites, dados compartilhados): agora é o item 11 da lista acima.
 
 ## 8. Desafios e riscos
 
