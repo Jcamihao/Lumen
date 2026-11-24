@@ -11,6 +11,9 @@ import {
   FinanceCategory,
   FeedbackSummary,
   CreditCycle,
+  CreditCard,
+  CreditCardInput,
+  CreditCardReceipt,
   Envelope,
   ForecastAccuracy,
   Goal,
@@ -522,6 +525,28 @@ export class LifeApiService {
 
   setCreditCycleCeiling(payload: { ceiling: number }) {
     return this.http.put<CreditCycle>(`${environment.apiBaseUrl}/credit-cycle/ceiling`, payload);
+  }
+
+  /** Cartoes ativos; includeArchived traz o historico. Escritas sao online-only (sem fila offline). */
+  listCreditCards(includeArchived = false) {
+    const query = includeArchived ? "?includeArchived=true" : "";
+    return this.http.get<CreditCard[]>(`${environment.apiBaseUrl}/credit-cards${query}`);
+  }
+
+  createCreditCard(payload: Required<Pick<CreditCardInput, "name" | "closingDay">> & { dueDay: number | null }) {
+    return this.http.post<CreditCardReceipt>(`${environment.apiBaseUrl}/credit-cards`, payload);
+  }
+
+  updateCreditCard(id: string, payload: CreditCardInput) {
+    return this.http.patch<CreditCardReceipt>(`${environment.apiBaseUrl}/credit-cards/${encodeURIComponent(id)}`, payload);
+  }
+
+  archiveCreditCard(id: string) {
+    return this.http.delete<CreditCardReceipt>(`${environment.apiBaseUrl}/credit-cards/${encodeURIComponent(id)}`);
+  }
+
+  makeDefaultCreditCard(id: string) {
+    return this.http.post<CreditCardReceipt>(`${environment.apiBaseUrl}/credit-cards/${encodeURIComponent(id)}/make-default`, {});
   }
 
   getFeedbackSummary() {

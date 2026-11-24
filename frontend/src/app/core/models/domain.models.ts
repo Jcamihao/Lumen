@@ -578,6 +578,36 @@ export type CreditCycle = {
   previousCeiling: number | null;
 };
 
+/** Cartao de credito nomeado (9a). So apelido e dias; nunca numero de cartao. */
+export type CreditCard = {
+  id: string;
+  name: string;
+  closingDay: number;
+  dueDay: number | null;
+  countAllPayments: boolean;
+  isDefault: boolean;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Recibo do que foi persistido numa escrita de cartao (devolvido pela API). */
+export type CreditCardReceipt = {
+  id: string;
+  name: string;
+  closingDay: number;
+  dueDay: number | null;
+  countAllPayments: boolean;
+  isDefault: boolean;
+};
+
+export type CreditCardInput = {
+  name?: string;
+  closingDay?: number;
+  dueDay?: number | null;
+  countAllPayments?: boolean;
+};
+
 export type FeedbackSummary = {
   total: number;
   averageRating: number | null;
