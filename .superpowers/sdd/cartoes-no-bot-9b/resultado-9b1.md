@@ -31,7 +31,7 @@ Data: 2026-11-24. Branch: feat/cartoes-no-bot. Implementado por Claude Haiku 5.5
 - Linha de base antes da 9b-1: 936 testes verdes nas tres pastas.
 
 ## Mutantes
-Primeira rodada (alvo: card-expense.spec, isolation.spec, conversation.service.spec; 365 testes): 16 mortos (M1 a M4, M5c, M6 a M16 exceto M17, M9b, M18). Nenhum sobrevivente, nenhum equivalente. Variantes que nao compilaram (if(false), narrowing do TS, "&& false") nao contam.
+Primeira rodada (alvo: card-expense.spec, isolation.spec, conversation.service.spec; 365 testes): 17 mortos (M1 a M4, M5c, M6 a M8, M9b, M10 a M16, M18). Nenhum sobrevivente, nenhum equivalente. Variantes que nao compilaram (if(false), narrowing do TS, "&& false") nao contam.
 
 Rodada do ajuste (369 testes): 7 novos, todos mortos.
 - N1 "no credito <palavra>" vira recusa: morto (3).
