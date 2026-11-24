@@ -270,6 +270,24 @@ export class World {
       }),
     },
     creditCycle: {
+      getCycleForCard: jest.fn(async (userId: string, cardId: string) => {
+        this.track('creditCycle.getCycleForCard', userId);
+        if (!this.cards.some((row) => row.id === cardId && row.userId === userId)) {
+          throw new NotFoundException('Cartao nao encontrado.');
+        }
+        return {
+          closingDay: 5,
+          dueDay: 12,
+          countAllPayments: false,
+          cycleStart: '2026-11-06T00:00:00.000Z',
+          cycleEnd: '2026-12-05T00:00:00.000Z',
+          ceiling: null,
+          spent: 0,
+          remaining: null,
+          percentUsed: null,
+          status: 'none',
+        };
+      }),
       getCurrent: jest.fn(async (userId: string) => {
         this.track('creditCycle.getCurrent', userId);
         const ceiling = this.ceilings[userId] ?? null;
@@ -470,9 +488,9 @@ export function seedWorld(): World {
     });
   }
   world.cards.push(
-    { id: 'cr-A-nubank', userId: USER_ID.A, name: 'Nubank', isDefault: true, archivedAt: null },
-    { id: 'cr-B-itau', userId: USER_ID.B, name: 'Itaú', isDefault: true, archivedAt: null },
-    { id: 'cr-B-bradesco', userId: USER_ID.B, name: 'Bradesco', isDefault: false, archivedAt: null },
+    { id: 'cr-A-nubank', userId: USER_ID.A, name: 'Nubank', isDefault: true, archivedAt: null, closingDay: 5, dueDay: 12 },
+    { id: 'cr-B-itau', userId: USER_ID.B, name: 'Itaú', isDefault: true, archivedAt: null, closingDay: 5, dueDay: 12 },
+    { id: 'cr-B-bradesco', userId: USER_ID.B, name: 'Bradesco', isDefault: false, archivedAt: null, closingDay: 8, dueDay: null },
   );
   return world;
 }

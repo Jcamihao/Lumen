@@ -849,3 +849,57 @@ describe('10. cartao no lancamento (9b-1): cartao de outra conta nunca casa nem 
     expect(draftOf('B')).toMatchObject({ cardId: 'cr-B-itau', cardName: 'Itaú', paymentMethod: 'CREDIT' });
   });
 });
+
+describe('11. leitura por cartao e meus cartoes (9b-2): so cartao da propria conta', () => {
+  let world: World;
+  let engine: Engine;
+
+  beforeEach(() => {
+    jest.useFakeTimers({ now: T0 });
+    world = seedWorld();
+    engine = buildEngine(world, true);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const send = (who: Who, text: string): Promise<ConversationReply> =>
+    engine.service.handleMessage({ userId: USER_ID[who], channel: 'APP', messageId: randomUUID(), text, receivedAt: new Date() });
+
+  it('cartao de B nao casa para A: a resposta e a mesma do nome inexistente, e o ciclo nao e lido', async () => {
+    const alheio = await send('A', 'cartao bradesco');
+    const inexistente = await send('A', 'cartao picapau');
+    expect(alheio.text).toContain('Cartões: Nubank');
+    expect(alheio.text).not.toContain('Bradesco');
+    expect(alheio.text.replace('"bradesco"', '"X"')).toBe(inexistente.text.replace('"picapau"', '"X"'));
+    expect(world.calls.some((call) => call.method === 'creditCycle.getCycleForCard' && call.userId === USER_ID.A)).toBe(false);
+  });
+
+  it('"no/do X" de A com nome de cartao de B nao vira leitura (forma sem a palavra cartao)', async () => {
+    const reply = await send('A', 'quanto sobrou no itau');
+    expect(reply.text).not.toContain('Cartão:');
+    expect(reply.text).not.toContain('Itaú');
+    expect(reply.text).not.toContain('Bradesco');
+  });
+
+  it('B le o proprio cartao pelo nome e recebe o cartao dele, nunca o de A', async () => {
+    const reply = await send('B', 'cartao Bradesco');
+    expect(reply.text.startsWith('Cartão: Bradesco\n')).toBe(true);
+    const nubankDeA = await send('B', 'cartao nubank');
+    expect(nubankDeA.text).toContain('Cartões: Itaú, Bradesco');
+    expect(nubankDeA.text).not.toContain('Nubank,');
+  });
+
+  it('"meus cartoes" lista so os do dono; conta sem cartao recebe a resposta curta', async () => {
+    const a = await send('A', 'meus cartoes');
+    expect(a.text).toBe('Seus cartões:\n- Nubank (padrão): fechamento dia 5, vencimento dia 12');
+    const b = await send('B', 'meus cartoes');
+    expect(b.text).toContain('- Itaú (padrão)');
+    expect(b.text).toContain('- Bradesco');
+    expect(b.text).not.toContain('Nubank');
+    const c = await send('C', 'meus cartoes');
+    expect(c.text).toBe('Você ainda não tem cartão ativo.');
+    expect((await send('C', 'cartao Nubank')).text).toBe('Você ainda não tem cartão ativo.');
+  });
+});

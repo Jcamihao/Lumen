@@ -20,11 +20,12 @@ const CYCLE = {
 };
 
 const CARDS: Row[] = [
-  { id: 'cr-nubank', userId: 'A', name: 'Nubank', isDefault: true, archivedAt: null },
-  { id: 'cr-itau', userId: 'A', name: 'Itaú', isDefault: false, archivedAt: null },
-  { id: 'cr-vivo', userId: 'A', name: 'Vivo', isDefault: false, archivedAt: null },
-  { id: 'cr-vivo-pad', userId: 'A', name: 'Vivo Pad', isDefault: false, archivedAt: null },
-  { id: 'cr-nubank-b', userId: 'B', name: 'Nubank', isDefault: true, archivedAt: null },
+  { id: 'cr-nubank', userId: 'A', name: 'Nubank', isDefault: true, archivedAt: null, closingDay: 5, dueDay: 12 },
+  { id: 'cr-itau', userId: 'A', name: 'Itaú', isDefault: false, archivedAt: null, closingDay: 5, dueDay: 12 },
+  { id: 'cr-vivo', userId: 'A', name: 'Vivo', isDefault: false, archivedAt: null, closingDay: 5, dueDay: 12 },
+  { id: 'cr-vivo-pad', userId: 'A', name: 'Vivo Pad', isDefault: false, archivedAt: null, closingDay: 5, dueDay: 12 },
+  { id: 'cr-old', userId: 'A', name: 'Antigo', isDefault: false, archivedAt: new Date('2026-10-01T00:00:00.000Z'), closingDay: 3, dueDay: null },
+  { id: 'cr-nubank-b', userId: 'B', name: 'Nubank', isDefault: true, archivedAt: null, closingDay: 5, dueDay: 12 },
 ];
 
 function buildService(cycle: Row = CYCLE) {
@@ -103,7 +104,7 @@ function buildService(cycle: Row = CYCLE) {
     const input: ConversationInput = { userId, channel, messageId: `m${counter}`, text, receivedAt: T0 };
     return service.handleMessage(input);
   };
-  return { service, send, sessions, events, setCeiling, removeCeiling, creditCycle };
+  return { service, send, sessions, events, setCeiling, removeCeiling, creditCycle, prisma };
 }
 
 function matches(row: Row, where: Row = {}): boolean {
@@ -287,5 +288,129 @@ describe('limite do cartao por nome e limpar teto (8d)', () => {
     expect(cancel.kind).toBe('CANCELLED');
     expect(removeCeiling).not.toHaveBeenCalled();
     expect(sessions).toHaveLength(0);
+  });
+});
+
+describe('leitura por cartao e meus cartoes (9b-2)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: T0 });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('nome dito na leitura: texto traz o cartao e a leitura usa o cartao dele (getCycleForCard)', async () => {
+    const { send, creditCycle } = buildService();
+    const reply = await send('quanto sobrou no Nubank');
+    expect(reply.text.startsWith('Cartão: Nubank\n')).toBe(true);
+    expect(creditCycle.getCycleForCard).toHaveBeenCalledWith('A', 'cr-nubank');
+    expect(creditCycle.getCurrent).not.toHaveBeenCalled();
+  });
+
+  it('"cartao" explicito casa sem acento e sem caixa', async () => {
+    const { send, creditCycle } = buildService();
+    const reply = await send('cartao ITAU');
+    expect(reply.text.startsWith('Cartão: Itaú\n')).toBe(true);
+    expect(creditCycle.getCycleForCard).toHaveBeenCalledWith('A', 'cr-itau');
+  });
+
+  it('nome inexistente com "cartao" responde a lista, sem erro e sem consultar ciclo', async () => {
+    const { send, creditCycle } = buildService();
+    const reply = await send('cartao picapau');
+    expect(reply.text).toContain('Não achei cartão com "picapau"');
+    expect(reply.text).toContain('Nubank, Itaú, Vivo, Vivo Pad');
+    expect(creditCycle.getCycleForCard).not.toHaveBeenCalled();
+  });
+
+  it('nome ambiguo com "cartao" responde a lista de quem bate', async () => {
+    const { send, creditCycle } = buildService();
+    const reply = await send('fatura do cartao vi');
+    expect(reply.text).toContain('Mais de um cartão bate com "vi"');
+    expect(reply.text).toContain('Vivo, Vivo Pad');
+    expect(creditCycle.getCycleForCard).not.toHaveBeenCalled();
+  });
+
+  it('forma sem a palavra cartao so le com nome EXATO; nome que nao casa segue o caminho de hoje', async () => {
+    const { send, creditCycle } = buildService();
+    const naoEhCartao = await send('quanto sobrou no picapau');
+    expect(naoEhCartao.text).not.toContain('Não achei');
+    expect(naoEhCartao.text).not.toContain('Cartão:');
+    expect(creditCycle.getCycleForCard).not.toHaveBeenCalled();
+    const exato = await send('quanto sobrou no Vivo');
+    expect(exato.text.startsWith('Cartão: Vivo\n')).toBe(true);
+    expect(creditCycle.getCycleForCard).toHaveBeenCalledWith('A', 'cr-vivo');
+    const exatoDois = await send('fatura do vivo pad');
+    expect(exatoDois.text.startsWith('Cartão: Vivo Pad\n')).toBe(true);
+    // Nome que so casa de forma parcial ("nubank estourou") nao e cartao na forma sem a palavra cartao.
+    const parcial = await send('quanto sobrou no nubank estourou');
+    expect(parcial.text).not.toContain('Cartão:');
+    expect(creditCycle.getCycleForCard).toHaveBeenCalledTimes(2);
+  });
+
+  it('forma sem a palavra cartao com nome que casa mais de um (exato nao) segue o caminho de hoje', async () => {
+    const { send, creditCycle } = buildService();
+    const reply = await send('limite do vi');
+    expect(reply.text).not.toContain('Cartão:');
+    expect(creditCycle.getCycleForCard).not.toHaveBeenCalled();
+  });
+
+  it('sem nome segue o cartao padrao, sem linha de cartao (como antes)', async () => {
+    const { send, creditCycle } = buildService();
+    const reply = await send('quanto sobrou no cartao');
+    expect(reply.text.startsWith('Cartão:')).toBe(false);
+    expect(creditCycle.getCurrent).toHaveBeenCalled();
+    expect(creditCycle.getCycleForCard).not.toHaveBeenCalled();
+  });
+
+  it('cartao arquivado nao casa: responde a lista', async () => {
+    const { send, creditCycle } = buildService();
+    const reply = await send('cartao Antigo');
+    expect(reply.text).toContain('Não achei cartão com "Antigo"');
+    expect(reply.text).not.toContain('Antigo,');
+    expect(creditCycle.getCycleForCard).not.toHaveBeenCalled();
+  });
+
+  it('isolamento: cartao de B nao casa para A; A ve so os proprios', async () => {
+    const { send: sendA, creditCycle } = buildService();
+    const { send: sendB } = buildService();
+    const naoDeA = await sendA('cartao Nubank', 'A');
+    expect(naoDeA.text.startsWith('Cartão: Nubank\n')).toBe(true);
+    expect(creditCycle.getCycleForCard).toHaveBeenLastCalledWith('A', 'cr-nubank');
+    const listaB = await sendB('meus cartoes', 'B');
+    expect(listaB.text).toBe('Seus cartões:\n- Nubank (padrão): fechamento dia 5, vencimento dia 12');
+  });
+
+  it('"meus cartoes": lista ativos, padrao marcado, sem consultar ciclo', async () => {
+    const { send, creditCycle } = buildService();
+    const reply = await send('meus cartoes');
+    expect(reply.kind).toBe('INFO');
+    expect(reply.text).toBe(
+      [
+        'Seus cartões:',
+        '- Nubank (padrão): fechamento dia 5, vencimento dia 12',
+        '- Itaú: fechamento dia 5, vencimento dia 12',
+        '- Vivo: fechamento dia 5, vencimento dia 12',
+        '- Vivo Pad: fechamento dia 5, vencimento dia 12',
+      ].join('\n'),
+    );
+    expect(reply.text).not.toContain('Antigo');
+    expect(creditCycle.getCycleForCard).not.toHaveBeenCalled();
+  });
+
+  it('"meus cartoes" consulta so cartoes do dono e ativos, com ordem do 8d', async () => {
+    const { send, prisma } = buildService();
+    await send('quais cartoes', 'A');
+    expect(prisma.creditCard.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { userId: 'A', archivedAt: null },
+        orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+      }),
+    );
+  });
+
+  it('usuario sem cartao ativo: resposta curta, sem erro', async () => {
+    const { send } = buildService();
+    const reply = await send('meus cartoes', 'C');
+    expect(reply.text).toBe('Você ainda não tem cartão ativo.');
   });
 });
