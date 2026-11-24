@@ -35,10 +35,10 @@ describe('plans.catalog', () => {
     expect(p.prices).toEqual({ MONTHLY: 14.9, YEARLY: 149 });
   });
 
-  it('SHARED e 2 pessoas com 10 cartoes e nao vendavel (D2/D7)', () => {
+  it('SHARED e 2 pessoas com 10 cartoes e vendavel desde a 11a-3 (D2/D7/D8)', () => {
     const p = getCatalog({}).SHARED;
     expect(p.label).toBe('Compartilhado');
-    expect(p.sellable).toBe(false);
+    expect(p.sellable).toBe(true);
     expect(p.seats).toBe(2);
     expect(p.limits).toEqual({
       goals: null,

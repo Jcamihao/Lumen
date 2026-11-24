@@ -103,12 +103,15 @@ describe('BillingPaymentsService#checkout', () => {
     expect(asaasClient.createCheckout).not.toHaveBeenCalled();
   });
 
-  it('rejeita plano nao vendavel (SHARED), sem chamar o Asaas', async () => {
+  // SHARED virou vendavel na 11a-3 (D8); FREE continua o exemplo de plano nao vendavel.
+  it('rejeita plano nao vendavel (FREE), sem chamar o Asaas', async () => {
     const { service, asaasClient } = build();
 
-    await expect(
-      service.checkout('user-1', { plan: 'SHARED', interval: 'MONTHLY' }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    // @ts-expect-error: FREE passa na validacao do DTO mas cai no interruptor de venda.
+    await expect(service.checkout('user-1', { plan: 'FREE', interval: 'MONTHLY' })).rejects.toThrowError(
+      // A mensagem importa: sem o guard de sellable o FREE cairia so no preco ausente.
+      /nao esta disponivel para assinatura/,
+    );
     expect(asaasClient.createCheckout).not.toHaveBeenCalled();
   });
 
@@ -158,6 +161,20 @@ describe('BillingPaymentsService#checkout', () => {
 
     expect(result).toEqual({ link: 'https://asaas.test/c/1' });
     expect(asaasClient.createCheckout).toHaveBeenCalledTimes(1);
+  });
+
+  it('SHARED vendavel (D8): checkout mensal sai com o preco do grupo (24.90) pro Asaas', async () => {
+    const { service, prisma, asaasClient } = build();
+    prisma.subscription.findMany.mockResolvedValue([]);
+    prisma.subscription.findFirst.mockResolvedValue(null);
+
+    const result = await service.checkout('user-1', { plan: 'SHARED', interval: 'MONTHLY' });
+
+    expect(result).toEqual({ link: 'https://asaas.test/c/1' });
+    expect(asaasClient.createCheckout).toHaveBeenCalledTimes(1);
+    const call = asaasClient.createCheckout.mock.calls[0][0];
+    expect(call.value).toBe(24.9);
+    expect(call.cycle).toBe('MONTHLY');
   });
 
   it('reaproveita checkout PENDING recente (10min) com link — nao chama o Asaas', async () => {

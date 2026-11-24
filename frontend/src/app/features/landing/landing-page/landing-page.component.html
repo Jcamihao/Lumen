@@ -235,6 +235,24 @@
           </span>
         </a>
       </article>
+      <article class="landing__feature" *ngIf="sharedPlan() as plan">
+        <h3>{{ plan.label }}</h3>
+        <p class="landing__pricing-price">
+          {{ sharedMonthlyLabel() }}/mês
+          <span>ou {{ sharedYearlyLabel() }}/ano</span>
+        </p>
+        <ul class="landing__feature-list">
+          <li>Tudo do Individual, para {{ plan.seats }} pessoas</li>
+          <li>Um pagamento só — quem é convidado não paga nada</li>
+          <li>Selah: 300 perguntas/mês para cada pessoa</li>
+        </ul>
+        <a class="landing-btn landing-btn--primary landing__pricing-cta" routerLink="/auth/register">
+          <span>Criar conta</span>
+          <span class="landing-btn__icon">
+            <span class="material-symbols-rounded">arrow_forward</span>
+          </span>
+        </a>
+      </article>
     </div>
   </section>
 

@@ -79,7 +79,9 @@ export function getCatalog(
     SHARED: {
       id: 'SHARED',
       label: 'Compartilhado',
-      sellable: false,
+      // D8 (dono, contrato 11): o interruptor do preco virou true no fechamento da 11a,
+      // com o app de grupo pronto. Metade do preco e do pagamento, nao por pessoa.
+      sellable: true,
       // D2 (dono, 2026-11-24): 2 pessoas no lancamento; para evoluir ate 4 e trocar aqui.
       seats: 2,
       limits: unlimited(10),

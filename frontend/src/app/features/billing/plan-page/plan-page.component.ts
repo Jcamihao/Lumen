@@ -173,9 +173,9 @@ export class PlanPageComponent {
   }
 
   /** Chama checkout no BillingService e, com o link devolvido, navega pra pagina hospedada do Asaas. */
-  protected subscribe(interval: 'MONTHLY' | 'YEARLY') {
+  protected subscribe(plan: 'INDIVIDUAL' | 'SHARED', interval: 'MONTHLY' | 'YEARLY') {
     this.billing
-      .checkout({ plan: 'INDIVIDUAL', interval })
+      .checkout({ plan, interval })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: ({ link }) => this.navigateToExternal(link),
