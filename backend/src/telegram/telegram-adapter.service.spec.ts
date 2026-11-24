@@ -282,6 +282,18 @@ describe('long polling: offset e ciclo (D2)', () => {
     expect(conversation.handleMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ text: 'meus cartoes' }));
   });
 
+  it('/saldo, /gastos e /ajuda do menu viram a frase do motor', async () => {
+    const { adapter, conversation } = buildStack();
+
+    await adapter.process(inbound({ updateId: 11, messageId: 'tg-11', text: '/saldo' }));
+    await adapter.process(inbound({ updateId: 12, messageId: 'tg-12', text: '/Gastos' }));
+    await adapter.process(inbound({ updateId: 13, messageId: 'tg-13', text: '/ajuda' }));
+
+    expect(conversation.handleMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({ text: 'saldo' }));
+    expect(conversation.handleMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ text: 'gastos' }));
+    expect(conversation.handleMessage).toHaveBeenNthCalledWith(3, expect.objectContaining({ text: 'ajuda' }));
+  });
+
   it('texto que nao e comando segue igual, mesmo com barra no meio', async () => {
     const { adapter, conversation } = buildStack();
 
