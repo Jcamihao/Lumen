@@ -100,6 +100,8 @@ export class World {
   links: Row[] = [];
   linkCodes: Row[] = [];
   categories: Row[] = [];
+  /** 9b-1: cartoes por dono (A: Nubank; B: Itaú e Bradesco; C: nenhum). */
+  cards: Row[] = [];
   goals: Row[] = [];
   transactions: Row[] = [];
   envelopes: Row[] = [];
@@ -172,6 +174,10 @@ export class World {
         targets.forEach((row) => Object.assign(row, data));
         return { count: targets.length };
       }),
+    },
+    creditCard: {
+      findMany: jest.fn(async ({ where }: { where: Row }) => clone(this.cards.filter((row) => matches(row, where)))),
+      findFirst: jest.fn(async ({ where }: { where: Row }) => clone(this.cards.find((row) => matches(row, where)) ?? null)),
     },
     financeCategory: {
       findMany: jest.fn(async ({ where }: { where: Row }) => clone(this.categories.filter((row) => matches(row, where)))),
@@ -463,6 +469,11 @@ export function seedWorld(): World {
       nextDueDate: new Date('2026-11-20T00:00:00.000Z'),
     });
   }
+  world.cards.push(
+    { id: 'cr-A-nubank', userId: USER_ID.A, name: 'Nubank', isDefault: true, archivedAt: null },
+    { id: 'cr-B-itau', userId: USER_ID.B, name: 'Itaú', isDefault: true, archivedAt: null },
+    { id: 'cr-B-bradesco', userId: USER_ID.B, name: 'Bradesco', isDefault: false, archivedAt: null },
+  );
   return world;
 }
 

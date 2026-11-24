@@ -814,3 +814,38 @@ describe('Isolamento A/B/C do motor de conversa', () => {
     });
   });
 });
+
+describe('10. cartao no lancamento (9b-1): cartao de outra conta nunca casa nem aparece', () => {
+  let world: World;
+  let engine: Engine;
+
+  beforeEach(() => {
+    jest.useFakeTimers({ now: T0 });
+    world = seedWorld();
+    engine = buildEngine(world, true);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const send = (who: Who, text: string): Promise<ConversationReply> =>
+    engine.service.handleMessage({ userId: USER_ID[who], channel: 'APP', messageId: randomUUID(), text, receivedAt: new Date() });
+  const draftOf = (who: Who) => world.sessions.find((row) => row.userId === USER_ID[who])?.draft;
+
+  it('A nao ve o Bradesco de B; "no itau" de A nao pega o Itau de B', async () => {
+    const notFound = await send('A', '50 no cartao bradesco');
+    expect(notFound.kind).toBe('ERROR');
+    expect(notFound.text).toContain('Cartões: Nubank');
+    expect(notFound.text).not.toContain('Bradesco');
+    expect(world.sessions.some((row) => row.userId === USER_ID.A)).toBe(false);
+
+    await send('A', '50 mercado no itau');
+    expect(draftOf('A')).toMatchObject({ cardId: null, paymentMethod: null });
+  });
+
+  it('B usa o proprio cartao: o id gravado no rascunho e o de B', async () => {
+    await send('B', '50 mercado no itau');
+    expect(draftOf('B')).toMatchObject({ cardId: 'cr-B-itau', cardName: 'Itaú', paymentMethod: 'CREDIT' });
+  });
+});
