@@ -4,6 +4,7 @@ import {
   ConversationChannel,
   ConversationOutcome,
   ConversationState,
+  PaymentMethod,
   Prisma,
   TransactionType,
 } from '@prisma/client';
@@ -101,6 +102,8 @@ import {
   parseSearch,
 } from './transaction-change';
 import { CL_REPLIES, ChatCard, cleanCardTerm, isClearLimitDraft, matchCardsByTerm, parseLimitBody } from './credit-limit';
+import { CARD_EXPENSE_REPLIES, findCardPhrase, removeTokenRange } from './card-expense';
+import { CARD_ARCHIVED_MESSAGE, CARD_NEEDS_CREDIT_MESSAGE, CARD_NOT_FOUND_MESSAGE } from '../credit-cards/card-link';
 import { parseEnvelopeBody } from './parsers/envelope.parser';
 import { IntentMatch, ReadIntent, matchIntent } from './parsers/intent.matcher';
 import {
@@ -560,7 +563,24 @@ export class ConversationService {
       return this.reply('ERROR', 'IDLE', REPLIES.invalidDate);
     }
 
-    const description = stripConnectors(dateResult.rest).join(' ');
+    // 9b-1: cartao no texto. Nome que nao casa (ou explicito ambiguo/inexistente) responde a lista e nao grava.
+    const cards = type === TransactionType.EXPENSE ? await this.activeCards(userId) : [];
+    const phrase = type === TransactionType.EXPENSE ? findCardPhrase(dateResult.rest, cards) : null;
+    if (phrase && (phrase.kind === 'notFound' || phrase.kind === 'ambiguous')) {
+      await this.recordEvent(input, intent.intent, ConversationOutcome.ERROR);
+      return this.reply(
+        'ERROR',
+        'IDLE',
+        phrase.kind === 'notFound'
+          ? CL_REPLIES.cardNotFound(phrase.term, cards.map((card) => card.name))
+          : CL_REPLIES.cardAmbiguous(phrase.term, phrase.hits.map((card) => card.name)),
+      );
+    }
+    // "credito" sem nome e sem nenhum cartao nao mexe no texto (fica como descricao, como antes).
+    const cardTokens = phrase && !(phrase.kind === 'credit' && cards.length === 0)
+      ? removeTokenRange(dateResult.rest, phrase.from, phrase.to)
+      : dateResult.rest;
+    const description = stripConnectors(cardTokens).join(' ');
     if (description.length > DESCRIPTION_MAX) {
       await this.recordEvent(input, intent.intent, ConversationOutcome.ERROR);
       return this.reply('ERROR', 'IDLE', REPLIES.descriptionTooLong);
@@ -576,7 +596,17 @@ export class ConversationService {
       paymentMethod: null,
       pendingField: null,
       categoryOptions: [],
+      cardId: null,
+      cardName: null,
+      cardOptions: [],
     };
+    if (phrase && phrase.kind === 'card') {
+      pickCard(draft, phrase.card);
+    } else if (phrase && phrase.kind === 'credit' && cards.length === 1) {
+      pickCard(draft, cards[0]);
+    } else if (phrase && phrase.kind === 'credit' && cards.length > 1) {
+      draft.cardOptions = cards.map((card) => card.id);
+    }
 
     if (intent.missingAmount === true) {
       draft.pendingField = 'amount';
@@ -585,6 +615,7 @@ export class ConversationService {
     } else {
       await this.resolveCategory(userId, draft, description);
     }
+    settleCardChoice(draft);
 
     return this.saveNewDraft({ input, intent: intent.intent, draft, today });
   }
@@ -1337,6 +1368,7 @@ export class ConversationService {
 
     // Campo respondido: o motivo da revisão anterior já foi atendido e não pode ficar no cartão novo.
     delete (draft as { reviewReason?: string }).reviewReason;
+    if (draftKind(draft) === 'TRANSACTION') settleCardChoice(draft as ExpenseOrIncomeDraft);
     const nextState = draft.pendingField ? ConversationState.COLLECTING_FIELDS : ConversationState.AWAITING_CONFIRMATION;
     const updated = await this.prisma.conversationSession.updateMany({
       where: { id: session.id, userId, version: session.version },
@@ -1420,6 +1452,17 @@ export class ConversationService {
       draft.description = value;
       draft.pendingField = null;
       await this.resolveCategory(userId, draft, value);
+      return { status: 'UPDATED' };
+    }
+    if (draft.pendingField === 'card') {
+      const options = await this.cardChoiceOptions(userId, draft);
+      const picked = pickCardAnswer(options, value);
+      if (picked === null) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: CARD_EXPENSE_REPLIES.choose(options.map((card) => card.name)) };
+      }
+      pickCard(draft, picked);
+      draft.cardOptions = [];
+      draft.pendingField = null;
       return { status: 'UPDATED' };
     }
     if (draft.pendingField === 'category') {
@@ -2460,9 +2503,10 @@ export class ConversationService {
       date: `${draft.date}T00:00:00.000Z`,
       categoryId: draft.categoryId ?? undefined,
       paymentMethod: draft.paymentMethod ?? undefined,
+      cardId: draft.cardId ?? undefined,
     });
     return {
-      text: doneText(draft.type, draft.amountCents, draft.description ?? ''),
+      text: doneText(draft.type, draft.amountCents, draft.description ?? '', draft.cardName ?? null),
       data: { transactionId: created.id },
       resultRef: created.id,
     };
@@ -2871,6 +2915,21 @@ export class ConversationService {
   // ---------- categorias e rascunho ----------
 
   /** Escolhe categoria pela descrição: unica = define; varias ou nenhuma = pergunta. */
+  /** Cartoes ativos do dono, na ordem do 8d (padrao primeiro, depois nome). Sempre pelo userId do vinculo. */
+  private async activeCards(userId: string): Promise<ChatCard[]> {
+    return this.prisma.creditCard.findMany({
+      where: { userId, archivedAt: null },
+      orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+      select: { id: true, name: true },
+    });
+  }
+
+  /** Opcoes da escolha de cartao, na ordem em que foram oferecidas. */
+  private async cardChoiceOptions(userId: string, draft: ExpenseOrIncomeDraft): Promise<ChatCard[]> {
+    const offered = draft.cardOptions ?? [];
+    return (await this.activeCards(userId)).filter((card) => offered.includes(card.id));
+  }
+
   private async resolveCategory(userId: string, draft: ExpenseOrIncomeDraft, query: string): Promise<void> {
     const categories = await this.prisma.financeCategory.findMany({
       where: { userId, type: draft.type },
@@ -2996,6 +3055,7 @@ export class ConversationService {
       category: view.category,
       date: draft.date,
       paymentMethod: draft.paymentMethod,
+      cardName: draft.cardName ?? null,
       futureDate: draft.date > today,
     });
   }
@@ -3060,6 +3120,10 @@ export class ConversationService {
     }
     if (draft.pendingField === 'description') {
       return REPLIES.askDescription;
+    }
+    if (draft.pendingField === 'card') {
+      const options = await this.cardChoiceOptions(userId, draft);
+      return CARD_EXPENSE_REPLIES.choose(options.map((card) => card.name));
     }
     if (draft.categoryOptions.length === 0) {
       return REPLIES.askCategoryNoOptions;
@@ -3282,7 +3346,7 @@ export class ConversationService {
         category: category ?? (draft.pendingField === 'category' ? 'a informar' : 'sem categoria'),
         date: draft.date,
         paymentMethod: draft.paymentMethod,
-      }), ...(draft.date > await this.todayYmd(session.userId, new Date())
+      }), ...(draft.cardName ? [{ label: 'Cartão', value: draft.cardName }] : []), ...(draft.date > await this.todayYmd(session.userId, new Date())
         ? [{ label: 'Aviso', value: 'Este lançamento tem data futura.' }]
         : [])],
     };
@@ -3639,6 +3703,7 @@ function numberedOptions(draft: SessionDraft): string[] {
   if (draft.kind === 'CONTRIBUTION') {
     return draft.pendingField === 'goal' ? draft.goalOptions : [];
   }
+  if (draft.pendingField === 'card') return draft.cardOptions ?? [];
   return draft.pendingField === 'category' ? draft.categoryOptions : [];
 }
 
@@ -3875,6 +3940,10 @@ function discardText(kind: DraftKind, error: unknown): string {
   if (kind === 'INSTALLMENT') {
     return REPLIES.installmentRejected;
   }
+  // 9b-1: cartao recusado na confirmacao (arquivado, removido ou de outra conta) vira recusa clara; nada foi gravado.
+  if (kind === 'TRANSACTION' && error instanceof HttpException && [CARD_NOT_FOUND_MESSAGE, CARD_ARCHIVED_MESSAGE, CARD_NEEDS_CREDIT_MESSAGE].includes(error.message)) {
+    return error.message;
+  }
   return kind === 'TRANSACTION' ? REPLIES.transactionRejected : REPLIES.goalGone;
 }
 
@@ -3908,6 +3977,28 @@ function codePointLength(text: string): number {
 
 function ttlFor(state: ConversationState): number {
   return state === ConversationState.AWAITING_CONFIRMATION ? TTL_MS.AWAITING_CONFIRMATION : TTL_MS.COLLECTING_FIELDS;
+}
+
+/** Cartao escolhido no rascunho (9b-1): sempre com CREDIT, como a tela exige. */
+function pickCard(draft: ExpenseOrIncomeDraft, card: ChatCard): void {
+  draft.cardId = card.id;
+  draft.cardName = card.name;
+  draft.paymentMethod = PaymentMethod.CREDIT;
+}
+
+/** Resposta da escolha de cartao: numero 1 a 5 da lista, ou nome (sem acento/caixa). Sem casamento = null. */
+function pickCardAnswer(options: ChatCard[], value: string): ChatCard | null {
+  const normalized = normalize(value);
+  if (/^[1-5]$/.test(normalized) && options[Number(normalized) - 1]) return options[Number(normalized) - 1];
+  const term = cleanCardTerm(value);
+  if (term === '') return null;
+  const hits = matchCardsByTerm(options, term);
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/** "credito" sem nome com mais de um cartao: a pergunta so vem quando o resto do rascunho ja foi respondido. */
+function settleCardChoice(draft: ExpenseOrIncomeDraft): void {
+  if (draft.pendingField === null && (draft.cardOptions ?? []).length > 0 && !draft.cardId) draft.pendingField = 'card';
 }
 
 function splitTokens(text: string): string[] {

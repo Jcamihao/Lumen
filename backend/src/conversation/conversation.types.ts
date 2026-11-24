@@ -63,6 +63,7 @@ export interface DraftView {
 }
 
 export type PendingField =
+  | 'card'
   | 'amount'
   | 'description'
   | 'category'
@@ -88,6 +89,11 @@ export interface ExpenseOrIncomeDraft {
   pendingField: PendingField | null;
   /** Ids de categoria oferecidos quando a escolha e ambigua (max 5). */
   categoryOptions: string[];
+  /** 9b-1: cartao do lancamento (so despesa com CREDIT). Ausente em rascunho antigo = null. */
+  cardId?: string | null;
+  cardName?: string | null;
+  /** Ids dos cartoes oferecidos quando "credito" nao tem nome e ha mais de um cartao. */
+  cardOptions?: string[];
 }
 
 /** Rascunho de meta nova (contrato 3b1, secao 3). */
