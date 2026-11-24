@@ -38,7 +38,9 @@ export type DraftKind =
   | 'GOAL_CHANGE'
   | 'ENVELOPE_CHANGE'
   | 'RECURRING_CHANGE'
-  | 'INSTALLMENT_CHANGE';
+  | 'INSTALLMENT_CHANGE'
+  | 'CARD_RENAME'
+  | 'CARD_CREATE';
 
 export type PendingField =
   | 'amount'
@@ -52,7 +54,9 @@ export type PendingField =
   | 'firstDueDate'
   | 'transaction'
   | 'targetChoice'
-  | 'change';
+  | 'change'
+  | 'card'
+  | 'closingDay';
 
 /** Linha do cartão do rascunho, já formatada pelo backend. Valor ausente vem como "a informar". */
 export interface DraftRow {

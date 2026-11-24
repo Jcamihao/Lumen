@@ -96,6 +96,9 @@ export type Transaction = {
   installmentPurchaseId?: string | null;
   installmentNumber?: number | null;
   installmentsTotal?: number | null;
+  /** Cartao usado (so com paymentMethod CREDIT); nome para as listas. */
+  cardId?: string | null;
+  cardName?: string | null;
 };
 
 export type RecurrenceFrequency = "WEEKLY" | "MONTHLY" | "YEARLY";
@@ -109,6 +112,8 @@ export type RecurringTransaction = {
   categoryId?: string | null;
   category?: FinanceCategory | null;
   paymentMethod?: PaymentMethod | null;
+  cardId?: string | null;
+  cardName?: string | null;
   frequency: RecurrenceFrequency;
   /** Dia do mes de referencia (mensal/anual). */
   anchorDay: number;
@@ -130,6 +135,8 @@ export type InstallmentPurchase = {
   categoryId?: string | null;
   category?: FinanceCategory | null;
   paymentMethod?: PaymentMethod | null;
+  cardId?: string | null;
+  cardName?: string | null;
   anchorDay: number;
   /** Proxima parcela a gerar (AAAA-MM-DDT00:00:00.000Z); null quando ja gerou todas. */
   nextDueDate: string | null;

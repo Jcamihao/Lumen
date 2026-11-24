@@ -17,9 +17,11 @@ import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { todayLocalInputValue } from '../../../core/utils/date.utils';
 import { readErrorMessage } from '../../../core/utils/http-error.utils';
+import { cardIdForPayload, isCreditExpense } from '../../../core/utils/credit-card.utils';
 import { formatCurrency } from '../../../core/utils/money.utils';
 import { paymentMethodLabel } from '../../../core/utils/payment-method.utils';
 import { readPlanLimitAction, readPlanLimitMessage } from '../../../core/utils/plan-limit.utils';
+import { CreditCardSelectComponent } from '../../../shared/credit-card-select/credit-card-select.component';
 import { PaymentMethodPickerComponent } from '../../../shared/payment-method-picker/payment-method-picker.component';
 import {
   daysUntilDue,
@@ -30,7 +32,7 @@ import {
 
 @Component({
     selector: 'app-recurring-transactions-card',
-    imports: [CommonModule, ReactiveFormsModule, PaymentMethodPickerComponent],
+    imports: [CommonModule, ReactiveFormsModule, PaymentMethodPickerComponent, CreditCardSelectComponent],
     templateUrl: './recurring-transactions-card.component.html',
     styleUrls: ['./recurring-transactions-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush
@@ -59,6 +61,7 @@ export class RecurringTransactionsCardComponent {
     amount: [null as number | null, [Validators.required, Validators.min(0.01)]],
     categoryId: [''],
     paymentMethod: ['' as PaymentMethod | ''],
+    cardId: [''],
     frequency: ['MONTHLY' as RecurrenceFrequency],
     firstDueDate: [todayLocalInputValue(), Validators.required],
     endDate: [''],
@@ -98,6 +101,7 @@ export class RecurringTransactionsCardComponent {
       amount: null,
       categoryId: '',
       paymentMethod: '',
+      cardId: '',
       frequency: 'MONTHLY',
       firstDueDate: todayLocalInputValue(),
       endDate: '',
@@ -126,6 +130,7 @@ export class RecurringTransactionsCardComponent {
         amount: Number(raw.amount),
         categoryId: raw.categoryId || undefined,
         paymentMethod: raw.paymentMethod || undefined,
+        cardId: cardIdForPayload(raw.cardId, isCreditExpense(raw.type, raw.paymentMethod)),
         frequency: raw.frequency,
         firstDueDate: raw.firstDueDate,
         endDate: raw.endDate || undefined,
@@ -234,7 +239,12 @@ export class RecurringTransactionsCardComponent {
   }
 
   protected paymentText(item: RecurringTransaction) {
-    return paymentMethodLabel(item.paymentMethod);
+    return [paymentMethodLabel(item.paymentMethod), item.cardName].filter(Boolean).join(' · ') || null;
+  }
+
+  protected creditExpenseSelected() {
+    const raw = this.form.getRawValue();
+    return isCreditExpense(raw.type, raw.paymentMethod);
   }
 
   protected nextText(item: RecurringTransaction) {

@@ -76,6 +76,8 @@ const PENDING_FIELD_LABELS = {
   transaction: "lançamento",
   targetChoice: "meta ou reserva",
   change: "o que mudar",
+  card: "cartão",
+  closingDay: "dia de fechamento",
 } as const;
 
 @Component({

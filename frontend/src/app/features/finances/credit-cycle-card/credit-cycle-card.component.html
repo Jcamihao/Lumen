@@ -11,6 +11,19 @@
   <div class="proto-surface__body">
     <p class="credit-cycle-card__hint" *ngIf="loading()">Carregando...</p>
 
+    <div class="credit-cycle-card__tabs" role="tablist" aria-label="Cartões" *ngIf="showTabs()">
+      <button
+        *ngFor="let card of cards()"
+        type="button"
+        role="tab"
+        class="proto-button proto-button--ghost credit-cycle-card__tab"
+        [attr.aria-selected]="card.id === selectedCardId()"
+        (click)="selectCard(card.id)"
+      >
+        {{ card.name }}
+      </button>
+    </div>
+
     <div class="proto-empty" *ngIf="loadFailed()">
       <strong>Não foi possível carregar o teto de crédito</strong>
       <p>Confira sua conexão e tente de novo.</p>
