@@ -317,6 +317,8 @@ describe('Criar cartao pela conversa (9b-3b)', () => {
     expect(done.text).toBe('Cartão Roxinho criado, fecha dia 10.');
     expect(done.data?.cardId).toEqual(expect.any(String));
     expect(createSpy()).toHaveBeenCalledWith(USER_ID.C, { name: 'Roxinho', closingDay: 10, dueDay: null });
+    // O evento guarda o id do cartao criado (rastro da escrita), nao o nome.
+    expect(world.events.find((row) => row.intent === 'create_card' && row.outcome === 'COMPLETED')?.resultRef).toBe(done.data?.cardId);
     const created = cardsOf('C');
     expect(created).toHaveLength(1);
     expect(created[0]).toMatchObject({ name: 'Roxinho', closingDay: 10, dueDay: null, isDefault: false });

@@ -107,6 +107,12 @@ describe('Criar cartao: leitura do comando e da resposta (9b-3b)', () => {
     expect(parseCardCreate('fecha dia 10')).toEqual({ ok: false, text: CARD_WRITE_REPLIES.createNeedsName });
   });
 
+  it('nome de exatos 40 caracteres e aceito (borda) e dia com zero a esquerda ou 3 digitos recusa', () => {
+    expect(parseCardCreate(`${'x'.repeat(40)} fecha dia 10`)).toEqual({ ok: true, name: 'x'.repeat(40), closingDay: 10, dueDay: null });
+    expect(parseCardCreate('Nubank fecha dia 007')).toEqual({ ok: false, text: CARD_WRITE_REPLIES.createBadDay('fechamento') });
+    expect(parseCardCreate('Nubank vence dia 017')).toEqual({ ok: false, text: CARD_WRITE_REPLIES.createBadDay('vencimento') });
+  });
+
   it('nome com mais de 40 caracteres recusa', () => {
     expect(parseCardCreate(`${'x'.repeat(41)} fecha dia 10`)).toEqual({ ok: false, text: CARD_WRITE_REPLIES.nameLength });
   });
