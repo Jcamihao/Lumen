@@ -1,5 +1,5 @@
 import { cleanCardTerm } from './credit-limit';
-import { normalizeWord } from './parsers/normalize';
+import { normalize, normalizeWord } from './parsers/normalize';
 
 /*
  * Criar e renomear cartao pela conversa (contrato 9b-3, secao 7). Funcoes puras: sem banco, sem Nest.
@@ -47,10 +47,17 @@ export function parseCardRename(body: string): CardRenameParse {
   return { ok: true, term, newName };
 }
 
-/** Confere se o nome novo bate com outro cartao ativo, sem diferenciar maiuscula (mesma regra da API). */
+/**
+ * Confere se o nome novo bate com outro cartao ativo: sem diferenciar maiuscula (regra da API) E sem acento/pontuacao final
+ * (regra da busca do chat). Sem isso, "Roxinho" e "Róxinho" viram dois cartoes que o chat nao consegue distinguir (igualdade
+ * normalizada empata e a busca responde "mais de um cartao").
+ */
 export function nameTakenBy(cards: Array<{ id: string; name: string }>, name: string, exceptId: string): boolean {
   const wanted = name.toLowerCase();
-  return cards.some((card) => card.id !== exceptId && card.name.toLowerCase() === wanted);
+  const wantedKey = normalize(name);
+  return cards.some(
+    (card) => card.id !== exceptId && (card.name.toLowerCase() === wanted || (wantedKey !== '' && normalize(card.name) === wantedKey)),
+  );
 }
 
 export function cardRenameDraftText(input: { from: string; to: string }): string {

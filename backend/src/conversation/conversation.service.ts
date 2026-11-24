@@ -958,6 +958,11 @@ export class ConversationService {
     if (draft.cardId === null) {
       throw new Error('rascunho de renomear cartao incompleto');
     }
+    // Confere de novo o nome parecido (sem acento/caixa) antes de gravar: a API so barra o igual sem caixa. Fora do lock; a janela e minima.
+    const cards = await this.activeCards(userId);
+    if (nameTakenBy(cards, draft.newName, draft.cardId)) {
+      throw new ConflictException('Ja existe um cartao com este nome.');
+    }
     const receipt = await this.creditCards.update(userId, draft.cardId, { name: draft.newName });
     return {
       text: cardRenamedText({ from: draft.currentName, to: receipt.name }),
