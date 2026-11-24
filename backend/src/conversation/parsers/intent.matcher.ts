@@ -1,5 +1,6 @@
 import { normalizeWord } from './normalize';
 import { parseAmountPrefix } from './amount.parser';
+import { cleanCardTerm } from '../credit-limit';
 
 export type ReadIntent =
   | 'balance'
@@ -10,7 +11,7 @@ export type ReadIntent =
   | 'fixed_bills'
   | 'goals'
   | 'envelopes'
-  | 'credit_card'
+  | 'list_cards'
   | 'help';
 
 /**
@@ -35,11 +36,16 @@ export type IntentMatch =
   | { intent: ReadIntent }
   | { intent: 'import_receipt' }
   | { intent: 'spend_by_category'; categoryQuery: string }
+  // Leitura de cartao (9b-2): cardTerm = nome dito; loose = "no/do X" sem a palavra cartao (so vale se X for nome exato de cartao).
+  | { intent: 'credit_card'; cardTerm?: string; loose?: true }
   | { intent: 'create_expense' | 'create_income'; body: string; missingAmount?: true }
   | { intent: 'create_goal'; body: string; cofrinho?: true }
   | { intent: 'contribute_goal'; body: string }
   | { intent: 'create_envelope' | 'set_credit_limit' | 'create_recurring' | 'create_installment'; body: string }
   | { intent: 'clear_credit_limit'; body: string }
+  // Cartao pela conversa (9b-3): criar (recusado por ora) e renomear (rascunho com confirmacao).
+  | { intent: 'create_card'; body: string }
+  | { intent: 'rename_card'; body: string }
   | { intent: 'edit_transaction' | 'delete_transaction'; body: string }
   | { intent: 'edit_goal' | 'delete_goal' | 'edit_envelope' | 'delete_envelope'; body: string }
   | {
@@ -75,6 +81,9 @@ export function matchIntent(raw: string): IntentMatch | null {
   const envelopeOrLimit = matchEnvelopeOrLimit(raw, tokens, words);
   if (envelopeOrLimit) return envelopeOrLimit;
 
+  const cardWrite = matchCardWrite(raw, tokens, words);
+  if (cardWrite) return cardWrite;
+
   const transactionChange = matchTransactionChange(raw, tokens, words);
   if (transactionChange) return transactionChange;
 
@@ -102,6 +111,9 @@ export function matchIntent(raw: string): IntentMatch | null {
   }
   const finance = matchFinanceRead(raw, phrase);
   if (finance) return finance;
+  if (LIST_CARD_PHRASES.includes(phrase)) return { intent: 'list_cards' };
+  const cardRead = matchCardRead(raw, tokens, words);
+  if (cardRead) return cardRead;
   if (
     phrase === 'limite' ||
     startsWithPhrase(phrase, 'limite do cartao') ||
@@ -109,6 +121,81 @@ export function matchIntent(raw: string): IntentMatch | null {
     startsWithPhrase(phrase, 'quanto sobrou no cartao')
   ) {
     return { intent: 'credit_card' };
+  }
+  return null;
+}
+
+/** "meus cartoes" e variantes: lista os cartoes ativos (contrato 9b, secao 2.4). Frase exata, sem nome. */
+const LIST_CARD_PHRASES = ['meus cartoes', 'quais cartoes', 'listar cartoes', 'meus cartoes de credito'];
+
+/** Cabecas de leitura por cartao. "cartao" na frase = explicito (nome que nao casa vira lista); sem ela, so nome exato. */
+const CARD_READ_HEADS: Array<{ head: string; loose: boolean }> = [
+  { head: 'cartao', loose: false },
+  { head: 'limite do', loose: true },
+  { head: 'limite da', loose: true },
+  { head: 'limite no', loose: true },
+  { head: 'limite na', loose: true },
+  { head: 'quanto sobrou no', loose: true },
+  { head: 'quanto sobrou na', loose: true },
+  { head: 'quanto gastei no', loose: true },
+  { head: 'quanto gastei na', loose: true },
+  { head: 'fatura do', loose: true },
+  { head: 'fatura da', loose: true },
+  { head: 'fatura no', loose: true },
+  { head: 'fatura na', loose: true },
+];
+/** Forma sem a palavra cartao so vira leitura com ate esse numero de palavras no nome (evita pergunta longa). */
+const CARD_LOOSE_MAX_WORDS = 4;
+
+/**
+ * Leitura por cartao (9b-2). Sem valor na frase: "limite do Nubank", "quanto sobrou no Nubank", "fatura do Nubank",
+ * "cartao Nubank", "limite do cartao Nubank". Com valor, a frase e de escrita ou de outro intent: segue o fluxo antigo.
+ */
+function matchCardRead(raw: string, tokens: string[], words: string[]): IntentMatch | null {
+  const phrase = words.join(' ');
+  for (const { head, loose } of CARD_READ_HEADS) {
+    if (!startsWithPhrase(phrase, head)) continue;
+    const size = head.split(' ').length;
+    const restTokens = tokens.slice(size);
+    const restWords = words.slice(size);
+    if (restTokens.some((token) => /\d/.test(token))) continue;
+    const explicit = !loose || restWords[0] === 'cartao' || restWords[0] === 'cartoes';
+    const term = cleanCardTerm(restTokens.join(' '));
+    if (term === '') {
+      // "quanto sobrou no cartao" e "cartao" puro: cartao padrao, como antes.
+      if (explicit) return { intent: 'credit_card' };
+      continue;
+    }
+    if (explicit) return { intent: 'credit_card', cardTerm: term };
+    if (raw.includes('?') || term.split(/\s+/).length > CARD_LOOSE_MAX_WORDS) continue;
+    return { intent: 'credit_card', cardTerm: term, loose: true };
+  }
+  return null;
+}
+
+/** Criar e renomear cartao (9b-3, secao 7). Renomear exige "para" (sem ele, a frase segue o caminho de hoje). */
+const CARD_CREATE_PHRASES = ['criar cartao', 'novo cartao', 'adicionar cartao', 'cadastrar cartao'];
+/** "renomear X" so e cartao quando X nao e outro substantivo de financa ("renomear meta X para Y" e outro assunto). */
+const RENAME_NOT_CARD = new Set(['meta', 'metas', 'cofrinho', 'reserva', 'reservas', 'envelope', 'conta', 'contas', 'parcela', 'parcelas', 'parcelado', 'parcelados', 'compra', 'compras', 'lancamento', 'fixa', 'fixas']);
+
+function matchCardWrite(raw: string, tokens: string[], words: string[]): IntentMatch | null {
+  if (raw.length > RAW_MAX_CHARS || tokens.length > NEW_WRITE_MAX_WORDS || raw.includes('?')) return null;
+  const phrase = words.join(' ');
+  for (const expected of CARD_CREATE_PHRASES) {
+    if (startsWithPhrase(phrase, expected)) {
+      return { intent: 'create_card', body: tokens.slice(expected.split(' ').length).join(' ') };
+    }
+  }
+  if (startsWithPhrase(phrase, 'renomear cartao') && words.includes('para')) {
+    return { intent: 'rename_card', body: tokens.slice(2).join(' ') };
+  }
+  if (startsWithPhrase(phrase, 'renomear') && words.includes('para') && !RENAME_NOT_CARD.has(words[1] ?? '')) {
+    return { intent: 'rename_card', body: tokens.slice(1).join(' ') };
+  }
+  for (const expected of ['mudar nome do', 'mudar nome da']) {
+    if (startsWithPhrase(phrase, expected) && words[3] === 'cartao' && words.includes('para')) {
+      return { intent: 'rename_card', body: tokens.slice(3).join(' ') };
+    }
   }
   return null;
 }

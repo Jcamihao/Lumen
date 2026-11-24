@@ -37,7 +37,9 @@ export type DraftKind =
   | 'GOAL_CHANGE'
   | 'ENVELOPE_CHANGE'
   | 'RECURRING_CHANGE'
-  | 'INSTALLMENT_CHANGE';
+  | 'INSTALLMENT_CHANGE'
+  | 'CARD_RENAME'
+  | 'CARD_CREATE';
 
 /**
  * Rascunho para a tela: valores formatados, sem ids internos alem de draftId/draftVersion.
@@ -63,6 +65,7 @@ export interface DraftView {
 }
 
 export type PendingField =
+  | 'card'
   | 'amount'
   | 'description'
   | 'category'
@@ -74,7 +77,8 @@ export type PendingField =
   | 'firstDueDate'
   | 'transaction'
   | 'targetChoice'
-  | 'change';
+  | 'change'
+  | 'closingDay';
 
 /** Rascunho de lançamento. Sessões antigas não têm `kind`: ausente = TRANSACTION. Dinheiro em centavos. */
 export interface ExpenseOrIncomeDraft {
@@ -88,6 +92,11 @@ export interface ExpenseOrIncomeDraft {
   pendingField: PendingField | null;
   /** Ids de categoria oferecidos quando a escolha e ambigua (max 5). */
   categoryOptions: string[];
+  /** 9b-1: cartao do lancamento (so despesa com CREDIT). Ausente em rascunho antigo = null. */
+  cardId?: string | null;
+  cardName?: string | null;
+  /** Ids dos cartoes oferecidos quando "credito" nao tem nome e ha mais de um cartao. */
+  cardOptions?: string[];
 }
 
 /** Rascunho de meta nova (contrato 3b1, secao 3). */
@@ -142,6 +151,30 @@ export interface CreditLimitDraft {
   /** 8d: cartao escolhido pelo nome (no clear, sempre resolve para um cartao). null = padrao no confirmar. */
   cardId?: string | null;
   cardName?: string | null;
+}
+
+/**
+ * Renomear cartao por conversa (9b-3, secao 7). So guarda o id e o nome novo: a gravacao e do CreditCardsService,
+ * que confere nome unico e cartao ativo sob o lock do User na confirmacao. pendingField nunca e usado (sempre confirmacao).
+ */
+export interface CardRenameDraft {
+  kind: 'CARD_RENAME';
+  cardId: string | null;
+  currentName: string;
+  newName: string;
+  pendingField: null;
+}
+
+/**
+ * Criar cartao por conversa (9b-3b). Nome e dias ficam no rascunho; o dia de fechamento e perguntado se nao veio na frase.
+ * A gravacao e do CreditCardsService (sem regra nova). Cartao nunca vira padrao.
+ */
+export interface CardCreateDraft {
+  kind: 'CARD_CREATE';
+  name: string;
+  closingDay: number | null;
+  dueDay: number | null;
+  pendingField: 'closingDay' | null;
 }
 
 /** Conta fixa (contrato 3b2b, secao 5): só despesa; categoria e pagamento ficam não informados. */
@@ -219,7 +252,9 @@ export type SessionDraft =
   | RecurringDraft
   | InstallmentDraft
   | TransactionChangeDraft
-  | TargetChangeDraft;
+  | TargetChangeDraft
+  | CardRenameDraft
+  | CardCreateDraft;
 
 /** Dados numericos para a tela (centavos). Presentes em INFO e DONE. */
 export interface ReplyData {
@@ -244,6 +279,8 @@ export interface ReplyData {
     dueDay: number | null;
   };
   transactionId?: string;
+  /** 9b-3: cartao renomeado (DONE). */
+  cardId?: string;
   /** Consultas do item 3a (contrato secao 4). Centavos; datas 'AAAA-MM-DD'. */
   dues?: Array<{ date: string; label: string; kind: 'FIXED' | 'INSTALLMENT'; amountCents: number }>;
   installments?: Array<{ label: string; number: number; total: number; amountCents: number; nextDate: string | null }>;

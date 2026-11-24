@@ -179,6 +179,7 @@ export function draftText(input: {
   date: string;
   paymentMethod: PaymentMethod | null;
   futureDate: boolean;
+  cardName?: string | null;
 }): string {
   const lines = [
     `Rascunho de ${typeLabel(input.type)}:`,
@@ -188,6 +189,9 @@ export function draftText(input: {
     `Data: ${input.date}`,
     `Pagamento: ${paymentLabel(input.paymentMethod)}`,
   ];
+  if (input.cardName) {
+    lines.push(`Cartão: ${input.cardName}`);
+  }
   if (input.futureDate) {
     lines.push(REPLIES.futureDate);
   }
@@ -195,8 +199,9 @@ export function draftText(input: {
   return lines.join('\n');
 }
 
-export function doneText(type: TransactionType, amountCents: number, description: string): string {
-  return `Registrado: ${typeLabel(type)} de ${formatBrl(amountCents)} (${description}).`;
+export function doneText(type: TransactionType, amountCents: number, description: string, cardName?: string | null): string {
+  const card = cardName ? ` no cartão ${cardName}` : '';
+  return `Registrado: ${typeLabel(type)} de ${formatBrl(amountCents)} (${description})${card}.`;
 }
 
 export function categoryOptionsText(names: string[]): string {

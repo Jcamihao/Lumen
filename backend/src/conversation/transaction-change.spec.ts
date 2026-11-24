@@ -71,6 +71,7 @@ function buildDb(transactions: Row[], categories: Row[] = []) {
       }),
       updateMany: jest.fn(async () => ({ count: 0 })),
     },
+    creditCard: { findMany: jest.fn(async () => []), findFirst: jest.fn(async () => null) },
     financeCategory: {
       findMany: jest.fn(async ({ where }: { where: Row }) => clone(categories.filter((row) => matchesWhere(row, where)))),
       findFirst: jest.fn(async () => null),

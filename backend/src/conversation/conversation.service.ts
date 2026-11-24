@@ -4,6 +4,7 @@ import {
   ConversationChannel,
   ConversationOutcome,
   ConversationState,
+  PaymentMethod,
   Prisma,
   TransactionType,
 } from '@prisma/client';
@@ -101,6 +102,21 @@ import {
   parseSearch,
 } from './transaction-change';
 import { CL_REPLIES, ChatCard, cleanCardTerm, isClearLimitDraft, matchCardsByTerm, parseLimitBody } from './credit-limit';
+import { CARD_EXPENSE_REPLIES, findCardPhrase, removeTokenRange } from './card-expense';
+import { CARD_READ_REPLIES, cardListText, namedCardText } from './card-read';
+import {
+  CARD_WRITE_REPLIES,
+  cardCreateDraftText,
+  cardCreatedText,
+  cardRenameDraftText,
+  cardRenamedText,
+  nameTakenBy,
+  parseCardCreate,
+  parseCardRename,
+  parseClosingDayAnswer,
+} from './card-write';
+import { MAX_ACTIVE_CARDS_PER_USER, CreditCardsService, CreditCardWriteUncertainError } from '../credit-cards/credit-cards.service';
+import { CARD_ARCHIVED_MESSAGE, CARD_NEEDS_CREDIT_MESSAGE, CARD_NOT_FOUND_MESSAGE } from '../credit-cards/card-link';
 import { parseEnvelopeBody } from './parsers/envelope.parser';
 import { IntentMatch, ReadIntent, matchIntent } from './parsers/intent.matcher';
 import {
@@ -147,6 +163,8 @@ import {
   ConversationStateView,
   ContributionDraft,
   CreditLimitDraft,
+  CardRenameDraft,
+  CardCreateDraft,
   DraftKind,
   DraftView,
   EnvelopeDraft,
@@ -180,7 +198,7 @@ const RECURRING_WRITE_RULES: ConversationWriteRules = { notBefore: 'today' };
 const MAX_GOAL_OPTIONS = 5;
 const DESCRIPTION_MIN = 2;
 const DESCRIPTION_MAX = 120;
-const READ_INTENTS: ReadIntent[] = [
+const READ_INTENTS: Array<ReadIntent | 'credit_card'> = [
   'balance',
   'month_summary',
   'spend_total',
@@ -190,6 +208,7 @@ const READ_INTENTS: ReadIntent[] = [
   'goals',
   'envelopes',
   'credit_card',
+  'list_cards',
 ];
 /** Janela de "o que vence" em dias, a partir de hoje no fuso do usuário (contrato D4). */
 const UPCOMING_WINDOW_DAYS = 30;
@@ -320,6 +339,7 @@ export class ConversationService {
     private readonly entitlements: EntitlementsService,
     private readonly configService: ConfigService,
     private readonly assistant: AssistantService,
+    private readonly creditCards: CreditCardsService,
   ) {}
 
   /** Mensagem digitada (canal APP ou WhatsApp). Ordem de decisao: contrato secao 6 e motor. */
@@ -411,7 +431,7 @@ export class ConversationService {
 
   private async handleWithoutSession(args: { input: ConversationInput; text: string }): Promise<ConversationReply> {
     const { input, text } = args;
-    const intent = text.length > 0 ? matchIntent(text) : null;
+    const intent = await this.resolveLooseCardRead(input.userId, text.length > 0 ? matchIntent(text) : null);
 
     if (!intent) {
       const word = normalize(text);
@@ -435,6 +455,12 @@ export class ConversationService {
     }
     if (intent.intent === 'clear_credit_limit') {
       return this.startCreditLimitClearDraft({ input, body: intent.body });
+    }
+    if (intent.intent === 'create_card') {
+      return this.startCardCreateDraft({ input, body: intent.body });
+    }
+    if (intent.intent === 'rename_card') {
+      return this.startCardRenameDraft({ input, body: intent.body });
     }
     if (intent.intent === 'create_recurring') {
       return this.startRecurringDraft({ input, body: intent.body });
@@ -565,7 +591,21 @@ export class ConversationService {
       return this.reply('ERROR', 'IDLE', REPLIES.invalidDate);
     }
 
-    const description = stripConnectors(dateResult.rest).join(' ');
+    // 9b-1: cartao no texto. Nome que nao casa (ou explicito ambiguo/inexistente) responde a lista e nao grava.
+    const cards = type === TransactionType.EXPENSE ? await this.activeCards(userId) : [];
+    const phrase = type === TransactionType.EXPENSE ? findCardPhrase(dateResult.rest, cards) : null;
+    if (phrase && (phrase.kind === 'notFound' || phrase.kind === 'ambiguous')) {
+      await this.recordEvent(input, intent.intent, ConversationOutcome.ERROR);
+      return this.reply(
+        'ERROR',
+        'IDLE',
+        phrase.kind === 'notFound'
+          ? CL_REPLIES.cardNotFound(phrase.term, cards.map((card) => card.name))
+          : CL_REPLIES.cardAmbiguous(phrase.term, phrase.hits.map((card) => card.name)),
+      );
+    }
+    const cardTokens = phrase ? removeTokenRange(dateResult.rest, phrase.from, phrase.to) : dateResult.rest;
+    const description = stripConnectors(cardTokens).join(' ');
     if (description.length > DESCRIPTION_MAX) {
       await this.recordEvent(input, intent.intent, ConversationOutcome.ERROR);
       return this.reply('ERROR', 'IDLE', REPLIES.descriptionTooLong);
@@ -581,7 +621,20 @@ export class ConversationService {
       paymentMethod: null,
       pendingField: null,
       categoryOptions: [],
+      cardId: null,
+      cardName: null,
+      cardOptions: [],
     };
+    if (phrase && phrase.kind === 'card') {
+      pickCard(draft, phrase.card);
+    } else if (phrase && phrase.kind === 'credit' && cards.length === 1) {
+      pickCard(draft, cards[0]);
+    } else if (phrase && phrase.kind === 'credit' && cards.length > 1) {
+      draft.cardOptions = cards.map((card) => card.id);
+    } else if (phrase && (phrase.kind === 'creditDefault' || (phrase.kind === 'credit' && cards.length === 0))) {
+      // Sem cartao nomeado e sem escolha: CREDIT sem cardId, a conta cai no cartao padrao (regra da 9a).
+      draft.paymentMethod = PaymentMethod.CREDIT;
+    }
 
     if (intent.missingAmount === true) {
       draft.pendingField = 'amount';
@@ -590,6 +643,7 @@ export class ConversationService {
     } else {
       await this.resolveCategory(userId, draft, description);
     }
+    settleCardChoice(draft);
 
     return this.saveNewDraft({ input, intent: intent.intent, draft, today });
   }
@@ -855,6 +909,146 @@ export class ConversationService {
       pendingField: null,
     };
     return this.saveNewDraft({ input, intent: 'clear_credit_limit', draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  /**
+   * Criar cartao (9b-3b): nome, teto de 10 ativos e nome unico conferidos antes do rascunho; sem rascunho nada e gravado.
+   * O dia de fechamento vem na frase ou e perguntado; o vencimento so vem na frase.
+   */
+  private async startCardCreateDraft(args: { input: ConversationInput; body: string }): Promise<ConversationReply> {
+    const { input, body } = args;
+    const { userId, receivedAt } = input;
+
+    const parsed = parseCardCreate(body);
+    if (parsed.ok === false) {
+      await this.recordEvent(input, 'create_card', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', parsed.text);
+    }
+    const cards = await this.activeCards(userId);
+    if (cards.length >= MAX_ACTIVE_CARDS_PER_USER) {
+      await this.recordEvent(input, 'create_card', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', CARD_WRITE_REPLIES.createLimit(MAX_ACTIVE_CARDS_PER_USER));
+    }
+    if (nameTakenBy(cards, parsed.name, '')) {
+      await this.recordEvent(input, 'create_card', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', CARD_WRITE_REPLIES.createNameTaken);
+    }
+    const draft: CardCreateDraft = {
+      kind: 'CARD_CREATE',
+      name: parsed.name,
+      closingDay: parsed.closingDay,
+      dueDay: parsed.dueDay,
+      pendingField: parsed.closingDay === null ? 'closingDay' : null,
+    };
+    return this.saveNewDraft({ input, intent: 'create_card', draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  /** Criar cartao: o CreditCardsService confere teto e nome unico sob o lock; o texto sai do recibo. */
+  private async applyCardCreate(userId: string, draft: CardCreateDraft): Promise<AppliedAction> {
+    if (draft.closingDay === null) {
+      throw new Error('rascunho de criar cartao sem dia de fechamento');
+    }
+    // Confere de novo o nome parecido antes de gravar (a API so barra o igual sem caixa). Fora do lock; a janela e minima.
+    const cards = await this.activeCards(userId);
+    if (nameTakenBy(cards, draft.name, '')) {
+      throw new ConflictException('Ja existe um cartao com este nome.');
+    }
+    const receipt = await this.creditCards.create(userId, {
+      name: draft.name,
+      closingDay: draft.closingDay,
+      dueDay: draft.dueDay,
+    });
+    return {
+      text: cardCreatedText({ name: receipt.name, closingDay: receipt.closingDay, dueDay: receipt.dueDay }),
+      data: { cardId: receipt.id },
+      resultRef: receipt.id,
+      refreshPending: receipt.refreshPending,
+    };
+  }
+
+  /** Criar cartao: a unica pergunta e o dia de fechamento (1 a 31); resposta invalida repete a pergunta sem sair do rascunho. */
+  private answerCardCreate(draft: CardCreateDraft, value: string): PendingAnswer {
+    if (draft.pendingField === 'closingDay') {
+      const day = parseClosingDayAnswer(value);
+      if (day === null) {
+        return {
+          status: 'ASK',
+          outcome: ConversationOutcome.UNRECOGNIZED,
+          question: CARD_WRITE_REPLIES.askClosingDay(draft.name),
+          prefix: CARD_WRITE_REPLIES.closingDayInvalid,
+        };
+      }
+      draft.closingDay = day;
+      draft.pendingField = null;
+      return { status: 'UPDATED' };
+    }
+    return { status: 'ERROR', text: REPLIES.collectingReminder };
+  }
+
+  /**
+   * Renomear cartao (9b-3, secao 7): cartao ativo achado pelo nome (busca do 8d). Termo vazio, ambiguo, inexistente,
+   * nome igual ao atual ou nome ja usado por outro cartao ativo recusa sem rascunho. Na confirmacao o servico confere de novo.
+   */
+  private async startCardRenameDraft(args: { input: ConversationInput; body: string }): Promise<ConversationReply> {
+    const { input, body } = args;
+    const { userId, receivedAt } = input;
+
+    const parsed = parseCardRename(body);
+    if (parsed.ok === false) {
+      await this.recordEvent(input, 'rename_card', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', parsed.text);
+    }
+    const cards = await this.activeCards(userId);
+    if (cards.length === 0) {
+      await this.recordEvent(input, 'rename_card', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', CARD_READ_REPLIES.none);
+    }
+    const hits = matchCardsByTerm(cards, parsed.term);
+    if (hits.length === 0 || hits.length > 1) {
+      await this.recordEvent(input, 'rename_card', ConversationOutcome.ERROR);
+      const names = cards.map((card) => card.name);
+      const text =
+        hits.length === 0
+          ? CARD_WRITE_REPLIES.notFound(parsed.term, names)
+          : CARD_WRITE_REPLIES.ambiguous(parsed.term, hits.map((card) => card.name));
+      return this.reply('ERROR', 'IDLE', text);
+    }
+    const [card] = hits;
+    if (card.name === parsed.newName) {
+      await this.recordEvent(input, 'rename_card', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', CARD_WRITE_REPLIES.sameName);
+    }
+    if (nameTakenBy(cards, parsed.newName, card.id)) {
+      await this.recordEvent(input, 'rename_card', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', CARD_WRITE_REPLIES.nameTaken);
+    }
+    const draft: CardRenameDraft = {
+      kind: 'CARD_RENAME',
+      cardId: card.id,
+      currentName: card.name,
+      newName: parsed.newName,
+      pendingField: null,
+    };
+    return this.saveNewDraft({ input, intent: 'rename_card', draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  /** Renomear cartao: o CreditCardsService confere nome unico e cartao ativo sob o lock; o texto sai do recibo. */
+  private async applyCardRename(userId: string, draft: CardRenameDraft): Promise<AppliedAction> {
+    if (draft.cardId === null) {
+      throw new Error('rascunho de renomear cartao incompleto');
+    }
+    // Confere de novo o nome parecido (sem acento/caixa) antes de gravar: a API so barra o igual sem caixa. Fora do lock; a janela e minima.
+    const cards = await this.activeCards(userId);
+    if (nameTakenBy(cards, draft.newName, draft.cardId)) {
+      throw new ConflictException('Ja existe um cartao com este nome.');
+    }
+    const receipt = await this.creditCards.update(userId, draft.cardId, { name: draft.newName });
+    return {
+      text: cardRenamedText({ from: draft.currentName, to: receipt.name }),
+      data: { cardId: receipt.id },
+      resultRef: receipt.id,
+      refreshPending: receipt.refreshPending,
+    };
   }
 
   /** Cartao do chat pelo nome (8d). Termo vazio = null (= cartao padrao, resolvido por quem chama). */
@@ -1232,7 +1426,7 @@ export class ConversationService {
     const { input, session, text } = args;
     const { userId } = input;
     const words = normalize(text);
-    const intent = text.length > 0 ? matchIntent(text) : null;
+    const intent = await this.resolveLooseCardRead(userId, text.length > 0 ? matchIntent(text) : null);
     const awaiting = session.state === ConversationState.AWAITING_CONFIRMATION;
 
     if (CANCEL_WORDS.has(words)) {
@@ -1346,6 +1540,7 @@ export class ConversationService {
 
     // Campo respondido: o motivo da revisão anterior já foi atendido e não pode ficar no cartão novo.
     delete (draft as { reviewReason?: string }).reviewReason;
+    if (draftKind(draft) === 'TRANSACTION') settleCardChoice(draft as ExpenseOrIncomeDraft);
     const nextState = draft.pendingField ? ConversationState.COLLECTING_FIELDS : ConversationState.AWAITING_CONFIRMATION;
     const updated = await this.prisma.conversationSession.updateMany({
       where: { id: session.id, userId, version: session.version },
@@ -1388,6 +1583,12 @@ export class ConversationService {
     if (draft.kind === 'ENVELOPE') {
       return this.answerEnvelope(userId, draft, value);
     }
+    if (draft.kind === 'CARD_CREATE') {
+      return this.answerCardCreate(draft, value);
+    }
+    if (draft.kind === 'CARD_RENAME') {
+      return { status: 'ERROR', text: REPLIES.collectingReminder };
+    }
     if (draft.kind === 'CREDIT_LIMIT') {
       return this.answerCreditLimit(draft, value);
     }
@@ -1429,6 +1630,24 @@ export class ConversationService {
       draft.description = value;
       draft.pendingField = null;
       await this.resolveCategory(userId, draft, value);
+      return { status: 'UPDATED' };
+    }
+    if (draft.pendingField === 'card') {
+      const options = await this.cardChoiceOptions(userId, draft);
+      if (options.length !== (draft.cardOptions ?? []).length) {
+        // Algum cartao oferecido foi arquivado depois da lista: o numero que o usuario viu nao vale mais.
+        // A resposta nao e usada; a lista nova e mostrada (e passa a ser a que vale).
+        draft.cardOptions = options.map((card) => card.id);
+        if (options.length === 0) draft.pendingField = null;
+        return { status: 'UPDATED' };
+      }
+      const picked = pickCardAnswer(options, value);
+      if (picked === null) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: CARD_EXPENSE_REPLIES.choose(options.map((card) => card.name)) };
+      }
+      pickCard(draft, picked);
+      draft.cardOptions = [];
+      draft.pendingField = null;
       return { status: 'UPDATED' };
     }
     if (draft.pendingField === 'category') {
@@ -1779,6 +1998,12 @@ export class ConversationService {
     }
     if (draft.kind === 'ENVELOPE') {
       return this.applyEnvelope(userId, draft);
+    }
+    if (draft.kind === 'CARD_RENAME') {
+      return this.applyCardRename(userId, draft);
+    }
+    if (draft.kind === 'CARD_CREATE') {
+      return this.applyCardCreate(userId, draft);
     }
     if (draft.kind === 'CREDIT_LIMIT') {
       return this.applyCreditLimit(userId, draft);
@@ -2469,9 +2694,10 @@ export class ConversationService {
       date: `${draft.date}T00:00:00.000Z`,
       categoryId: draft.categoryId ?? undefined,
       paymentMethod: draft.paymentMethod ?? undefined,
+      cardId: draft.cardId ?? undefined,
     });
     return {
-      text: doneText(draft.type, draft.amountCents, draft.description ?? ''),
+      text: doneText(draft.type, draft.amountCents, draft.description ?? '', draft.cardName ?? null),
       data: { transactionId: created.id },
       resultRef: created.id,
     };
@@ -2662,18 +2888,10 @@ export class ConversationService {
       }
       case 'spend_by_category':
         return this.spendByCategory(userId, intent.categoryQuery);
-      case 'credit_card': {
-        const cycle = await this.creditCycle.getCurrent(userId);
-        const card = {
-          ceilingCents: cycle.ceiling === null ? null : toCents(cycle.ceiling),
-          spentCents: toCents(cycle.spent),
-          remainingCents: cycle.remaining === null ? null : toCents(cycle.remaining),
-          percentUsed: cycle.percentUsed,
-          closingDay: cycle.closingDay,
-          dueDay: cycle.dueDay,
-        };
-        return this.infoReply(cardText(card), { card });
-      }
+      case 'credit_card':
+        return this.creditCardReply(userId, intent.cardTerm);
+      case 'list_cards':
+        return this.listCardsReply(userId);
       case 'help':
         return this.reply('HELP', 'IDLE', REPLIES.help);
       default:
@@ -2880,6 +3098,64 @@ export class ConversationService {
   // ---------- categorias e rascunho ----------
 
   /** Escolhe categoria pela descrição: unica = define; varias ou nenhuma = pergunta. */
+  /** Cartoes ativos do dono, na ordem do 8d (padrao primeiro, depois nome). Sempre pelo userId do vinculo. */
+  /**
+   * Leitura por cartao (9b-2). Sem nome: cartao padrao, como antes. Com nome: o cartao do dono que casa;
+   * nome que nao casa ou casa mais de um responde a lista (nunca erro). Sempre pelo userId do vinculo.
+   */
+  private async creditCardReply(userId: string, cardTerm?: string): Promise<ConversationReply> {
+    if (cardTerm === undefined) {
+      const card = cycleCardView(await this.creditCycle.getCurrent(userId));
+      return this.infoReply(cardText(card), { card });
+    }
+    const cards = await this.activeCards(userId);
+    if (cards.length === 0) return this.infoReply(CARD_READ_REPLIES.none, {});
+    const hits = matchCardsByTerm(cards, cardTerm);
+    const names = cards.map((card) => card.name);
+    if (hits.length === 0) return this.infoReply(CARD_READ_REPLIES.notFound(cardTerm, names), {});
+    if (hits.length > 1) return this.infoReply(CARD_READ_REPLIES.ambiguous(cardTerm, hits.map((card) => card.name)), {});
+    const [chosen] = hits;
+    const view = cycleCardView(await this.creditCycle.getCycleForCard(userId, chosen.id));
+    return this.infoReply(namedCardText(chosen.name, cardText(view)), { card: view });
+  }
+
+  /** "Meus cartoes": so leitura, cartoes ativos do dono (padrao primeiro, depois nome). */
+  private async listCardsReply(userId: string): Promise<ConversationReply> {
+    const cards = await this.prisma.creditCard.findMany({
+      where: { userId, archivedAt: null },
+      orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+      select: { name: true, isDefault: true, closingDay: true, dueDay: true },
+    });
+    return this.infoReply(cardListText(cards), {});
+  }
+
+  /**
+   * Forma sem a palavra cartao ("limite do X", "quanto sobrou no X", "fatura do X") so vira leitura com nome EXATO
+   * de cartao do dono; senao devolve null e segue o caminho de hoje (ajuda ou IA), como antes da 9b-2.
+   */
+  private async resolveLooseCardRead(userId: string, intent: IntentMatch | null): Promise<IntentMatch | null> {
+    if (!intent || !('loose' in intent) || intent.loose !== true) return intent;
+    const term = normalize(intent.cardTerm ?? '');
+    const exact = (await this.activeCards(userId)).filter((card) => normalize(card.name) === term);
+    return exact.length === 1 ? { intent: 'credit_card', cardTerm: intent.cardTerm } : null;
+  }
+
+  private async activeCards(userId: string): Promise<ChatCard[]> {
+    return this.prisma.creditCard.findMany({
+      where: { userId, archivedAt: null },
+      orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+      select: { id: true, name: true },
+    });
+  }
+
+  /** Opcoes da escolha de cartao, na ordem em que foram oferecidas. */
+  private async cardChoiceOptions(userId: string, draft: ExpenseOrIncomeDraft): Promise<ChatCard[]> {
+    // Na ordem em que foram oferecidas (o numero que o usuario viu), nao na do 8d: o padrao pode mudar no meio da conversa.
+    const offered = draft.cardOptions ?? [];
+    const active = await this.activeCards(userId);
+    return offered.flatMap((id) => active.filter((card) => card.id === id));
+  }
+
   private async resolveCategory(userId: string, draft: ExpenseOrIncomeDraft, query: string): Promise<void> {
     const categories = await this.prisma.financeCategory.findMany({
       where: { userId, type: draft.type },
@@ -2964,6 +3240,12 @@ export class ConversationService {
         provisionMonth: draft.provisionMonth,
       });
     }
+    if (draft.kind === 'CARD_CREATE') {
+      return cardCreateDraftText(draft);
+    }
+    if (draft.kind === 'CARD_RENAME') {
+      return cardRenameDraftText({ from: draft.currentName, to: draft.newName });
+    }
     if (draft.kind === 'CREDIT_LIMIT') {
       return draft.action === 'clear'
         ? creditLimitClearDraftText({ previousCents: draft.previousCeilingCents ?? 0, cycleEnd: draft.cycleEnd, cardName: draft.cardName })
@@ -3005,6 +3287,7 @@ export class ConversationService {
       category: view.category,
       date: draft.date,
       paymentMethod: draft.paymentMethod,
+      cardName: draft.cardName ?? null,
       futureDate: draft.date > today,
     });
   }
@@ -3048,6 +3331,12 @@ export class ConversationService {
     if (draft.kind === 'ENVELOPE') {
       return draft.pendingField === 'name' ? REPLIES.askEnvelopeName : REPLIES.askEnvelopeAmount;
     }
+    if (draft.kind === 'CARD_CREATE') {
+      return CARD_WRITE_REPLIES.askClosingDay(draft.name);
+    }
+    if (draft.kind === 'CARD_RENAME') {
+      return REPLIES.collectingReminder;
+    }
     if (draft.kind === 'CREDIT_LIMIT') {
       return REPLIES.askCreditLimit;
     }
@@ -3069,6 +3358,10 @@ export class ConversationService {
     }
     if (draft.pendingField === 'description') {
       return REPLIES.askDescription;
+    }
+    if (draft.pendingField === 'card') {
+      const options = await this.cardChoiceOptions(userId, draft);
+      return CARD_EXPENSE_REPLIES.choose(options.map((card) => card.name));
     }
     if (draft.categoryOptions.length === 0) {
       return REPLIES.askCategoryNoOptions;
@@ -3165,6 +3458,32 @@ export class ConversationService {
           { label: 'Início', value: `${monthYearUtc(draft.provisionMonth)} (UTC)` },
           { label: 'Aviso', value: REPLIES.envelopeProvisionWarning },
           ...reviewRows(draft.reviewReason),
+        ],
+      };
+    }
+    if (draft.kind === 'CARD_CREATE') {
+      return {
+        ...base,
+        kind: 'CARD_CREATE',
+        title: 'Criar cartão',
+        pendingField: draft.pendingField,
+        rows: [
+          { label: 'Cartão', value: draft.name },
+          { label: 'Fechamento', value: draft.closingDay === null ? 'a informar' : `dia ${draft.closingDay}` },
+          { label: 'Vencimento', value: draft.dueDay === null ? 'sem vencimento' : `dia ${draft.dueDay}` },
+          { label: 'Padrão', value: 'não' },
+        ],
+      };
+    }
+    if (draft.kind === 'CARD_RENAME') {
+      return {
+        ...base,
+        kind: 'CARD_RENAME',
+        title: 'Renomear cartão',
+        pendingField: null,
+        rows: [
+          { label: 'Cartão', value: draft.currentName },
+          { label: 'Novo nome', value: draft.newName },
         ],
       };
     }
@@ -3291,7 +3610,7 @@ export class ConversationService {
         category: category ?? (draft.pendingField === 'category' ? 'a informar' : 'sem categoria'),
         date: draft.date,
         paymentMethod: draft.paymentMethod,
-      }), ...(draft.date > await this.todayYmd(session.userId, new Date())
+      }), ...(draft.cardName ? [{ label: 'Cartão', value: draft.cardName }] : []), ...(draft.date > await this.todayYmd(session.userId, new Date())
         ? [{ label: 'Aviso', value: 'Este lançamento tem data futura.' }]
         : [])],
     };
@@ -3642,12 +3961,13 @@ function numberedOptions(draft: SessionDraft): string[] {
   if (isTargetChangeDraft(draft)) {
     return [];
   }
-  if (draft.kind === 'GOAL' || draft.kind === 'ENVELOPE' || draft.kind === 'CREDIT_LIMIT' || draft.kind === 'RECURRING' || draft.kind === 'INSTALLMENT') {
+  if (draft.kind === 'GOAL' || draft.kind === 'ENVELOPE' || draft.kind === 'CREDIT_LIMIT' || draft.kind === 'RECURRING' || draft.kind === 'INSTALLMENT' || draft.kind === 'CARD_RENAME' || draft.kind === 'CARD_CREATE') {
     return [];
   }
   if (draft.kind === 'CONTRIBUTION') {
     return draft.pendingField === 'goal' ? draft.goalOptions : [];
   }
+  if (draft.pendingField === 'card') return draft.cardOptions ?? [];
   return draft.pendingField === 'category' ? draft.categoryOptions : [];
 }
 
@@ -3718,6 +4038,7 @@ function goalTargetValue(draft: GoalDraft): string {
 
 /** Texto que começa com número é a resposta pedida (nome, descrição, quantidade ou data), não um comando (contrato 4). */
 function startsWithNumericAnswer(draft: SessionDraft): boolean {
+  if (draft.kind === 'CARD_CREATE') return draft.pendingField === 'closingDay';
   if (draft.kind === 'ENVELOPE') return draft.pendingField === 'name';
   if (draft.kind === 'RECURRING') return draft.pendingField === 'description' || draft.pendingField === 'firstDueDate';
   if (draft.kind === 'INSTALLMENT') {
@@ -3831,7 +4152,8 @@ function isWriteUncertain(error: unknown): boolean {
     error instanceof EnvelopeWriteUncertainError ||
     error instanceof CreditLimitWriteUncertainError ||
     error instanceof RecurringWriteUncertainError ||
-    error instanceof InstallmentWriteUncertainError
+    error instanceof InstallmentWriteUncertainError ||
+    error instanceof CreditCardWriteUncertainError
   );
 }
 
@@ -3847,6 +4169,18 @@ function isEditWithoutChanges(draft: unknown): boolean {
     return false;
   }
   return draft.action === 'EDIT' && draft.targetId !== null && Object.keys(draft.changes).length === 0;
+}
+
+/** Cartao de leitura (9b-2 e padrao) a partir do ciclo: centavos, como a tela. */
+function cycleCardView(cycle: Awaited<ReturnType<CreditCycleService['getCurrent']>>) {
+  return {
+    ceilingCents: cycle.ceiling === null ? null : toCents(cycle.ceiling),
+    spentCents: toCents(cycle.spent),
+    remainingCents: cycle.remaining === null ? null : toCents(cycle.remaining),
+    percentUsed: cycle.percentUsed,
+    closingDay: cycle.closingDay,
+    dueDay: cycle.dueDay,
+  };
 }
 
 function discardText(kind: DraftKind, error: unknown): string {
@@ -3875,6 +4209,23 @@ function discardText(kind: DraftKind, error: unknown): string {
       ? REPLIES.envelopeNameTaken
       : REPLIES.envelopeRejected;
   }
+  if (kind === 'CARD_CREATE') {
+    // 9b-3b: recusa do CreditCardsService (teto ou nome tomado) vira texto claro; nada foi gravado (4xx).
+    if (error instanceof HttpException) {
+      if (error.getStatus() === 422) return CARD_WRITE_REPLIES.createLimit(MAX_ACTIVE_CARDS_PER_USER);
+      if (error.message === 'Ja existe um cartao com este nome.') return CARD_WRITE_REPLIES.createNameTaken;
+    }
+    return CARD_WRITE_REPLIES.createRejected;
+  }
+  if (kind === 'CARD_RENAME') {
+    // 9b-3: recusa do CreditCardsService vira texto claro; nada foi gravado (4xx).
+    if (error instanceof HttpException) {
+      if (error.getStatus() === 404) return CARD_WRITE_REPLIES.cardGone;
+      if (error.message === 'Ja existe um cartao com este nome.') return CARD_WRITE_REPLIES.nameTaken;
+      if (error.message === 'Cartao arquivado nao pode ser alterado.') return CARD_WRITE_REPLIES.cardArchived;
+    }
+    return CARD_WRITE_REPLIES.renameRejected;
+  }
   if (kind === 'CREDIT_LIMIT') {
     return REPLIES.creditLimitRejected;
   }
@@ -3884,6 +4235,10 @@ function discardText(kind: DraftKind, error: unknown): string {
   if (kind === 'INSTALLMENT') {
     return REPLIES.installmentRejected;
   }
+  // 9b-1: cartao recusado na confirmacao (arquivado, removido ou de outra conta) vira recusa clara; nada foi gravado.
+  if (kind === 'TRANSACTION' && error instanceof HttpException && [CARD_NOT_FOUND_MESSAGE, CARD_ARCHIVED_MESSAGE, CARD_NEEDS_CREDIT_MESSAGE].includes(error.message)) {
+    return error.message;
+  }
   return kind === 'TRANSACTION' ? REPLIES.transactionRejected : REPLIES.goalGone;
 }
 
@@ -3891,6 +4246,12 @@ function discardText(kind: DraftKind, error: unknown): string {
 function saveFailedText(kind: DraftKind, restored: boolean): string {
   if (kind === 'ENVELOPE') {
     return restored ? REPLIES.envelopeSaveFailed : REPLIES.envelopeSaveFailedRestoreLost;
+  }
+  if (kind === 'CARD_CREATE') {
+    return restored ? CARD_WRITE_REPLIES.createSaveFailed : CARD_WRITE_REPLIES.createSaveFailedRestoreLost;
+  }
+  if (kind === 'CARD_RENAME') {
+    return restored ? CARD_WRITE_REPLIES.renameSaveFailed : CARD_WRITE_REPLIES.renameSaveFailedRestoreLost;
   }
   if (kind === 'CREDIT_LIMIT') {
     return restored ? REPLIES.creditLimitSaveFailed : REPLIES.creditLimitSaveFailedRestoreLost;
@@ -3917,6 +4278,28 @@ function codePointLength(text: string): number {
 
 function ttlFor(state: ConversationState): number {
   return state === ConversationState.AWAITING_CONFIRMATION ? TTL_MS.AWAITING_CONFIRMATION : TTL_MS.COLLECTING_FIELDS;
+}
+
+/** Cartao escolhido no rascunho (9b-1): sempre com CREDIT, como a tela exige. */
+function pickCard(draft: ExpenseOrIncomeDraft, card: ChatCard): void {
+  draft.cardId = card.id;
+  draft.cardName = card.name;
+  draft.paymentMethod = PaymentMethod.CREDIT;
+}
+
+/** Resposta da escolha de cartao: numero 1 a 5 da lista, ou nome (sem acento/caixa). Sem casamento = null. */
+function pickCardAnswer(options: ChatCard[], value: string): ChatCard | null {
+  const normalized = normalize(value);
+  if (/^[1-5]$/.test(normalized) && options[Number(normalized) - 1]) return options[Number(normalized) - 1];
+  const term = cleanCardTerm(value);
+  if (term === '') return null;
+  const hits = matchCardsByTerm(options, term);
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/** "credito" sem nome com mais de um cartao: a pergunta so vem quando o resto do rascunho ja foi respondido. */
+function settleCardChoice(draft: ExpenseOrIncomeDraft): void {
+  if (draft.pendingField === null && (draft.cardOptions ?? []).length > 0 && !draft.cardId) draft.pendingField = 'card';
 }
 
 function splitTokens(text: string): string[] {
