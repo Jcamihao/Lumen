@@ -262,6 +262,36 @@ describe('despesa no cartao pela conversa (9b-1)', () => {
     expect(sessions[0].draft).toMatchObject({ cardId: 'c3', cardName: 'Bradesco', pendingField: null });
   });
 
+  it('escolha numerica vai ate o 5 e o 6 nao vale (so pelo nome)', async () => {
+    const five = ['Alfa', 'Beta', 'Gama', 'Delta', 'Epsilon', 'Zeta'].map((name, index) => ({ id: `s${index}`, userId: 'A', name, isDefault: index === 0, archivedAt: null }));
+    const { send, sessions } = buildService(five);
+    await send('gastei 50 mercado no credito');
+    const six = await send('6');
+    expect(six.kind).toBe('ASK_FIELD');
+    expect(sessions[0].draft).toMatchObject({ cardId: null, pendingField: 'card' });
+    await send('5');
+    expect(sessions[0].draft).toMatchObject({ cardId: 's2', cardName: 'Gama', pendingField: null });
+  });
+
+  it('escolha por nome ambiguo ("nubank" com dois Nubank) nao escolhe: pergunta de novo', async () => {
+    const { send, sessions } = buildService([
+      { id: 'n1', userId: 'A', name: 'Nubank Roxo', isDefault: true, archivedAt: null },
+      { id: 'n2', userId: 'A', name: 'Nubank Azul', isDefault: false, archivedAt: null },
+    ]);
+    await send('gastei 50 mercado no credito');
+    const again = await send('nubank');
+    expect(again.kind).toBe('ASK_FIELD');
+    expect(sessions[0].draft).toMatchObject({ cardId: null, pendingField: 'card' });
+    await send('azul');
+    expect(sessions[0].draft).toMatchObject({ cardId: 'n2', pendingField: null });
+  });
+
+  it.each(['no', 'na', 'do', 'da', 'nos', 'nas'])('conector "%s" antes do nome do cartao casa o cartao', async (connector) => {
+    const { send, sessions } = buildService();
+    await send(`gastei 50 mercado ${connector} nubank`);
+    expect(sessions[0].draft).toMatchObject({ cardId: 'cr-nubank', description: 'mercado' });
+  });
+
   it('"credito" sem nome: a escolha tambem aceita o nome do cartao', async () => {
     const { send, sessions } = buildService();
     await send('gastei 50 mercado no credito');
