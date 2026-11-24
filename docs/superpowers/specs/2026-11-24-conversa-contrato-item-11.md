@@ -1,5 +1,7 @@
 # Conversa — Contrato do item 11: billing, planos e plano Compartilhado (2026-11-24)
 
+**APROVADO pelo dono em 2026-11-24** ("d2: 2 pessoas e podendo evoluir para até 4 pessoas, de resto tudo ok"). Vale para a 11a; a 11b pede aditivo próprio (D6).
+
 Pedido pelo dono em 2026-11-24 (HANDOFF, seção 7, item 11): **rever os planos do app e fazer o plano Compartilhado/Família de verdade** — membros, convites, dados compartilhados e um plano cobrado para vários usuários. Este contrato foi rascunhado pela sessão Qwen contra o código e **aguarda aprovação do dono decisão por decisão** (estilo 8c/8d). Nada de código antes da aprovação.
 
 **Situação atual (verificada no código em 2026-11-24):**
@@ -15,8 +17,8 @@ Pedido pelo dono em 2026-11-24 (HANDOFF, seção 7, item 11): **rever os planos 
 ### D1 — Duas fases dentro do item 11
 **Recomendação: sim.** **11a = "plano família" (billing com seats):** várias contas usam o plano pago do pagador, **sem compartilhar NENHUM dado** — a regra de isolamento "identidade vem do token, dado é do dono" continua 100% intacta. **11b = "dados compartilhados" (carteira compartilhada):** contrato aditivo próprio depois, com decisões de privacidade separadas. Motivo: a parte de dinheiro+convites é difícil sozinha; misturar com a mudança estrutural do isolamento (a maior risco do roteiro) num passo só não vale o prazo. O escopo do HANDOFF ("dados compartilhados") fica entregue — só que na 11b.
 
-### D2 — Seats e preço
-**Recomendação:** `SHARED` = **4 pessoas** (o pagador + até 3 convidados — bate com `seats: 4` que já existe); preço **fixo do grupo** (R$ 24,90/mês ou R$ 249/ano), não importa quantos membros entraram — nada de preço por seat no Asaas (o Asaas assina o pagador; membros não pagam nada). `FREE` e `INDIVIDUAL` continuam 1 seat.
+### D2 — Seats e preço — **APROVADO COM AJUSTE pelo dono (2026-11-24)**
+**Decisão do dono:** `SHARED` = **2 pessoas** (o pagador + **1** convidado) no lançamento, **podendo evoluir para até 4** sem reforma. Implementação: o `seats` do catálogo passa a `2` para SHARED e **tudo que limita gente lê `getPlan(...).seats`** (convite, aceite, testes) — para virar 4 depois é trocar o número no catálogo (e o preço, se o dono quiser), sem tocar em regra. Preço **fixo do grupo** (R$ 24,90/mês ou R$ 249/ano pelas envs atuais — valor final é do dono na hora de vender), não importa quantos membros entraram — nada de preço por seat no Asaas (o Asaas assina o pagador; membros não pagam nada). `FREE` e `INDIVIDUAL` continuam 1 seat.
 
 ### D3 — Papéis
 **Recomendação:** dois papéis só: **pagador** (dono da assinatura: convida, remove, cancela, troca plano/intervalo — tudo o que existe hoje em `/plano`) e **membro** (usa o plano; pode **sair** sozinho; não vê nada de cobrança do outro). **Sem transferência de pagamento** na v1 (vira pagador de outro grupo quem criar o próprio grupo; trocar de pagador = cancelar + novo grupo — registro no contrato como limitação).
