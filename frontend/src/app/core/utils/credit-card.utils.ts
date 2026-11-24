@@ -33,3 +33,40 @@ export function pickCardId(current: string, cards: CreditCard[], selectable: boo
 export function cardIdForPayload(cardId: string, creditExpense: boolean): string | undefined {
   return creditExpense && cardId ? cardId : undefined;
 }
+
+const CEILING_MAX = 9_999_999_999;
+
+/** Validacao do teto antes de enviar: positivo, ate 2 casas e dentro do limite do servidor. Nulo = mensagem. */
+export function ceilingError(value: number | null): string | null {
+  if (value === null || !Number.isFinite(value) || value < 0.01) {
+    return 'Informe um teto maior que zero.';
+  }
+
+  if (value > CEILING_MAX) {
+    return 'Use um valor menor que dez bilhões.';
+  }
+
+  if (Math.abs(Math.round(value * 100) - value * 100) > 1e-6) {
+    return 'Use no máximo duas casas decimais.';
+  }
+
+  return null;
+}
+
+type ReadMessage = (error: unknown, fallback: string) => string;
+
+/** Texto do erro de gravar teto. 5xx: resultado desconhecido, nao repetir. */
+export function ceilingSaveMessage(error: unknown, readMessage: ReadMessage): string {
+  const status = (error as { status?: number } | null)?.status ?? 0;
+
+  if (status === 404) return 'Cartão não encontrado. Atualize a tela.';
+  if (status === 409) return readMessage(error, 'Cartão arquivado não recebe teto.');
+  if (status === 400) return readMessage(error, 'Informe um limite positivo com até duas casas decimais.');
+  if (isUncertainSave(error)) return 'Não sei se o teto foi salvo. Confira a tela antes de tentar de novo.';
+
+  return 'Não foi possível salvar o teto agora.';
+}
+
+export function isUncertainSave(error: unknown): boolean {
+  return ((error as { status?: number } | null)?.status ?? 0) >= 500;
+}

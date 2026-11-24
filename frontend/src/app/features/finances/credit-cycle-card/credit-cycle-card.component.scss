@@ -80,3 +80,18 @@
   font-weight: 700;
   text-decoration: underline;
 }
+
+.credit-cycle-card__edit {
+  margin-top: 12px;
+}
+
+.credit-cycle-card__form {
+  display: grid;
+  gap: 8px;
+}
+
+.credit-cycle-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

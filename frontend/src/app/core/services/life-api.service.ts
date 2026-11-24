@@ -535,6 +535,14 @@ export class LifeApiService {
     return this.http.get<CreditCard[]>(`${environment.apiBaseUrl}/credit-cards${query}`);
   }
 
+  /** Define o teto do ciclo aberto de um cartao. Devolve recibo; quem chama recarrega o ciclo. */
+  setCreditCardCeiling(id: string, ceiling: number) {
+    return this.http.put<{ cardId: string; refreshPending: boolean }>(
+      `${environment.apiBaseUrl}/credit-cards/${encodeURIComponent(id)}/ceiling`,
+      { ceiling },
+    );
+  }
+
   /** Ciclo aberto de um cartao (mesma forma de getCurrentCreditCycle). */
   getCreditCardCycle(id: string) {
     return this.http.get<CreditCycle>(`${environment.apiBaseUrl}/credit-cards/${encodeURIComponent(id)}/cycle`);

@@ -1,12 +1,15 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Observable } from 'rxjs';
 import { CreditCycle, CreditCard } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
-import { activeCards } from '../../../core/utils/credit-card.utils';
+import { NetworkService } from '../../../core/services/network.service';
+import { readErrorMessage } from '../../../core/utils/http-error.utils';
+import { activeCards, ceilingError, ceilingSaveMessage, isUncertainSave } from '../../../core/utils/credit-card.utils';
 import { formatDayLabel } from '../../../core/utils/date.utils';
 import { formatCurrency } from '../../../core/utils/money.utils';
 
@@ -18,7 +21,7 @@ import { formatCurrency } from '../../../core/utils/money.utils';
  */
 @Component({
     selector: 'app-credit-cycle-card',
-    imports: [CommonModule, RouterLink],
+    imports: [CommonModule, RouterLink, ReactiveFormsModule],
     templateUrl: './credit-cycle-card.component.html',
     styleUrls: ['./credit-cycle-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush
@@ -27,6 +30,7 @@ export class CreditCycleCardComponent {
   private readonly api = inject(LifeApiService);
   private readonly authService = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly network = inject(NetworkService);
 
   protected readonly cycle = signal<CreditCycle | null>(null);
   protected readonly loading = signal(true);
@@ -36,6 +40,13 @@ export class CreditCycleCardComponent {
   /** Com dois ou mais cartoes ativos aparecem abas; com um, o card segue igual ao de antes. */
   protected readonly showTabs = computed(() => this.cards().length >= 2);
   private requestId = 0;
+  protected readonly editing = signal(false);
+  protected readonly saving = signal(false);
+  protected readonly uncertain = signal(false);
+  protected readonly saveError = signal<string | null>(null);
+  protected readonly ceilingControl = new FormControl<number | null>(null);
+  /** Escrita de teto por aba: so com abas (2+ cartoes) e online. */
+  protected readonly canEdit = computed(() => this.showTabs() && this.network.isOnline());
 
   protected readonly currencyCode = () => this.authService.currentUser()?.preferredCurrency ?? 'BRL';
 
@@ -68,7 +79,53 @@ export class CreditCycleCardComponent {
     if (id === this.selectedCardId()) return;
 
     this.selectedCardId.set(id);
+    this.editing.set(false);
+    this.saveError.set(null);
     this.load();
+  }
+
+  protected openCeilingEdit(current: number | null, previous: number | null) {
+    this.ceilingControl.setValue(current ?? previous);
+    this.saveError.set(null);
+    this.uncertain.set(false);
+    this.editing.set(true);
+  }
+
+  protected cancelCeilingEdit() {
+    this.editing.set(false);
+    this.saveError.set(null);
+    this.uncertain.set(false);
+  }
+
+  protected saveCeiling() {
+    const cardId = this.selectedCardId();
+    const value = this.ceilingControl.value;
+    const error = ceilingError(value);
+
+    if (!cardId || this.saving() || this.uncertain()) return;
+    if (error || value === null) {
+      this.saveError.set(error);
+      return;
+    }
+
+    this.saving.set(true);
+    this.saveError.set(null);
+
+    this.api
+      .setCreditCardCeiling(cardId, Math.round(value * 100) / 100)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.saving.set(false);
+          this.editing.set(false);
+          this.load();
+        },
+        error: (failure) => {
+          this.saving.set(false);
+          this.uncertain.set(isUncertainSave(failure));
+          this.saveError.set(ceilingSaveMessage(failure, readErrorMessage));
+        },
+      });
   }
 
   private loadCards() {
