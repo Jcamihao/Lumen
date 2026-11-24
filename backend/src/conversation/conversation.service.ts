@@ -104,8 +104,18 @@ import {
 import { CL_REPLIES, ChatCard, cleanCardTerm, isClearLimitDraft, matchCardsByTerm, parseLimitBody } from './credit-limit';
 import { CARD_EXPENSE_REPLIES, findCardPhrase, removeTokenRange } from './card-expense';
 import { CARD_READ_REPLIES, cardListText, namedCardText } from './card-read';
-import { CARD_WRITE_REPLIES, cardRenameDraftText, cardRenamedText, nameTakenBy, parseCardRename } from './card-write';
-import { CreditCardsService, CreditCardWriteUncertainError } from '../credit-cards/credit-cards.service';
+import {
+  CARD_WRITE_REPLIES,
+  cardCreateDraftText,
+  cardCreatedText,
+  cardRenameDraftText,
+  cardRenamedText,
+  nameTakenBy,
+  parseCardCreate,
+  parseCardRename,
+  parseClosingDayAnswer,
+} from './card-write';
+import { MAX_ACTIVE_CARDS_PER_USER, CreditCardsService, CreditCardWriteUncertainError } from '../credit-cards/credit-cards.service';
 import { CARD_ARCHIVED_MESSAGE, CARD_NEEDS_CREDIT_MESSAGE, CARD_NOT_FOUND_MESSAGE } from '../credit-cards/card-link';
 import { parseEnvelopeBody } from './parsers/envelope.parser';
 import { IntentMatch, ReadIntent, matchIntent } from './parsers/intent.matcher';
@@ -154,6 +164,7 @@ import {
   ContributionDraft,
   CreditLimitDraft,
   CardRenameDraft,
+  CardCreateDraft,
   DraftKind,
   DraftView,
   EnvelopeDraft,
@@ -446,7 +457,7 @@ export class ConversationService {
       return this.startCreditLimitClearDraft({ input, body: intent.body });
     }
     if (intent.intent === 'create_card') {
-      return this.createCardUnavailable(input);
+      return this.startCardCreateDraft({ input, body: intent.body });
     }
     if (intent.intent === 'rename_card') {
       return this.startCardRenameDraft({ input, body: intent.body });
@@ -900,10 +911,78 @@ export class ConversationService {
     return this.saveNewDraft({ input, intent: 'clear_credit_limit', draft, today: await this.todayYmd(userId, receivedAt) });
   }
 
-  /** Criar cartao pela conversa: recusado por ora (dia de fechamento obrigatorio no schema; duvida de produto). Nada e gravado. */
-  private async createCardUnavailable(input: ConversationInput): Promise<ConversationReply> {
-    await this.recordEvent(input, 'create_card', ConversationOutcome.RECOGNIZED);
-    return this.reply('INFO', 'IDLE', CARD_WRITE_REPLIES.createUnavailable);
+  /**
+   * Criar cartao (9b-3b): nome, teto de 10 ativos e nome unico conferidos antes do rascunho; sem rascunho nada e gravado.
+   * O dia de fechamento vem na frase ou e perguntado; o vencimento so vem na frase.
+   */
+  private async startCardCreateDraft(args: { input: ConversationInput; body: string }): Promise<ConversationReply> {
+    const { input, body } = args;
+    const { userId, receivedAt } = input;
+
+    const parsed = parseCardCreate(body);
+    if (parsed.ok === false) {
+      await this.recordEvent(input, 'create_card', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', parsed.text);
+    }
+    const cards = await this.activeCards(userId);
+    if (cards.length >= MAX_ACTIVE_CARDS_PER_USER) {
+      await this.recordEvent(input, 'create_card', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', CARD_WRITE_REPLIES.createLimit(MAX_ACTIVE_CARDS_PER_USER));
+    }
+    if (nameTakenBy(cards, parsed.name, '')) {
+      await this.recordEvent(input, 'create_card', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', CARD_WRITE_REPLIES.createNameTaken);
+    }
+    const draft: CardCreateDraft = {
+      kind: 'CARD_CREATE',
+      name: parsed.name,
+      closingDay: parsed.closingDay,
+      dueDay: parsed.dueDay,
+      pendingField: parsed.closingDay === null ? 'closingDay' : null,
+    };
+    return this.saveNewDraft({ input, intent: 'create_card', draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  /** Criar cartao: o CreditCardsService confere teto e nome unico sob o lock; o texto sai do recibo. */
+  private async applyCardCreate(userId: string, draft: CardCreateDraft): Promise<AppliedAction> {
+    if (draft.closingDay === null) {
+      throw new Error('rascunho de criar cartao sem dia de fechamento');
+    }
+    // Confere de novo o nome parecido antes de gravar (a API so barra o igual sem caixa). Fora do lock; a janela e minima.
+    const cards = await this.activeCards(userId);
+    if (nameTakenBy(cards, draft.name, '')) {
+      throw new ConflictException('Ja existe um cartao com este nome.');
+    }
+    const receipt = await this.creditCards.create(userId, {
+      name: draft.name,
+      closingDay: draft.closingDay,
+      dueDay: draft.dueDay,
+    });
+    return {
+      text: cardCreatedText({ name: receipt.name, closingDay: receipt.closingDay, dueDay: receipt.dueDay }),
+      data: { cardId: receipt.id },
+      resultRef: receipt.id,
+      refreshPending: receipt.refreshPending,
+    };
+  }
+
+  /** Criar cartao: a unica pergunta e o dia de fechamento (1 a 31); resposta invalida repete a pergunta sem sair do rascunho. */
+  private answerCardCreate(draft: CardCreateDraft, value: string): PendingAnswer {
+    if (draft.pendingField === 'closingDay') {
+      const day = parseClosingDayAnswer(value);
+      if (day === null) {
+        return {
+          status: 'ASK',
+          outcome: ConversationOutcome.UNRECOGNIZED,
+          question: CARD_WRITE_REPLIES.askClosingDay(draft.name),
+          prefix: CARD_WRITE_REPLIES.closingDayInvalid,
+        };
+      }
+      draft.closingDay = day;
+      draft.pendingField = null;
+      return { status: 'UPDATED' };
+    }
+    return { status: 'ERROR', text: REPLIES.collectingReminder };
   }
 
   /**
@@ -1504,6 +1583,9 @@ export class ConversationService {
     if (draft.kind === 'ENVELOPE') {
       return this.answerEnvelope(userId, draft, value);
     }
+    if (draft.kind === 'CARD_CREATE') {
+      return this.answerCardCreate(draft, value);
+    }
     if (draft.kind === 'CARD_RENAME') {
       return { status: 'ERROR', text: REPLIES.collectingReminder };
     }
@@ -1919,6 +2001,9 @@ export class ConversationService {
     }
     if (draft.kind === 'CARD_RENAME') {
       return this.applyCardRename(userId, draft);
+    }
+    if (draft.kind === 'CARD_CREATE') {
+      return this.applyCardCreate(userId, draft);
     }
     if (draft.kind === 'CREDIT_LIMIT') {
       return this.applyCreditLimit(userId, draft);
@@ -3155,6 +3240,9 @@ export class ConversationService {
         provisionMonth: draft.provisionMonth,
       });
     }
+    if (draft.kind === 'CARD_CREATE') {
+      return cardCreateDraftText(draft);
+    }
     if (draft.kind === 'CARD_RENAME') {
       return cardRenameDraftText({ from: draft.currentName, to: draft.newName });
     }
@@ -3242,6 +3330,9 @@ export class ConversationService {
     }
     if (draft.kind === 'ENVELOPE') {
       return draft.pendingField === 'name' ? REPLIES.askEnvelopeName : REPLIES.askEnvelopeAmount;
+    }
+    if (draft.kind === 'CARD_CREATE') {
+      return CARD_WRITE_REPLIES.askClosingDay(draft.name);
     }
     if (draft.kind === 'CARD_RENAME') {
       return REPLIES.collectingReminder;
@@ -3367,6 +3458,20 @@ export class ConversationService {
           { label: 'Início', value: `${monthYearUtc(draft.provisionMonth)} (UTC)` },
           { label: 'Aviso', value: REPLIES.envelopeProvisionWarning },
           ...reviewRows(draft.reviewReason),
+        ],
+      };
+    }
+    if (draft.kind === 'CARD_CREATE') {
+      return {
+        ...base,
+        kind: 'CARD_CREATE',
+        title: 'Criar cartão',
+        pendingField: draft.pendingField,
+        rows: [
+          { label: 'Cartão', value: draft.name },
+          { label: 'Fechamento', value: draft.closingDay === null ? 'a informar' : `dia ${draft.closingDay}` },
+          { label: 'Vencimento', value: draft.dueDay === null ? 'sem vencimento' : `dia ${draft.dueDay}` },
+          { label: 'Padrão', value: 'não' },
         ],
       };
     }
@@ -3856,7 +3961,7 @@ function numberedOptions(draft: SessionDraft): string[] {
   if (isTargetChangeDraft(draft)) {
     return [];
   }
-  if (draft.kind === 'GOAL' || draft.kind === 'ENVELOPE' || draft.kind === 'CREDIT_LIMIT' || draft.kind === 'RECURRING' || draft.kind === 'INSTALLMENT' || draft.kind === 'CARD_RENAME') {
+  if (draft.kind === 'GOAL' || draft.kind === 'ENVELOPE' || draft.kind === 'CREDIT_LIMIT' || draft.kind === 'RECURRING' || draft.kind === 'INSTALLMENT' || draft.kind === 'CARD_RENAME' || draft.kind === 'CARD_CREATE') {
     return [];
   }
   if (draft.kind === 'CONTRIBUTION') {
@@ -3933,6 +4038,7 @@ function goalTargetValue(draft: GoalDraft): string {
 
 /** Texto que começa com número é a resposta pedida (nome, descrição, quantidade ou data), não um comando (contrato 4). */
 function startsWithNumericAnswer(draft: SessionDraft): boolean {
+  if (draft.kind === 'CARD_CREATE') return draft.pendingField === 'closingDay';
   if (draft.kind === 'ENVELOPE') return draft.pendingField === 'name';
   if (draft.kind === 'RECURRING') return draft.pendingField === 'description' || draft.pendingField === 'firstDueDate';
   if (draft.kind === 'INSTALLMENT') {
@@ -4103,6 +4209,14 @@ function discardText(kind: DraftKind, error: unknown): string {
       ? REPLIES.envelopeNameTaken
       : REPLIES.envelopeRejected;
   }
+  if (kind === 'CARD_CREATE') {
+    // 9b-3b: recusa do CreditCardsService (teto ou nome tomado) vira texto claro; nada foi gravado (4xx).
+    if (error instanceof HttpException) {
+      if (error.getStatus() === 422) return CARD_WRITE_REPLIES.createLimit(MAX_ACTIVE_CARDS_PER_USER);
+      if (error.message === 'Ja existe um cartao com este nome.') return CARD_WRITE_REPLIES.createNameTaken;
+    }
+    return CARD_WRITE_REPLIES.createRejected;
+  }
   if (kind === 'CARD_RENAME') {
     // 9b-3: recusa do CreditCardsService vira texto claro; nada foi gravado (4xx).
     if (error instanceof HttpException) {
@@ -4132,6 +4246,9 @@ function discardText(kind: DraftKind, error: unknown): string {
 function saveFailedText(kind: DraftKind, restored: boolean): string {
   if (kind === 'ENVELOPE') {
     return restored ? REPLIES.envelopeSaveFailed : REPLIES.envelopeSaveFailedRestoreLost;
+  }
+  if (kind === 'CARD_CREATE') {
+    return restored ? CARD_WRITE_REPLIES.createSaveFailed : CARD_WRITE_REPLIES.createSaveFailedRestoreLost;
   }
   if (kind === 'CARD_RENAME') {
     return restored ? CARD_WRITE_REPLIES.renameSaveFailed : CARD_WRITE_REPLIES.renameSaveFailedRestoreLost;

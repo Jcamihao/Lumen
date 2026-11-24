@@ -38,7 +38,8 @@ export type DraftKind =
   | 'ENVELOPE_CHANGE'
   | 'RECURRING_CHANGE'
   | 'INSTALLMENT_CHANGE'
-  | 'CARD_RENAME';
+  | 'CARD_RENAME'
+  | 'CARD_CREATE';
 
 /**
  * Rascunho para a tela: valores formatados, sem ids internos alem de draftId/draftVersion.
@@ -76,7 +77,8 @@ export type PendingField =
   | 'firstDueDate'
   | 'transaction'
   | 'targetChoice'
-  | 'change';
+  | 'change'
+  | 'closingDay';
 
 /** Rascunho de lançamento. Sessões antigas não têm `kind`: ausente = TRANSACTION. Dinheiro em centavos. */
 export interface ExpenseOrIncomeDraft {
@@ -163,6 +165,18 @@ export interface CardRenameDraft {
   pendingField: null;
 }
 
+/**
+ * Criar cartao por conversa (9b-3b). Nome e dias ficam no rascunho; o dia de fechamento e perguntado se nao veio na frase.
+ * A gravacao e do CreditCardsService (sem regra nova). Cartao nunca vira padrao.
+ */
+export interface CardCreateDraft {
+  kind: 'CARD_CREATE';
+  name: string;
+  closingDay: number | null;
+  dueDay: number | null;
+  pendingField: 'closingDay' | null;
+}
+
 /** Conta fixa (contrato 3b2b, secao 5): só despesa; categoria e pagamento ficam não informados. */
 export interface RecurringDraft {
   kind: 'RECURRING';
@@ -239,7 +253,8 @@ export type SessionDraft =
   | InstallmentDraft
   | TransactionChangeDraft
   | TargetChangeDraft
-  | CardRenameDraft;
+  | CardRenameDraft
+  | CardCreateDraft;
 
 /** Dados numericos para a tela (centavos). Presentes em INFO e DONE. */
 export interface ReplyData {
