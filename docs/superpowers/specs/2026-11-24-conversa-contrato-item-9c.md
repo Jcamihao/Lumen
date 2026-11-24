@@ -1,4 +1,4 @@
-# Contrato do item 9c: telas dos cartões (PROPOSTA, aguarda aprovação do dono)
+# Contrato do item 9c: telas dos cartões (APROVADO pelo dono em 2026-11-24: "sim em todas" nas 7 decisões)
 
 Data: 2026-11-24. Base: develop com 9a (API de cartões), 9b (bot) e v1.17.0. Fecha o item 9. Só o frontend (Angular) e, em 9c-2, a remoção dos campos antigos do `User`.
 
@@ -18,7 +18,7 @@ Data: 2026-11-24. Base: develop com 9a (API de cartões), 9b (bot) e v1.17.0. Fe
 - Texto novo em português; claro/escuro; 390/1280 px; sem dado de cartão real (só apelido, dia de fechamento e vencimento: o app nunca guarda número de cartão).
 - Verificação: `ng test`, `ng build`, Chrome real contra backend real com Postgres/Redis descartáveis, contas A/B, mutantes, revisor sonnet.
 
-## 4. Decisões para o dono (recomendação em negrito)
+## 4. Decisões do dono (todas aprovadas como recomendadas)
 1. Onde fica a tela de cartões: **transformar a atual `card-page` na lista de cartões** (hoje ela só edita o fechamento) em vez de criar tela nova.
 2. Seletor de cartão no lançamento: **só aparece com despesa no crédito e já vem com o padrão marcado** (zero cliques a mais para quem tem um cartão só; com um cartão só, nem mostra o seletor).
 3. Card do ciclo no dashboard: **um cartão por vez, com troca por abas/chips; começa no padrão.**
@@ -26,3 +26,9 @@ Data: 2026-11-24. Base: develop com 9a (API de cartões), 9b (bot) e v1.17.0. Fe
 5. Remover os campos antigos do `User`: **numa fatia própria (9c-2), depois da 9c-1.**
 6. Arquivados: **escondidos por padrão, com interruptor "mostrar arquivados"**, sem desarquivar na 9c.
 7. Adicionar "meus cartões" ao menu do bot Telegram: **sim.**
+
+## 5. Ordem de execução
+- 9c-1a: modelos + serviço de API de cartões, tela de Cartões (lista, criar, editar, padrão, arquivar, mostrar arquivados).
+- 9c-1b: seletor de cartão em lançamento/parcelado/conta fixa, filtro e `cardName` nas listas, ciclo por cartão (abas), tipos de rascunho do assistente, menu do Telegram.
+- 9c-2: remoção dos campos antigos do `User`.
+Cada fatia: haiku implementa, sonnet revisa (Chrome real, backend real, Postgres/Redis descartáveis, mutantes), agente principal confere.
