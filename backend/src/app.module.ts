@@ -22,6 +22,8 @@ import { cacheConfig } from "./config/cache.config";
 import { mailConfig } from "./config/mail.config";
 import { whatsappConfig } from "./whatsapp/whatsapp.config";
 import { WhatsappModule } from "./whatsapp/whatsapp.module";
+import { telegramConfig } from "./telegram/telegram.config";
+import { TelegramModule } from "./telegram/telegram.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { EmailPreferencesModule } from "./email-preferences/email-preferences.module";
 import { FinanceCategoriesModule } from "./finance-categories/finance-categories.module";
@@ -50,7 +52,7 @@ import { UsersModule } from "./users/users.module";
         resolve(__dirname, "../../.env"),
         resolve(__dirname, "../../.env.example"),
       ],
-      load: [appConfig, authConfig, cacheConfig, mailConfig, asaasConfig, whatsappConfig],
+      load: [appConfig, authConfig, cacheConfig, mailConfig, asaasConfig, whatsappConfig, telegramConfig],
     }),
     PrismaModule,
     CacheQueueModule,
@@ -78,6 +80,7 @@ import { UsersModule } from "./users/users.module";
     AssistantModule,
     ConversationModule,
     WhatsappModule,
+    TelegramModule,
     LifeEngineModule,
     BillingModule,
   ],
