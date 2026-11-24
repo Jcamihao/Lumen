@@ -543,6 +543,13 @@ export class LifeApiService {
     );
   }
 
+  /** Remove o teto do ciclo aberto de um cartao. Devolve recibo; quem chama recarrega o ciclo. */
+  clearCreditCardCeiling(id: string) {
+    return this.http.delete<{ cardId: string; removedCents: number; refreshPending: boolean }>(
+      `${environment.apiBaseUrl}/credit-cards/${encodeURIComponent(id)}/ceiling`,
+    );
+  }
+
   /** Ciclo aberto de um cartao (mesma forma de getCurrentCreditCycle). */
   getCreditCardCycle(id: string) {
     return this.http.get<CreditCycle>(`${environment.apiBaseUrl}/credit-cards/${encodeURIComponent(id)}/cycle`);

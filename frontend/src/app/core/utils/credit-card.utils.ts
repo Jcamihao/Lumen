@@ -67,6 +67,17 @@ export function ceilingSaveMessage(error: unknown, readMessage: ReadMessage): st
   return 'Não foi possível salvar o teto agora.';
 }
 
+/** Texto do erro de limpar teto. Sem resposta ou 5xx: resultado desconhecido, nao repetir. */
+export function clearCeilingMessage(error: unknown, readMessage: ReadMessage): string {
+  const status = (error as { status?: number } | null)?.status ?? 0;
+
+  if (status === 404) return 'Cartão não encontrado. Atualize a tela.';
+  if (status === 409) return readMessage(error, 'Não há teto neste ciclo para limpar. Atualize a tela.');
+  if (isUncertainSave(error)) return 'Não sei se o teto foi limpo. Confira a tela antes de tentar de novo.';
+
+  return 'Não foi possível limpar o teto agora.';
+}
+
 /** Sem resposta (status 0: rede caiu no meio) ou 5xx: o servidor pode ter gravado. Nao repetir. */
 export function isUncertainSave(error: unknown): boolean {
   const status = (error as { status?: number } | null)?.status ?? 0;

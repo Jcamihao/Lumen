@@ -9,7 +9,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { NetworkService } from '../../../core/services/network.service';
 import { readErrorMessage } from '../../../core/utils/http-error.utils';
-import { activeCards, ceilingError, ceilingSaveMessage, isUncertainSave } from '../../../core/utils/credit-card.utils';
+import { activeCards, ceilingError, ceilingSaveMessage, clearCeilingMessage, isUncertainSave } from '../../../core/utils/credit-card.utils';
 import { formatDayLabel } from '../../../core/utils/date.utils';
 import { formatCurrency } from '../../../core/utils/money.utils';
 
@@ -47,6 +47,10 @@ export class CreditCycleCardComponent {
   protected readonly ceilingControl = new FormControl<number | null>(null);
   /** Escrita de teto por aba: so com abas (2+ cartoes) e online. */
   protected readonly canEdit = computed(() => this.showTabs() && this.network.isOnline());
+  protected readonly confirmingClear = signal(false);
+  protected readonly clearing = signal(false);
+  protected readonly clearUncertain = signal(false);
+  protected readonly clearError = signal<string | null>(null);
 
   protected readonly currencyCode = () => this.authService.currentUser()?.preferredCurrency ?? 'BRL';
 
@@ -81,6 +85,7 @@ export class CreditCycleCardComponent {
     this.selectedCardId.set(id);
     this.editing.set(false);
     this.saveError.set(null);
+    this.resetClear();
     this.load();
   }
 
@@ -128,6 +133,51 @@ export class CreditCycleCardComponent {
           this.saveError.set(ceilingSaveMessage(failure, readErrorMessage));
         },
       });
+  }
+
+  protected startClear() {
+    if (this.clearing()) return;
+
+    this.confirmingClear.set(true);
+    this.clearError.set(null);
+    this.clearUncertain.set(false);
+  }
+
+  protected cancelClear() {
+    if (this.clearing()) return;
+
+    this.resetClear();
+  }
+
+  protected confirmClear() {
+    const cardId = this.selectedCardId();
+
+    if (!cardId || this.clearing() || this.clearUncertain()) return;
+
+    this.clearing.set(true);
+    this.clearError.set(null);
+
+    this.api
+      .clearCreditCardCeiling(cardId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.clearing.set(false);
+          this.resetClear();
+          this.load();
+        },
+        error: (failure) => {
+          this.clearing.set(false);
+          this.clearUncertain.set(isUncertainSave(failure));
+          this.clearError.set(clearCeilingMessage(failure, readErrorMessage));
+        },
+      });
+  }
+
+  private resetClear() {
+    this.confirmingClear.set(false);
+    this.clearError.set(null);
+    this.clearUncertain.set(false);
   }
 
   private loadCards() {
