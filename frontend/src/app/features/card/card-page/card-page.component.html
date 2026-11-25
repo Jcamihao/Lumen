@@ -1,90 +1,243 @@
 <div class="proto-page">
   <header class="proto-header">
     <div class="proto-header__copy">
-      <h2>Cartão</h2>
-      <p>Fechamento, vencimento e teto do ciclo de crédito, tudo num lugar só.</p>
+      <h2>Cartões</h2>
+      <p>Seus cartões de crédito: nome, dia de fechamento, vencimento e qual é o padrão.</p>
     </div>
   </header>
 
-  <!--
-    O fechamento e' do usuario (User.monthClosingDay), nao do ciclo de credito:
-    fica fora do loading/erro do ciclo de proposito, senao uma falha so no
-    /credit-cycle/current travaria a edicao de algo que nao depende dele.
-  -->
-  <article class="proto-surface">
-    <div class="proto-surface__head">
-      <div>
-        <h3>Fechamento</h3>
-        <p>Define o início e o fim do ciclo de crédito, contado pela fatura.</p>
-      </div>
-    </div>
+  @if (offline()) {
+    <p class="card-page__notice" role="status">{{ offlineText }}</p>
+  }
 
-    <form
-      class="proto-surface__body card-page__form"
-      (submit)="$event.preventDefault(); saveClosingDay()"
-      novalidate
-    >
+  <!-- Formulario compartilhado: criar (no topo) ou editar (dentro do cartao). -->
+  <ng-template #cardFormTpl let-prefix="prefix" let-submitLabel="submitLabel">
+    <form class="card-page__form" [formGroup]="cardForm" (ngSubmit)="submitForm()" (keydown.escape)="cancelForm()" novalidate>
       <div class="proto-field">
-        <label for="card-closing-day">Dia de fechamento</label>
-        <input id="card-closing-day" type="number" min="1" max="31" [formControl]="closingDayControl" />
+        <label [attr.for]="prefix + '-name'">Apelido do cartão</label>
+        <input
+          [id]="prefix + '-name'"
+          type="text"
+          autocomplete="off"
+          formControlName="name"
+          placeholder="Ex.: Nubank"
+          [attr.aria-invalid]="nameError() ? 'true' : null"
+          [attr.aria-describedby]="prefix + '-name-error'"
+        />
+        <small class="card-page__field-error" [id]="prefix + '-name-error'" aria-live="polite">{{ nameError() }}</small>
       </div>
+
+      <div class="proto-field">
+        <label [attr.for]="prefix + '-closing'">Dia de fechamento</label>
+        <input
+          [id]="prefix + '-closing'"
+          type="number"
+          inputmode="numeric"
+          min="1"
+          max="31"
+          step="1"
+          formControlName="closingDay"
+          [attr.aria-invalid]="dayError('closingDay') ? 'true' : null"
+          [attr.aria-describedby]="prefix + '-closing-error'"
+        />
+        <small class="card-page__field-error" [id]="prefix + '-closing-error'" aria-live="polite">{{ dayError('closingDay') }}</small>
+      </div>
+
+      <div class="proto-field">
+        <label [attr.for]="prefix + '-due'">Dia do vencimento (opcional)</label>
+        <input
+          [id]="prefix + '-due'"
+          type="number"
+          inputmode="numeric"
+          min="1"
+          max="31"
+          step="1"
+          placeholder="Ex.: 15"
+          formControlName="dueDay"
+          [attr.aria-invalid]="dayError('dueDay') ? 'true' : null"
+          [attr.aria-describedby]="prefix + '-due-error'"
+        />
+        <small class="card-page__field-error" [id]="prefix + '-due-error'" aria-live="polite">{{ dayError('dueDay') }}</small>
+      </div>
+
+      @if (formError()) {
+        <p class="card-page__error" role="alert">{{ formError() }}</p>
+      }
+
       <div class="card-page__actions">
-        <button type="submit" class="proto-button" [disabled]="savingClosingDay()">
-          {{ savingClosingDay() ? 'Salvando...' : 'Salvar fechamento' }}
+        <button type="submit" class="proto-button" [disabled]="saving() || offline()">
+          {{ saving() ? 'Salvando...' : submitLabel }}
+        </button>
+        <button type="button" class="proto-button proto-button--secondary" (click)="cancelForm()" [disabled]="saving()">
+          Cancelar
         </button>
       </div>
     </form>
+  </ng-template>
+
+  <article class="proto-surface">
+    <div class="proto-surface__head">
+      <div>
+        <h3>Seus cartões</h3>
+        <p>Só apelido e dias. O app não guarda número de cartão.</p>
+      </div>
+      <button
+        type="button"
+        class="proto-button"
+        (click)="startCreate()"
+        [disabled]="offline() || atLimit() || mode() === 'create'"
+        [attr.aria-describedby]="atLimit() ? 'card-limit-hint' : null"
+      >
+        Novo cartão
+      </button>
+    </div>
+
+    <div class="proto-surface__body card-page__list">
+      @if (atLimit()) {
+        <p class="card-page__hint" id="card-limit-hint">{{ limitText }}</p>
+      }
+
+      @if (mode() === 'create') {
+        <div class="card-page__new">
+          <h4>Novo cartão</h4>
+          <ng-container *ngTemplateOutlet="cardFormTpl; context: { prefix: 'new', submitLabel: 'Criar cartão' }" />
+        </div>
+      }
+
+      @if (listError()) {
+        <p class="card-page__error" role="alert">{{ listError() }}</p>
+      }
+
+      @if (cardsLoading()) {
+        <p class="card-page__hint">Carregando cartões...</p>
+      } @else if (cardsFailed()) {
+        <div class="proto-empty">
+          <strong>Não foi possível carregar seus cartões</strong>
+          <p>Confira sua conexão e tente de novo.</p>
+          <button type="button" class="proto-button proto-button--secondary" (click)="loadCards()">Tentar de novo</button>
+        </div>
+      } @else {
+        <ul class="card-page__items" aria-label="Lista de cartões">
+          @for (card of visibleCards(); track card.id) {
+            <li class="card-page__item" [class.card-page__item--archived]="card.archivedAt">
+              <div class="card-page__item-head">
+                <strong>{{ card.name }}</strong>
+                @if (card.isDefault) {
+                  <span class="card-page__badge">Padrão</span>
+                }
+                @if (card.archivedAt) {
+                  <span class="card-page__badge card-page__badge--muted">Arquivado</span>
+                }
+              </div>
+              <p class="card-page__meta">
+                Fecha dia {{ card.closingDay }} ·
+                {{ card.dueDay ? 'vence dia ' + card.dueDay : 'sem vencimento' }}
+              </p>
+
+              @if (!card.archivedAt) {
+                @if (mode() === 'edit' && editingId() === card.id) {
+                  <ng-container *ngTemplateOutlet="cardFormTpl; context: { prefix: 'edit-' + card.id, submitLabel: 'Salvar cartão' }" />
+                } @else {
+                  <div class="card-page__actions" (keydown.escape)="cancelArchive()">
+                    <button
+                      type="button"
+                      class="proto-button proto-button--secondary"
+                      [disabled]="offline() || busyCardId() === card.id"
+                      [attr.aria-label]="'Editar ' + card.name"
+                      (click)="startEdit(card)"
+                    >
+                      Editar
+                    </button>
+
+                    @if (!card.isDefault) {
+                      <button
+                        type="button"
+                        class="proto-button proto-button--secondary"
+                        [disabled]="offline() || busyCardId() !== null"
+                        [attr.aria-label]="'Tornar ' + card.name + ' padrão'"
+                        (click)="makeDefault(card)"
+                      >
+                        Tornar padrão
+                      </button>
+
+                      @if (confirmArchiveId() === card.id) {
+                        <button
+                          type="button"
+                          class="proto-button proto-button--secondary card-page__danger"
+                          [disabled]="offline() || busyCardId() !== null"
+                          (click)="confirmArchive(card)"
+                        >
+                          {{ busyCardId() === card.id ? 'Arquivando...' : 'Confirmar arquivamento' }}
+                        </button>
+                        <button type="button" class="proto-button proto-button--secondary" (click)="cancelArchive()">
+                          Cancelar
+                        </button>
+                      } @else {
+                        <button
+                          type="button"
+                          class="proto-button proto-button--secondary"
+                          [disabled]="offline() || busyCardId() !== null"
+                          [attr.aria-label]="'Arquivar ' + card.name"
+                          (click)="askArchive(card)"
+                        >
+                          Arquivar
+                        </button>
+                      }
+                    } @else {
+                      <button
+                        type="button"
+                        class="proto-button proto-button--secondary"
+                        disabled
+                        [attr.aria-label]="'Arquivar ' + card.name + ': indisponível'"
+                        aria-describedby="card-default-hint"
+                      >
+                        Arquivar
+                      </button>
+                      <small class="card-page__hint" id="card-default-hint">{{ archiveHint }}</small>
+                    }
+                  </div>
+                }
+              }
+            </li>
+          } @empty {
+            <li class="card-page__hint">Nenhum cartão ativo.</li>
+          }
+        </ul>
+      }
+
+      <label class="card-page__toggle">
+        <input type="checkbox" [checked]="showArchived()" (change)="toggleArchived()" />
+        Mostrar arquivados
+      </label>
+    </div>
   </article>
 
-  <p class="card-page__hint" *ngIf="loading()">Carregando o ciclo atual...</p>
-
-  <div class="proto-empty" *ngIf="loadFailed()">
-    <strong>Não foi possível carregar o ciclo atual</strong>
-    <p>Confira sua conexão e tente de novo.</p>
-    <button type="button" class="proto-button proto-button--secondary" (click)="load()">Tentar de novo</button>
-  </div>
-
-  <ng-container *ngIf="!loading() && !loadFailed() && cycle() as data">
+  @if (cycleLoading()) {
+    <p class="card-page__hint">Carregando o ciclo atual...</p>
+  } @else if (cycleFailed()) {
+    <div class="proto-empty">
+      <strong>Não foi possível carregar o ciclo atual</strong>
+      <p>Confira sua conexão e tente de novo.</p>
+      <button type="button" class="proto-button proto-button--secondary" (click)="loadCycle()">Tentar de novo</button>
+    </div>
+  } @else if (cycle(); as data) {
     <article class="proto-surface">
       <div class="proto-surface__head">
         <div>
-          <h3>Ciclo atual</h3>
+          <h3>Ciclo atual do cartão padrão</h3>
           <p>Ciclo de {{ cycleRangeLabel(data) }}</p>
         </div>
       </div>
 
       <div class="proto-surface__body">
-        <div class="card-page__amount" *ngIf="data.ceiling !== null">
-          <strong>{{ formatMoney(data.remaining ?? 0) }}</strong>
-          <span>ainda disponível no crédito</span>
-        </div>
+        @if (data.ceiling !== null) {
+          <div class="card-page__amount">
+            <strong>{{ formatMoney(data.remaining ?? 0) }}</strong>
+            <span>ainda disponível no crédito</span>
+          </div>
+        }
         <p class="card-page__status">{{ statusText(data) }}</p>
       </div>
-    </article>
-
-    <article class="proto-surface">
-      <div class="proto-surface__head">
-        <div>
-          <h3>Vencimento</h3>
-          <p>Só informativo por enquanto; não gera lembrete.</p>
-        </div>
-      </div>
-
-      <form
-        class="proto-surface__body card-page__form"
-        (submit)="$event.preventDefault(); saveDueDay()"
-        novalidate
-      >
-        <div class="proto-field">
-          <label for="card-due-day">Dia do vencimento (opcional)</label>
-          <input id="card-due-day" type="number" min="1" max="31" placeholder="Ex.: 15" [formControl]="dueDayControl" />
-        </div>
-        <div class="card-page__actions">
-          <button type="submit" class="proto-button" [disabled]="saving()">
-            {{ saving() ? 'Salvando...' : 'Salvar vencimento' }}
-          </button>
-        </div>
-      </form>
     </article>
 
     <article class="proto-surface">
@@ -95,11 +248,7 @@
         </div>
       </div>
 
-      <form
-        class="proto-surface__body card-page__form"
-        (submit)="$event.preventDefault(); saveCeiling()"
-        novalidate
-      >
+      <form class="proto-surface__body card-page__form" (submit)="$event.preventDefault(); saveCeiling()" novalidate>
         <div class="proto-field">
           <label for="card-ceiling">Teto deste ciclo</label>
           <input
@@ -111,13 +260,13 @@
             placeholder="Ex.: 1600"
             [formControl]="ceilingControl"
           />
-          <small class="proto-field__hint" *ngIf="data.previousCeiling !== null">
-            No ciclo passado era {{ formatMoney(data.previousCeiling) }}.
-          </small>
+          @if (data.previousCeiling !== null) {
+            <small class="proto-field__hint">No ciclo passado era {{ formatMoney(data.previousCeiling) }}.</small>
+          }
         </div>
         <div class="card-page__actions">
-          <button type="submit" class="proto-button" [disabled]="saving()">
-            {{ saving() ? 'Salvando...' : 'Salvar teto' }}
+          <button type="submit" class="proto-button" [disabled]="savingCycle()">
+            {{ savingCycle() ? 'Salvando...' : 'Salvar teto' }}
           </button>
         </div>
       </form>
@@ -137,7 +286,7 @@
             <input
               type="checkbox"
               [checked]="data.countAllPayments"
-              [disabled]="saving()"
+              [disabled]="savingCycle()"
               (change)="toggleCountAllPayments()"
             />
             Considerar débito e PIX também (não só crédito)
@@ -145,5 +294,5 @@
         </div>
       </div>
     </article>
-  </ng-container>
+  }
 </div>

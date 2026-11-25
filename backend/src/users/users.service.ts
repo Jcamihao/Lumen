@@ -8,6 +8,7 @@ import { Prisma, TransactionType, UserRole } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 import { toCategoryResponse } from "../finance-categories/finance-categories.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { PRINCIPAL_CARD_NAME } from "../credit-cycle/credit-cycle.util";
 import { DEFAULT_TAG_GROUPS } from "../tag-groups/tag-groups.service";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import {
@@ -45,34 +46,48 @@ export class UsersService {
     const privacyAccepted = Boolean(input.privacyNoticeAccepted);
     const aiEnabled = Boolean(input.aiAssistantEnabled && privacyAccepted);
 
-    const user = await this.prisma.user.create({
-      data: {
-        name: input.name,
-        email: input.email,
-        passwordHash: input.passwordHash,
-        avatarUrl: input.avatarUrl,
-        phone: input.phone,
-        birthDate: input.birthDate ? new Date(input.birthDate) : undefined,
-        occupation: input.occupation,
-        primaryGoal: input.primaryGoal,
-        role: input.role ?? UserRole.USER,
-        preferredCurrency: input.preferredCurrency ?? "BRL",
-        monthlyIncome:
-          input.monthlyIncome !== undefined
-            ? new Prisma.Decimal(input.monthlyIncome)
-            : new Prisma.Decimal(0),
-        monthClosingDay: input.monthClosingDay ?? 30,
-        timezone: input.timezone ?? "America/Sao_Paulo",
-        privacyNoticeAcceptedAt: privacyAccepted ? now : null,
-        privacyNoticeVersion: privacyAccepted
-          ? CURRENT_PRIVACY_NOTICE_VERSION
-          : null,
-        aiAssistantEnabled: aiEnabled,
-        aiAssistantConsentAt: aiEnabled ? now : null,
-        aiAssistantConsentVersion: aiEnabled
-          ? CURRENT_AI_CONSENT_VERSION
-          : null,
-      },
+    // User e cartao "Principal" (padrao) na mesma transacao (contrato item 9, secao 3).
+    const user = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          name: input.name,
+          email: input.email,
+          passwordHash: input.passwordHash,
+          avatarUrl: input.avatarUrl,
+          phone: input.phone,
+          birthDate: input.birthDate ? new Date(input.birthDate) : undefined,
+          occupation: input.occupation,
+          primaryGoal: input.primaryGoal,
+          role: input.role ?? UserRole.USER,
+          preferredCurrency: input.preferredCurrency ?? "BRL",
+          monthlyIncome:
+            input.monthlyIncome !== undefined
+              ? new Prisma.Decimal(input.monthlyIncome)
+              : new Prisma.Decimal(0),
+          monthClosingDay: input.monthClosingDay ?? 30,
+          timezone: input.timezone ?? "America/Sao_Paulo",
+          privacyNoticeAcceptedAt: privacyAccepted ? now : null,
+          privacyNoticeVersion: privacyAccepted
+            ? CURRENT_PRIVACY_NOTICE_VERSION
+            : null,
+          aiAssistantEnabled: aiEnabled,
+          aiAssistantConsentAt: aiEnabled ? now : null,
+          aiAssistantConsentVersion: aiEnabled
+            ? CURRENT_AI_CONSENT_VERSION
+            : null,
+        },
+      });
+      await tx.creditCard.create({
+        data: {
+          userId: created.id,
+          name: PRINCIPAL_CARD_NAME,
+          closingDay: created.monthClosingDay,
+          dueDay: null,
+          countAllPayments: false,
+          isDefault: true,
+        },
+      });
+      return created;
     });
 
     await Promise.all([
@@ -194,47 +209,56 @@ export class UsersService {
 
     const now = new Date();
 
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        name: dto.name,
-        avatarUrl: dto.avatarUrl,
-        phone: dto.phone,
-        birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
-        occupation: dto.occupation,
-        primaryGoal: dto.primaryGoal,
-        preferredCurrency: dto.preferredCurrency,
-        monthlyIncome:
-          dto.monthlyIncome !== undefined
-            ? new Prisma.Decimal(dto.monthlyIncome)
-            : undefined,
-        monthClosingDay: dto.monthClosingDay,
-        timezone: dto.timezone,
-        emailWeeklyDigest: dto.emailWeeklyDigest,
-        emailReminders: dto.emailReminders,
-        emailInsightAlerts: dto.emailInsightAlerts,
-        emailBillReminders: dto.emailBillReminders,
-        ...(dto.privacyNoticeAccepted
-          ? {
-              privacyNoticeAcceptedAt:
-                currentUser.privacyNoticeAcceptedAt ?? now,
-              privacyNoticeVersion: CURRENT_PRIVACY_NOTICE_VERSION,
-            }
-          : {}),
-        ...(dto.aiAssistantEnabled === undefined
-          ? {}
-          : dto.aiAssistantEnabled
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          name: dto.name,
+          avatarUrl: dto.avatarUrl,
+          phone: dto.phone,
+          birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
+          occupation: dto.occupation,
+          primaryGoal: dto.primaryGoal,
+          preferredCurrency: dto.preferredCurrency,
+          monthlyIncome:
+            dto.monthlyIncome !== undefined
+              ? new Prisma.Decimal(dto.monthlyIncome)
+              : undefined,
+          monthClosingDay: dto.monthClosingDay,
+          timezone: dto.timezone,
+          emailWeeklyDigest: dto.emailWeeklyDigest,
+          emailReminders: dto.emailReminders,
+          emailInsightAlerts: dto.emailInsightAlerts,
+          emailBillReminders: dto.emailBillReminders,
+          ...(dto.privacyNoticeAccepted
             ? {
-                aiAssistantEnabled: true,
-                aiAssistantConsentAt: currentUser.aiAssistantConsentAt ?? now,
-                aiAssistantConsentVersion: CURRENT_AI_CONSENT_VERSION,
+                privacyNoticeAcceptedAt:
+                  currentUser.privacyNoticeAcceptedAt ?? now,
+                privacyNoticeVersion: CURRENT_PRIVACY_NOTICE_VERSION,
               }
-            : {
-                aiAssistantEnabled: false,
-                aiAssistantConsentAt: null,
-                aiAssistantConsentVersion: null,
-              }),
-      },
+            : {}),
+          ...(dto.aiAssistantEnabled === undefined
+            ? {}
+            : dto.aiAssistantEnabled
+              ? {
+                  aiAssistantEnabled: true,
+                  aiAssistantConsentAt: currentUser.aiAssistantConsentAt ?? now,
+                  aiAssistantConsentVersion: CURRENT_AI_CONSENT_VERSION,
+                }
+              : {
+                  aiAssistantEnabled: false,
+                  aiAssistantConsentAt: null,
+                  aiAssistantConsentVersion: null,
+                }),
+        },
+      });
+      // Cartao padrao acompanha o dia de fechamento do User (contrato item 9, secao 4.2).
+      if (dto.monthClosingDay !== undefined) {
+        await tx.creditCard.updateMany({
+          where: { userId, isDefault: true, archivedAt: null },
+          data: { closingDay: dto.monthClosingDay },
+        });
+      }
     });
 
     return this.getMe(userId);

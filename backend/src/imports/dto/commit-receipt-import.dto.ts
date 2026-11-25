@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsNumber,
   IsOptional,
   IsString,
@@ -60,4 +61,9 @@ export class CommitReceiptImportDto {
   @ValidateNested({ each: true })
   @Type(() => CommitReceiptImportItemDto)
   items?: CommitReceiptImportItemDto[];
+
+  // Confirmação explícita de que a compra parecida (ou a mesma chave de acesso) é outra compra.
+  @IsOptional()
+  @IsBoolean()
+  acknowledgeDuplicate?: boolean;
 }

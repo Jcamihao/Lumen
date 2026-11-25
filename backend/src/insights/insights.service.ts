@@ -10,7 +10,7 @@ import {
 } from 'date-fns';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { creditCycleBounds } from '../credit-cycle/credit-cycle.util';
+import { cardSpendWhere, creditCycleBounds } from '../credit-cycle/credit-cycle.util';
 import { addDaysUtc, localToday } from '../recurring-transactions/recurrence.util';
 
 type GeneratedInsight = {
@@ -458,20 +458,26 @@ export class InsightsService {
     ]);
 
     const userToday = localToday(now, user.timezone ?? 'UTC');
-    const creditCycle = creditCycleBounds(userToday, user.monthClosingDay ?? 30);
+    // 9a: o ciclo de credito continua sendo o do cartao padrao (contrato item 9, secao 4.8).
+    const defaultCard = await this.prisma.creditCard.findFirst({
+      where: { userId, isDefault: true, archivedAt: null },
+      select: { id: true, isDefault: true, countAllPayments: true, closingDay: true },
+    });
+    // Ciclo do cartao padrao (contrato 4.8); sem cartao, cai no espelho do User.
+    const creditCycle = creditCycleBounds(userToday, defaultCard?.closingDay ?? user.monthClosingDay ?? 30);
     const [creditCeilingRow, creditSpentAggregate] = await Promise.all([
-      this.prisma.creditCycleCeiling.findUnique({
-        where: { userId_closingDate: { userId, closingDate: creditCycle.end } },
-      }),
-      this.prisma.transaction.aggregate({
-        where: {
-          userId,
-          type: 'EXPENSE',
-          date: { gte: creditCycle.start, lte: creditCycle.end },
-          ...(user.creditCycleCountAllPayments ? {} : { paymentMethod: 'CREDIT' }),
-        },
-        _sum: { amount: true },
-      }),
+      defaultCard
+        ? this.prisma.creditCycleCeiling.findUnique({
+            where: { cardId_closingDate: { cardId: defaultCard.id, closingDate: creditCycle.end } },
+          })
+        : Promise.resolve(null),
+      // Mesma regra do ciclo do cartao (cardSpendWhere). Sem cartao padrao ativo: gasto zero.
+      defaultCard
+        ? this.prisma.transaction.aggregate({
+            where: cardSpendWhere(userId, defaultCard, creditCycle.start, creditCycle.end),
+            _sum: { amount: true },
+          })
+        : Promise.resolve({ _sum: { amount: null } }),
     ]);
     const windowEnd = addDaysUtc(userToday, UPCOMING_BILL_WINDOW_DAYS);
     const upcomingBills = (recurringExpenseTemplates ?? [])

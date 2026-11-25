@@ -7,6 +7,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -38,6 +39,12 @@ export class CreateInstallmentPurchaseDto {
   @IsOptional()
   @IsEnum(PaymentMethod)
   paymentMethod?: PaymentMethod;
+
+  /** Cartao das parcelas (so com paymentMethod=CREDIT). Sem cardId, conta no cartao padrao. */
+  @ApiPropertyOptional({ format: 'uuid', description: 'Cartao das parcelas; so com paymentMethod=CREDIT.' })
+  @IsOptional()
+  @IsUUID()
+  cardId?: string;
 
   @ApiPropertyOptional({
     description: 'Vencimento da 1a parcela (AAAA-MM-DD). Default: hoje.',

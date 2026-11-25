@@ -159,6 +159,22 @@ export class RateLimitGuard implements CanActivate {
     message: 'Muitas tentativas de sincronizacao em pouco tempo. Tente novamente mais tarde.',
   };
 
+  // Webhook do WA-AKG: rota publica (balde por IP). Limite alto para rajadas de mensagens
+  // de um numero, sem deixar a rota virar porta para flood.
+  private readonly whatsappWebhookPolicy: RateLimitPolicy = {
+    keyPrefix: 'whatsapp-webhook',
+    limit: 600,
+    windowMs: 5 * 60_000,
+    message: 'Muitas requisicoes de webhook em pouco tempo. Tente novamente em instantes.',
+  };
+  // Gerar codigo de vinculo: por usuario autenticado, para nao virar gerador de codigos em massa.
+  private readonly whatsappLinkCodePolicy: RateLimitPolicy = {
+    keyPrefix: 'whatsapp-link-code',
+    limit: 5,
+    windowMs: 60 * 60_000,
+    message: 'Muitos codigos de vinculo gerados em pouco tempo. Tente novamente mais tarde.',
+  };
+
   private readonly policyByRoute: ReadonlyMap<string, RateLimitPolicy> = new Map([
     ['POST /api/v1/auth/login', this.authLoginPolicy],
     ['POST /api/v1/auth/register', this.authRegisterPolicy],
@@ -180,6 +196,8 @@ export class RateLimitGuard implements CanActivate {
     ['POST /api/v1/billing/checkout', this.billingCheckoutPolicy],
     ['POST /api/v1/billing/webhooks/asaas', this.billingWebhookPolicy],
     ['POST /api/v1/billing/sync', this.billingSyncPolicy],
+    ['POST /api/v1/whatsapp/webhook', this.whatsappWebhookPolicy],
+    ['POST /api/v1/whatsapp/link-code', this.whatsappLinkCodePolicy],
   ]);
 
   constructor(private readonly cacheQueueService: CacheQueueService) {}

@@ -26,7 +26,21 @@ export type ConversationTransactionType = 'INCOME' | 'EXPENSE' | 'TRANSFER';
 
 export type ConversationPaymentMethod = 'PIX' | 'CREDIT' | 'DEBIT';
 
-export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION' | 'ENVELOPE' | 'CREDIT_LIMIT' | 'RECURRING' | 'INSTALLMENT';
+export type DraftKind =
+  | 'TRANSACTION'
+  | 'GOAL'
+  | 'CONTRIBUTION'
+  | 'ENVELOPE'
+  | 'CREDIT_LIMIT'
+  | 'RECURRING'
+  | 'INSTALLMENT'
+  | 'TRANSACTION_CHANGE'
+  | 'GOAL_CHANGE'
+  | 'ENVELOPE_CHANGE'
+  | 'RECURRING_CHANGE'
+  | 'INSTALLMENT_CHANGE'
+  | 'CARD_RENAME'
+  | 'CARD_CREATE';
 
 export type PendingField =
   | 'amount'
@@ -37,7 +51,12 @@ export type PendingField =
   | 'goal'
   | 'name'
   | 'installmentsTotal'
-  | 'firstDueDate';
+  | 'firstDueDate'
+  | 'transaction'
+  | 'targetChoice'
+  | 'change'
+  | 'card'
+  | 'closingDay';
 
 /** Linha do cartão do rascunho, já formatada pelo backend. Valor ausente vem como "a informar". */
 export interface DraftRow {
@@ -63,6 +82,8 @@ export interface DraftView {
   date: string | null;
   paymentMethod: ConversationPaymentMethod | null;
   pendingField: PendingField | null;
+  /** No rascunho de editar/apagar lançamento: 'DELETE' muda o botão para "Apagar de vez". No de limite: 'CLEAR' pede "Limpar de vez" (8d). */
+  changeAction?: 'EDIT' | 'DELETE' | 'CLEAR';
 }
 
 /** Dados numéricos para a tela (centavos). Presentes em INFO e DONE. */
@@ -86,6 +107,8 @@ export interface ReplyData {
   recurringTransactionId?: string;
   /** Em DONE de compra parcelada criada: id da compra. */
   installmentPurchaseId?: string;
+  /** Tela que a resposta sugere abrir ("importar nota" → 'imports'). */
+  screen?: 'imports';
   /** Em `envelopes`: total disponível das reservas ativas. */
   totalCents?: number;
   goalId?: string;
@@ -101,6 +124,8 @@ export interface ConversationReply {
   quickReplies?: string[];
   /** true só quando o motor não reconheceu a intenção (texto livre). Só esse caso vai ao Selah. */
   unrecognized?: true;
+  /** Resposta veio do fallback de IA do motor (texto puro, nunca escrita). */
+  aiFallback?: true;
 }
 
 /** Resposta de GET /conversation/session. */

@@ -8,6 +8,7 @@ import { AssistantModule } from "./assistant/assistant.module";
 import { AuthModule } from "./auth/auth.module";
 import { BillingModule } from "./billing/billing.module";
 import { CacheQueueModule } from "./cache-queue/cache-queue.module";
+import { CreditCardsModule } from "./credit-cards/credit-cards.module";
 import { CreditCycleModule } from "./credit-cycle/credit-cycle.module";
 import { ConversationModule } from "./conversation/conversation.module";
 import { EnvelopesModule } from "./envelopes/envelopes.module";
@@ -19,6 +20,10 @@ import { asaasConfig } from "./config/asaas.config";
 import { authConfig } from "./config/auth.config";
 import { cacheConfig } from "./config/cache.config";
 import { mailConfig } from "./config/mail.config";
+import { whatsappConfig } from "./whatsapp/whatsapp.config";
+import { WhatsappModule } from "./whatsapp/whatsapp.module";
+import { telegramConfig } from "./telegram/telegram.config";
+import { TelegramModule } from "./telegram/telegram.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { EmailPreferencesModule } from "./email-preferences/email-preferences.module";
 import { FinanceCategoriesModule } from "./finance-categories/finance-categories.module";
@@ -47,7 +52,7 @@ import { UsersModule } from "./users/users.module";
         resolve(__dirname, "../../.env"),
         resolve(__dirname, "../../.env.example"),
       ],
-      load: [appConfig, authConfig, cacheConfig, mailConfig, asaasConfig],
+      load: [appConfig, authConfig, cacheConfig, mailConfig, asaasConfig, whatsappConfig, telegramConfig],
     }),
     PrismaModule,
     CacheQueueModule,
@@ -62,6 +67,7 @@ import { UsersModule } from "./users/users.module";
     RecurringTransactionsModule,
     InstallmentsModule,
     CreditCycleModule,
+    CreditCardsModule,
     EnvelopesModule,
     GoalsModule,
     RemindersModule,
@@ -73,6 +79,8 @@ import { UsersModule } from "./users/users.module";
     ImportsModule,
     AssistantModule,
     ConversationModule,
+    WhatsappModule,
+    TelegramModule,
     LifeEngineModule,
     BillingModule,
   ],

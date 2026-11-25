@@ -22,6 +22,7 @@ export const REPLIES = {
   creditLimitChanged: 'O ciclo ou o limite atual mudou. Confira os dados atualizados e confirme novamente.',
   envelopeProvisionWarning: 'A reserva recebe a provisão mensal do app. Isso não transfere dinheiro de uma conta bancária nem faz aporte em meta.',
   creditLimitCycleWarning: 'Este limite vale só para o ciclo mostrado.',
+  creditLimitClearWarning: 'Sem o teto, o Lumen para de avisar progresso e estouro neste ciclo. Para voltar, defina um novo limite.',
   creditLimitAllPaymentsWarning: 'Este ciclo considera todas as formas de pagamento.',
   refreshPending: 'Cadastro salvo. A atualização dos dados está pendente; confira a tela de Finanças.',
   envelopeNameTaken: 'Você já tem um envelope com este nome.',
@@ -29,7 +30,6 @@ export const REPLIES = {
     'Não consegui criar a reserva e outro rascunho já foi aberto. Envie o pedido de novo.',
   creditLimitSaveFailedRestoreLost:
     'Não consegui definir o limite e outro rascunho já foi aberto. Envie o pedido de novo.',
-  creditLimitValueOnly: 'Envie só o valor do limite, sem nome de banco. Ex.: definir limite 5000.',
   revisionRestoreLost: 'O pedido mudou e outro rascunho já foi aberto. Envie o pedido de novo.',
   askDraftDescription: 'Qual a descrição? Ex.: internet ou geladeira.',
   askRecurringAmount: 'Qual o valor de cada vencimento?',
@@ -58,8 +58,24 @@ export const REPLIES = {
   help:
     'Exemplos: "50 mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
     '"quanto gastei", "gastos com mercado", "limite do cartão".',
+  importReceipt:
+    'Para importar uma nota, abra Importações e envie a foto ou o PDF. ' +
+    'A leitura é feita aqui no Lumen e você confere tudo antes de gravar.',
   unrecognized: 'Não entendi. Digite "ajuda" para ver os exemplos.',
+  aiFallbackBlocked:
+    'Não entendi. As perguntas com IA do seu plano já acabaram neste mês. ' +
+    'Exemplos: "50 mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
+    '"quanto gastei", "gastos com mercado", "limite do cartão".',
+  aiFallbackUnavailable:
+    'Não entendi. A IA está indisponível agora. ' +
+    'Exemplos: "50 mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
+    '"quanto gastei", "gastos com mercado", "limite do cartão".',
+  aiFallbackHelp:
+    'Não entendi. ' +
+    'Exemplos: "50 mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
+    '"quanto gastei", "gastos com mercado", "limite do cartão".',
   duplicate: 'Essa mensagem já foi processada. Nada foi alterado.',
+  whatsappWritesOff: 'Para gravar, confirme no app: abra o assistente e toque em Confirmar. Por aqui eu monto o rascunho e respondo consultas.',
   expired: 'O rascunho expirou e foi descartado. Envie o lançamento de novo.',
   cancelled: 'Rascunho cancelado. Nada foi gravado.',
   confirmReminder: 'Há um rascunho aguardando. Responda "confirmar" ou "cancelar".',
@@ -163,6 +179,7 @@ export function draftText(input: {
   date: string;
   paymentMethod: PaymentMethod | null;
   futureDate: boolean;
+  cardName?: string | null;
 }): string {
   const lines = [
     `Rascunho de ${typeLabel(input.type)}:`,
@@ -172,6 +189,9 @@ export function draftText(input: {
     `Data: ${input.date}`,
     `Pagamento: ${paymentLabel(input.paymentMethod)}`,
   ];
+  if (input.cardName) {
+    lines.push(`Cartão: ${input.cardName}`);
+  }
   if (input.futureDate) {
     lines.push(REPLIES.futureDate);
   }
@@ -179,8 +199,9 @@ export function draftText(input: {
   return lines.join('\n');
 }
 
-export function doneText(type: TransactionType, amountCents: number, description: string): string {
-  return `Registrado: ${typeLabel(type)} de ${formatBrl(amountCents)} (${description}).`;
+export function doneText(type: TransactionType, amountCents: number, description: string, cardName?: string | null): string {
+  const card = cardName ? ` no cartão ${cardName}` : '';
+  return `Registrado: ${typeLabel(type)} de ${formatBrl(amountCents)} (${description})${card}.`;
 }
 
 export function categoryOptionsText(names: string[]): string {
@@ -363,12 +384,24 @@ export function envelopeCreatedText(input: { name: string; monthlyCents: number 
   return `Reserva criada: ${input.name}, ${formatBrl(input.monthlyCents)} por mês.`;
 }
 
-export function creditLimitDraftText(input: { ceilingCents: number; cycleEnd: string }): string {
-  return `Limite de ${formatBrl(input.ceilingCents)} para o ciclo com fechamento em ${longDate(input.cycleEnd)}.`;
+export function creditLimitDraftText(input: { ceilingCents: number; cycleEnd: string; cardName?: string | null }): string {
+  const who = input.cardName ? ` no cartão ${input.cardName}` : '';
+  return `Limite de ${formatBrl(input.ceilingCents)}${who} para o ciclo com fechamento em ${longDate(input.cycleEnd)}.`;
 }
 
-export function creditLimitSetText(input: { ceilingCents: number; cycleEnd: string }): string {
-  return `Limite de ${formatBrl(input.ceilingCents)} definido para o ciclo com fechamento em ${longDate(input.cycleEnd)}.`;
+export function creditLimitSetText(input: { ceilingCents: number; cycleEnd: string; cardName?: string | null }): string {
+  const who = input.cardName ? ` no cartão ${input.cardName}` : '';
+  return `Limite de ${formatBrl(input.ceilingCents)} definido${who} para o ciclo com fechamento em ${longDate(input.cycleEnd)}.`;
+}
+
+export function creditLimitClearDraftText(input: { previousCents: number; cycleEnd: string; cardName?: string | null }): string {
+  const who = input.cardName ? ` do cartão ${input.cardName}` : '';
+  return `Remover o teto${who} de ${formatBrl(input.previousCents)} do ciclo com fechamento em ${longDate(input.cycleEnd)}.`;
+}
+
+export function creditLimitClearText(input: { previousCents: number; cycleEnd: string; cardName?: string | null }): string {
+  const who = input.cardName ? ` do cartão ${input.cardName}` : '';
+  return `Teto${who} removido do ciclo com fechamento em ${longDate(input.cycleEnd)}. Antes: ${formatBrl(input.previousCents)}.`;
 }
 
 /** Não achou meta ativa pelo nome: lista até 5 títulos. */

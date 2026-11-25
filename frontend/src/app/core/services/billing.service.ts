@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { BillingMe, GrantView, PublicPlan } from '../models/domain.models';
+import { BillingMe, GrantView, GroupView, CreatedGroupInvite, PublicPlan } from '../models/domain.models';
 
 @Injectable({ providedIn: 'root' })
 export class BillingService {
@@ -38,7 +38,7 @@ export class BillingService {
     return this.http.delete<GrantView>(`${environment.apiBaseUrl}/billing/admin/grants/${id}`);
   }
 
-  checkout(body: { plan: 'INDIVIDUAL'; interval: 'MONTHLY' | 'YEARLY' }): Observable<{ link: string }> {
+  checkout(body: { plan: 'INDIVIDUAL' | 'SHARED'; interval: 'MONTHLY' | 'YEARLY' }): Observable<{ link: string }> {
     return this.http.post<{ link: string }>(`${environment.apiBaseUrl}/billing/checkout`, body);
   }
 
@@ -48,5 +48,34 @@ export class BillingService {
 
   sync(): Observable<void> {
     return this.http.post<void>(`${environment.apiBaseUrl}/billing/sync`, null);
+  }
+
+  /** Grupo do plano Compartilhado (contrato 11, 11a). Rotas autenticadas; quem gerencia e do backend. */
+  loadGroup(): Observable<GroupView> {
+    return this.http.get<GroupView>(`${environment.apiBaseUrl}/billing/group`);
+  }
+
+  createGroupInvite(email: string): Observable<CreatedGroupInvite> {
+    return this.http.post<CreatedGroupInvite>(`${environment.apiBaseUrl}/billing/group/invites`, {
+      email,
+    });
+  }
+
+  revokeGroupInvite(id: string): Observable<void> {
+    return this.http.delete<void>(`${environment.apiBaseUrl}/billing/group/invites/${id}`);
+  }
+
+  acceptGroupInvite(token: string): Observable<GroupView> {
+    return this.http.post<GroupView>(`${environment.apiBaseUrl}/billing/group/invite/accept`, {
+      token,
+    });
+  }
+
+  leaveGroup(): Observable<void> {
+    return this.http.post<void>(`${environment.apiBaseUrl}/billing/group/leave`, null);
+  }
+
+  removeGroupMember(id: string): Observable<void> {
+    return this.http.delete<void>(`${environment.apiBaseUrl}/billing/group/members/${id}`);
   }
 }

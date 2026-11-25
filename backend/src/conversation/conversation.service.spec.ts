@@ -43,11 +43,21 @@ function buildFakeDb() {
     { id: 'cat-mercado-b', userId: 'B', name: 'Mercado', type: 'EXPENSE' },
   ];
   const timezones: Record<string, string> = { A: 'America/Sao_Paulo', B: 'America/Sao_Paulo' };
+  // Cartao de verdade so a partir do 9a; o chat (8d) busca por nome aqui.
+  const cards: Row[] = [
+    { id: 'cr-nubank', userId: 'A', name: 'Nubank', isDefault: true, archivedAt: null },
+    { id: 'cr-itau', userId: 'A', name: 'Itaú', isDefault: false, archivedAt: null },
+    { id: 'cr-nubank-b', userId: 'B', name: 'Nubank', isDefault: true, archivedAt: null },
+  ];
 
   const prisma = {
     envelope: {
       // Nome exato por dono (unicidade userId + name). Os testes trocam o retorno quando precisam.
       findFirst: jest.fn(async () => null),
+    },
+    creditCard: {
+      findMany: jest.fn(async ({ where }: { where: Row }) => clone(cards.filter((row) => matches(row, where)))),
+      findFirst: jest.fn(async ({ where }: { where: Row }) => clone(cards.find((row) => matches(row, where)) ?? null)),
     },
     user: {
       findUniqueOrThrow: jest.fn(async ({ where }: { where: { id: string } }) => ({
@@ -109,7 +119,7 @@ function buildFakeDb() {
     },
   };
 
-  return { prisma, sessions, events, categories };
+  return { prisma, sessions, events, categories, cards };
 }
 
 const T0 = new Date('2026-11-15T12:00:00.000Z');
@@ -117,6 +127,10 @@ const T0 = new Date('2026-11-15T12:00:00.000Z');
 describe('ConversationService', () => {
   let db: ReturnType<typeof buildFakeDb>;
   let transactions: { create: jest.Mock };
+  let configService: { get: jest.Mock };
+  let writesEnabled = true;
+  let telegramWritesEnabled = true;
+  let aiMode: 'off' | 'fallback' = 'off';
   let dashboard: { getSummary: jest.Mock };
   let creditCycle: { getCurrent: jest.Mock; setCeilingForConversation?: jest.Mock };
   let recurring: { list: jest.Mock; createForConversation: jest.Mock };
@@ -124,6 +138,7 @@ describe('ConversationService', () => {
   let goals: { list: jest.Mock; create: jest.Mock; contribute: jest.Mock };
   let envelopes: { list: jest.Mock; createForConversation: jest.Mock };
   let entitlements: { assertCanCreate: jest.Mock };
+  let assistant: { tryFallbackAnswer: jest.Mock };
   let service: ConversationService;
   let warn: jest.SpyInstance;
 
@@ -190,6 +205,17 @@ describe('ConversationService', () => {
     };
     envelopes = { list: jest.fn(async () => []), createForConversation: jest.fn(async () => ({})) };
     entitlements = { assertCanCreate: jest.fn(async () => undefined) };
+    writesEnabled = true;
+    telegramWritesEnabled = true;
+    aiMode = 'off';
+    assistant = { tryFallbackAnswer: jest.fn(async () => ({ status: 'unavailable' })) };
+    configService = {
+      get: jest.fn((key: string) => {
+        if (key === 'app.assistantAiMode') return aiMode;
+        if (key === 'telegram.writesEnabled') return telegramWritesEnabled;
+        return key === 'whatsapp.writesEnabled' ? writesEnabled : undefined;
+      }),
+    };
     service = new ConversationService(
       db.prisma as unknown as Deps[0],
       dashboard as unknown as Deps[1],
@@ -200,6 +226,9 @@ describe('ConversationService', () => {
       goals as unknown as Deps[6],
       envelopes as unknown as Deps[7],
       entitlements as unknown as Deps[8],
+      configService as unknown as Deps[9],
+      assistant as unknown as Deps[10],
+      { update: jest.fn() } as unknown as Deps[11],
     );
   });
 
@@ -488,6 +517,29 @@ describe('ConversationService', () => {
       expect(free).toMatchObject({ kind: 'HELP', unrecognized: true });
       expect(help.kind).toBe('HELP');
       expect(help.unrecognized).toBeUndefined();
+    });
+
+    it('"importar nota" orienta e indica a tela, sem rascunho nem sessao (item 4c)', async () => {
+      const reply = await service.handleMessage(msg('A', 'importar nota'));
+
+      expect(reply).toMatchObject({ kind: 'HELP', state: 'IDLE', data: { screen: 'imports' } });
+      expect(reply.text).toContain('abra Importações');
+      expect(reply.draft).toBeUndefined();
+      expect(reply.unrecognized).toBeUndefined();
+      expect(db.sessions).toHaveLength(0);
+      expect(transactions.create).not.toHaveBeenCalled();
+      expect(db.events.at(-1)).toMatchObject({ intent: 'import_receipt', outcome: ConversationOutcome.RECOGNIZED });
+    });
+
+    it('"importar nota" com rascunho em andamento nao mexe no rascunho (item 4c)', async () => {
+      await draftFor('A', '50 mercado');
+      const before = JSON.stringify(db.sessions);
+
+      const reply = await service.handleMessage(msg('A', 'importar nota'));
+
+      expect(reply).toMatchObject({ kind: 'HELP', data: { screen: 'imports' } });
+      expect(reply.state).not.toBe('IDLE');
+      expect(JSON.stringify(db.sessions)).toBe(before);
     });
 
     it('falha em TransactionsService.create devolve o rascunho e nao grava nada', async () => {
@@ -1874,6 +1926,7 @@ describe('ConversationService', () => {
       envelopes.createForConversation = envelopeWrite;
       (creditCycle as Record<string, unknown>).setCeilingForConversation = limitWrite;
       creditCycle.getCurrent = jest.fn(async () => CYCLE);
+      (creditCycle as Record<string, unknown>).getCycleForCard = jest.fn(async (_userId: string, _cardId: string) => CYCLE);
     });
 
     const send = (userId: string, text: string, at: Date = T0) => service.handleMessage(msg(userId, text, at));
@@ -2242,6 +2295,7 @@ describe('ConversationService', () => {
           'A',
           { ceiling: 5000 },
           { cycleStart: '2026-11-06', cycleEnd: '2026-12-05', previousCeilingCents: 200000, countAllPayments: false },
+          undefined,
         );
         expect(reply).toMatchObject({
           kind: 'DONE',
@@ -2290,6 +2344,7 @@ describe('ConversationService', () => {
           'A',
           { ceiling: 5000 },
           { cycleStart: '2026-12-06', cycleEnd: '2027-01-05', previousCeilingCents: null, countAllPayments: false },
+          undefined,
         );
       });
 
@@ -2343,10 +2398,20 @@ describe('ConversationService', () => {
         expect(db.sessions[0].draft).toMatchObject({ ceilingCents: null, pendingField: 'amount' });
       });
 
-      it('"definir limite 5000 Nubank" pede reenvio, sem ignorar o banco', async () => {
+      it('"definir limite 5000 Nubank" escolhe o cartao pelo nome e pega o valor (8d)', async () => {
         const reply = await send('A', 'definir limite 5000 Nubank');
 
-        expect(reply).toMatchObject({ kind: 'ERROR', text: REPLIES.creditLimitValueOnly });
+        expect(reply.kind).toBe('CONFIRM_DRAFT');
+        expect(db.sessions[0].draft).toMatchObject({ kind: 'CREDIT_LIMIT', action: 'set', cardId: 'cr-nubank', cardName: 'Nubank', ceilingCents: 500_000 });
+        expect(rowValue(reply, 'Cartão')).toEqual(['Nubank']);
+      });
+
+      it('nome que nao e cartao nenhum devolve a lista de cartoes (8d)', async () => {
+        const reply = await send('A', 'definir limite 5000 picapau');
+
+        expect(reply.kind).toBe('ERROR');
+        expect(reply.text).toContain('Não achei cartão com "picapau"');
+        expect(reply.text).toContain('Nubank, Itaú');
         expect(db.sessions).toHaveLength(0);
       });
 
@@ -2953,6 +3018,350 @@ describe('ConversationService', () => {
         expect((await send('A', 'parcelas')).kind).toBe('INFO');
         expect(db.sessions).toHaveLength(0);
       });
+    });
+  });
+  describe('trava de escrita do WhatsApp (contrato 8)', () => {
+    const wmsg = (text: string, messageId = randomUUID()): ConversationInput => ({
+      userId: 'A',
+      channel: ConversationChannel.WHATSAPP,
+      messageId,
+      text,
+      receivedAt: T0,
+    });
+
+    async function whatsappDraft() {
+      const reply = await service.handleMessage(wmsg('gastei 32,90 mercado'));
+      expect(reply.kind).toBe('CONFIRM_DRAFT');
+      return db.sessions.find((row) => row.channel === ConversationChannel.WHATSAPP)!;
+    }
+
+    it('WHATSAPP com escrita desligada: "confirmar" nao grava, rascunho e sessao ficam, resposta e evento RECOGNIZED', async () => {
+      writesEnabled = false;
+      const draftBefore = await whatsappDraft();
+      const draftSnapshot = JSON.stringify(draftBefore.draft);
+
+      const reply = await service.handleMessage(wmsg('confirmar'));
+
+      expect(transactions.create).not.toHaveBeenCalled();
+      expect(reply).toEqual({ kind: 'INFO', state: ConversationState.AWAITING_CONFIRMATION, text: REPLIES.whatsappWritesOff });
+      const session = db.sessions.find((row) => row.channel === ConversationChannel.WHATSAPP)!;
+      expect(session.state).toBe(ConversationState.AWAITING_CONFIRMATION);
+      expect(JSON.stringify(session.draft)).toBe(draftSnapshot);
+      expect(db.events.at(-1)).toMatchObject({ channel: ConversationChannel.WHATSAPP, outcome: ConversationOutcome.RECOGNIZED });
+    });
+
+    it('WHATSAPP com escrita ligada: "confirmar" grava normalmente', async () => {
+      writesEnabled = true;
+      await whatsappDraft();
+      const reply = await service.handleMessage(wmsg('confirmar'));
+      expect(reply.kind).toBe('DONE');
+      expect(transactions.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('APP com escrita desligada: "confirmar" grava (a trava e so do WhatsApp)', async () => {
+      writesEnabled = false;
+      await draftFor('A', 'gastei 32,90 mercado');
+      const reply = await service.handleMessage(msg('A', 'confirmar'));
+      expect(reply.kind).toBe('DONE');
+      expect(transactions.create).toHaveBeenCalledTimes(1);
+    });
+
+    describe('getSession mostra o rascunho pendente do WhatsApp (decisao D9)', () => {
+      it('so rascunho WHATSAPP aguardando confirmacao: o app o recebe e o botao grava', async () => {
+        writesEnabled = false;
+        const draft = await whatsappDraft();
+        const view = await service.getSession('A');
+        expect(view.state).toBe(ConversationState.AWAITING_CONFIRMATION);
+        expect(view.draft).toMatchObject({ draftId: draft.id, draftVersion: draft.version });
+        const reply = await service.confirmDraft('A', view.draft!.draftId, view.draft!.draftVersion);
+        expect(reply?.kind).toBe('DONE');
+        expect(transactions.create).toHaveBeenCalledTimes(1);
+      });
+
+      it('sessao APP ativa tem prioridade sobre a do WhatsApp', async () => {
+        await whatsappDraft();
+        await draftFor('A', '50 mercado');
+        const appSession = db.sessions.find((row) => row.channel === ConversationChannel.APP)!;
+        const view = await service.getSession('A');
+        expect(view.draft).toMatchObject({ draftId: appSession.id });
+      });
+
+      it('isolamento: o rascunho WHATSAPP de A nunca aparece para B', async () => {
+        await whatsappDraft();
+        await expect(service.getSession('B')).resolves.toEqual({ state: 'IDLE' });
+      });
+
+      it('sessao WHATSAPP que ainda coleta campos nao aparece no app (so a pendente de confirmacao)', async () => {
+        const reply = await service.handleMessage(wmsg('gastei 32,90'));
+        expect(reply.state).toBe(ConversationState.COLLECTING_FIELDS);
+        await expect(service.getSession('A')).resolves.toEqual({ state: 'IDLE' });
+      });
+
+      it('sessao WHATSAPP expirada vira IDLE', async () => {
+        const draft = await whatsappDraft();
+        draft.expiresAt = new Date(Date.now() - 1000);
+        await expect(service.getSession('A')).resolves.toEqual({ state: 'IDLE' });
+      });
+    });
+
+    it('botao do app (confirmDraft) nao e afetado pela trava, mesmo em sessao WHATSAPP', async () => {
+      writesEnabled = false;
+      const draft = await whatsappDraft();
+      const reply = await service.confirmDraft('A', draft.id, draft.version);
+      expect(reply?.kind).toBe('DONE');
+      expect(transactions.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('trava de escrita do Telegram (contrato 10, D3) e sessao do canal', () => {
+    const tmsg = (text: string, messageId = randomUUID()): ConversationInput => ({
+      userId: 'A',
+      channel: ConversationChannel.TELEGRAM,
+      messageId,
+      text,
+      receivedAt: T0,
+    });
+
+    async function telegramDraft() {
+      const reply = await service.handleMessage(tmsg('gastei 32,90 mercado'));
+      expect(reply.kind).toBe('CONFIRM_DRAFT');
+      return db.sessions.find((row) => row.channel === ConversationChannel.TELEGRAM)!;
+    }
+
+    it('TELEGRAM com escrita desligada: "confirmar" nao grava, sessao fica, evento RECOGNIZED', async () => {
+      telegramWritesEnabled = false;
+      await telegramDraft();
+
+      const reply = await service.handleMessage(tmsg('confirmar'));
+
+      expect(transactions.create).not.toHaveBeenCalled();
+      expect(reply).toMatchObject({ kind: 'INFO', state: ConversationState.AWAITING_CONFIRMATION });
+      const session = db.sessions.find((row) => row.channel === ConversationChannel.TELEGRAM)!;
+      expect(session.state).toBe(ConversationState.AWAITING_CONFIRMATION);
+      expect(db.events.at(-1)).toMatchObject({ channel: ConversationChannel.TELEGRAM, outcome: ConversationOutcome.RECOGNIZED });
+    });
+
+    it('TELEGRAM com escrita ligada: "confirmar" grava', async () => {
+      await telegramDraft();
+      const reply = await service.handleMessage(tmsg('confirmar'));
+      expect(reply.kind).toBe('DONE');
+      expect(transactions.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('a trava do Telegram nao confunde com a do WhatsApp: cada canal tem a sua', async () => {
+      writesEnabled = false;
+      telegramWritesEnabled = true;
+      await telegramDraft();
+      expect((await service.handleMessage(tmsg('confirmar'))).kind).toBe('DONE');
+
+      telegramWritesEnabled = false;
+      writesEnabled = true;
+      const wreply = await service.handleMessage({ ...tmsg('x'), channel: ConversationChannel.WHATSAPP, text: 'gastei 10,00 mercado' });
+      expect(wreply.kind).toBe('CONFIRM_DRAFT');
+      expect((await service.handleMessage({ ...tmsg('confirmar'), channel: ConversationChannel.WHATSAPP })).kind).toBe('DONE');
+    });
+
+    it('rascunho TELEGRAM pendente aparece no app (D9 estendido) e o botao grava', async () => {
+      telegramWritesEnabled = false;
+      const draft = await telegramDraft();
+
+      const view = await service.getSession('A');
+      expect(view.state).toBe(ConversationState.AWAITING_CONFIRMATION);
+      expect(view.draft?.kind).toBe('TRANSACTION');
+
+      const done = await service.confirmDraft('A', draft.id, draft.version);
+      expect(done?.kind).toBe('DONE');
+      expect(transactions.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('WhatsApp e Telegram pendurados juntos: o app ve primeiro o do WhatsApp (ordem da casa)', async () => {
+      await telegramDraft();
+      await service.handleMessage({ ...tmsg('gastei 5,00 padaria'), channel: ConversationChannel.WHATSAPP, messageId: randomUUID() });
+
+      const view = await service.getSession('A');
+      expect(view.state).toBe(ConversationState.AWAITING_CONFIRMATION);
+    });
+
+    it('conta B nunca ve o rascunho TELEGRAM de A', async () => {
+      await telegramDraft();
+      await expect(service.getSession('B')).resolves.toEqual({ state: 'IDLE' });
+    });
+  });
+
+  describe('fallback de IA (item 7, ASSISTANT_AI_MODE)', () => {
+    const writers = (): jest.Mock[] => [
+      transactions.create,
+      goals.create,
+      goals.contribute,
+      envelopes.createForConversation,
+      creditCycle.setCeilingForConversation as jest.Mock,
+      recurring.createForConversation,
+      installments.createForConversation,
+    ];
+
+    beforeEach(() => {
+      creditCycle.setCeilingForConversation = jest.fn(async () => ({}));
+      aiMode = 'fallback';
+    });
+
+    it('modo off: texto livre e aporte sem nome de meta so recebem ajuda, sem chamar a IA', async () => {
+      aiMode = 'off';
+
+      const free = await service.handleMessage(msg('A', 'analise meus gastos do mes'));
+      expect(free).toEqual({ kind: 'HELP', state: 'IDLE', text: REPLIES.unrecognized, unrecognized: true });
+      expect(db.events.at(-1)).toMatchObject({ intent: null, outcome: ConversationOutcome.UNRECOGNIZED });
+
+      const contribution = await service.handleMessage(msg('A', 'guardar dinheiro é importante'));
+      expect(contribution).toMatchObject({ kind: 'HELP', unrecognized: true });
+      expect(db.events.at(-1)).toMatchObject({ intent: null, outcome: ConversationOutcome.UNRECOGNIZED });
+
+      expect(assistant.tryFallbackAnswer).not.toHaveBeenCalled();
+    });
+
+    it('respondido: INFO em texto puro com aiFallback, um evento AI_ANSWERED e nenhuma escrita', async () => {
+      assistant.tryFallbackAnswer.mockResolvedValueOnce({ status: 'answered', text: 'Seu gasto com mercado subiu.' });
+
+      const reply = await service.handleMessage(msg('A', 'analise meus gastos do mes'));
+
+      expect(reply).toEqual({ kind: 'INFO', state: 'IDLE', text: 'Seu gasto com mercado subiu.', aiFallback: true });
+      expect(assistant.tryFallbackAnswer).toHaveBeenCalledWith('A', 'analise meus gastos do mes');
+      expect(db.events).toHaveLength(1);
+      expect(db.events[0]).toMatchObject({ intent: 'ai_fallback', outcome: ConversationOutcome.AI_ANSWERED });
+      expect(db.sessions).toHaveLength(0);
+      for (const write of writers()) {
+        expect(write).not.toHaveBeenCalled();
+      }
+    });
+
+    it.each([
+      ['blocked_by_plan', 'aiFallbackBlocked', ConversationOutcome.AI_BLOCKED],
+      ['no_consent', 'aiFallbackHelp', ConversationOutcome.AI_BLOCKED],
+      ['unavailable', 'aiFallbackUnavailable', ConversationOutcome.AI_UNAVAILABLE],
+    ] as const)('%s: ajuda contextual sem unrecognized e evento de IA', async (status, replyKey, outcome) => {
+      assistant.tryFallbackAnswer.mockResolvedValueOnce({ status });
+
+      const reply = await service.handleMessage(msg('A', 'analise meus gastos do mes'));
+
+      expect(reply).toEqual({ kind: 'HELP', state: 'IDLE', text: REPLIES[replyKey] });
+      expect(db.events).toHaveLength(1);
+      expect(db.events[0]).toMatchObject({ intent: 'ai_fallback', outcome });
+      expect(db.sessions).toHaveLength(0);
+      for (const write of writers()) {
+        expect(write).not.toHaveBeenCalled();
+      }
+    });
+
+    it('erro inesperado do fallback vira indisponivel, sem derrubar a conversa e sem texto do usuario no log', async () => {
+      assistant.tryFallbackAnswer.mockRejectedValueOnce(new Error('falha com analise meus gastos'));
+
+      const reply = await service.handleMessage(msg('A', 'analise meus gastos do mes'));
+
+      expect(reply).toEqual({ kind: 'HELP', state: 'IDLE', text: REPLIES.aiFallbackUnavailable });
+      expect(assistant.tryFallbackAnswer).toHaveBeenCalledTimes(1);
+      expect(db.events[0]).toMatchObject({ outcome: ConversationOutcome.AI_UNAVAILABLE });
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('analise');
+    });
+
+    it('reentrega do mesmo messageId vira DUPLICATE: um evento e nenhuma nova chamada a IA', async () => {
+      assistant.tryFallbackAnswer.mockResolvedValue({ status: 'answered', text: 'Resposta.' });
+      const first = msg('A', 'analise meus gastos do mes', T0, randomUUID());
+
+      await service.handleMessage(first);
+      const again = await service.handleMessage(first);
+
+      expect(again.kind).toBe('DUPLICATE');
+      expect(assistant.tryFallbackAnswer).toHaveBeenCalledTimes(1);
+      expect(db.events).toHaveLength(1);
+    });
+
+    it('reentrega do mesmo messageId com a IA ainda em voo: DUPLICATE, uma so chamada e um so evento', async () => {
+      let release: (value: { status: 'answered'; text: string }) => void = () => undefined;
+      assistant.tryFallbackAnswer.mockImplementation(
+        () => new Promise((resolve) => { release = resolve; }),
+      );
+      const first = msg('A', 'analise meus gastos do mes', T0, randomUUID());
+
+      const inFlight = service.handleMessage(first);
+      for (let i = 0; i < 50 && assistant.tryFallbackAnswer.mock.calls.length === 0; i += 1) {
+        await Promise.resolve();
+      }
+      const again = await service.handleMessage(first);
+      release({ status: 'answered', text: 'Resposta.' });
+      const original = await inFlight;
+
+      expect(again.kind).toBe('DUPLICATE');
+      expect(original).toMatchObject({ kind: 'INFO', aiFallback: true });
+      expect(assistant.tryFallbackAnswer).toHaveBeenCalledTimes(1);
+      expect(db.events).toHaveLength(1);
+    });
+
+    it('a trava de reentrega e por usuario e e liberada ao fim, inclusive quando a IA falha', async () => {
+      const releases: Array<(value: { status: 'answered'; text: string }) => void> = [];
+      assistant.tryFallbackAnswer.mockImplementation(
+        () => new Promise((resolve) => { releases.push(resolve); }),
+      );
+      const id = randomUUID();
+
+      const forA = service.handleMessage(msg('A', 'analise meus gastos do mes', T0, id));
+      const forB = service.handleMessage(msg('B', 'analise meus gastos do mes', T0, id));
+      for (let i = 0; i < 50 && releases.length < 2; i += 1) {
+        await Promise.resolve();
+      }
+      expect(releases).toHaveLength(2);
+      releases.forEach((release) => release({ status: 'answered', text: 'Ok.' }));
+      expect(await forA).toMatchObject({ kind: 'INFO', aiFallback: true });
+      expect(await forB).toMatchObject({ kind: 'INFO', aiFallback: true });
+      expect((service as unknown as { fallbackInFlight: Set<string> }).fallbackInFlight.size).toBe(0);
+
+      assistant.tryFallbackAnswer.mockReset().mockRejectedValueOnce(new Error('x'));
+      const failed = await service.handleMessage(msg('A', 'analise meus gastos do mes', T0, randomUUID()));
+      expect(failed.text).toBe(REPLIES.aiFallbackUnavailable);
+      expect((service as unknown as { fallbackInFlight: Set<string> }).fallbackInFlight.size).toBe(0);
+    });
+
+    it('aporte com nome que nao e meta vai a IA com o texto completo, sem rascunho', async () => {
+      assistant.tryFallbackAnswer.mockResolvedValueOnce({ status: 'answered', text: 'Guardar é bom.' });
+
+      const reply = await service.handleMessage(msg('A', 'guardar dinheiro é importante'));
+
+      expect(reply).toMatchObject({ kind: 'INFO', aiFallback: true });
+      expect(assistant.tryFallbackAnswer).toHaveBeenCalledWith('A', 'guardar dinheiro é importante');
+      expect(db.sessions).toHaveLength(0);
+      expect(goals.contribute).not.toHaveBeenCalled();
+      expect(db.events[0]).toMatchObject({ intent: 'ai_fallback', outcome: ConversationOutcome.AI_ANSWERED });
+    });
+
+    it('texto vazio ou so espacos nao chama a IA: ajuda de sempre com um evento UNRECOGNIZED', async () => {
+      const reply = await service.handleMessage(msg('A', '   '));
+
+      expect(reply).toEqual({ kind: 'HELP', state: 'IDLE', text: REPLIES.unrecognized, unrecognized: true });
+      expect(assistant.tryFallbackAnswer).not.toHaveBeenCalled();
+      expect(db.events).toHaveLength(1);
+      expect(db.events[0]).toMatchObject({ intent: null, outcome: ConversationOutcome.UNRECOGNIZED });
+    });
+
+    it('modo ausente na configuracao conta como off: nao chama a IA', async () => {
+      (aiMode as string | undefined) = undefined;
+
+      const reply = await service.handleMessage(msg('A', 'analise meus gastos do mes'));
+
+      expect(reply).toMatchObject({ kind: 'HELP', unrecognized: true });
+      expect(assistant.tryFallbackAnswer).not.toHaveBeenCalled();
+    });
+
+    it('a IA recebe o texto aparado e o userId do dono', async () => {
+      assistant.tryFallbackAnswer.mockResolvedValueOnce({ status: 'answered', text: 'Ok.' });
+
+      await service.handleMessage(msg('B', '  analise meus gastos do mes  '));
+
+      expect(assistant.tryFallbackAnswer).toHaveBeenCalledWith('B', 'analise meus gastos do mes');
+    });
+
+    it('"confirmar" sem rascunho continua ajuda e nao chama a IA', async () => {
+      const reply = await service.handleMessage(msg('A', 'confirmar'));
+
+      expect(reply).toEqual({ kind: 'HELP', state: 'IDLE', text: REPLIES.unrecognized });
+      expect(assistant.tryFallbackAnswer).not.toHaveBeenCalled();
     });
   });
 });

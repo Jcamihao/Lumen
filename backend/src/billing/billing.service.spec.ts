@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { pickEffectivePlan } from './access.util';
 import { BillingService } from './billing.service';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -42,9 +43,21 @@ function build(enforced = true) {
       update: jest.fn(),
     },
     user: { findUnique: jest.fn().mockResolvedValue(null) },
+    groupMembership: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      count: jest.fn().mockResolvedValue(0),
+    },
   };
   const entitlements = {
     getUsage: jest.fn().mockResolvedValue(usageStub()),
+    // O stub espelha a resolucao propria (mesma funcao pura): os testes de getMe continuam
+    // exercitando status/source/currentPeriodEnd a partir das linhas de subscription.
+    resolvePlan: jest.fn(async () =>
+      pickEffectivePlan(
+        (await prisma.subscription.findMany({ where: { ownerUserId: 'stub' } })) as never,
+        new Date(),
+      ),
+    ),
   };
   const config = {
     get: jest.fn((key: string) =>
@@ -146,6 +159,58 @@ describe('BillingService', () => {
       expect(me.plan).toBe('SHARED');
       expect(me.source).toBe('ASAAS');
       expect(me.currentPeriodEnd).not.toBeNull();
+    });
+
+    it('sem grupo e sem SHARED proprio: group e null', async () => {
+      const { service } = build();
+      const me = await service.getMe('user-1');
+      expect(me.group).toBeNull();
+    });
+
+    it('pagador com SHARED proprio ativo: group owner (mesmo sem membros)', async () => {
+      const { service, prisma } = build();
+      prisma.subscription.findMany.mockResolvedValue([
+        subRow({ plan: 'SHARED', source: 'ASAAS', currentPeriodEnd: new Date(Date.now() + 10 * DAY) }),
+      ]);
+      const me = await service.getMe('user-1');
+      expect(me.plan).toBe('SHARED');
+      expect(me.group).toEqual({ role: 'owner', ownerFirstName: null });
+    });
+
+    it('membro: plan vem do grupo, status de cobranca seguem nulos e so o primeiro nome do pagador aparece (D10)', async () => {
+      const { service, prisma, entitlements } = build();
+      entitlements.resolvePlan.mockResolvedValue('SHARED');
+      prisma.groupMembership.findFirst.mockResolvedValue({
+        owner: { name: '  Ana Beatriz Souza' },
+      });
+      const me = await service.getMe('user-1');
+      expect(me).toMatchObject({
+        plan: 'SHARED',
+        status: null,
+        source: null,
+        currentPeriodEnd: null,
+        latestInvoiceUrl: null,
+        group: { role: 'member', ownerFirstName: 'Ana' },
+      });
+    });
+
+    it('pagador com SHARED vencido mas membros ativos ainda e owner (para poder reassinar)', async () => {
+      const { service, prisma } = build();
+      prisma.subscription.findMany.mockResolvedValue([
+        subRow({ plan: 'SHARED', source: 'ASAAS', status: 'EXPIRED', currentPeriodEnd: new Date(Date.now() - 10 * DAY) }),
+      ]);
+      prisma.groupMembership.count.mockResolvedValue(1);
+      const me = await service.getMe('user-1');
+      expect(me.plan).toBe('FREE');
+      expect(me.group).toEqual({ role: 'owner', ownerFirstName: null });
+    });
+
+    it('nome do pagador sem primeiro nome aproveitavel: ownerFirstName null', async () => {
+      const { service, prisma, entitlements } = build();
+      entitlements.resolvePlan.mockResolvedValue('SHARED');
+      prisma.groupMembership.findFirst.mockResolvedValue({ owner: { name: '   ' } });
+      const me = await service.getMe('user-1');
+      expect(me.group).toEqual({ role: 'member', ownerFirstName: null });
     });
   });
 

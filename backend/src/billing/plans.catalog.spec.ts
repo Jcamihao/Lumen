@@ -13,12 +13,13 @@ describe('plans.catalog', () => {
       envelopes: 1,
       recurringTransactions: 3,
       installmentPurchases: 2,
+      creditCards: 1,
     });
     expect(p.selahQuestionsPerMonth).toBe(5);
     expect(p.prices).toBeNull();
   });
 
-  it('INDIVIDUAL nao limita itens, 300 perguntas e precos padrao', () => {
+  it('INDIVIDUAL nao limita itens, limita cartoes a 5, 300 perguntas e precos padrao', () => {
     const p = getCatalog({}).INDIVIDUAL;
     expect(p.label).toBe('Individual');
     expect(p.sellable).toBe(true);
@@ -28,17 +29,24 @@ describe('plans.catalog', () => {
       envelopes: null,
       recurringTransactions: null,
       installmentPurchases: null,
+      creditCards: 5,
     });
     expect(p.selahQuestionsPerMonth).toBe(300);
     expect(p.prices).toEqual({ MONTHLY: 14.9, YEARLY: 149 });
   });
 
-  it('SHARED e igual ao Individual, com 4 lugares e nao vendavel', () => {
+  it('SHARED e 2 pessoas com 10 cartoes e vendavel desde a 11a-3 (D2/D7/D8)', () => {
     const p = getCatalog({}).SHARED;
     expect(p.label).toBe('Compartilhado');
-    expect(p.sellable).toBe(false);
-    expect(p.seats).toBe(4);
-    expect(p.limits).toEqual(getCatalog({}).INDIVIDUAL.limits);
+    expect(p.sellable).toBe(true);
+    expect(p.seats).toBe(2);
+    expect(p.limits).toEqual({
+      goals: null,
+      envelopes: null,
+      recurringTransactions: null,
+      installmentPurchases: null,
+      creditCards: 10,
+    });
     expect(p.selahQuestionsPerMonth).toBe(300);
     expect(p.prices).toEqual({ MONTHLY: 24.9, YEARLY: 249 });
   });
@@ -95,6 +103,7 @@ describe('PlanLimitException', () => {
     ['envelopes', 1, 'reservas'],
     ['recurringTransactions', 3, 'contas fixas ativas'],
     ['installmentPurchases', 2, 'compras parceladas ativas'],
+    ['creditCards', 1, 'cartões ativos'],
     ['selahQuestions', 5, 'perguntas ao Selah neste mês'],
   ] as const)('rotulo de %s', (resource, limit, label) => {
     const e = new PlanLimitException({ resource, limit, used: limit, plan: 'FREE' });

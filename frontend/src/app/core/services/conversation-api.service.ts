@@ -26,10 +26,16 @@ export class ConversationApiService {
     });
   }
 
-  confirmDraft(draftId: string, draftVersion: number): Observable<ConversationReply> {
+  /**
+   * `remove` e `clear` só vão no corpo quando pedidos (botões "Apagar de vez" e "Limpar de vez").
+   * Sem eles, o corpo não tem `delete` nem `clear`.
+   */
+  confirmDraft(draftId: string, draftVersion: number, remove = false, clear = false): Observable<ConversationReply> {
     return this.http.post<ConversationReply>(`${this.baseUrl}/confirm`, {
       draftId,
       draftVersion,
+      ...(remove ? { delete: true as const } : {}),
+      ...(clear ? { clear: true as const } : {}),
     });
   }
 

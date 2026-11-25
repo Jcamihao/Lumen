@@ -1,0 +1,179 @@
+[
+ {
+  "file": [
+   "nota-n1.png",
+   "nota-n1-jpeg.jpg",
+   "nota-n1-digitalizada.pdf"
+  ],
+  "name": "n1",
+  "merchant": "SUPERMERCADO BOM PRECO LTDA",
+  "cnpj": "47555260000197",
+  "date": "23/02/2026",
+  "items": [
+   {
+    "desc": "FILE DE FRANGO",
+    "qty": 1.331,
+    "un": "KG",
+    "unit": 17.5,
+    "total": 23.29
+   },
+   {
+    "desc": "LEITE INTEGRAL 1L",
+    "qty": 2,
+    "un": "UN",
+    "unit": 5.79,
+    "total": 11.58
+   },
+   {
+    "desc": "REFRIGERANTE COLA 2L",
+    "qty": 4,
+    "un": "UN",
+    "unit": 9.99,
+    "total": 39.96
+   },
+   {
+    "desc": "PAO FRANCES",
+    "qty": 1.961,
+    "un": "KG",
+    "unit": 14.9,
+    "total": 29.22
+   },
+   {
+    "desc": "SABONETE 90G",
+    "qty": 1,
+    "un": "UN",
+    "unit": 2.49,
+    "total": 2.49
+   },
+   {
+    "desc": "PAPEL HIGIENICO 12UN",
+    "qty": 1,
+    "un": "UN",
+    "unit": 19.9,
+    "total": 19.9
+   },
+   {
+    "desc": "MACARRAO ESPAGUETE 500G",
+    "qty": 4,
+    "un": "UN",
+    "unit": 4.59,
+    "total": 18.36
+   },
+   {
+    "desc": "DETERGENTE 500ML",
+    "qty": 1,
+    "un": "UN",
+    "unit": 2.89,
+    "total": 2.89
+   },
+   {
+    "desc": "OLEO DE SOJA 900ML",
+    "qty": 1,
+    "un": "UN",
+    "unit": 7.35,
+    "total": 7.35
+   },
+   {
+    "desc": "ARROZ TIPO 1 5KG",
+    "qty": 1,
+    "un": "UN",
+    "unit": 24.9,
+    "total": 24.9
+   }
+  ],
+  "total": 179.94,
+  "nf": 323537,
+  "key": "35260247555260000197650010003235371094698109"
+ },
+ {
+  "file": [
+   "nota-n2-texto.pdf"
+  ],
+  "name": "n2",
+  "merchant": "FARMACIA SAUDE VIVA LTDA",
+  "cnpj": "51680408000192",
+  "date": "13/04/2026",
+  "items": [
+   {
+    "desc": "CAFE TORRADO 500G",
+    "qty": 2,
+    "un": "UN",
+    "unit": 18.9,
+    "total": 37.8
+   },
+   {
+    "desc": "PAPEL HIGIENICO 12UN",
+    "qty": 4,
+    "un": "UN",
+    "unit": 19.9,
+    "total": 79.6
+   },
+   {
+    "desc": "DETERGENTE 500ML",
+    "qty": 1,
+    "un": "UN",
+    "unit": 2.89,
+    "total": 2.89
+   },
+   {
+    "desc": "ARROZ TIPO 1 5KG",
+    "qty": 1,
+    "un": "UN",
+    "unit": 24.9,
+    "total": 24.9
+   },
+   {
+    "desc": "ACUCAR REFINADO 1KG",
+    "qty": 3,
+    "un": "UN",
+    "unit": 4.99,
+    "total": 14.97
+   },
+   {
+    "desc": "MACARRAO ESPAGUETE 500G",
+    "qty": 1,
+    "un": "UN",
+    "unit": 4.59,
+    "total": 4.59
+   },
+   {
+    "desc": "SABONETE 90G",
+    "qty": 1,
+    "un": "UN",
+    "unit": 2.49,
+    "total": 2.49
+   },
+   {
+    "desc": "LEITE INTEGRAL 1L",
+    "qty": 2,
+    "un": "UN",
+    "unit": 5.79,
+    "total": 11.58
+   },
+   {
+    "desc": "FILE DE FRANGO",
+    "qty": 0.598,
+    "un": "KG",
+    "unit": 17.5,
+    "total": 10.47
+   },
+   {
+    "desc": "PAO FRANCES",
+    "qty": 2.126,
+    "un": "KG",
+    "unit": 14.9,
+    "total": 31.68
+   },
+   {
+    "desc": "REFRIGERANTE COLA 2L",
+    "qty": 3,
+    "un": "UN",
+    "unit": 9.99,
+    "total": 29.97
+   }
+  ],
+  "total": 250.94,
+  "nf": 556056,
+  "key": "35260451680408000192650010005560561822711989"
+ }
+]

@@ -1,9 +1,9 @@
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { TransactionsService } from "./transactions.service";
 
 describe("TransactionsService", () => {
-  const buildPrisma = (overrides: Partial<Record<string, any>> = {}) =>
-    ({
+  const buildPrisma = (overrides: Partial<Record<string, any>> = {}) => {
+    const prisma: any = ({
       transaction: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -29,6 +29,12 @@ describe("TransactionsService", () => {
       },
       ...overrides,
     }) as any;
+    // Troca de forma de pagamento pega o lock do User (transacao + FOR NO KEY UPDATE).
+    // Defaults so valem quando o teste nao passou o proprio mock (o override do item 8a tem que valer).
+    prisma.$transaction = overrides.$transaction ?? jest.fn(async (cb: any) => cb(prisma));
+    prisma.$queryRaw = overrides.$queryRaw ?? jest.fn().mockResolvedValue([]);
+    return prisma;
+  };
 
   const buildMaterializer = (created = 0) =>
     ({
@@ -467,6 +473,51 @@ describe("TransactionsService", () => {
         expect.objectContaining({ where: { id: "tx-1" } }),
       );
       expect(result.description).toBe("Conta de luz atualizada");
+    });
+  });
+
+  describe('update com updatedAt esperado (item 8a): trava de linha', () => {
+    const T1 = new Date('2026-11-10T10:00:00.000Z');
+    const build = (lockRows: Array<{ updatedAt: Date }>) => {
+      const prisma = buildPrisma({
+        $queryRaw: jest.fn().mockResolvedValue(lockRows),
+      });
+      prisma.transaction.findFirst.mockResolvedValue({ id: 'tx-1', userId: 'user-1' });
+      prisma.$transaction = jest.fn(async (fn: any) => fn(prisma));
+      const life = buildLifeEngine();
+      return { prisma, life, service: new TransactionsService(prisma, life, buildMaterializer(), buildMaterializer()) };
+    };
+
+    it('mesmo updatedAt: bloqueia a linha com id + userId, grava e avisa o motor', async () => {
+      const { prisma, life, service } = build([{ updatedAt: T1 }]);
+      await service.update('user-1', 'tx-1', { description: 'Novo' } as any, T1);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      const [strings, ...values] = prisma.$queryRaw.mock.calls[0];
+      expect(strings.join('?')).toContain('FOR NO KEY UPDATE');
+      expect(values).toEqual(['tx-1', 'user-1']);
+      expect(prisma.transaction.update).toHaveBeenCalledTimes(1);
+      expect(life.touchUserData).toHaveBeenCalledWith('user-1');
+    });
+
+    it('updatedAt diferente: 409 e nada gravado', async () => {
+      const { prisma, life, service } = build([{ updatedAt: new Date('2026-11-11T00:00:00.000Z') }]);
+      await expect(service.update('user-1', 'tx-1', { description: 'Novo' } as any, T1)).rejects.toThrow(ConflictException);
+      expect(prisma.transaction.update).not.toHaveBeenCalled();
+      expect(life.touchUserData).not.toHaveBeenCalled();
+    });
+
+    it('linha inexistente ou de outra conta: 404 e nada gravado', async () => {
+      const { prisma, service } = build([]);
+      await expect(service.update('user-1', 'tx-1', { description: 'Novo' } as any, T1)).rejects.toThrow(NotFoundException);
+      expect(prisma.transaction.update).not.toHaveBeenCalled();
+    });
+
+    it('sem updatedAt esperado: sem transacao nem trava (comportamento da tela)', async () => {
+      const { prisma, service } = build([{ updatedAt: T1 }]);
+      prisma.transaction.findFirst.mockResolvedValue({ id: 'tx-1', userId: 'user-1' });
+      await service.update('user-1', 'tx-1', { description: 'Novo' } as any);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
     });
   });
 });

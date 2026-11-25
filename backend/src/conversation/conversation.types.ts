@@ -25,7 +25,21 @@ export interface ConversationInput {
   receivedAt: Date;
 }
 
-export type DraftKind = 'TRANSACTION' | 'GOAL' | 'CONTRIBUTION' | 'ENVELOPE' | 'CREDIT_LIMIT' | 'RECURRING' | 'INSTALLMENT';
+export type DraftKind =
+  | 'TRANSACTION'
+  | 'GOAL'
+  | 'CONTRIBUTION'
+  | 'ENVELOPE'
+  | 'CREDIT_LIMIT'
+  | 'RECURRING'
+  | 'INSTALLMENT'
+  | 'TRANSACTION_CHANGE'
+  | 'GOAL_CHANGE'
+  | 'ENVELOPE_CHANGE'
+  | 'RECURRING_CHANGE'
+  | 'INSTALLMENT_CHANGE'
+  | 'CARD_RENAME'
+  | 'CARD_CREATE';
 
 /**
  * Rascunho para a tela: valores formatados, sem ids internos alem de draftId/draftVersion.
@@ -46,9 +60,12 @@ export interface DraftView {
   date: string | null;
   paymentMethod: PaymentMethod | null;
   pendingField: PendingField | null;
+  /** Nos rascunhos de mudar (TRANSACTION_CHANGE, GOAL_CHANGE, ENVELOPE_CHANGE): a tela escolhe o cartão de apagar pelo valor. */
+  changeAction?: 'EDIT' | 'DELETE' | 'CLEAR';
 }
 
 export type PendingField =
+  | 'card'
   | 'amount'
   | 'description'
   | 'category'
@@ -57,7 +74,11 @@ export type PendingField =
   | 'goal'
   | 'name'
   | 'installmentsTotal'
-  | 'firstDueDate';
+  | 'firstDueDate'
+  | 'transaction'
+  | 'targetChoice'
+  | 'change'
+  | 'closingDay';
 
 /** Rascunho de lançamento. Sessões antigas não têm `kind`: ausente = TRANSACTION. Dinheiro em centavos. */
 export interface ExpenseOrIncomeDraft {
@@ -71,6 +92,11 @@ export interface ExpenseOrIncomeDraft {
   pendingField: PendingField | null;
   /** Ids de categoria oferecidos quando a escolha e ambigua (max 5). */
   categoryOptions: string[];
+  /** 9b-1: cartao do lancamento (so despesa com CREDIT). Ausente em rascunho antigo = null. */
+  cardId?: string | null;
+  cardName?: string | null;
+  /** Ids dos cartoes oferecidos quando "credito" nao tem nome e ha mais de um cartao. */
+  cardOptions?: string[];
 }
 
 /** Rascunho de meta nova (contrato 3b1, secao 3). */
@@ -120,6 +146,35 @@ export interface CreditLimitDraft {
   countAllPayments: boolean;
   pendingField: 'amount' | null;
   reviewReason?: string;
+  /** 8d: 'clear' remove o teto (confirmacao com a palavra limpar). Ausente em rascunho antigo = 'set'. */
+  action?: 'set' | 'clear';
+  /** 8d: cartao escolhido pelo nome (no clear, sempre resolve para um cartao). null = padrao no confirmar. */
+  cardId?: string | null;
+  cardName?: string | null;
+}
+
+/**
+ * Renomear cartao por conversa (9b-3, secao 7). So guarda o id e o nome novo: a gravacao e do CreditCardsService,
+ * que confere nome unico e cartao ativo sob o lock do User na confirmacao. pendingField nunca e usado (sempre confirmacao).
+ */
+export interface CardRenameDraft {
+  kind: 'CARD_RENAME';
+  cardId: string | null;
+  currentName: string;
+  newName: string;
+  pendingField: null;
+}
+
+/**
+ * Criar cartao por conversa (9b-3b). Nome e dias ficam no rascunho; o dia de fechamento e perguntado se nao veio na frase.
+ * A gravacao e do CreditCardsService (sem regra nova). Cartao nunca vira padrao.
+ */
+export interface CardCreateDraft {
+  kind: 'CARD_CREATE';
+  name: string;
+  closingDay: number | null;
+  dueDay: number | null;
+  pendingField: 'closingDay' | null;
 }
 
 /** Conta fixa (contrato 3b2b, secao 5): só despesa; categoria e pagamento ficam não informados. */
@@ -145,6 +200,49 @@ export interface InstallmentDraft {
   reviewReason?: string;
 }
 
+/**
+ * Editar ou apagar lançamento por conversa (contrato 8a, secoes 3 a 6). Só guarda ids: o item é relido do banco com id + userId.
+ * changes: campos a mudar (só EDIT). targetUpdatedAt: updatedAt do item quando foi escolhido (conflito, secao 5).
+ */
+export interface TransactionChangeDraft {
+  kind: 'TRANSACTION_CHANGE';
+  action: 'EDIT' | 'DELETE';
+  /** Ids da lista numerada (máx. 5), enquanto o usuário não escolhe. */
+  candidateIds: string[];
+  targetId: string | null;
+  targetUpdatedAt: string | null;
+  changes: { amountCents?: number; description?: string; categoryId?: string | null; date?: string };
+  pendingField: 'transaction' | 'change' | null;
+  reviewReason?: string;
+}
+
+/**
+ * Editar ou apagar meta ou reserva por conversa (contrato 8b, secoes 3 a 6). Mesma forma do 8a: só ids,
+ * o alvo é relido do banco com id + userId. changes por alvo: meta usa title/targetCents/targetDate
+ * (null = "sem alvo"/"sem prazo"); reserva usa name/monthlyCents.
+ */
+export interface TargetChangeDraft {
+  kind: 'GOAL_CHANGE' | 'ENVELOPE_CHANGE' | 'RECURRING_CHANGE' | 'INSTALLMENT_CHANGE';
+  action: 'EDIT' | 'DELETE';
+  /** Ids da lista numerada (máx. 5), enquanto o usuário não escolhe. */
+  candidateIds: string[];
+  targetId: string | null;
+  targetUpdatedAt: string | null;
+  changes: {
+    title?: string;
+    targetCents?: number | null;
+    targetDate?: string | null;
+    name?: string;
+    monthlyCents?: number;
+    /** Conta fixa (contrato 8c): descricao/valor/data final ('sem prazo' = null). */
+    description?: string;
+    amountCents?: number;
+    endDate?: string | null;
+  };
+  pendingField: 'targetChoice' | 'change' | null;
+  reviewReason?: string;
+}
+
 export type SessionDraft =
   | ExpenseOrIncomeDraft
   | GoalDraft
@@ -152,7 +250,11 @@ export type SessionDraft =
   | EnvelopeDraft
   | CreditLimitDraft
   | RecurringDraft
-  | InstallmentDraft;
+  | InstallmentDraft
+  | TransactionChangeDraft
+  | TargetChangeDraft
+  | CardRenameDraft
+  | CardCreateDraft;
 
 /** Dados numericos para a tela (centavos). Presentes em INFO e DONE. */
 export interface ReplyData {
@@ -177,6 +279,8 @@ export interface ReplyData {
     dueDay: number | null;
   };
   transactionId?: string;
+  /** 9b-3: cartao renomeado (DONE). */
+  cardId?: string;
   /** Consultas do item 3a (contrato secao 4). Centavos; datas 'AAAA-MM-DD'. */
   dues?: Array<{ date: string; label: string; kind: 'FIXED' | 'INSTALLMENT'; amountCents: number }>;
   installments?: Array<{ label: string; number: number; total: number; amountCents: number; nextDate: string | null }>;
@@ -188,6 +292,8 @@ export interface ReplyData {
     percent: number | null;
     targetDate: string | null;
   }>;
+  /** Tela do app que a resposta sugere abrir (item 4c: 'imports' para "importar nota"). */
+  screen?: 'imports';
   /** Total a pagar (installments), total da janela (upcoming_dues), total mensal estimado (fixed_bills), total disponivel (envelopes). */
   totalCents?: number;
 }
@@ -204,4 +310,6 @@ export interface ConversationReply {
    * entregar a mensagem a outro destino (ex.: Selah). "ajuda", "confirmar" sem rascunho etc. não marcam.
    */
   unrecognized?: true;
+  /** Resposta veio do fallback de IA (ASSISTANT_AI_MODE=fallback). Nunca vem de escrita. */
+  aiFallback?: true;
 }

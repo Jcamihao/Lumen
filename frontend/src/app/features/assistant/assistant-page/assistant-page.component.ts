@@ -39,6 +39,8 @@ type ManualTurn = {
   quickReplies: string[];
   /** Dados do DONE (ids criados). Usados só para o rótulo "Criado" de conta fixa e parcelado. */
   data: ReplyData | null;
+  /** Resposta do fallback de IA: vira balão de texto, sem o cartão do motor. */
+  aiFallback: boolean;
 };
 
 type ManualError = { text: string; retry: (() => void) | null };
@@ -46,8 +48,12 @@ type ManualError = { text: string; retry: (() => void) | null };
 /** Mensagem pendente de reentrega (decisão 5): reenviar o mesmo texto reusa o messageId. */
 type ManualPending = { id: string; text: string };
 
-/** Acima disso, o aviso "Consultando seus dados…" aparece (decisão 6). */
-const MANUAL_SLOW_HINT_MS = 250;
+/** Aviso de carregamento por tempo de espera (decisão 6 e spec "Carregamento e timeout"). */
+const MANUAL_HINT_STAGES = [
+  { afterMs: 250, text: "Consultando seus dados…" },
+  { afterMs: 3000, text: "Organizando a resposta…" },
+  { afterMs: 5000, text: "Organizando a resposta… Pode demorar um pouco." },
+];
 /** Limite do motor (contrato, seção 4). Texto maior não é comando: vai direto ao Selah. */
 const MANUAL_MAX_LENGTH = 500;
 
@@ -67,6 +73,11 @@ const PENDING_FIELD_LABELS = {
   goal: "meta",
   installmentsTotal: "quantidade de parcelas",
   firstDueDate: "primeiro vencimento",
+  transaction: "lançamento",
+  targetChoice: "meta ou reserva",
+  change: "o que mudar",
+  card: "cartão",
+  closingDay: "dia de fechamento",
 } as const;
 
 @Component({
@@ -109,13 +120,16 @@ export class AssistantPageComponent {
   protected readonly readingTab = signal<AssistantReadingTab>("summary");
   protected readonly manualTurn = signal<ManualTurn | null>(null);
   protected readonly manualBusy = signal(false);
-  protected readonly manualSlow = signal(false);
+  protected readonly manualHint = signal<string | null>(null);
   protected readonly manualError = signal<ManualError | null>(null);
   protected readonly manualCommands = ["saldo", "resumo", "50 mercado", "cartão", "ajuda"];
+  /** Cartão do motor: tudo que não é balão do fallback de IA. */
+  protected readonly manualCard = computed(() => (this.manualTurn()?.aiFallback ? null : this.manualTurn()));
+  protected readonly manualBubble = computed(() => (this.manualTurn()?.aiFallback ? this.manualTurn() : null));
   private manualPending: ManualPending | null = null;
   /** Sobe a cada resposta aplicada. Uma leitura de sessão que começou antes dela é antiga e não pode sobrescrever o cartão. */
   private manualEpoch = 0;
-  private manualSlowTimer: ReturnType<typeof setTimeout> | null = null;
+  private manualHintTimers: ReturnType<typeof setTimeout>[] = [];
   protected readonly activeMessage = computed<AssistantMessage | null>(() => {
     const messages = this.history();
     const activeId = this.activeMessageId();
@@ -216,7 +230,7 @@ export class AssistantPageComponent {
     this.loadServerHistory();
     this.loadPulse();
     this.refreshManualSession();
-    this.destroyRef.onDestroy(() => this.clearManualSlowTimer());
+    this.destroyRef.onDestroy(() => this.clearManualHintTimers());
 
     this.route.queryParamMap
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -366,6 +380,10 @@ export class AssistantPageComponent {
       !!reply.continuity.nextQuestion ||
       !!reply.disclaimer
     );
+  }
+
+  protected openImports() {
+    void this.router.navigateByUrl("/imports");
   }
 
   protected executeAction(action: AssistantAction) {
@@ -526,12 +544,7 @@ export class AssistantPageComponent {
 
           this.manualPending = null;
 
-          // Não reconheceu o texto livre: segue o fluxo do Selah, sem mudar nada dele.
-          if (reply.unrecognized) {
-            this.askSelah(question);
-            return;
-          }
-
+          // O motor decide sozinho quando o texto não é comando (fallback de IA); `unrecognized` não desvia mais para o Selah.
           this.applyManualReply(question, reply);
           this.clearQuestionIfUnchanged(question);
         },
@@ -560,6 +573,7 @@ export class AssistantPageComponent {
       });
   }
 
+  /** Cartões de ação explícita: apagar manda `delete: true`, limpar teto manda `clear: true` (8a/8d). Nunca gravam sem essa ação. */
   protected confirmDraft() {
     const draft = this.manualTurn()?.draft;
 
@@ -567,11 +581,14 @@ export class AssistantPageComponent {
       return;
     }
 
-    this.runDraftAction(
-      () => this.conversationApi.confirmDraft(draft.draftId, draft.draftVersion),
-      "Não foi possível confirmar agora.",
-      () => this.confirmDraft(),
-    );
+    const call =
+      draft.changeAction === "DELETE"
+        ? () => this.conversationApi.confirmDraft(draft.draftId, draft.draftVersion, true)
+        : draft.changeAction === "CLEAR"
+          ? () => this.conversationApi.confirmDraft(draft.draftId, draft.draftVersion, false, true)
+          : () => this.conversationApi.confirmDraft(draft.draftId, draft.draftVersion);
+
+    this.runDraftAction(call, "Não foi possível confirmar agora.", () => this.confirmDraft());
   }
 
   protected cancelDraft() {
@@ -606,8 +623,15 @@ export class AssistantPageComponent {
     return match ? `${match[3]}/${match[2]}/${match[1]}` : date;
   }
 
-  protected pendingFieldLabel(field: DraftView["pendingField"]) {
-    return field ? PENDING_FIELD_LABELS[field] : null;
+  protected pendingFieldLabel(field: DraftView["pendingField"], kind?: DraftView["kind"]) {
+    if (!field) {
+      return null;
+    }
+    if (field === "targetChoice") {
+      // O mesmo campo pede meta/reserva (8b) ou conta fixa/parcelado (8c): o kind diz qual.
+      return kind === "RECURRING_CHANGE" || kind === "INSTALLMENT_CHANGE" ? "conta fixa ou parcelado" : "meta ou reserva";
+    }
+    return PENDING_FIELD_LABELS[field];
   }
 
   /** Conta fixa e parcelado são cadastros: o rótulo é "Criado", não "Lançado". Os demais DONE seguem como antes. */
@@ -704,15 +728,28 @@ export class AssistantPageComponent {
     return turn.state === "AWAITING_CONFIRMATION" && !!turn.draft;
   }
 
-  /** Com botões na tela, "confirmar" e "cancelar" como atalho de texto só repetem os botões. */
+  protected isDeleteDraft(turn: ManualTurn) {
+    return turn.draft?.changeAction === "DELETE";
+  }
+
+  /** Cartão de limpar o teto do cartão (8d): botão "Limpar de vez". */
+  protected isClearDraft(turn: ManualTurn) {
+    return turn.draft?.changeAction === "CLEAR";
+  }
+
+  /** Com botões na tela, "confirmar" e "cancelar" como atalho de texto só repetem os botões. Nos cartões de ação explícita, "apagar"/"limpar" também (o botão já faz isso). */
   protected visibleQuickReplies(turn: ManualTurn) {
     if (!this.showConfirmButtons(turn)) {
       return turn.quickReplies;
     }
 
-    return turn.quickReplies.filter(
-      (reply) => !["confirmar", "cancelar"].includes(reply.trim().toLowerCase()),
-    );
+    const hidden = this.isDeleteDraft(turn)
+      ? ["confirmar", "cancelar", "apagar"]
+      : this.isClearDraft(turn)
+        ? ["confirmar", "cancelar", "limpar"]
+        : ["confirmar", "cancelar"];
+
+    return turn.quickReplies.filter((reply) => !hidden.includes(reply.trim().toLowerCase()));
   }
 
   private applyManualReply(question: string | null, reply: ConversationReply) {
@@ -725,6 +762,7 @@ export class AssistantPageComponent {
       draft: reply.draft ?? null,
       quickReplies: reply.quickReplies ?? [],
       data: reply.data ?? null,
+      aiFallback: reply.aiFallback === true,
     });
 
     // Mensagem já processada: o estado real está no servidor. Atualiza o cartão com ele.
@@ -779,30 +817,28 @@ export class AssistantPageComponent {
       draft: session.draft,
       quickReplies: [],
       data: null,
+      aiFallback: false,
     });
   }
 
   private startManualBusy() {
     this.manualBusy.set(true);
-    this.manualSlow.set(false);
-    this.clearManualSlowTimer();
-    this.manualSlowTimer = setTimeout(() => {
-      this.manualSlowTimer = null;
-      this.manualSlow.set(true);
-    }, MANUAL_SLOW_HINT_MS);
+    this.manualHint.set(null);
+    this.clearManualHintTimers();
+    this.manualHintTimers = MANUAL_HINT_STAGES.map((stage) =>
+      setTimeout(() => this.manualHint.set(stage.text), stage.afterMs),
+    );
   }
 
   private endManualBusy() {
     this.manualBusy.set(false);
-    this.manualSlow.set(false);
-    this.clearManualSlowTimer();
+    this.manualHint.set(null);
+    this.clearManualHintTimers();
   }
 
-  private clearManualSlowTimer() {
-    if (this.manualSlowTimer !== null) {
-      clearTimeout(this.manualSlowTimer);
-      this.manualSlowTimer = null;
-    }
+  private clearManualHintTimers() {
+    this.manualHintTimers.forEach((timer) => clearTimeout(timer));
+    this.manualHintTimers = [];
   }
 
   /** UUID v4 para o messageId. randomUUID só existe em contexto seguro (https/localhost); getRandomValues existe sempre. */

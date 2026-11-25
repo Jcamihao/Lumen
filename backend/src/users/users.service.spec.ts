@@ -160,3 +160,95 @@ describe("UsersService — LGPD (excluir e exportar)", () => {
     });
   });
 });
+
+describe("UsersService - cartao padrao (9a-1)", () => {
+  const buildService = (prisma: Record<string, unknown>) =>
+    new UsersService(prisma as any, { get: jest.fn() } as any);
+
+  describe("createUser", () => {
+    const buildCreatePrisma = () => {
+      const prisma: any = {
+        user: {
+          create: jest.fn().mockResolvedValue({ id: "user-new", monthClosingDay: 12 }),
+        },
+        creditCard: { create: jest.fn().mockResolvedValue({}) },
+        taskCategory: { createMany: jest.fn().mockResolvedValue({}) },
+        financeCategory: { createMany: jest.fn().mockResolvedValue({}) },
+        tagGroup: { createMany: jest.fn().mockResolvedValue({}) },
+      };
+      prisma.$transaction = jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma));
+      return prisma;
+    };
+    const input = { name: "Ana", email: "ana@example.com", passwordHash: "hash", monthClosingDay: 12 };
+
+    it("cria o cartao Principal padrao na mesma transacao que o User", async () => {
+      const prisma = buildCreatePrisma();
+      const service = buildService(prisma);
+      jest.spyOn(service, "findById").mockResolvedValue({} as any);
+
+      await service.createUser(input as any);
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.user.create.mock.invocationCallOrder[0]).toBeLessThan(prisma.creditCard.create.mock.invocationCallOrder[0]);
+      expect(prisma.creditCard.create).toHaveBeenCalledWith({
+        data: {
+          userId: "user-new",
+          name: "Principal",
+          closingDay: 12,
+          dueDay: null,
+          countAllPayments: false,
+          isDefault: true,
+        },
+      });
+    });
+
+    it("falha ao criar o Principal: o cadastro falha e nao cria categorias", async () => {
+      const prisma = buildCreatePrisma();
+      prisma.creditCard.create.mockRejectedValueOnce(new Error("falha no cartao"));
+      const service = buildService(prisma);
+      jest.spyOn(service, "findById").mockResolvedValue({} as any);
+
+      await expect(service.createUser(input as any)).rejects.toThrow("falha no cartao");
+      expect(prisma.taskCategory.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("updateMe", () => {
+    const buildUpdatePrisma = () => {
+      const prisma: any = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({ privacyNoticeAcceptedAt: new Date(), aiAssistantConsentAt: null }),
+          update: jest.fn().mockResolvedValue({}),
+        },
+        creditCard: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      };
+      prisma.$transaction = jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma));
+      return prisma;
+    };
+
+    it("mudar o dia de fechamento atualiza o cartao padrao na mesma transacao", async () => {
+      const prisma = buildUpdatePrisma();
+      const service = buildService(prisma);
+      jest.spyOn(service, "getMe").mockResolvedValue({} as any);
+
+      await service.updateMe("user-1", { monthClosingDay: 12 } as any);
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.user.update.mock.invocationCallOrder[0]).toBeLessThan(prisma.creditCard.updateMany.mock.invocationCallOrder[0]);
+      expect(prisma.creditCard.updateMany).toHaveBeenCalledWith({
+        where: { userId: "user-1", isDefault: true, archivedAt: null },
+        data: { closingDay: 12 },
+      });
+    });
+
+    it("sem dia de fechamento no pedido: cartao padrao intacto", async () => {
+      const prisma = buildUpdatePrisma();
+      const service = buildService(prisma);
+      jest.spyOn(service, "getMe").mockResolvedValue({} as any);
+
+      await service.updateMe("user-1", { name: "Ana Maria" } as any);
+
+      expect(prisma.creditCard.updateMany).not.toHaveBeenCalled();
+    });
+  });
+});

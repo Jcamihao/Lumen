@@ -64,6 +64,13 @@
         <input id="recurring-end" type="date" formControlName="endDate" />
       </div>
 
+      <app-credit-card-select
+        class="recurring-form__wide"
+        [control]="form.controls.cardId"
+        [enabled]="creditExpenseSelected()"
+        fieldId="recurring-card"
+      ></app-credit-card-select>
+
       <div class="recurring-form__actions">
         <button type="submit" class="proto-button" [disabled]="saving()">
           {{ saving() ? 'Salvando...' : 'Criar conta fixa' }}

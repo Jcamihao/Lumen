@@ -8,6 +8,7 @@ const RESOURCE_LABEL: Record<LimitedKey, string> = {
   envelopes: 'reservas',
   recurringTransactions: 'contas fixas ativas',
   installmentPurchases: 'compras parceladas ativas',
+  creditCards: 'cartões ativos',
   selahQuestions: 'perguntas ao Selah neste mês',
 };
 

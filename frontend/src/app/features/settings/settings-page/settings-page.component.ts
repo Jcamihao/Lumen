@@ -22,13 +22,15 @@ import {
 } from "../../../core/constants/privacy.constants";
 import { AuthService } from "../../../core/services/auth.service";
 import { LifeApiService } from "../../../core/services/life-api.service";
+import { WhatsappCardComponent } from "../whatsapp-card/whatsapp-card.component";
+import { TelegramCardComponent } from "../telegram-card/telegram-card.component";
 
 // O backend so aceita estes formatos (nao aceita SVG nem HEIC).
 const AVATAR_MIME_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 
 @Component({
     selector: "app-settings-page",
-    imports: [CommonModule, ReactiveFormsModule, RouterLink],
+    imports: [CommonModule, ReactiveFormsModule, RouterLink, WhatsappCardComponent, TelegramCardComponent],
     templateUrl: "./settings-page.component.html",
     styleUrls: ["./settings-page.component.scss"],
     changeDetection: ChangeDetectionStrategy.OnPush

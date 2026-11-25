@@ -175,6 +175,7 @@ model User {
   tasks                         Task[]
   taskCategories                TaskCategory[]
   transactions                  Transaction[]
+  creditCards                   CreditCard[]
   financeCategories             FinanceCategory[]
   goals                         Goal[]
   reminders                     Reminder[]
@@ -197,6 +198,13 @@ model User {
   selahUsage                    SelahUsage[]
   conversationSessions          ConversationSession[]
   conversationEvents            ConversationEvent[]
+  whatsappLink                  WhatsappLink?
+  whatsappLinkCodes             WhatsappLinkCode[]
+  groupMembershipsOwned         GroupMembership[]  @relation("GroupOwner")
+  groupMemberships              GroupMembership[]  @relation("GroupMember")
+  groupInvitesSent              GroupInvite[]      @relation("GroupInvites")
+  telegramLink                  TelegramLink?
+  telegramLinkCodes             TelegramLinkCode[]
 
   @@index([email])
 }
@@ -363,6 +371,8 @@ model Transaction {
   installmentPurchaseId  String?
   installmentNumber      Int?
   installmentsTotal      Int?
+  // Cartao usado no lancamento (so com paymentMethod=CREDIT). Nulo = lancamento antigo: conta no cartao padrao.
+  cardId                 String?
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
   user                   User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -370,6 +380,7 @@ model Transaction {
   category               FinanceCategory?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   envelope               Envelope?             @relation(fields: [envelopeId], references: [id], onDelete: SetNull)
   installmentPurchase    InstallmentPurchase?  @relation(fields: [installmentPurchaseId], references: [id], onDelete: SetNull)
+  card                   CreditCard?          @relation(fields: [cardId], references: [id], onDelete: SetNull)
   task                   Task?                 @relation(fields: [linkedTaskId], references: [id], onDelete: SetNull)
   goal                   Goal?                 @relation(fields: [linkedGoalId], references: [id], onDelete: SetNull)
   receiptScan            ReceiptScan?
@@ -382,6 +393,7 @@ model Transaction {
   @@index([userId, type, date])
   @@index([linkedTaskId])
   @@index([linkedGoalId])
+  @@index([cardId])
 }
 
 // Conta fixa ou recorrente (aluguel, assinatura, salario). O lancamento e
@@ -391,15 +403,43 @@ model Transaction {
 // congelado, so o aberto pode ser editado.
 model CreditCycleCeiling {
   id          String   @id @default(uuid())
+  cardId      String
   userId      String
   closingDate DateTime
   ceiling     Decimal  @db.Decimal(12, 2)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card        CreditCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, closingDate])
+  @@unique([cardId, closingDate])
   @@index([userId, closingDate])
+}
+
+// Cartao de credito nomeado do usuario (contrato item 9, secao 2). O cartao
+// padrao (isDefault, ativo) e o que /credit-cycle e o bot usam; monthClosingDay,
+// creditDueDay e creditCycleCountAllPayments do User ficam em sincronia com ele.
+// Arquivar (archivedAt) em vez de apagar: lancamentos antigos mantem o cardId.
+// Os indices unicos parciais (nome sem caixa entre ativos; um padrao ativo por
+// usuario) estao so na migration: o Prisma nao os modela.
+model CreditCard {
+  id                    String               @id @default(uuid())
+  userId                String
+  name                  String
+  closingDay            Int
+  dueDay                Int?
+  countAllPayments      Boolean              @default(false)
+  isDefault             Boolean              @default(false)
+  archivedAt            DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  user                  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ceilings              CreditCycleCeiling[]
+  transactions          Transaction[]
+  installmentPurchases  InstallmentPurchase[]
+  recurringTransactions RecurringTransaction[]
+
+  @@index([userId, archivedAt])
 }
 
 // Valor reservado que se recarrega todo mes e NAO desconta de nenhum teto
@@ -454,6 +494,8 @@ model InstallmentPurchase {
   installmentsGenerated Int              @default(0)
   categoryId            String?
   paymentMethod         PaymentMethod?
+  // Cartao das parcelas (so com paymentMethod=CREDIT). Herdado pelos lancamentos gerados; nulo = cartao padrao.
+  cardId                String?
   // Dia do mes da 1a parcela; mes curto usa o ultimo dia (mesma regra das contas fixas).
   anchorDay             Int
   // Proxima parcela a gerar; null quando ja gerou todas (installmentsGenerated=installmentsTotal).
@@ -464,8 +506,10 @@ model InstallmentPurchase {
   user                  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   category              FinanceCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   transactions          Transaction[]
+  card                  CreditCard?      @relation(fields: [cardId], references: [id], onDelete: SetNull)
 
   @@index([userId, isActive, nextDueDate])
+  @@index([cardId])
 }
 
 model RecurringTransaction {
@@ -476,6 +520,8 @@ model RecurringTransaction {
   amount          Decimal             @db.Decimal(12, 2)
   categoryId      String?
   paymentMethod   PaymentMethod?
+  // Cartao das cobrancas geradas (so com paymentMethod=CREDIT); nulo = cartao padrao.
+  cardId          String?
   frequency       RecurrenceFrequency
   // Dia do mes de referencia (MONTHLY/YEARLY). Em mes mais curto usa o ultimo dia.
   anchorDay       Int
@@ -491,8 +537,10 @@ model RecurringTransaction {
   user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   category        FinanceCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   transactions    Transaction[]
+  card            CreditCard?        @relation(fields: [cardId], references: [id], onDelete: SetNull)
 
   @@index([userId, isActive, nextDueDate])
+  @@index([cardId])
 }
 
 model Reminder {
@@ -633,6 +681,9 @@ model ReceiptScan {
   /// esta nota com a anterior do mesmo grupo assim que ela for confirmada.
   /// Default false — a comparacao e opcional, nao automatica.
   compareWithPrevious Boolean           @default(false)
+  /// Chave de acesso (44 digitos, DV valido), gravada na previa para checar nota repetida.
+  /// Nula em notas antigas, que seguem so pela regra de duplicata por valor e data.
+  accessKey           String?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -643,6 +694,7 @@ model ReceiptScan {
   @@index([userId, status, createdAt])
   @@index([purchaseDate])
   @@index([tagGroupId])
+  @@index([userId, accessKey])
 }
 
 model ReceiptScanItem {
@@ -788,6 +840,7 @@ model SelahUsage {
 enum ConversationChannel {
   APP
   WHATSAPP
+  TELEGRAM
 }
 
 enum ConversationState {
@@ -806,6 +859,9 @@ enum ConversationOutcome {
   UNRECOGNIZED
   DUPLICATE
   ERROR
+  AI_ANSWERED
+  AI_BLOCKED
+  AI_UNAVAILABLE
 }
 
 // Uma sessao ativa por usuario e canal. Nao existe linha = IDLE.
@@ -845,4 +901,95 @@ model ConversationEvent {
 
   @@unique([userId, channel, messageId])
   @@index([userId, createdAt])
+}
+
+// Vinculo entre um numero do WhatsApp (JID como o WA-AKG entrega) e uma conta Lumen.
+// Desvincular apaga a linha. Um JID ativo em uma so conta; uma conta tem um vinculo.
+model WhatsappLink {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  jid       String   @unique
+  linkedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Codigo de vinculo de uso unico. So o hash SHA-256 fica no banco.
+model WhatsappLinkCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([codeHash])
+}
+
+// Item 10 (Telegram): vinculo entre um chat.id (privado) do Telegram e uma conta Lumen.
+// O chat.id e BigInt (ate 2^63 no Telegram). Desvincular apaga a linha. Um chat em uma so conta; uma conta tem um vinculo.
+// Grupo do plano Compartilhado (contrato 11, 11a): o pagador e a propria assinatura (Subscription);
+// membros sao linhas ativas (leftAt null) apontando para o pagador. O unique de membro ativo so
+// existe na SQL da migration (indice unico parcial) — `prisma migrate dev` vai querer remove-lo, nao rodar sem revisar.
+model GroupMembership {
+  id           String    @id @default(uuid())
+  ownerUserId  String
+  memberUserId String
+  joinedAt     DateTime  @default(now())
+  leftAt       DateTime?
+  createdAt    DateTime  @default(now())
+  owner        User      @relation("GroupOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  member       User      @relation("GroupMember", fields: [memberUserId], references: [id], onDelete: Cascade)
+
+  @@index([ownerUserId, leftAt])
+  @@index([memberUserId, leftAt])
+}
+
+// Convite de grupo (contrato 11, D4): so o hash SHA-256 do token fica no banco (mesma forma dos
+// codigos de vinculo do 5b/10b). O token em claro so aparece na resposta que cria o convite.
+model GroupInvite {
+  id             String    @id @default(uuid())
+  ownerUserId    String
+  email          String
+  tokenHash      String    @unique
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  acceptedAt     DateTime?
+  acceptedUserId String?
+  createdAt      DateTime  @default(now())
+  owner          User      @relation("GroupInvites", fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([ownerUserId])
+}
+
+model TelegramLink {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  chatId    BigInt   @unique
+  linkedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Codigo de vinculo do Telegram (mesma forma do WhatsApp: so o hash SHA-256 fica no banco).
+model TelegramLinkCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([codeHash])
+}
+
+// Estado do long polling: offset unico do bot (linha 'poll'), para nao reprocessar apos restart.
+model TelegramBotState {
+  id           String   @id
+  lastUpdateId BigInt   @default(0)
+  updatedAt    DateTime @updatedAt
 }

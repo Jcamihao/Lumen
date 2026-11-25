@@ -1,5 +1,16 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  Injector,
+  afterNextRender,
+  computed,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import {
@@ -28,6 +39,8 @@ export class ImportsPageComponent {
   private readonly auth = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly toast = inject(ToastService);
+  private readonly injector = inject(Injector);
+  private readonly duplicateBox = viewChild<ElementRef<HTMLElement>>('duplicateBox');
 
   protected readonly preview = signal<ImportPreview | null>(null);
   protected readonly activeTab = signal<'receipt' | 'csv' | 'history'>('receipt');
@@ -61,9 +74,58 @@ export class ImportsPageComponent {
     () => this.auth.currentUser()?.financeCategories.filter((c) => c.type === 'EXPENSE') || [],
   );
   protected readonly tagGroups = computed(() => this.auth.currentUser()?.tagGroups ?? []);
-  protected readonly canUseReceiptAi = computed(() => {
-    const user = this.auth.currentUser();
-    return !!(user?.privacyNoticeAcceptedAt && user?.aiAssistantEnabled && user?.aiAssistantConsentAt);
+
+  // Caixa de duplicata: aberta pela prévia (possibleDuplicate) ou pelo 409 do commit.
+  protected readonly duplicateDecisionOpen = signal(false);
+  protected readonly duplicateBoxVisible = computed(
+    () => this.duplicateDecisionOpen() || !!this.receiptPreview()?.possibleDuplicate,
+  );
+
+  // O aviso de soma do backend (W_TOTAL_MISMATCH) fica de fora: a caixa "Total divergente" já o mostra,
+  // com os valores e recalculada a cada edição. Texto igual ao de receipt-text.parser.ts.
+  private static readonly TOTAL_MISMATCH_TEXT = 'A soma dos itens é diferente do total da nota.';
+
+  protected readonly receiptWarnings = computed(() =>
+    (this.receiptPreview()?.extraction?.warnings ?? []).filter((warning) => !this.isTotalMismatchText(warning)),
+  );
+
+  // Avisos de leitura que não repetem os já listados em extraction.warnings (o backend copia os dois).
+  protected readonly receiptNotes = computed(() => {
+    const preview = this.receiptPreview();
+    const warnings = new Set(preview?.extraction?.warnings ?? []);
+    return (preview?.notes ?? []).filter((note) => !warnings.has(note) && !this.isTotalMismatchText(note));
+  });
+
+  private isTotalMismatchText(text: string): boolean {
+    return text.startsWith(ImportsPageComponent.TOTAL_MISMATCH_TEXT);
+  }
+
+  // Sempre recalculado com os valores na tela: aparece quando o usuário cria uma divergência
+  // ao editar e some quando ele a corrige. Compara em centavos para não errar por ponto flutuante.
+  protected readonly localTotalMismatch = computed(() => {
+    const preview = this.receiptPreview();
+    if (!preview || !preview.items.length) return null;
+
+    const itemsCents = preview.items.reduce(
+      (sum, item) => sum + Math.round(this.toNumber(item.totalPrice, 0) * 100),
+      0,
+    );
+    const totalCents = Math.round(this.receiptTotalAmount() * 100);
+    return Math.abs(itemsCents - totalCents) > 1
+      ? { itemsSum: itemsCents / 100, total: totalCents / 100 }
+      : null;
+  });
+
+  // O "Resumo da compra" também vale só com a quebra por categoria (calculada sem IA).
+  protected readonly hasPurchaseSummary = computed(() => {
+    const receipt = this.receiptPreview();
+    return (
+      !!receipt &&
+      (!!receipt.purchaseSummary ||
+        receipt.spendingSignals.length > 0 ||
+        receipt.followUpActions.length > 0 ||
+        receipt.categoryBreakdown.length > 0)
+    );
   });
 
   protected handleFile(event: Event) {
@@ -99,9 +161,11 @@ export class ImportsPageComponent {
     const file = input.files?.item(0);
     if (!file) return;
 
+    // Limpa o campo já: sem isso, reenviar a mesma foto depois de um erro não dispara "change".
+    input.value = '';
+
     if (!this.selectedTagGroupId()) {
       this.receiptError.set('Escolha um grupo antes de enviar a nota fiscal.');
-      input.value = '';
       return;
     }
 
@@ -114,6 +178,7 @@ export class ImportsPageComponent {
       .subscribe({
         next: (preview) => {
           this.receiptPreview.set(preview);
+          this.duplicateDecisionOpen.set(false);
           this.editingReceiptItemIndex.set(null);
           this.receiptMerchantName.set(preview.merchantName || '');
           this.receiptPurchaseDate.set(preview.purchaseDate ? preview.purchaseDate.slice(0, 10) : '');
@@ -121,10 +186,15 @@ export class ImportsPageComponent {
           this.receiptDescription.set(preview.descriptionSuggestion);
           this.receiptCategoryId.set(preview.suggestedCategoryId || '');
           this.receiptLoading.set(false);
+          if (preview.possibleDuplicate) this.revealDuplicateBox();
         },
         error: (error) => {
           this.receiptLoading.set(false);
-          this.receiptError.set(error?.error?.message || 'Nao foi possivel ler a nota fiscal com o SelahIA.');
+          // Erro novo não pode deixar a prévia anterior na tela.
+          this.receiptPreview.set(null);
+          this.receiptError.set(
+            error?.error?.message || 'Não consegui ler esta nota. Tente outra foto ou lance o gasto pelo chat.',
+          );
         },
       });
   }
@@ -158,7 +228,7 @@ export class ImportsPageComponent {
         error: (error) => {
           this.creatingTagGroup.set(false);
           this.tagGroupError.set(
-            error?.error?.message || 'Nao foi possivel criar o grupo.',
+            error?.error?.message || 'Não foi possível criar o grupo.',
           );
         },
       });
@@ -194,6 +264,9 @@ export class ImportsPageComponent {
     const preview = this.receiptPreview();
     if (!preview) return;
 
+    // Só vai true quando a caixa de duplicata está visível e o usuário clicou no botão dela.
+    const acknowledgeDuplicate = this.duplicateBoxVisible();
+
     this.receiptSaving.set(true);
     this.receiptError.set(null);
 
@@ -211,12 +284,14 @@ export class ImportsPageComponent {
           unitPrice: this.toNullableNumber(item.unitPrice),
           totalPrice: this.toNumber(item.totalPrice, 0),
         })),
+        ...(acknowledgeDuplicate ? { acknowledgeDuplicate: true } : {}),
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
           this.receiptSaving.set(false);
           this.receiptPreview.set(null);
+          this.duplicateDecisionOpen.set(false);
           this.editingReceiptItemIndex.set(null);
           this.receiptMerchantName.set('');
           this.receiptPurchaseDate.set('');
@@ -230,10 +305,27 @@ export class ImportsPageComponent {
         },
         error: (error) => {
           this.receiptSaving.set(false);
-          this.receiptError.set(error?.error?.message || 'Nao foi possivel registrar a compra no financeiro.');
-          this.toast.error(error?.error?.message || 'Não foi possível registrar a compra.');
+          // 409: a chave foi importada no meio-tempo. Abre a caixa e deixa o usuário decidir.
+          if (error?.status === 409 && error?.error?.code === 'RECEIPT_DUPLICATE_UNCONFIRMED') {
+            this.duplicateDecisionOpen.set(true);
+            this.revealDuplicateBox();
+            return;
+          }
+          // Mesma mensagem na tela e no toast, para não haver dois textos diferentes para o mesmo erro.
+          const message = error?.error?.message || 'Não foi possível registrar a compra no financeiro.';
+          this.receiptError.set(message);
+          this.toast.error(message);
         },
       });
+  }
+
+  // A caixa abre no topo da prévia; o botão de confirmar fica no fim. Traz a caixa para a tela
+  // antes de o usuário poder clicar em "Importar mesmo assim" sem tê-la lido.
+  private revealDuplicateBox() {
+    afterNextRender(
+      () => this.duplicateBox()?.nativeElement.scrollIntoView?.({ block: 'center' }),
+      { injector: this.injector },
+    );
   }
 
   protected selectTab(tab: 'receipt' | 'csv' | 'history') {
@@ -337,6 +429,11 @@ export class ImportsPageComponent {
     if (delta > 0.01) return 'warning';
     if (delta < -0.01) return 'success';
     return 'accent';
+  }
+
+  // O backend manda o rótulo sem acento; a tela mostra com acento, como no resto da nota.
+  protected bucketLabel(label: string) {
+    return label === 'Sem sugestao' ? 'Sem sugestão' : label;
   }
 
   protected merchantLabel(merchantName: string | null) {

@@ -11,6 +11,9 @@ import {
   FinanceCategory,
   FeedbackSummary,
   CreditCycle,
+  CreditCard,
+  CreditCardInput,
+  CreditCardReceipt,
   Envelope,
   ForecastAccuracy,
   Goal,
@@ -181,6 +184,7 @@ export class LifeApiService {
     search?: string;
     paymentMethod?: string;
     envelopeId?: string;
+    cardId?: string;
   }) {
     if (!this.networkService.isOnline() || this.offlineLifeService.hasPendingSync()) {
       void this.flushPendingSync();
@@ -194,6 +198,7 @@ export class LifeApiService {
     if (params?.search) httpParams['search'] = params.search;
     if (params?.paymentMethod) httpParams['paymentMethod'] = params.paymentMethod;
     if (params?.envelopeId) httpParams['envelopeId'] = params.envelopeId;
+    if (params?.cardId) httpParams['cardId'] = params.cardId;
 
     return this.http
       .get<Transaction[]>(`${environment.apiBaseUrl}/transactions`, { params: httpParams })
@@ -524,6 +529,48 @@ export class LifeApiService {
     return this.http.put<CreditCycle>(`${environment.apiBaseUrl}/credit-cycle/ceiling`, payload);
   }
 
+  /** Cartoes ativos; includeArchived traz o historico. Escritas sao online-only (sem fila offline). */
+  listCreditCards(includeArchived = false) {
+    const query = includeArchived ? "?includeArchived=true" : "";
+    return this.http.get<CreditCard[]>(`${environment.apiBaseUrl}/credit-cards${query}`);
+  }
+
+  /** Define o teto do ciclo aberto de um cartao. Devolve recibo; quem chama recarrega o ciclo. */
+  setCreditCardCeiling(id: string, ceiling: number) {
+    return this.http.put<{ cardId: string; refreshPending: boolean }>(
+      `${environment.apiBaseUrl}/credit-cards/${encodeURIComponent(id)}/ceiling`,
+      { ceiling },
+    );
+  }
+
+  /** Remove o teto do ciclo aberto de um cartao. Devolve recibo; quem chama recarrega o ciclo. */
+  clearCreditCardCeiling(id: string) {
+    return this.http.delete<{ cardId: string; removedCents: number; refreshPending: boolean }>(
+      `${environment.apiBaseUrl}/credit-cards/${encodeURIComponent(id)}/ceiling`,
+    );
+  }
+
+  /** Ciclo aberto de um cartao (mesma forma de getCurrentCreditCycle). */
+  getCreditCardCycle(id: string) {
+    return this.http.get<CreditCycle>(`${environment.apiBaseUrl}/credit-cards/${encodeURIComponent(id)}/cycle`);
+  }
+
+  createCreditCard(payload: Required<Pick<CreditCardInput, "name" | "closingDay">> & { dueDay: number | null }) {
+    return this.http.post<CreditCardReceipt>(`${environment.apiBaseUrl}/credit-cards`, payload);
+  }
+
+  updateCreditCard(id: string, payload: CreditCardInput) {
+    return this.http.patch<CreditCardReceipt>(`${environment.apiBaseUrl}/credit-cards/${encodeURIComponent(id)}`, payload);
+  }
+
+  archiveCreditCard(id: string) {
+    return this.http.delete<CreditCardReceipt>(`${environment.apiBaseUrl}/credit-cards/${encodeURIComponent(id)}`);
+  }
+
+  makeDefaultCreditCard(id: string) {
+    return this.http.post<CreditCardReceipt>(`${environment.apiBaseUrl}/credit-cards/${encodeURIComponent(id)}/make-default`, {});
+  }
+
   getFeedbackSummary() {
     return this.http.get<FeedbackSummary>(
       `${environment.apiBaseUrl}/support-requests/admin/feedback-summary`,
@@ -596,6 +643,7 @@ export class LifeApiService {
       unitPrice: number | null;
       totalPrice: number;
     }>;
+    acknowledgeDuplicate?: boolean;
   }) {
     return this.http.post<ReceiptImportCommitResponse>(
       `${environment.apiBaseUrl}/imports/receipts/commit`,
@@ -674,6 +722,7 @@ export class LifeApiService {
     frequency: RecurrenceFrequency;
     firstDueDate: string;
     endDate?: string;
+    cardId?: string;
   }) {
     return this.http.post<RecurringTransaction>(
       `${environment.apiBaseUrl}/recurring-transactions`,
@@ -705,6 +754,7 @@ export class LifeApiService {
     categoryId?: string;
     paymentMethod?: PaymentMethod;
     firstDueDate?: string;
+    cardId?: string;
   }) {
     return this.http.post<InstallmentPurchase>(`${environment.apiBaseUrl}/installments`, payload);
   }

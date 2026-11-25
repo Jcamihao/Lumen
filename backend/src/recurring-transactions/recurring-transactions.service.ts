@@ -3,6 +3,7 @@ import { Prisma, RecurrenceFrequency, RecurringTransaction } from '@prisma/clien
 import { EntitlementsService } from '../billing/entitlements.service';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { lockForCardLink, resolveCardForCreate, resolveCardForUpdate, withCardGuard } from '../credit-cards/card-link';
 import { CreateRecurringTransactionDto } from './dto/create-recurring-transaction.dto';
 import { UpdateRecurringTransactionDto } from './dto/update-recurring-transaction.dto';
 import {
@@ -23,8 +24,10 @@ const DESCRIPTION_MIN = 2;
 const DESCRIPTION_MAX = 120;
 
 /** Decimal do Prisma vira string no JSON; o front espera numero. */
-export function toRecurringResponse<T extends RecurringTransaction>(item: T) {
-  return { ...item, amount: Number(item.amount) };
+export function toRecurringResponse<T extends RecurringTransaction & { card?: { name: string } | null }>(item: T) {
+  // card vira cardName (so acrescenta campo); o objeto nao vai para a resposta.
+  const { card, ...rest } = item;
+  return { ...rest, amount: Number(item.amount), cardName: card?.name ?? null };
 }
 
 /** '2026-10-05' ou '2026-10-05T...' -> meia-noite UTC daquele dia. */
@@ -63,7 +66,7 @@ export class RecurringTransactionsService {
 
     const items = await this.prisma.recurringTransaction.findMany({
       where: { userId },
-      include: { category: true },
+      include: { category: true, card: { select: { name: true } } },
       orderBy: [{ isActive: 'desc' }, { nextDueDate: 'asc' }],
     });
 
@@ -155,6 +158,9 @@ export class RecurringTransactionsService {
     let callbackFinished = false;
     try {
       return await this.prisma.$transaction(async (tx) => {
+        // Cartao: lock do User antes de ler o cartao (mesma ordem do resto do dominio de cartao).
+        await lockForCardLink(tx, userId, dto.cardId);
+        const cardId = await resolveCardForCreate(tx, userId, dto.cardId, dto.paymentMethod, dto.type);
         const row = await tx.recurringTransaction.create({
           data: {
             userId,
@@ -163,6 +169,7 @@ export class RecurringTransactionsService {
             amount: new Prisma.Decimal(dto.amount),
             categoryId: dto.categoryId ?? null,
             paymentMethod: dto.paymentMethod ?? null,
+            cardId,
             frequency: dto.frequency,
             anchorDay: firstDue.getUTCDate(),
             nextDueDate: firstDue,
@@ -252,7 +259,20 @@ export class RecurringTransactionsService {
       throw new BadRequestException('A conta ja passou da data final; ajuste ou remova a data final.');
     }
 
-    await this.prisma.recurringTransaction.update({ where: { id }, data });
+    // Cartao: com cardId o update roda sob o lock do User e relê o estado gravado.
+    const cardLock = dto.cardId !== undefined || dto.paymentMethod !== undefined;
+    await withCardGuard(this.prisma, userId, cardLock, async (db) => {
+      // Relido sob o lock quando a regra de cartao depende do estado gravado.
+      const current = cardLock
+        ? await db.recurringTransaction.findFirst({
+            where: { id, userId },
+            select: { cardId: true, paymentMethod: true, type: true },
+          })
+        : existing;
+      if (!current) throw new NotFoundException('Conta fixa nao encontrada.');
+      const cardPatch = await resolveCardForUpdate(db, userId, current, dto);
+      await db.recurringTransaction.update({ where: { id }, data: { ...data, ...cardPatch } });
+    });
     await this.lifeEngineService.touchUserData(userId);
 
     // Retomada com vencimento de hoje ja gera o lancamento de hoje.
@@ -275,7 +295,7 @@ export class RecurringTransactionsService {
   private async findOwned(userId: string, id: string) {
     const item = await this.prisma.recurringTransaction.findFirst({
       where: { id, userId },
-      include: { category: true },
+      include: { category: true, card: { select: { name: true } } },
     });
 
     if (!item) {

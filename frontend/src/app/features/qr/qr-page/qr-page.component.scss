@@ -1,7 +1,7 @@
 :host {
   display: block;
   min-height: 100vh;
-  background: var(--bg, #f6f7fb);
+  background: var(--background);
 }
 
 .qr-page {
@@ -18,16 +18,17 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  color: var(--text-medium, #475569);
+  color: var(--text-medium);
   font-weight: 600;
   text-decoration: none;
 }
 
 .qr-back:hover {
-  color: var(--accent, #006cd2);
+  color: var(--accent);
 }
 
-/* O cartaz e sempre claro (tema escuro nao muda): e o que vai para o papel. */
+/* O cartaz e sempre claro (tema escuro nao muda): e o que vai para o papel.
+   Literais aqui sao de proposito (impressao); so o que e de tela usa tokens. */
 .qr-poster {
   display: grid;
   justify-items: center;
@@ -128,20 +129,20 @@
   gap: 0.4rem;
   min-height: 2.75rem;
   padding: 0.6rem 1rem;
-  border: 1px solid var(--border, #cbd5e1);
-  background: var(--card, #ffffff);
-  color: var(--text-strong, #0f172a);
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text-strong);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
 }
 
 .qr-button:hover:not(:disabled) {
-  border-color: var(--accent, #006cd2);
+  border-color: var(--accent);
 }
 
 .qr-button:focus-visible {
-  outline: 2px solid var(--accent, #006cd2);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -151,19 +152,19 @@
 }
 
 .qr-button--primary {
-  border-color: var(--accent, #006cd2);
-  background: var(--accent, #006cd2);
-  color: #ffffff;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--text-inverse);
 }
 
 .qr-tools__status {
   margin: 0;
   font-weight: 700;
-  color: var(--success, #15803d);
+  color: var(--success);
 }
 
 .qr-tools__status--error {
-  color: var(--danger, #b91c1c);
+  color: var(--danger);
 }
 
 .qr-tools__tips {
@@ -171,7 +172,7 @@
   gap: 0.4rem;
   margin: 0;
   padding-left: 1.1rem;
-  color: var(--text-medium, #475569);
+  color: var(--text-medium);
   font-size: 0.9rem;
 }
 

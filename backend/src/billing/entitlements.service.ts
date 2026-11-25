@@ -31,10 +31,25 @@ export class EntitlementsService {
 
   async resolvePlan(userId: string): Promise<PlanId> {
     // Linhas inteiras (com `source`): concessão não tem tolerância de atraso.
-    const subscriptions = await this.prisma.subscription.findMany({
-      where: { ownerUserId: userId },
-    });
-    return pickEffectivePlan(subscriptions, new Date());
+    const [subscriptions, membership] = await Promise.all([
+      this.prisma.subscription.findMany({
+        where: { ownerUserId: userId },
+      }),
+      this.prisma.groupMembership.findFirst({
+        where: { memberUserId: userId, leftAt: null },
+      }),
+    ]);
+    let lines = subscriptions;
+    if (membership) {
+      // Membro de grupo (contrato 11, D6): a associação só faz a assinatura SHARED ativa do
+      // pagador valer para ele. So linhas SHARED do pagador entram — um INDIVIDUAL do pagador
+      // (1 seat) nunca empresta plano a membro; sem assinatura SHARED ativa, o membro ve FREE (D11).
+      const ownerShared = await this.prisma.subscription.findMany({
+        where: { ownerUserId: membership.ownerUserId, plan: 'SHARED' },
+      });
+      lines = [...subscriptions, ...ownerShared];
+    }
+    return pickEffectivePlan(lines, new Date());
   }
 
   async getUsage(userId: string): Promise<UsageReport> {
@@ -42,12 +57,13 @@ export class EntitlementsService {
     const definition = getPlan(plan);
     const window = currentMonthWindow(new Date());
 
-    const [goals, envelopes, recurringTransactions, installmentPurchases, selah] =
+    const [goals, envelopes, recurringTransactions, installmentPurchases, creditCards, selah] =
       await Promise.all([
         this.countResource(userId, 'goals'),
         this.countResource(userId, 'envelopes'),
         this.countResource(userId, 'recurringTransactions'),
         this.countResource(userId, 'installmentPurchases'),
+        this.countResource(userId, 'creditCards'),
         this.countSelah(userId, window),
       ]);
 
@@ -64,6 +80,10 @@ export class EntitlementsService {
         installmentPurchases: {
           used: installmentPurchases,
           limit: definition.limits.installmentPurchases,
+        },
+        creditCards: {
+          used: creditCards,
+          limit: definition.limits.creditCards,
         },
       },
       selahQuestions: {
@@ -129,6 +149,10 @@ export class EntitlementsService {
       case 'installmentPurchases':
         return this.prisma.installmentPurchase.count({
           where: { userId, isActive: true },
+        });
+      case 'creditCards':
+        return this.prisma.creditCard.count({
+          where: { userId, archivedAt: null },
         });
     }
   }

@@ -96,6 +96,9 @@ export type Transaction = {
   installmentPurchaseId?: string | null;
   installmentNumber?: number | null;
   installmentsTotal?: number | null;
+  /** Cartao usado (so com paymentMethod CREDIT); nome para as listas. */
+  cardId?: string | null;
+  cardName?: string | null;
 };
 
 export type RecurrenceFrequency = "WEEKLY" | "MONTHLY" | "YEARLY";
@@ -109,6 +112,8 @@ export type RecurringTransaction = {
   categoryId?: string | null;
   category?: FinanceCategory | null;
   paymentMethod?: PaymentMethod | null;
+  cardId?: string | null;
+  cardName?: string | null;
   frequency: RecurrenceFrequency;
   /** Dia do mes de referencia (mensal/anual). */
   anchorDay: number;
@@ -130,6 +135,8 @@ export type InstallmentPurchase = {
   categoryId?: string | null;
   category?: FinanceCategory | null;
   paymentMethod?: PaymentMethod | null;
+  cardId?: string | null;
+  cardName?: string | null;
   anchorDay: number;
   /** Proxima parcela a gerar (AAAA-MM-DDT00:00:00.000Z); null quando ja gerou todas. */
   nextDueDate: string | null;
@@ -460,6 +467,20 @@ export type ReceiptImportPreview = {
   suggestedCategoryName: string | null;
   descriptionSuggestion: string;
   items: ReceiptImportItem[];
+  itemsSum?: number | null;
+  totalMismatch?: {
+    itemsSum: number;
+    total: number;
+    difference: number;
+  } | null;
+  extraction?: {
+    method: "PDF_TEXT" | "OCR";
+    ocrConfidence: number | null;
+    warnings: string[];
+    qrDetected: boolean;
+    secondPass: boolean;
+  } | null;
+  accessKeyValid?: boolean;
 };
 
 export type ReceiptImportCommitResponse = {
@@ -564,6 +585,36 @@ export type CreditCycle = {
   previousCeiling: number | null;
 };
 
+/** Cartao de credito nomeado (9a). So apelido e dias; nunca numero de cartao. */
+export type CreditCard = {
+  id: string;
+  name: string;
+  closingDay: number;
+  dueDay: number | null;
+  countAllPayments: boolean;
+  isDefault: boolean;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Recibo do que foi persistido numa escrita de cartao (devolvido pela API). */
+export type CreditCardReceipt = {
+  id: string;
+  name: string;
+  closingDay: number;
+  dueDay: number | null;
+  countAllPayments: boolean;
+  isDefault: boolean;
+};
+
+export type CreditCardInput = {
+  name?: string;
+  closingDay?: number;
+  dueDay?: number | null;
+  countAllPayments?: boolean;
+};
+
 export type FeedbackSummary = {
   total: number;
   averageRating: number | null;
@@ -577,7 +628,8 @@ export type LimitedResource =
   | 'goals'
   | 'envelopes'
   | 'recurringTransactions'
-  | 'installmentPurchases';
+  | 'installmentPurchases'
+  | 'creditCards';
 
 export type SubscriptionStatus = 'PENDING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'EXPIRED';
 
@@ -614,7 +666,41 @@ export type BillingMe = {
   cancelAtPeriodEnd: boolean;
   latestInvoiceUrl: string | null;
   usage: UsageReport;
+  group: BillingGroupView | null;
 };
+
+/** Bloco de grupo do /billing/me (contrato 11, D10): membro so ve o primeiro nome do pagador. */
+export type BillingGroupView =
+  | { role: 'owner'; ownerFirstName: null }
+  | { role: 'member'; ownerFirstName: string | null };
+
+/** GET /billing/group (pagador ve membros e convites; membro ve quase nada — D6). */
+export type GroupView =
+  | {
+      role: 'owner';
+      planActive: boolean;
+      seats: number;
+      members: GroupMemberView[];
+      invites: GroupInviteView[];
+    }
+  | { role: 'member'; ownerFirstName: string | null; joinedAt: string };
+
+export type GroupMemberView = {
+  id: string;
+  email: string;
+  name: string | null;
+  joinedAt: string;
+};
+
+export type GroupInviteView = {
+  id: string;
+  email: string;
+  createdAt: string;
+  expiresAt: string;
+};
+
+/** Resposta que cria o convite: o token em claro so existe aqui (no banco vive o hash — D4). */
+export type CreatedGroupInvite = GroupInviteView & { token: string };
 
 export type GrantView = {
   id: string;

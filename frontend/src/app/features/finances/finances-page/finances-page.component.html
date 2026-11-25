@@ -316,6 +316,13 @@
             ></app-payment-method-picker>
           </div>
 
+          <app-credit-card-select
+            class="proto-field--full"
+            [control]="form.controls.cardId"
+            [enabled]="creditExpenseSelected()"
+            fieldId="transaction-card"
+          ></app-credit-card-select>
+
           <div class="proto-field" *ngIf="envelopes().length">
             <label for="transaction-envelope">Reserva (opcional)</label>
             <select id="transaction-envelope" formControlName="envelopeId">
@@ -406,6 +413,17 @@
 
         <select
           class="finance-filters__type-select"
+          *ngIf="showCardFilter()"
+          aria-label="Filtrar por cartão"
+          [value]="filterCardId()"
+          (change)="filterCardId.set($any($event.target).value)"
+        >
+          <option value="">Todos os cartões</option>
+          <option *ngFor="let card of filterCards()" [value]="card.id">{{ card.name }}</option>
+        </select>
+
+        <select
+          class="finance-filters__type-select"
           aria-label="Filtrar por reserva"
           *ngIf="envelopes().length"
           [value]="filterEnvelopeId()"
@@ -429,6 +447,7 @@
                   </span>
                   <span class="proto-chip">{{ transaction.category?.name || 'Sem categoria' }}</span>
                   <span class="proto-chip" *ngIf="paymentLabel(transaction) as payment">{{ payment }}</span>
+                  <span class="proto-chip" *ngIf="transaction.cardName as card">{{ card }}</span>
                   <span class="proto-chip" *ngIf="transaction.envelope as env">{{ env.name }}</span>
                   <span class="proto-chip" *ngIf="transaction.recurringTransactionId">Recorrente</span>
                   <span class="proto-chip" *ngIf="transaction.installmentNumber as n">{{ n }}/{{ transaction.installmentsTotal }}</span>

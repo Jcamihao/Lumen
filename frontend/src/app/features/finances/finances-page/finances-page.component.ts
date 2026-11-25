@@ -4,18 +4,21 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { finalize } from 'rxjs';
-import { Envelope, PaymentMethod, Transaction } from '../../../core/models/domain.models';
+import { CreditCard, Envelope, PaymentMethod, Transaction } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
+import { NetworkService } from '../../../core/services/network.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { formatLocalDateLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
 import { BudgetRow, buildBudgetRows } from '../../../core/utils/budget.utils';
 import { focusField } from '../../../core/utils/focus.utils';
+import { activeCards, cardIdForPayload, isCreditExpense } from '../../../core/utils/credit-card.utils';
 import { formatCurrency } from '../../../core/utils/money.utils';
 import { paymentMethodLabel } from '../../../core/utils/payment-method.utils';
 import { buildSpendingBreakdown } from '../../../core/utils/spending.utils';
 import { PaymentMethodPickerComponent } from '../../../shared/payment-method-picker/payment-method-picker.component';
 import { SpendingBreakdownComponent } from '../../../shared/spending-breakdown/spending-breakdown.component';
+import { CreditCardSelectComponent } from '../../../shared/credit-card-select/credit-card-select.component';
 import { CreditCycleCardComponent } from '../credit-cycle-card/credit-cycle-card.component';
 import { EnvelopesCardComponent } from '../envelopes-card/envelopes-card.component';
 import { InstallmentPurchasesCardComponent } from '../installment-purchases-card/installment-purchases-card.component';
@@ -36,6 +39,7 @@ const CATEGORY_COLORS = ['#f18f01', '#006cd2', '#0f9d7a', '#7c5cff', '#ef4444', 
         EnvelopesCardComponent,
         RecurringTransactionsCardComponent,
         InstallmentPurchasesCardComponent,
+        CreditCardSelectComponent,
     ],
     templateUrl: './finances-page.component.html',
     styleUrls: ['./finances-page.component.scss'],
@@ -50,6 +54,7 @@ export class FinancesPageComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly toast = inject(ToastService);
   private readonly route = inject(ActivatedRoute);
+  private readonly network = inject(NetworkService);
 
   private readonly now = new Date();
   protected readonly filterMonth = signal(this.now.getMonth() + 1);
@@ -57,6 +62,10 @@ export class FinancesPageComponent {
   protected readonly filterType = signal<'' | 'INCOME' | 'EXPENSE' | 'TRANSFER'>('');
   protected readonly filterPaymentMethod = signal<'' | PaymentMethod>('');
   protected readonly filterEnvelopeId = signal('');
+  protected readonly filterCardId = signal('');
+  protected readonly cards = signal<CreditCard[]>([]);
+  protected readonly filterCards = computed(() => activeCards(this.cards()));
+  protected readonly showCardFilter = computed(() => this.filterCards().length >= 2);
   protected readonly envelopes = signal<Envelope[]>([]);
   protected readonly filterSearch = signal('');
 
@@ -115,11 +124,13 @@ export class FinancesPageComponent {
     categoryId: [''],
     // '' = nao informado.
     paymentMethod: ['' as PaymentMethod | ''],
+    cardId: [''],
     envelopeId: [''],
   });
 
   constructor() {
     this.refreshEnvelopes();
+    this.loadCards();
     effect(() => {
       this.reloadTick();
       const month = this.filterMonth();
@@ -127,6 +138,7 @@ export class FinancesPageComponent {
       const type = this.filterType();
       const paymentMethod = this.filterPaymentMethod();
       const envelopeId = this.filterEnvelopeId();
+      const cardId = this.filterCardId();
       const search = this.filterSearch().trim();
 
       if (search) {
@@ -134,6 +146,7 @@ export class FinancesPageComponent {
           type: type || undefined,
           paymentMethod: paymentMethod || undefined,
           envelopeId: envelopeId || undefined,
+          cardId: cardId || undefined,
           search,
         });
       } else {
@@ -143,6 +156,7 @@ export class FinancesPageComponent {
           type: type || undefined,
           paymentMethod: paymentMethod || undefined,
           envelopeId: envelopeId || undefined,
+          cardId: cardId || undefined,
         });
       }
     });
@@ -186,6 +200,11 @@ export class FinancesPageComponent {
 
   protected paymentLabel(transaction: Transaction) {
     return paymentMethodLabel(transaction.paymentMethod);
+  }
+
+  protected creditExpenseSelected() {
+    const raw = this.form.getRawValue();
+    return isCreditExpense(raw.type, raw.paymentMethod);
   }
 
   protected refreshEnvelopes() {
@@ -263,6 +282,7 @@ export class FinancesPageComponent {
         date: raw.date,
         categoryId: raw.categoryId || undefined,
         paymentMethod: raw.paymentMethod || undefined,
+        cardId: cardIdForPayload(raw.cardId, isCreditExpense(raw.type, raw.paymentMethod)),
         envelopeId: raw.envelopeId || undefined,
       })
       .pipe(
@@ -346,11 +366,26 @@ export class FinancesPageComponent {
     search?: string;
     paymentMethod?: string;
     envelopeId?: string;
+    cardId?: string;
   }) {
     this.api
       .listTransactions(params)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((transactions) => this.transactions.set(transactions));
+  }
+
+  private loadCards() {
+    if (!this.network.isOnline()) {
+      return;
+    }
+
+    this.api
+      .listCreditCards()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (cards) => this.cards.set(cards),
+        error: () => this.cards.set([]),
+      });
   }
 
   private persistBudget(row: BudgetRow, monthlyBudget: number | null, successMessage: string) {

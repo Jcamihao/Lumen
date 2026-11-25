@@ -92,6 +92,8 @@ export class InstallmentMaterializerService {
                 date: due,
                 categoryId: plan.categoryId,
                 paymentMethod: plan.paymentMethod,
+                // Herda o cartao da compra (nulo = cartao padrao). Arquivar depois nao impede.
+                cardId: plan.cardId,
                 installmentPurchaseId: plan.id,
                 installmentNumber,
                 installmentsTotal: plan.installmentsTotal,

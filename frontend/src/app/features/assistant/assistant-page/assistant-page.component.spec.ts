@@ -2,7 +2,7 @@ import { registerLocaleData } from "@angular/common";
 import localePt from "@angular/common/locales/pt";
 import { LOCALE_ID, WritableSignal, signal } from "@angular/core";
 import { ComponentFixture, TestBed, fakeAsync, tick } from "@angular/core/testing";
-import { provideRouter } from "@angular/router";
+import { Router, provideRouter } from "@angular/router";
 import { Subject, of, throwError } from "rxjs";
 import {
   ConversationReply,
@@ -164,13 +164,27 @@ describe("AssistantPageComponent — assistente manual", () => {
     });
   });
 
-  it("texto que o motor não reconhece vai ao Selah e não mostra cartão manual", () => {
+  it("unrecognized na resposta não chama mais o Selah e mostra o texto de ajuda do motor", () => {
     create();
 
     typeAndSend("Como estou hoje?");
 
     expect(conversation.sendMessage).toHaveBeenCalledTimes(1);
-    expect(api.askAssistant).toHaveBeenCalledTimes(1);
+    expect(api.askAssistant).not.toHaveBeenCalled();
+    expect(text()).toContain("Assistente manual");
+    expect(text()).toContain("ajuda");
+  });
+
+  it("resposta do fallback de IA (INFO com aiFallback) vira balão de texto, sem cartão", () => {
+    conversation.sendMessage.and.returnValue(
+      of({ kind: "INFO", state: "IDLE", text: "Seu caixa fecha no azul.", aiFallback: true }),
+    );
+    create();
+
+    typeAndSend("Analise meus gastos do mês");
+
+    expect(api.askAssistant).not.toHaveBeenCalled();
+    expect(root().querySelector(".assistant-bubble")?.textContent).toContain("Seu caixa fecha no azul.");
     expect(text()).not.toContain("Assistente manual");
   });
 
@@ -188,6 +202,32 @@ describe("AssistantPageComponent — assistente manual", () => {
     expect(text()).toContain("15/11/2026");
     expect(buttonWithText("Confirmar")).toBeDefined();
     expect(buttonWithText("Cancelar")).toBeDefined();
+  });
+
+  it("'importar nota' mostra o botão que abre a tela de importações", () => {
+    conversation.sendMessage.and.returnValue(
+      of({ kind: "HELP", state: "IDLE", text: "Para importar uma nota, abra Importações.", data: { screen: "imports" } }),
+    );
+    create();
+    const navigate = spyOn(TestBed.inject(Router), "navigateByUrl").and.resolveTo(true);
+
+    typeAndSend("importar nota");
+    const button = buttonWithText("Abrir importações");
+    expect(button).toBeDefined();
+    button!.click();
+
+    expect(navigate).toHaveBeenCalledOnceWith("/imports");
+    expect(api.askAssistant).not.toHaveBeenCalled();
+  });
+
+  it("ajuda comum não mostra o botão 'Abrir importações'", () => {
+    conversation.sendMessage.and.returnValue(of({ kind: "HELP", state: "IDLE", text: "Exemplos: saldo." }));
+    create();
+
+    typeAndSend("ajuda");
+
+    expect(text()).toContain("Exemplos: saldo.");
+    expect(buttonWithText("Abrir importações")).toBeUndefined();
   });
 
   it("offline não tenta o manual e segue para o Selah", () => {
@@ -311,6 +351,64 @@ describe("AssistantPageComponent — assistente manual", () => {
     pending.complete();
     fixture.detectChanges();
     expect(text()).not.toContain("Consultando seus dados");
+  }));
+
+  it("carregamento em estágios: 250 ms, 3 s e 5 s (com 'Pode demorar um pouco.')", fakeAsync(() => {
+    const pending = new Subject<ConversationReply>();
+    conversation.sendMessage.and.returnValue(pending.asObservable());
+    create();
+
+    clickCommand("50 mercado");
+    tick(250);
+    fixture.detectChanges();
+    expect(text()).toContain("Consultando seus dados…");
+
+    tick(2750);
+    fixture.detectChanges();
+    expect(text()).toContain("Organizando a resposta…");
+    expect(text()).not.toContain("Pode demorar um pouco.");
+
+    tick(2000);
+    fixture.detectChanges();
+    expect(text()).toContain("Pode demorar um pouco.");
+
+    pending.next({ kind: "CANCELLED", state: "IDLE", text: "Cancelado." });
+    pending.complete();
+    fixture.detectChanges();
+    expect(text()).not.toContain("Organizando a resposta");
+  }));
+
+  it("resposta que chega no meio da espera cancela os estágios seguintes (sem aviso preso na tela)", fakeAsync(() => {
+    const pending = new Subject<ConversationReply>();
+    conversation.sendMessage.and.returnValue(pending.asObservable());
+    create();
+
+    clickCommand("50 mercado");
+    tick(300);
+    pending.next({ kind: "CANCELLED", state: "IDLE", text: "Cancelado." });
+    pending.complete();
+    tick(6000);
+    fixture.detectChanges();
+
+    expect(text()).not.toContain("Consultando seus dados");
+    expect(text()).not.toContain("Organizando a resposta");
+    expect(text()).not.toContain("Pode demorar um pouco.");
+  }));
+
+  it("não oferece nova tentativa enquanto a requisição está em voo (sem retry no carregamento)", fakeAsync(() => {
+    const pending = new Subject<ConversationReply>();
+    conversation.sendMessage.and.returnValue(pending.asObservable());
+    create();
+
+    clickCommand("50 mercado");
+    tick(5000);
+    fixture.detectChanges();
+
+    expect(buttonWithText("Tentar de novo")).toBeUndefined();
+    expect(conversation.sendMessage).toHaveBeenCalledTimes(1);
+
+    pending.next({ kind: "CANCELLED", state: "IDLE", text: "Cancelado." });
+    pending.complete();
   }));
 
   it("ao abrir, restaura o rascunho em andamento com botões", () => {
@@ -452,7 +550,7 @@ describe("AssistantPageComponent — assistente manual", () => {
     expect(buttonWithText("Confirmar")).toBeUndefined();
   });
 
-  it("limpa o campo após resposta do manual, mas mantém o texto quando vai ao Selah", () => {
+  it("limpa o campo após resposta do manual, inclusive a que veio com unrecognized", () => {
     conversation.sendMessage.and.returnValue(of({ kind: "ASK_FIELD", state: "COLLECTING_FIELDS", text: "Qual a descrição?" }));
     create();
     typeAndSend("50");
@@ -460,6 +558,27 @@ describe("AssistantPageComponent — assistente manual", () => {
 
     conversation.sendMessage.and.returnValue(of({ kind: "HELP", state: "IDLE", text: "x", unrecognized: true }));
     typeAndSend("Analise meus gastos do mês");
+    expect(root().querySelector<HTMLTextAreaElement>("#assistant-question")!.value).toBe("");
+  });
+
+  it("limpa o campo após resposta do fallback de IA", () => {
+    conversation.sendMessage.and.returnValue(
+      of({ kind: "INFO", state: "IDLE", text: "Seu caixa fecha no azul.", aiFallback: true }),
+    );
+    create();
+
+    typeAndSend("Analise meus gastos do mês");
+
+    expect(root().querySelector<HTMLTextAreaElement>("#assistant-question")!.value).toBe("");
+  });
+
+  it("mantém o texto no campo quando a mensagem segue ao Selah (offline)", () => {
+    api.offlineMode.set(true);
+    create();
+
+    typeAndSend("Analise meus gastos do mês");
+
+    expect(api.askAssistant).toHaveBeenCalledTimes(1);
     expect(root().querySelector<HTMLTextAreaElement>("#assistant-question")!.value).toBe("Analise meus gastos do mês");
   });
 
@@ -1269,6 +1388,589 @@ describe("AssistantPageComponent — assistente manual", () => {
       typeAndSend("50 mercado");
 
       expect(card().querySelector(".proto-tag")?.textContent?.trim()).toBe("Lançado");
+    });
+  });
+
+  describe("apagar lançamento pelo cartão (8a-2)", () => {
+    const apagarRows = (): Array<{ label: string; value: string }> => [
+      { label: "Valor", value: "R$ 120,00" },
+      { label: "Descrição", value: "Mercado grande" },
+      { label: "Categoria", value: "sem categoria" },
+      { label: "Data", value: "12/11/2026" },
+    ];
+
+    const deleteDraft = (overrides: Partial<DraftView> = {}) =>
+      draft({
+        kind: "TRANSACTION_CHANGE",
+        title: "Apagar lançamento",
+        changeAction: "DELETE",
+        amount: null,
+        description: null,
+        category: null,
+        date: null,
+        rows: apagarRows(),
+        ...overrides,
+      });
+
+    const deleteConfirm = (): ConversationReply => ({
+      kind: "CONFIRM_DRAFT",
+      state: "AWAITING_CONFIRMATION",
+      text: "Apagar: 120,00 · Mercado grande.\nIsto apaga de vez e não dá para desfazer.\nPara apagar, responda apagar.",
+      draft: deleteDraft(),
+      quickReplies: ["apagar", "cancelar"],
+    });
+
+    const card = () => root().querySelector<HTMLElement>(".assistant-manual")!;
+    const rowValues = () =>
+      Array.from(card().querySelectorAll(".assistant-draft__row dd")).map((dd) => dd.textContent?.trim());
+
+    it("cartão de apagar mostra Apagar de vez, o aviso e Cancelar, sem Confirmar", () => {
+      conversation.sendMessage.and.returnValue(of(deleteConfirm()));
+      create();
+
+      typeAndSend("apagar mercado");
+
+      expect(buttonWithText("Apagar de vez")).toBeDefined();
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      expect(buttonWithText("Cancelar")).toBeDefined();
+      expect(text()).toContain("Isto apaga de vez e não dá para desfazer.");
+      expect(rowValues()).toEqual(["R$ 120,00", "Mercado grande", "sem categoria", "12/11/2026"]);
+      expect(card().textContent).not.toContain("Confira os dados antes de confirmar.");
+    });
+
+    it("Apagar de vez chama confirm com delete: true, e nunca sem a flag", () => {
+      conversation.sendMessage.and.returnValue(of(deleteConfirm()));
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Apaguei: 120,00 · Mercado grande.", data: { transactionId: "t2" } }),
+      );
+      create();
+      typeAndSend("apagar mercado");
+
+      clickCommand("Apagar de vez");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledTimes(1);
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1, true);
+      expect(text()).toContain("Apaguei: 120,00 · Mercado grande.");
+    });
+
+    it("atalho 'apagar' e 'cancelar' do texto não aparecem como botão no cartão de apagar", () => {
+      conversation.sendMessage.and.returnValue(of(deleteConfirm()));
+      create();
+
+      typeAndSend("apagar mercado");
+
+      expect(buttonWithText("apagar")).toBeUndefined();
+      expect(buttonWithText("cancelar")).toBeUndefined();
+    });
+
+    it("cartão de editar segue com Confirmar normal, sem Apagar de vez, e confirm sem a flag", () => {
+      conversation.sendMessage.and.returnValue(of(confirmReply()));
+      conversation.confirmDraft.and.returnValue(new Subject<ConversationReply>().asObservable());
+      create();
+      typeAndSend("50 mercado");
+
+      expect(buttonWithText("Apagar de vez")).toBeUndefined();
+      clickCommand("Confirmar");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1);
+    });
+
+    it("cartão de editar mostra antes → depois por campo e Confirmar normal", () => {
+      conversation.sendMessage.and.returnValue(
+        of<ConversationReply>({
+          kind: "CONFIRM_DRAFT",
+          state: "AWAITING_CONFIRMATION",
+          text: "Editar: 50,00 · Mercado.\nValor: 50,00 -> 45,00\nResponda confirmar.",
+          draft: draft({
+            kind: "TRANSACTION_CHANGE",
+            title: "Editar lançamento",
+            changeAction: "EDIT",
+            amount: null,
+            description: null,
+            category: null,
+            date: null,
+            rows: [
+              { label: "Valor", value: "R$ 50,00 → R$ 45,00" },
+              { label: "Data", value: "14/11/2026 → 15/11/2026" },
+            ],
+          }),
+          quickReplies: ["confirmar", "cancelar"],
+        }),
+      );
+      create();
+
+      typeAndSend("corrigir mercado");
+
+      expect(rowValues()).toEqual(["R$ 50,00 → R$ 45,00", "14/11/2026 → 15/11/2026"]);
+      expect(buttonWithText("Confirmar")).toBeDefined();
+      expect(buttonWithText("Apagar de vez")).toBeUndefined();
+      expect(text()).not.toContain("Isto apaga de vez");
+    });
+
+    it("Apagar de vez em voo fica desabilitado: duplo clique chama o servidor uma vez", () => {
+      const pending = new Subject<ConversationReply>();
+      conversation.sendMessage.and.returnValue(of(deleteConfirm()));
+      conversation.confirmDraft.and.returnValue(pending.asObservable());
+      create();
+      typeAndSend("apagar mercado");
+
+      const apagar = buttonWithText("Apagar de vez")!;
+      apagar.click();
+      apagar.click();
+      fixture.detectChanges();
+
+      expect(buttonWithText("Apagar de vez")!.disabled).toBe(true);
+      expect(buttonWithText("Cancelar")!.disabled).toBe(true);
+      expect(conversation.confirmDraft).toHaveBeenCalledTimes(1);
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1, true);
+    });
+
+    it("sessão reaberta com apagar mostra Apagar de vez e manda delete: true", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({ state: "AWAITING_CONFIRMATION", draft: deleteDraft() }),
+      );
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Apaguei.", data: { transactionId: "t2" } }),
+      );
+      create();
+
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      expect(rowValues()).toContain("Mercado grande");
+      clickCommand("Apagar de vez");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1, true);
+    });
+
+    it("falha de transporte no apagar mantém Tentar de novo com delete: true", () => {
+      conversation.sendMessage.and.returnValue(of(deleteConfirm()));
+      conversation.confirmDraft.and.returnValues(
+        throwError(() => ({ status: 0 })),
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Apaguei.", data: { transactionId: "t2" } }),
+      );
+      create();
+      typeAndSend("apagar mercado");
+
+      clickCommand("Apagar de vez");
+      expect(buttonWithText("Tentar de novo")).toBeDefined();
+      clickCommand("Tentar de novo");
+
+      expect(conversation.confirmDraft.calls.argsFor(1)).toEqual(["draft-1", 1, true]);
+      expect(text()).toContain("Apaguei.");
+    });
+
+    it("restaurado na escolha do lançamento: Falta informar e nenhum botão de apagar", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({
+          state: "COLLECTING_FIELDS",
+          draft: deleteDraft({ pendingField: "transaction", rows: [{ label: "Lançamento", value: "a escolher" }] }),
+        }),
+      );
+      create();
+
+      expect(text()).toContain("Falta informar: lançamento.");
+      expect(buttonWithText("Apagar de vez")).toBeUndefined();
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+    });
+  });
+
+  describe("cartão de limpar o teto (8d-2)", () => {
+    const clearDraft = (overrides: Partial<DraftView> = {}) =>
+      draft({
+        kind: "CREDIT_LIMIT",
+        title: "Limpar limite do cartão",
+        changeAction: "CLEAR",
+        amount: null,
+        description: null,
+        category: null,
+        date: null,
+        rows: [
+          { label: "Cartão", value: "Nubank" },
+          { label: "Ciclo", value: "06/11/2026 a 05/12/2026" },
+          { label: "Teto atual", value: "R$ 2.500,00" },
+          { label: "Aviso", value: "Sem o teto, o Lumen para de avisar progresso e estouro neste ciclo." },
+        ],
+        ...overrides,
+      });
+
+    const clearConfirm = (): ConversationReply => ({
+      kind: "CONFIRM_DRAFT",
+      state: "AWAITING_CONFIRMATION",
+      text: "Remover o teto do cartão Nubank de R$ 2.500,00 do ciclo com fechamento em 05/12/2026.\nPara limpar, responda limpar.",
+      draft: clearDraft(),
+      quickReplies: ["limpar", "cancelar"],
+    });
+
+    const card = () => root().querySelector<HTMLElement>(".assistant-manual")!;
+
+    it("cartão de limpar mostra Limpar de vez e o aviso, sem Confirmar nem Apagar", () => {
+      conversation.sendMessage.and.returnValue(of(clearConfirm()));
+      create();
+
+      typeAndSend("limpar limite do nubank");
+
+      expect(buttonWithText("Limpar de vez")).toBeDefined();
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      expect(buttonWithText("Apagar de vez")).toBeUndefined();
+      expect(buttonWithText("Cancelar")).toBeDefined();
+      expect(text()).toContain("Isto remove o teto do ciclo.");
+      expect(card().textContent).toContain("Confira o cartão e o teto antes de limpar.");
+    });
+
+    it("Limpar de vez chama confirm com clear: true, e nunca sem a flag", () => {
+      conversation.sendMessage.and.returnValue(of(clearConfirm()));
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Teto do cartão Nubank removido." }),
+      );
+      create();
+      typeAndSend("limpar limite do nubank");
+
+      clickCommand("Limpar de vez");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledTimes(1);
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1, false, true);
+      expect(text()).toContain("Teto do cartão Nubank removido.");
+    });
+
+    it("atalho 'limpar' do texto não aparece como botão no cartão de limpar", () => {
+      conversation.sendMessage.and.returnValue(of(clearConfirm()));
+      create();
+
+      typeAndSend("limpar limite do nubank");
+
+      expect(buttonWithText("limpar")).toBeUndefined();
+      expect(buttonWithText("cancelar")).toBeUndefined();
+    });
+
+    it("sessão reaberta com limpar mostra Limpar de vez e manda clear: true", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({ state: "AWAITING_CONFIRMATION", draft: clearDraft() }),
+      );
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Teto removido." }),
+      );
+      create();
+
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      clickCommand("Limpar de vez");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1, false, true);
+    });
+
+    it("rascunho de definir limite (sem CLEAR) segue com Confirmar normal, sem a flag", () => {
+      conversation.sendMessage.and.returnValue(
+        of<ConversationReply>({
+          kind: "CONFIRM_DRAFT",
+          state: "AWAITING_CONFIRMATION",
+          text: "Limite de R$ 2.000,00 no cartão Nubank.",
+          draft: clearDraft({ title: "Limite do cartão", changeAction: undefined }),
+          quickReplies: ["confirmar", "cancelar"],
+        }),
+      );
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Limite definido." }),
+      );
+      create();
+      typeAndSend("definir limite do nubank 2000");
+
+      expect(buttonWithText("Limpar de vez")).toBeUndefined();
+      clickCommand("Confirmar");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1);
+    });
+  });
+  describe("cartão de apagar/editar metas e reservas (8b-2)", () => {
+    const targetDraft = (overrides: Partial<DraftView> = {}): DraftView => ({
+      ...draft(),
+      kind: "GOAL_CHANGE",
+      title: "Apagar meta",
+      changeAction: "DELETE",
+      amount: null,
+      description: null,
+      category: null,
+      date: null,
+      rows: [
+        { label: "Meta", value: "Viagem" },
+        { label: "Guardado", value: "R$ 100,00" },
+        { label: "Aviso", value: "Os aportes já feitos continuam no extrato, soltos." },
+      ],
+      ...overrides,
+    });
+
+    const targetDeleteConfirm = (d: DraftView): ConversationReply => ({
+      kind: "CONFIRM_DRAFT",
+      state: "AWAITING_CONFIRMATION",
+      text: "Apagar a meta \"Viagem\"?\nIsto apaga de vez e não dá para desfazer.\nPara apagar, responda apagar.",
+      quickReplies: ["apagar", "cancelar"],
+      draft: d,
+    });
+
+    it("cartão de apagar meta tem Apagar de vez, mostra o aviso e manda a flag true", () => {
+      conversation.sendMessage.and.returnValue(of(targetDeleteConfirm(targetDraft())));
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Apaguei a meta \"Viagem\"." }),
+      );
+      create();
+      typeAndSend("apagar meta viagem");
+
+      expect(buttonWithText("Apagar de vez")).toBeDefined();
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      expect(text()).toContain("Os aportes já feitos continuam no extrato, soltos.");
+
+      clickCommand("Apagar de vez");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1, true);
+      expect(text()).toContain("Apaguei a meta");
+    });
+
+    it("cartão de apagar reserva repete o botão com o aviso dos depósitos", () => {
+      const d = targetDraft({
+        kind: "ENVELOPE_CHANGE",
+        title: "Apagar reserva",
+        rows: [
+          { label: "Reserva", value: "Lazer · 80,00/mês" },
+          { label: "Aviso", value: "Os depósitos dessa reserva somem; os gastos ligados continuam no extrato, soltos." },
+        ],
+      });
+      conversation.sendMessage.and.returnValue(of(targetDeleteConfirm(d)));
+      create();
+      typeAndSend("apagar reserva lazer");
+
+      expect(text()).toContain("Apagar reserva");
+      expect(buttonWithText("Apagar de vez")).toBeDefined();
+      expect(text()).toContain("os gastos ligados continuam no extrato, soltos.");
+    });
+
+    it("cartão de editar meta segue com Confirmar normal e confirm sem a flag", () => {
+      const d = targetDraft({
+        title: "Editar meta",
+        changeAction: "EDIT",
+        rows: [
+          { label: "Meta", value: "Viagem" },
+          { label: "Valor alvo", value: "R$ 500,00 → R$ 800,00" },
+        ],
+      });
+      conversation.sendMessage.and.returnValue(
+        of<ConversationReply>({
+          kind: "CONFIRM_DRAFT",
+          state: "AWAITING_CONFIRMATION",
+          text: "Editar a meta \"Viagem\".\nResponda confirmar.",
+          quickReplies: ["confirmar", "cancelar"],
+          draft: d,
+        }),
+      );
+      conversation.confirmDraft.and.returnValue(new Subject<ConversationReply>().asObservable());
+      create();
+      typeAndSend("valor 800");
+
+      expect(buttonWithText("Apagar de vez")).toBeUndefined();
+      clickCommand("Confirmar");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1);
+    });
+
+    it("sessão restaurada num apagar de meta traz o cartão com aviso e sem atalho apagar", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({ state: "AWAITING_CONFIRMATION", draft: targetDraft() }),
+      );
+      create();
+
+      expect(text()).toContain("Você tem um rascunho em andamento.");
+      expect(buttonWithText("Apagar de vez")).toBeDefined();
+      expect(buttonWithText("apagar")).toBeUndefined();
+    });
+
+    it("rascunho de mudança pedindo o alvo mostra 'Falta informar: meta ou reserva.'", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({
+          state: "COLLECTING_FIELDS",
+          draft: targetDraft({
+            title: "Editar meta",
+            changeAction: "EDIT",
+            pendingField: "targetChoice",
+            rows: [{ label: "Meta", value: "a informar" }],
+          }),
+        }),
+      );
+      create();
+
+      expect(text()).toContain("Falta informar: meta ou reserva.");
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+    });
+  });
+  describe("cartão de apagar contas fixas e parcelados (8c-2)", () => {
+    const targetDraft = (overrides: Partial<DraftView> = {}): DraftView => ({
+      ...draft(),
+      kind: "RECURRING_CHANGE",
+      title: "Apagar conta fixa",
+      changeAction: "DELETE",
+      amount: null,
+      description: null,
+      category: null,
+      date: null,
+      rows: [
+        { label: "Nome", value: "Netflix" },
+        { label: "Valor", value: "R$ 55,90/mês" },
+        { label: "Aviso", value: "Os lançamentos já gerados continuam no extrato, soltos. Os próximos não vão mais ser gerados." },
+      ],
+      ...overrides,
+    });
+
+    const targetDeleteConfirm = (d: DraftView): ConversationReply => ({
+      kind: "CONFIRM_DRAFT",
+      state: "AWAITING_CONFIRMATION",
+      text: "Apagar conta fixa: Netflix · 55,90/mês.\nIsto apaga de vez e não dá para desfazer.\nPara apagar, responda apagar.",
+      quickReplies: ["apagar", "cancelar"],
+      draft: d,
+    });
+
+    it("cartão de apagar conta fixa tem Apagar de vez com a flag e o aviso", () => {
+      conversation.sendMessage.and.returnValue(of(targetDeleteConfirm(targetDraft())));
+      conversation.confirmDraft.and.returnValue(
+        of<ConversationReply>({ kind: "DONE", state: "IDLE", text: "Apaguei a conta fixa \"Netflix\"." }),
+      );
+      create();
+      typeAndSend("apagar conta fixa netflix");
+
+      expect(buttonWithText("Apagar de vez")).toBeDefined();
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+      expect(text()).toContain("Os próximos não vão mais ser gerados.");
+
+      clickCommand("Apagar de vez");
+
+      expect(conversation.confirmDraft).toHaveBeenCalledWith("draft-1", 1, true);
+    });
+
+    it("cartão de apagar parcelado repete o botão com o aviso das parcelas", () => {
+      const d = targetDraft({
+        kind: "INSTALLMENT_CHANGE",
+        title: "Apagar compra parcelada",
+        rows: [
+          { label: "Nome", value: "TV de 50" },
+          { label: "Parcela", value: "R$ 300,00 · 4 de 12" },
+          { label: "Aviso", value: "As parcelas já geradas continuam no extrato, soltas. As que faltavam somem com a compra." },
+        ],
+      });
+      conversation.sendMessage.and.returnValue(of(targetDeleteConfirm(d)));
+      create();
+      typeAndSend("apagar parcelado tv");
+
+      expect(text()).toContain("Apagar compra parcelada");
+      expect(buttonWithText("Apagar de vez")).toBeDefined();
+      expect(text()).toContain("As que faltavam somem com a compra.");
+    });
+
+    it("restaurado pedindo o alvo de conta fixa diz 'conta fixa ou parcelado' (e meta segue 'meta ou reserva')", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({
+          state: "COLLECTING_FIELDS",
+          draft: targetDraft({
+            title: "Editar conta fixa",
+            changeAction: "EDIT",
+            pendingField: "targetChoice",
+            rows: [{ label: "Conta fixa", value: "a escolher" }],
+          }),
+        }),
+      );
+      create();
+
+      expect(text()).toContain("Falta informar: conta fixa ou parcelado.");
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+    });
+
+    it("sessão restaurada no apagar de conta fixa não mostra o atalho 'apagar'", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({ state: "AWAITING_CONFIRMATION", draft: targetDraft() }),
+      );
+      create();
+
+      expect(buttonWithText("Apagar de vez")).toBeDefined();
+      expect(buttonWithText("apagar")).toBeUndefined();
+    });
+  });
+
+  describe("rascunhos de cartão (9c-1b)", () => {
+    const cardCreateDraft = (overrides: Partial<DraftView> = {}): DraftView => ({
+      ...draft(),
+      kind: "CARD_CREATE",
+      title: "Criar cartão",
+      amount: null,
+      description: null,
+      category: null,
+      date: null,
+      type: "EXPENSE",
+      rows: [
+        { label: "Nome", value: "Nubank" },
+        { label: "Fechamento", value: "a informar" },
+      ],
+      pendingField: "closingDay",
+      ...overrides,
+    });
+
+    it("criar cartão pedindo o fechamento: mostra o nome, 'Falta informar: dia de fechamento.' e nenhum Confirmar", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({ state: "COLLECTING_FIELDS", draft: cardCreateDraft() }),
+      );
+      create();
+
+      expect(text()).toContain("Criar cartão");
+      expect(text()).toContain("Nubank");
+      expect(text()).toContain("Falta informar: dia de fechamento.");
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+    });
+
+    it("criar cartão pronto para confirmar: mostra Confirmar e Cancelar", () => {
+      conversation.sendMessage.and.returnValue(
+        of<ConversationReply>({
+          kind: "CONFIRM_DRAFT",
+          state: "AWAITING_CONFIRMATION",
+          text: "Criar o cartão Nubank?",
+          draft: cardCreateDraft({ rows: [{ label: "Nome", value: "Nubank" }, { label: "Fechamento", value: "dia 10" }], pendingField: null }),
+          quickReplies: ["confirmar", "cancelar"],
+        }),
+      );
+      create();
+      typeAndSend("criar cartao nubank fecha dia 10");
+
+      expect(text()).toContain("dia 10");
+      expect(buttonWithText("Confirmar")).toBeDefined();
+      expect(buttonWithText("Cancelar")).toBeDefined();
+    });
+
+    it("renomear cartão pronto para confirmar mostra o nome antigo e o novo", () => {
+      conversation.sendMessage.and.returnValue(
+        of<ConversationReply>({
+          kind: "CONFIRM_DRAFT",
+          state: "AWAITING_CONFIRMATION",
+          text: "Renomear?",
+          draft: {
+            ...cardCreateDraft(),
+            kind: "CARD_RENAME",
+            title: "Renomear cartão",
+            rows: [{ label: "Antes", value: "Nubank" }, { label: "Depois", value: "Roxinho" }],
+            pendingField: null,
+          },
+          quickReplies: ["confirmar", "cancelar"],
+        }),
+      );
+      create();
+      typeAndSend("renomear cartao nubank para roxinho");
+
+      expect(text()).toContain("Renomear cartão");
+      expect(text()).toContain("Roxinho");
+      expect(buttonWithText("Confirmar")).toBeDefined();
+    });
+
+    it("lançamento sem escolha de cartão restaurado diz 'Falta informar: cartão.'", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({
+          state: "COLLECTING_FIELDS",
+          draft: draft({ paymentMethod: "CREDIT", pendingField: "card" }),
+        }),
+      );
+      create();
+
+      expect(text()).toContain("Falta informar: cartão.");
+      expect(buttonWithText("Confirmar")).toBeUndefined();
     });
   });
 });

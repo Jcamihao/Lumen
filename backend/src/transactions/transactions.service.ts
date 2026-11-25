@@ -1,9 +1,16 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, TransactionType } from '@prisma/client';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RecurringMaterializerService } from '../recurring-transactions/recurring-materializer.service';
 import { InstallmentMaterializerService } from '../installments/installment-materializer.service';
+import {
+  findOwnedCardForLink,
+  resolveCardForCreate,
+  resolveCardForUpdate,
+  withCardGuard,
+} from '../credit-cards/card-link';
+import { cardScopeWhere } from '../credit-cycle/credit-cycle.util';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { ListTransactionsQueryDto } from './dto/list-transactions-query.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
@@ -18,6 +25,9 @@ export class TransactionsService {
   ) {}
 
   async list(userId: string, query: ListTransactionsQueryDto) {
+    // Cartao alheio ou inexistente: 404 antes de qualquer trabalho (nunca lista vazia que revele existencia).
+    const filterCard = query.cardId ? await findOwnedCardForLink(this.prisma, userId, query.cardId) : undefined;
+
     // Contas fixas e parcelas vencidas viram lancamento antes de listar, para a
     // lista (e o saldo) nunca ficarem atras do calendario.
     const recurringCreated = await this.recurringMaterializer.materializeDue(userId);
@@ -45,6 +55,8 @@ export class TransactionsService {
         categoryId: query.categoryId,
         paymentMethod: query.paymentMethod,
         envelopeId: query.envelopeId,
+        // Padrao: inclui CREDIT sem cartao (mesma regra do gasto do ciclo). Sempre AND com userId.
+        ...(filterCard ? cardScopeWhere(filterCard) : {}),
         description: query.search
           ? {
               contains: query.search,
@@ -61,6 +73,7 @@ export class TransactionsService {
       include: {
         category: true,
         envelope: true,
+        card: { select: { name: true } },
       },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     });
@@ -78,31 +91,90 @@ export class TransactionsService {
       dto.envelopeId,
     );
 
-    const transaction = await this.prisma.transaction.create({
-      data: {
-        userId,
-        type: dto.type,
-        description: dto.description,
-        amount: new Prisma.Decimal(Math.abs(dto.amount)),
-        date: new Date(dto.date),
-        categoryId: dto.categoryId,
-        paymentMethod: dto.paymentMethod,
-        envelopeId: dto.envelopeId,
-        linkedTaskId: dto.linkedTaskId,
-        linkedGoalId: dto.linkedGoalId,
-      },
-      include: {
-        category: true,
-        envelope: true,
-      },
+    // Cartao so com CREDIT, do proprio usuario e nao arquivado; com cardId a escrita roda sob o lock do User.
+    const transaction = await withCardGuard(this.prisma, userId, typeof dto.cardId === 'string', async (db) => {
+      const cardId = await resolveCardForCreate(db, userId, dto.cardId, dto.paymentMethod, dto.type);
+      return db.transaction.create({
+        data: {
+          userId,
+          type: dto.type,
+          description: dto.description,
+          amount: new Prisma.Decimal(Math.abs(dto.amount)),
+          date: new Date(dto.date),
+          categoryId: dto.categoryId,
+          paymentMethod: dto.paymentMethod,
+          envelopeId: dto.envelopeId,
+          linkedTaskId: dto.linkedTaskId,
+          linkedGoalId: dto.linkedGoalId,
+          cardId,
+        },
+        include: {
+          category: true,
+          envelope: true,
+          card: { select: { name: true } },
+        },
+      });
     });
 
     await this.lifeEngineService.touchUserData(userId);
     return this.serializeTransaction(transaction);
   }
 
-  async update(userId: string, id: string, dto: UpdateTransactionDto) {
-    await this.findTransaction(userId, id);
+  /**
+   * Edita o lancamento. Com `expectedUpdatedAt` (usado pela conversa, item 8a) a edicao so vale se o
+   * lancamento nao mudou desde aquele instante: a linha e bloqueada com SELECT ... FOR NO KEY UPDATE
+   * dentro de uma transacao, relida (id + userId) e comparada, e a mesma regra de validacao e gravacao
+   * da tela roda nessa mesma transacao. Sem o parametro, o comportamento e o de sempre.
+   *
+   * Ordem de locks (unica, para nao gerar deadlock): primeiro a linha do User (quando a edicao mexe em
+   * cartao, tipo ou forma de pagamento), depois a linha do lancamento.
+   */
+  async update(userId: string, id: string, dto: UpdateTransactionDto, expectedUpdatedAt?: Date) {
+    // Tipo entra no lock: virar receita limpa o cartao gravado, e isso precisa ser sob o lock.
+    const cardLock = dto.cardId !== undefined || dto.paymentMethod !== undefined || dto.type !== undefined;
+    const body = async (db: Prisma.TransactionClient | PrismaService) => {
+      if (expectedUpdatedAt !== undefined) {
+        const rows = await db.$queryRaw<{ updatedAt: Date }[]>`SELECT "updatedAt" FROM "Transaction" WHERE "id" = ${id} AND "userId" = ${userId} FOR NO KEY UPDATE`;
+        if (rows.length === 0) {
+          throw new NotFoundException('Transacao nao encontrada.');
+        }
+        if (rows[0].updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+          throw new ConflictException('Lancamento alterado desde a leitura.');
+        }
+      }
+      return this.updateRow(db, userId, id, dto);
+    };
+
+    const transaction = await (
+      cardLock
+        ? withCardGuard(this.prisma, userId, true, body)
+        : expectedUpdatedAt !== undefined
+          ? this.prisma.$transaction(body)
+          : body(this.prisma)
+    ).catch((error) => {
+      // Indice unico (conta fixa + data): mover um lancamento gerado para a
+      // data de outro da mesma conta duplicaria aquele vencimento.
+      if (error?.code === 'P2002') {
+        throw new BadRequestException(
+          'Ja existe um lancamento desta conta fixa nessa data.',
+        );
+      }
+
+      throw error;
+    });
+
+    await this.lifeEngineService.touchUserData(userId);
+    return this.serializeTransaction(transaction);
+  }
+
+  private async updateRow(
+    db: Prisma.TransactionClient | PrismaService,
+    userId: string,
+    id: string,
+    dto: UpdateTransactionDto,
+  ) {
+    // Relido sob o lock: a regra de cartao depende do estado atual gravado.
+    const current = await this.findTransaction(db, userId, id);
     await this.validateRelationships(
       userId,
       dto.categoryId === null ? undefined : dto.categoryId,
@@ -110,47 +182,35 @@ export class TransactionsService {
       dto.linkedGoalId === null ? undefined : dto.linkedGoalId,
       dto.type,
       dto.envelopeId === null ? undefined : dto.envelopeId,
+      db,
     );
-
-    const transaction = await this.prisma.transaction
-      .update({
-        where: { id },
-        data: {
-          type: dto.type,
-          description: dto.description,
-          amount:
-            dto.amount !== undefined ? new Prisma.Decimal(Math.abs(dto.amount)) : undefined,
-          date: dto.date ? new Date(dto.date) : undefined,
-          categoryId: dto.categoryId === null ? null : dto.categoryId,
-          // undefined = nao mexe; null = limpa.
-          paymentMethod: dto.paymentMethod,
-          envelopeId: dto.envelopeId === null ? null : dto.envelopeId,
-          linkedTaskId: dto.linkedTaskId === null ? null : dto.linkedTaskId,
-          linkedGoalId: dto.linkedGoalId === null ? null : dto.linkedGoalId,
-        },
-        include: {
-          category: true,
-          envelope: true,
-        },
-      })
-      .catch((error) => {
-        // Indice unico (conta fixa + data): mover um lancamento gerado para a
-        // data de outro da mesma conta duplicaria aquele vencimento.
-        if (error?.code === 'P2002') {
-          throw new BadRequestException(
-            'Ja existe um lancamento desta conta fixa nessa data.',
-          );
-        }
-
-        throw error;
-      });
-
-    await this.lifeEngineService.touchUserData(userId);
-    return this.serializeTransaction(transaction);
+    const cardPatch = await resolveCardForUpdate(db, userId, current, dto);
+    return db.transaction.update({
+      where: { id },
+      data: {
+        type: dto.type,
+        description: dto.description,
+        amount: dto.amount !== undefined ? new Prisma.Decimal(Math.abs(dto.amount)) : undefined,
+        date: dto.date ? new Date(dto.date) : undefined,
+        categoryId: dto.categoryId === null ? null : dto.categoryId,
+        // undefined = nao mexe; null = limpa.
+        paymentMethod: dto.paymentMethod,
+        envelopeId: dto.envelopeId === null ? null : dto.envelopeId,
+        linkedTaskId: dto.linkedTaskId === null ? null : dto.linkedTaskId,
+        linkedGoalId: dto.linkedGoalId === null ? null : dto.linkedGoalId,
+        ...cardPatch,
+      },
+      include: {
+        category: true,
+        envelope: true,
+        card: { select: { name: true } },
+      },
+    });
   }
 
+
   async remove(userId: string, id: string) {
-    await this.findTransaction(userId, id);
+    await this.findTransaction(this.prisma, userId, id);
     await this.prisma.transaction.delete({
       where: { id },
     });
@@ -159,8 +219,8 @@ export class TransactionsService {
     return { success: true };
   }
 
-  private async findTransaction(userId: string, id: string) {
-    const transaction = await this.prisma.transaction.findFirst({
+  private async findTransaction(db: Prisma.TransactionClient | PrismaService, userId: string, id: string) {
+    const transaction = await db.transaction.findFirst({
       where: { id, userId },
     });
 
@@ -178,9 +238,10 @@ export class TransactionsService {
     goalId?: string,
     type?: TransactionType,
     envelopeId?: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
   ) {
     if (categoryId) {
-      const category = await this.prisma.financeCategory.findFirst({
+      const category = await db.financeCategory.findFirst({
         where: { id: categoryId, userId },
       });
 
@@ -196,7 +257,7 @@ export class TransactionsService {
     }
 
     if (taskId) {
-      const task = await this.prisma.task.findFirst({
+      const task = await db.task.findFirst({
         where: { id: taskId, userId },
       });
 
@@ -206,7 +267,7 @@ export class TransactionsService {
     }
 
     if (goalId) {
-      const goal = await this.prisma.goal.findFirst({
+      const goal = await db.goal.findFirst({
         where: { id: goalId, userId },
       });
 
@@ -216,7 +277,7 @@ export class TransactionsService {
     }
 
     if (envelopeId) {
-      const envelope = await this.prisma.envelope.findFirst({
+      const envelope = await db.envelope.findFirst({
         where: { id: envelopeId, userId },
         select: { id: true },
       });
@@ -227,10 +288,13 @@ export class TransactionsService {
     }
   }
 
+  /** cardName vem do include; o objeto card nao vai para a resposta (so acrescenta campos). */
   private serializeTransaction(transaction: any) {
+    const { card, ...rest } = transaction;
     return {
-      ...transaction,
+      ...rest,
       amount: Number(transaction.amount),
+      cardName: card?.name ?? null,
     };
   }
 }

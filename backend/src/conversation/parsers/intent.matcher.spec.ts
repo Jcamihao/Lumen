@@ -26,6 +26,12 @@ describe('matchIntent', () => {
     ['quanto sobrou no cartão', { intent: 'credit_card' }],
     ['cartão', { intent: 'credit_card' }],
     ['ajuda', { intent: 'help' }],
+    ['importar nota', { intent: 'import_receipt' }],
+    ['Importar nota fiscal', { intent: 'import_receipt' }],
+    ['importar nota fiscal?', { intent: 'import_receipt' }],
+    ['ler nota', { intent: 'import_receipt' }],
+    ['enviar nota', { intent: 'import_receipt' }],
+    ['enviar nota do mercado', { intent: 'import_receipt' }],
     ['o que você faz?', { intent: 'help' }],
     ['o que vence', { intent: 'upcoming_dues' }],
     ['Vencimentos', { intent: 'upcoming_dues' }],
@@ -132,6 +138,15 @@ describe('matchIntent', () => {
     'parcelas do carro valem a pena',
     'definir limite? 5000',
     'como definir limite do cartão?',
+    // Importar nota (contrato do item 4, secao 9): pergunta, frase longa e prompts rápidos do Selah não casam.
+    'como importar nota fiscal?',
+    'importar nota fiscal do mercado de ontem do bairro',
+    'importar nota fiscal do mercado?',
+    'quero importar uma nota',
+    'nota fiscal',
+    'importar',
+    'Quais sinais essa nota fiscal merece atenção?',
+    'O que esta compra diz sobre meu padrão de gasto?',
   ])('nao casa: "%s"', (text) => {
     expect(matchIntent(text)).toBeNull();
   });

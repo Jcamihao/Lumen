@@ -303,6 +303,29 @@
   gap: 0.6rem;
 }
 
+// Resposta do fallback de IA: texto simples, sem o cartão do motor.
+.assistant-bubble {
+  display: grid;
+  gap: 0.4rem;
+  justify-items: start;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.8rem 1rem;
+  border-radius: 1rem;
+  background: var(--card-muted);
+
+  p {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.assistant-bubble__text {
+  color: var(--text-strong);
+  line-height: 1.65;
+  white-space: pre-line;
+}
+
 .assistant-draft__title {
   display: block;
   margin-top: 0.75rem;

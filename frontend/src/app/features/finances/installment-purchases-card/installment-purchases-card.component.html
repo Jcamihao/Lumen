@@ -47,6 +47,13 @@
         ></app-payment-method-picker>
       </div>
 
+      <app-credit-card-select
+        class="installments-form__wide"
+        [control]="form.controls.cardId"
+        [enabled]="form.controls.paymentMethod.value === 'CREDIT'"
+        fieldId="installment-card"
+      ></app-credit-card-select>
+
       <div class="installments-form__actions">
         <button type="submit" class="proto-button" [disabled]="saving()">
           {{ saving() ? 'Salvando...' : 'Registrar compra' }}
