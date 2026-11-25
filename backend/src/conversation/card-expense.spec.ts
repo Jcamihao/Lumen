@@ -5,7 +5,6 @@ import { CARD_EXPENSE_REPLIES, findCardPhrase, removeTokenRange } from './card-e
 import { TransactionType } from '@prisma/client';
 import { ConversationService } from './conversation.service';
 import { ConversationInput } from './conversation.types';
-import { doneText } from './replies';
 
 type Deps = ConstructorParameters<typeof ConversationService>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -353,7 +352,8 @@ describe('despesa no cartao pela conversa (9b-1)', () => {
     await send('gastei 50 mercado no nubank');
     const done = await send('confirmar');
     expect(done.kind).toBe('DONE');
-    expect(done.text).toBe(doneText(TransactionType.EXPENSE, 5000, 'mercado', 'Nubank'));
+    expect(done.text).toContain('50,00');
+    expect(done.text).toContain('no cartão Nubank');
     expect(transactions.create).toHaveBeenCalledWith('A', expect.objectContaining({ cardId: 'cr-nubank', paymentMethod: 'CREDIT' }));
   });
 

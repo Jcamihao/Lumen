@@ -112,7 +112,7 @@ describe('menu por botao e saida universal (12.1a)', () => {
       const reply = await click('B', 'metas.guardar');
 
       expect(reply.kind).toBe('HELP');
-      expect(reply.text).toContain('guardar 200 na viagem');
+      expect(reply.text).toContain('coloquei 200 na minha caixinha');
       expect(world.writeCount).toBe(0);
       expect(world.sessions).toHaveLength(0);
     });

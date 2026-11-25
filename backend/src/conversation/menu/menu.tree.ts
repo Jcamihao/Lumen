@@ -22,7 +22,7 @@ export const MENU_ROOT: MenuNode = {
       title: '💰 Finanças',
       children: [
         { id: 'financas.despesa', title: 'Lançar despesa', example: 'gastei 50 no mercado', action: { type: 'phrase', phrase: 'gastei' } },
-        { id: 'financas.receita', title: 'Lançar receita', example: 'recebi 800 de freelance', action: { type: 'phrase', phrase: 'recebi' } },
+        { id: 'financas.receita', title: 'Lançar receita', example: 'caiu 500 do freela', action: { type: 'phrase', phrase: 'recebi' } },
         {
           id: 'financas.categorias',
           title: 'Gastos por categoria',
@@ -82,8 +82,8 @@ export const MENU_ROOT: MenuNode = {
         {
           id: 'metas.guardar',
           title: 'Guardar numa meta',
-          example: 'guardar 200 na viagem',
-          action: { type: 'instruction', text: 'Para guardar dinheiro numa meta, diga: guardar 200 na viagem.' },
+          example: 'coloquei 200 na minha caixinha',
+          action: { type: 'instruction', text: 'Para guardar dinheiro numa meta, diga: coloquei 200 na minha caixinha.' },
         },
         {
           id: 'metas.editar',

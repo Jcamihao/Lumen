@@ -258,6 +258,11 @@ interface OwnedGoalRow extends GoalRow {
   userId: string;
 }
 /** Meta já em centavos, pronta para o motor (id e dono conferidos em listGoals). */
+/** Semente do tom (messageId de abertura). Rascunhos sem campo usam texto vazio: sempre a mesma variante. */
+function toneSeedOf(draft: SessionDraft): string | undefined {
+  return 'toneSeed' in draft ? draft.toneSeed : undefined;
+}
+
 interface GoalSnap {
   id: string;
   title: string;
@@ -684,6 +689,7 @@ export class ConversationService {
 
     const draft: ExpenseOrIncomeDraft = {
       kind: 'TRANSACTION',
+      toneSeed: input.messageId,
       type,
       amountCents: cents,
       description: description.length >= DESCRIPTION_MIN ? description : null,
@@ -820,6 +826,7 @@ export class ConversationService {
     const goal = candidates.length === 1 ? candidates[0] : null;
     const draft: ContributionDraft = {
       kind: 'CONTRIBUTION',
+      toneSeed: input.messageId,
       goalId: goal?.id ?? null,
       goalTitle: goal?.title ?? null,
       amountCents,
@@ -1206,6 +1213,7 @@ export class ConversationService {
 
     const draft: InstallmentDraft = {
       kind: 'INSTALLMENT',
+      toneSeed: input.messageId,
       description,
       totalCents,
       installmentsTotal,
@@ -1971,9 +1979,10 @@ export class ConversationService {
       return this.reply('DUPLICATE', 'IDLE', REPLIES.duplicate);
     }
 
+    const categoryName = (await this.toDraftView(session)).category;
     let applied: AppliedAction;
     try {
-      applied = await this.applyByKind(userId, draft);
+      applied = await this.applyByKind(userId, draft, categoryName);
     } catch (error) {
       if (isWriteUncertain(error)) {
         // Commit sem confirmação: não restaura, não libera a chave e não oferece nova gravação (contrato 3).
@@ -2054,7 +2063,7 @@ export class ConversationService {
   }
 
   /** Um caso por tipo de rascunho. Só este método chama o serviço financeiro ou de metas. */
-  private async applyByKind(userId: string, draft: SessionDraft): Promise<AppliedAction> {
+  private async applyByKind(userId: string, draft: SessionDraft, categoryName: string | null): Promise<AppliedAction> {
     if (isTransactionChangeDraft(draft)) {
       return this.applyTransactionChange(userId, draft);
     }
@@ -2085,7 +2094,7 @@ export class ConversationService {
     if (draft.kind === 'INSTALLMENT') {
       return this.applyInstallment(userId, draft);
     }
-    return this.applyTransaction(userId, draft);
+    return this.applyTransaction(userId, draft, categoryName);
   }
 
   /** Reserva: envelope e provisão inicial na mesma transação, no serviço (EnvelopesService.createForConversation). */
@@ -2202,6 +2211,7 @@ export class ConversationService {
         totalCents: receipt.totalCents,
         installmentsTotal: receipt.installmentsTotal,
         firstDueDate: receipt.firstDueDate,
+        toneSeed: draft.toneSeed,
       }),
       data: { installmentPurchaseId: receipt.id },
       resultRef: receipt.id,
@@ -2755,7 +2765,7 @@ export class ConversationService {
           : RC_REPLIES.installmentChanged;
   }
 
-  private async applyTransaction(userId: string, draft: ExpenseOrIncomeDraft): Promise<AppliedAction> {
+  private async applyTransaction(userId: string, draft: ExpenseOrIncomeDraft, categoryName: string | null): Promise<AppliedAction> {
     const created = await this.transactions.create(userId, {
       type: draft.type,
       description: draft.description,
@@ -2768,7 +2778,10 @@ export class ConversationService {
       cardId: draft.cardId ?? undefined,
     });
     return {
-      text: doneText(draft.type, draft.amountCents, draft.description ?? '', draft.cardName ?? null),
+      text: doneText(draft.type, draft.amountCents, draft.description ?? '', draft.cardName ?? null, {
+        seed: draft.toneSeed,
+        category: categoryName,
+      }),
       data: { transactionId: created.id },
       resultRef: created.id,
     };
@@ -2810,6 +2823,7 @@ export class ConversationService {
         targetCents,
         percent: percentOf(currentCents, targetCents),
         achieved: goal.status === 'ACHIEVED',
+        toneSeed: draft.toneSeed,
       }),
       data: { goalId: goal.id },
       resultRef: goal.id,
@@ -3336,6 +3350,7 @@ export class ConversationService {
         totalCents: draft.totalCents ?? 0,
         installmentsTotal: draft.installmentsTotal ?? 0,
         firstDueDate: draft.firstDueDate ?? today,
+        toneSeed: toneSeedOf(draft),
       });
     }
     if (draft.kind === 'GOAL') {
@@ -3346,9 +3361,11 @@ export class ConversationService {
       const amountCents = draft.amountCents ?? 0;
       return contributionDraftText({
         meta: this.contributionGoalLabel(draft, goal),
+        title: truncate(goal?.title ?? draft.goalTitle ?? ''),
         amountCents,
         date: draft.date,
         concludes: goal !== null && concludesGoal(goal, amountCents),
+        toneSeed: toneSeedOf(draft),
       });
     }
     return draftText({
@@ -3360,6 +3377,7 @@ export class ConversationService {
       paymentMethod: draft.paymentMethod,
       cardName: draft.cardName ?? null,
       futureDate: draft.date > today,
+      toneSeed: toneSeedOf(draft),
     });
   }
 

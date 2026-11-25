@@ -7,7 +7,7 @@ export const GOAL_TITLE_MAX = 60;
 
 /** Palavras de ligação removidas do começo do nome no aporte (contrato 3b1, secao 3). */
 const CONTRIBUTION_SKIP_WORDS = new Set([
-  'na', 'no', 'em', 'para', 'pra', 'a', 'meta', 'cofrinho', 'reais', 'minha', 'meu', 'o', 'da', 'do', 'de',
+  'na', 'no', 'em', 'para', 'pra', 'a', 'meta', 'cofrinho', 'caixinha', 'reais', 'minha', 'meu', 'o', 'da', 'do', 'de',
 ]);
 
 /** Conectores que sobram nas pontas do nome em "criar meta de viagem" / "viagem com 3 mil". */

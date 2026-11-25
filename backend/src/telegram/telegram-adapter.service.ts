@@ -23,12 +23,12 @@ const BACKOFF_MAX_MS = 60_000;
 const OFFSET_ROW_ID = 'poll';
 
 export const TELEGRAM_TEXTS = {
-  linked: 'Pronto! Este chat está vinculado ao seu Lumen. Mande, por exemplo, "50 mercado" ou "saldo".',
+  linked: 'Pronto! Este chat está vinculado ao seu Lumen. Mande, por exemplo, "gastei 50 no mercado" ou "saldo".',
   linkFailed: 'Não consegui validar este código. Gere um novo no Lumen, em Configurações > Conta > Telegram, e envie de novo.',
   hint: 'Este chat ainda não está vinculado a uma conta do Lumen. Abra o Lumen, vá em Configurações > Conta > Telegram e gere um código de vínculo.',
   media: 'Notas e arquivos são enviados pela tela de Importações do app do Lumen. Por aqui eu leio só texto.',
   unlinked: 'Chat desvinculado. Para usar o Lumen por aqui de novo, gere um novo código de vínculo no app.',
-  empty: 'Não entendi a mensagem. Mande um texto curto, por exemplo "50 mercado" ou "saldo".',
+  empty: 'Não entendi a mensagem. Mande um texto curto, por exemplo "gastei 50 no mercado" ou "saldo".',
   tooLong: 'Mensagem muito longa. Mande um texto de até 1000 caracteres.',
 };
 
