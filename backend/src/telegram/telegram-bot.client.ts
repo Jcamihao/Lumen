@@ -12,19 +12,41 @@ export class TelegramBotError extends Error {
   }
 }
 
-export interface TelegramKeyboardButton {
+export interface TelegramInlineButton {
   text: string;
+  callback_data: string;
 }
 
-/** Update do getUpdates ja conferido (contrato 10, D2/D4): so mensagem de chat privado vira entrada. */
-export interface TelegramInbound {
+/** Teclado que acompanha um envio (o Telegram aceita um so por mensagem). */
+export type TelegramMarkup =
+  | { kind: 'confirm'; labels: string[] }
+  | { kind: 'menu' }
+  | { kind: 'inline'; rows: TelegramInlineButton[][] };
+
+/** Rotulo do botao fixo de resposta que abre o menu (texto "Menu" devolvido ao bot). */
+export const MENU_BUTTON_LABEL = 'Menu';
+
+/** Mensagem de chat privado ja conferida (contrato 10, D2/D4). Texto vazio = midia sem caption. */
+export interface TelegramMessageInbound {
+  kind: 'message';
   updateId: number;
   chatId: string;
   messageId: string;
-  /** Texto da mensagem. Vazio quando a entrada e midia (foto, documento) sem caption. */
   text: string;
   hasText: boolean;
 }
+
+/** Clique de botao inline: a mensagem de origem e o id do callback vem do proprio update. */
+export interface TelegramCallbackInbound {
+  kind: 'callback';
+  updateId: number;
+  chatId: string;
+  callbackId: string;
+  messageId: number;
+  data: string;
+}
+
+export type TelegramInbound = TelegramMessageInbound | TelegramCallbackInbound;
 
 /**
  * Cliente cru da Bot API via fetch (D8 do contrato 10; sem lib nova), no padrao do WaAkgClient:
@@ -50,13 +72,13 @@ export class TelegramBotClient {
 
   /**
    * Long polling (D2). O timeout e do proprio Telegram (o pedido fica aberto); o timeout da request
-   * fica acima, senao toda espera viraria erro. allowed_updates so mensagem: sem callback edicao.
+   * fica acima, senao toda espera viraria erro. allowed_updates: mensagem e clique de botao (callback_query).
    */
   async getUpdates(offset: number, timeoutS: number): Promise<unknown[]> {
     const params = new URLSearchParams({
       offset: String(offset),
       timeout: String(timeoutS),
-      allowed_updates: '["message"]',
+      allowed_updates: '["message","callback_query"]',
     });
     const timeoutMs = timeoutS * 1000 + 10_000;
     const result = await this.call('getUpdates', params, { method: 'GET', timeoutMs });
@@ -64,16 +86,26 @@ export class TelegramBotClient {
   }
 
   /** Teclado de resposta (D4): botoes de texto que o Telegram devolve como mensagem. So no ultimo envio. */
-  async sendMessage(chatId: string, text: string, keyboard?: string[]): Promise<void> {
+  async sendMessage(chatId: string, text: string, markup?: TelegramMarkup): Promise<void> {
     const body: Record<string, unknown> = { chat_id: chatId, text, parse_mode: 'HTML' };
-    if (keyboard && keyboard.length > 0) {
-      body.reply_markup = {
-        keyboard: keyboard.map((label) => [{ text: label } as TelegramKeyboardButton]),
-        resize_keyboard: true,
-        one_time_keyboard: true,
-      };
-    }
+    if (markup) body.reply_markup = replyMarkupBody(markup);
     await this.call('sendMessage', body);
+  }
+
+  /** Troca o texto e o teclado inline de uma mensagem ja enviada (navegacao do menu no lugar). */
+  async editMessageText(chatId: string, messageId: number, text: string, rows: TelegramInlineButton[][]): Promise<void> {
+    await this.call('editMessageText', {
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      parse_mode: 'HTML',
+      reply_markup: { inline_keyboard: rows },
+    });
+  }
+
+  /** Confirma o clique para o Telegram parar de mostrar o aviso de carregando no botao. */
+  async answerCallbackQuery(callbackId: string): Promise<void> {
+    await this.call('answerCallbackQuery', { callback_query_id: callbackId });
   }
 
   /** Menu de comandos do bot (best-effort no adapter: falha so loga). */
@@ -120,24 +152,62 @@ export class TelegramBotClient {
 
 /**
  * Confere um update do getUpdates e extrai a entrada. Descarte silencioso (null) para o resto:
- * grupos/canais, edicoes, callback e qualquer forma inesperada. Nenhum campo do evento define dono.
+ * grupos/canais, edicoes, callback sem mensagem ou de chat nao privado e qualquer forma inesperada.
+ * Nenhum campo do evento define dono.
  */
 export function parseTelegramUpdate(update: unknown): TelegramInbound | null {
-  if (!update || typeof update !== 'object') return null;
-  const value = update as Record<string, unknown>;
+  const value = asRecord(update);
+  if (!value) return null;
   if (typeof value.update_id !== 'number' || !Number.isSafeInteger(value.update_id) || value.update_id <= 0) return null;
-  const message = value.message as Record<string, unknown> | undefined;
-  if (!message || typeof message !== 'object') return null;
-  const chat = message.chat as Record<string, unknown> | undefined;
-  if (!chat || typeof chat !== 'object' || chat.type !== 'private') return null;
-  if (typeof chat.id !== 'number' || !Number.isSafeInteger(chat.id) || chat.id <= 0) return null;
-  if (typeof message.message_id !== 'number' || !Number.isSafeInteger(message.message_id)) return null;
+  if (value.callback_query !== undefined) return parseCallback(value.update_id, value.callback_query);
+  return parseMessage(value.update_id, value.message);
+}
+
+function parseMessage(updateId: number, raw: unknown): TelegramMessageInbound | null {
+  const message = asRecord(raw);
+  if (!message) return null;
+  const chatId = privateChatId(message);
+  if (!chatId || !isSafeId(message.message_id)) return null;
   const text = typeof message.text === 'string' ? message.text : '';
-  return {
-    updateId: value.update_id,
-    chatId: String(chat.id),
-    messageId: `tg-${value.update_id}`,
-    text,
-    hasText: text.length > 0,
-  };
+  return { kind: 'message', updateId, chatId, messageId: `tg-${updateId}`, text, hasText: text.length > 0 };
+}
+
+function parseCallback(updateId: number, raw: unknown): TelegramCallbackInbound | null {
+  const callback = asRecord(raw);
+  if (!callback || typeof callback.id !== 'string' || callback.id === '') return null;
+  const message = asRecord(callback.message);
+  if (!message) return null;
+  const chatId = privateChatId(message);
+  if (!chatId || !isSafeId(message.message_id)) return null;
+  if (typeof callback.data !== 'string') return null;
+  return { kind: 'callback', updateId, chatId, callbackId: callback.id, messageId: message.message_id, data: callback.data };
+}
+
+function privateChatId(message: Record<string, unknown>): string | null {
+  const chat = asRecord(message.chat);
+  if (!chat || chat.type !== 'private' || !isSafeId(chat.id)) return null;
+  return String(chat.id);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+}
+
+function isSafeId(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
+function replyMarkupBody(markup: TelegramMarkup): Record<string, unknown> {
+  switch (markup.kind) {
+    case 'confirm':
+      return {
+        keyboard: markup.labels.map((label) => [{ text: label }]),
+        resize_keyboard: true,
+        one_time_keyboard: true,
+      };
+    case 'menu':
+      return { keyboard: [[{ text: MENU_BUTTON_LABEL }]], resize_keyboard: true, is_persistent: true };
+    case 'inline':
+      return { inline_keyboard: markup.rows };
+  }
 }
