@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { TelegramAdapterService, TELEGRAM_TEXTS } from './telegram-adapter.service';
-import { TelegramInbound } from './telegram-bot.client';
+import { TelegramCallbackInbound, TelegramMessageInbound } from './telegram-bot.client';
 
 type Row = Record<string, any>;
 
@@ -27,16 +27,21 @@ function buildStack(options: { rateHits?: number | null; linkHits?: number | nul
   };
 
   const links = {
-    findUserIdByChatId: jest.fn(async (chatId: string) => (chatId === '111' ? 'A' : null)),
+    findUserIdByChatId: jest.fn(async (chatId: string) => (chatId === '111' ? 'A' : chatId === '222' ? 'B' : null)),
     redeem: jest.fn(async () => true),
     unlinkByUserId: jest.fn(async () => undefined),
   };
 
-  const conversation = { handleMessage: jest.fn(async (): Promise<Record<string, unknown>> => ({ kind: 'INFO', state: 'IDLE', text: 'Saldo: R$ 10,00' })) };
+  const conversation = {
+    handleMessage: jest.fn(async (): Promise<Record<string, unknown>> => ({ kind: 'INFO', state: 'IDLE', text: 'Saldo: R$ 10,00' })),
+    handleMenuAction: jest.fn(async (): Promise<Record<string, unknown>> => ({ kind: 'INFO', state: 'IDLE', text: 'Saldo: R$ 10,00' })),
+  };
   const client = {
     sendMessage: jest.fn(async () => undefined),
     setMyCommands: jest.fn(async () => undefined),
     getUpdates: jest.fn(async (_offset?: number): Promise<unknown[]> => []),
+    editMessageText: jest.fn(async () => undefined),
+    answerCallbackQuery: jest.fn(async () => undefined),
   };
   const config = {
     get: (key: string) => {
@@ -53,7 +58,8 @@ function buildStack(options: { rateHits?: number | null; linkHits?: number | nul
   return { adapter, prisma, cache, links, conversation, client };
 }
 
-const inbound = (overrides: Partial<TelegramInbound> = {}): TelegramInbound => ({
+const inbound = (overrides: Partial<TelegramMessageInbound> = {}): TelegramMessageInbound => ({
+  kind: 'message',
   updateId: 7,
   chatId: '111',
   messageId: 'tg-7',
@@ -71,7 +77,7 @@ describe('TelegramAdapterService (contrato 10)', () => {
     expect(conversation.handleMessage).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'A', channel: 'TELEGRAM', messageId: 'tg-7', text: 'saldo' }),
     );
-    expect(client.sendMessage).toHaveBeenCalledWith('111', 'Saldo: R$ 10,00', undefined);
+    expect(client.sendMessage).toHaveBeenCalledWith('111', 'Saldo: R$ 10,00', { kind: 'menu' });
   });
 
   it('rascunho espera confirmacao: teclado vai so na ultima parte (D4)', async () => {
@@ -87,7 +93,7 @@ describe('TelegramAdapterService (contrato 10)', () => {
     await adapter.process(inbound({ text: '50 mercado' }));
 
     expect(client.sendMessage).toHaveBeenCalledTimes(1);
-    expect(client.sendMessage).toHaveBeenCalledWith('111', expect.any(String), ['confirmar', 'cancelar']);
+    expect(client.sendMessage).toHaveBeenCalledWith('111', expect.any(String), { kind: 'confirm', labels: ['confirmar', 'cancelar'] });
   });
 
   it('DUPLICATE nao reenvia (a primeira resposta ja saiu)', async () => {
@@ -122,7 +128,7 @@ describe('TelegramAdapterService (contrato 10)', () => {
     await adapter.process(inbound({ chatId: '555', text: 'K7M2PQ4X' }));
 
     expect(links.redeem).toHaveBeenCalledWith('555', 'K7M2PQ4X');
-    expect(client.sendMessage).toHaveBeenCalledWith('555', TELEGRAM_TEXTS.linked, undefined);
+    expect(client.sendMessage).toHaveBeenCalledWith('555', TELEGRAM_TEXTS.linked, { kind: 'menu' });
   });
 
   it('chat sem vinculo: 6a tentativa de codigo em 10 min nao resgata nem responde', async () => {
@@ -168,7 +174,7 @@ describe('TelegramAdapterService (contrato 10)', () => {
     await adapter.process(inbound({ text: '', hasText: false }));
 
     expect(conversation.handleMessage).not.toHaveBeenCalled();
-    expect(client.sendMessage).toHaveBeenCalledWith('111', TELEGRAM_TEXTS.media, undefined);
+    expect(client.sendMessage).toHaveBeenCalledWith('111', TELEGRAM_TEXTS.media, { kind: 'menu' });
   });
 
   it('"desvincular telegram" desvincula, com espacos e caixa diferentes tambem', async () => {
@@ -183,11 +189,11 @@ describe('TelegramAdapterService (contrato 10)', () => {
   it('texto so com espacos e texto gigante respondem curto, sem chegar ao motor', async () => {
     const vazio = buildStack();
     await vazio.adapter.process(inbound({ text: '   ' }));
-    expect(vazio.client.sendMessage).toHaveBeenCalledWith('111', TELEGRAM_TEXTS.empty, undefined);
+    expect(vazio.client.sendMessage).toHaveBeenCalledWith('111', TELEGRAM_TEXTS.empty, { kind: 'menu' });
 
     const gigante = buildStack();
     await gigante.adapter.process(inbound({ text: 'a'.repeat(1001) }));
-    expect(gigante.client.sendMessage).toHaveBeenCalledWith('111', TELEGRAM_TEXTS.tooLong, undefined);
+    expect(gigante.client.sendMessage).toHaveBeenCalledWith('111', TELEGRAM_TEXTS.tooLong, { kind: 'menu' });
     expect(gigante.conversation.handleMessage).not.toHaveBeenCalled();
   });
 
@@ -204,9 +210,9 @@ describe('TelegramAdapterService (contrato 10)', () => {
     await adapter.process(inbound({ text: '50 mercado' }));
 
     expect(client.sendMessage.mock.calls.length).toBeGreaterThan(1);
-    const calls = client.sendMessage.mock.calls as unknown as [string, string, string[] | undefined][];
+    const calls = client.sendMessage.mock.calls as unknown as [string, string, { kind: string; labels?: string[] } | undefined][];
     for (const call of calls.slice(0, -1)) expect(call[2]).toBeUndefined();
-    expect(calls[calls.length - 1][2]).toEqual(['confirmar', 'cancelar']);
+    expect(calls[calls.length - 1][2]).toEqual({ kind: 'confirm', labels: ['confirmar', 'cancelar'] });
   });
 
   it('falha no meio do envio para as partes restantes (loga e nao lanca)', async () => {
@@ -359,5 +365,172 @@ describe('long polling: offset e ciclo (D2)', () => {
     ) as TelegramAdapterService;
 
     expect(() => semToken.onModuleInit()).toThrow(/TELEGRAM_BOT_TOKEN/);
+  });
+});
+
+describe('botoes do menu no adaptador (12.1b)', () => {
+  const callback = (overrides: Partial<TelegramCallbackInbound> = {}): TelegramCallbackInbound => ({
+    kind: 'callback',
+    updateId: 30,
+    chatId: '111',
+    callbackId: 'cb-1',
+    messageId: 555,
+    data: 'm:financas',
+    ...overrides,
+  });
+  const areaRows = [[{ text: 'Saldo', callback_data: 'm:inicio.saldo' }]];
+  const menuReply = (text = 'Menu\n1. Saldo') => ({
+    kind: 'MENU',
+    state: 'IDLE',
+    text,
+    menu: { nodeId: 'financas', title: 'Finanças', options: [{ id: 'inicio.saldo', label: 'Saldo' }] },
+  });
+
+  it('clique valido responde o botao e edita o menu no lugar, com o dono do vinculo', async () => {
+    const { adapter, conversation, client } = buildStack();
+    conversation.handleMenuAction.mockResolvedValueOnce(menuReply());
+
+    await adapter.process(callback());
+
+    expect(client.answerCallbackQuery).toHaveBeenCalledWith('cb-1');
+    expect(conversation.handleMenuAction).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'A', channel: 'TELEGRAM', messageId: 'cb-1', nodeId: 'financas' }),
+    );
+    expect(client.editMessageText).toHaveBeenCalledWith('111', 555, 'Menu\n1. Saldo', areaRows);
+    expect(client.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('o dono vem do vinculo do chat: clique do chat B age so na conta B', async () => {
+    const { adapter, conversation } = buildStack();
+
+    await adapter.process(callback({ chatId: '222', callbackId: 'cb-b' }));
+
+    expect(conversation.handleMenuAction).toHaveBeenCalledTimes(1);
+    expect(conversation.handleMenuAction).toHaveBeenCalledWith(expect.objectContaining({ userId: 'B', messageId: 'cb-b' }));
+  });
+
+  it('edicao que falha (mensagem velha, igual ou apagada) manda mensagem nova com o mesmo menu', async () => {
+    const { adapter, conversation, client } = buildStack();
+    conversation.handleMenuAction.mockResolvedValueOnce(menuReply());
+    client.editMessageText.mockRejectedValueOnce(new Error('http 400'));
+
+    await adapter.process(callback());
+
+    expect(client.sendMessage).toHaveBeenCalledWith('111', 'Menu\n1. Saldo', { kind: 'inline', rows: areaRows });
+  });
+
+  it('chat sem vinculo: so responde o callback vazio e ignora, sem motor e sem mensagem', async () => {
+    const { adapter, conversation, client } = buildStack();
+
+    await adapter.process(callback({ chatId: '555' }));
+
+    expect(client.answerCallbackQuery).toHaveBeenCalledWith('cb-1');
+    expect(conversation.handleMenuAction).not.toHaveBeenCalled();
+    expect(client.editMessageText).not.toHaveBeenCalled();
+    expect(client.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('sem Redis, clique de chat sem vinculo fica mudo (falha fechada)', async () => {
+    const { adapter, client } = buildStack({ rateHits: null });
+
+    await adapter.process(callback({ chatId: '555' }));
+
+    expect(client.answerCallbackQuery).not.toHaveBeenCalled();
+  });
+
+  it.each(['', 'financas', 'x:financas', 'm:', 'm:Financas', 'm:a b', `m:${'a'.repeat(41)}`])(
+    'data fora do padrao (%s) e ignorada: sem motor e sem resposta',
+    async (data) => {
+      const { adapter, conversation, client } = buildStack();
+
+      await adapter.process(callback({ data }));
+
+      expect(conversation.handleMenuAction).not.toHaveBeenCalled();
+      expect(client.answerCallbackQuery).not.toHaveBeenCalled();
+      expect(client.editMessageText).not.toHaveBeenCalled();
+    },
+  );
+
+  it('DUPLICATE do clique nao edita nem reenvia', async () => {
+    const { adapter, conversation, client } = buildStack();
+    conversation.handleMenuAction.mockResolvedValueOnce({ kind: 'DUPLICATE', state: 'IDLE', text: 'Ja processado.' });
+
+    await adapter.process(callback());
+
+    expect(client.editMessageText).not.toHaveBeenCalled();
+    expect(client.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('limite de 20/min tambem vale para clique: silencia sem tocar no motor', async () => {
+    const { adapter, conversation, client } = buildStack({ rateHits: 21 });
+
+    await adapter.process(callback());
+
+    expect(conversation.handleMenuAction).not.toHaveBeenCalled();
+    expect(client.answerCallbackQuery).not.toHaveBeenCalled();
+  });
+
+  it('resultado de folha (nao MENU) vem em mensagem nova com o botao fixo Menu', async () => {
+    const { adapter, conversation, client } = buildStack();
+    conversation.handleMenuAction.mockResolvedValueOnce({ kind: 'INFO', state: 'IDLE', text: 'Saldo: R$ 10,00' });
+
+    await adapter.process(callback());
+
+    expect(client.editMessageText).not.toHaveBeenCalled();
+    expect(client.sendMessage).toHaveBeenCalledWith('111', 'Saldo: R$ 10,00', { kind: 'menu' });
+  });
+
+  it('folha de escrita que pede o campo do rascunho mantem Confirmar/Cancelar quando houver', async () => {
+    const { adapter, conversation, client } = buildStack();
+    conversation.handleMenuAction.mockResolvedValueOnce({
+      kind: 'CONFIRM_DRAFT',
+      state: 'AWAITING_CONFIRMATION',
+      text: 'Confirmar?',
+      draft: { rows: [] },
+      quickReplies: ['confirmar', 'cancelar'],
+    });
+
+    await adapter.process(callback());
+
+    expect(client.sendMessage).toHaveBeenCalledWith('111', expect.any(String), { kind: 'confirm', labels: ['confirmar', 'cancelar'] });
+  });
+
+  it('falha ao responder o botao nao impede a navegacao', async () => {
+    const { adapter, conversation, client } = buildStack();
+    conversation.handleMenuAction.mockResolvedValueOnce(menuReply());
+    client.answerCallbackQuery.mockRejectedValueOnce(new Error('timeout'));
+
+    await adapter.process(callback());
+
+    expect(client.editMessageText).toHaveBeenCalledTimes(1);
+  });
+
+  it('"/menu" e "/start" de chat vinculado viram "menu" no motor e abrem o menu em mensagem nova', async () => {
+    const { adapter, conversation, client } = buildStack();
+    conversation.handleMessage.mockResolvedValue(menuReply() as never);
+
+    await adapter.process(inbound({ text: '/menu' }));
+    await adapter.process(inbound({ updateId: 8, messageId: 'tg-8', text: '/start' }));
+
+    expect(conversation.handleMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({ text: 'menu' }));
+    expect(conversation.handleMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ text: 'menu' }));
+    expect(client.sendMessage).toHaveBeenCalledWith('111', 'Menu\n1. Saldo', { kind: 'inline', rows: areaRows });
+  });
+
+  it('"/start" de chat sem vinculo segue o fluxo de vinculo (orientacao), sem motor', async () => {
+    const { adapter, conversation, client } = buildStack();
+
+    await adapter.process(inbound({ chatId: '555', text: '/start' }));
+
+    expect(conversation.handleMessage).not.toHaveBeenCalled();
+    expect(client.sendMessage).toHaveBeenCalledWith('555', TELEGRAM_TEXTS.hint, undefined);
+  });
+
+  it('o texto "Menu" do botao fixo chega ao motor como saida', async () => {
+    const { adapter, conversation } = buildStack();
+
+    await adapter.process(inbound({ text: 'Menu' }));
+
+    expect(conversation.handleMessage).toHaveBeenCalledWith(expect.objectContaining({ text: 'Menu', channel: 'TELEGRAM' }));
   });
 });

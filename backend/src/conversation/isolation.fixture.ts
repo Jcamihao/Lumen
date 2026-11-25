@@ -544,13 +544,18 @@ export function seedWorld(): World {
 
 export interface Engine {
   service: ConversationService;
-  settings: { writesEnabled: boolean };
+  settings: { writesEnabled: boolean; telegramWritesEnabled: boolean };
 }
 
 /** Motor real sobre o mundo fake. `settings.writesEnabled` liga e desliga a trava do WhatsApp na hora. */
-export function buildEngine(world: World, writesEnabled = true): Engine {
-  const settings = { writesEnabled };
-  const config = { get: jest.fn((key: string) => (key === 'whatsapp.writesEnabled' ? settings.writesEnabled : undefined)) };
+export function buildEngine(world: World, writesEnabled = true, telegramWritesEnabled = false): Engine {
+  const settings = { writesEnabled, telegramWritesEnabled };
+  const config = {
+    get: jest.fn((key: string) => {
+      if (key === 'telegram.writesEnabled') return settings.telegramWritesEnabled;
+      return key === 'whatsapp.writesEnabled' ? settings.writesEnabled : undefined;
+    }),
+  };
   const s = world.services;
   type Deps = ConstructorParameters<typeof ConversationService>;
   const service = new ConversationService(
