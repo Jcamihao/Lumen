@@ -151,6 +151,8 @@ describe('menu inline do Telegram (12.1b)', () => {
     expect(nodeIdFromCallback('m:Financas')).toBeNull();
     expect(nodeIdFromCallback('m:a b')).toBeNull();
     expect(nodeIdFromCallback('x:financas')).toBeNull();
+    expect(nodeIdFromCallback('xm:financas')).toBeNull();
+    expect(nodeIdFromCallback(' m:financas')).toBeNull();
     expect(nodeIdFromCallback('confirmar')).toBeNull();
   });
 

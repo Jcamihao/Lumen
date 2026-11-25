@@ -56,6 +56,15 @@ describe('menu por botao e saida universal (12.1a)', () => {
       expectNoLeakFor('A', reply.text);
     });
 
+    it('clique com rascunho expirado avisa que expirou (nao navega com sessao morta)', async () => {
+      await say('A', '50 mercado');
+      jest.setSystemTime(new Date(T0.getTime() + 6 * 60_000));
+
+      const reply = await click('A', 'financas');
+
+      expect(reply.kind).toBe('EXPIRED');
+    });
+
     it('navegar com rascunho aberto nao apaga o rascunho', async () => {
       await say('A', '50 mercado');
       const before = world.sessions.map((row) => row.id);
