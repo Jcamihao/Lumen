@@ -715,4 +715,15 @@ describe('CreditCycleCardComponent - limpar teto por cartao (9c-1c)', () => {
     expect(api.clearCreditCardCeiling).toHaveBeenCalledTimes(1);
     pending$.complete();
   });
+
+  it('pelo metodo, com resultado desconhecido aberto, novo envio nao faz outra chamada', () => {
+    api.clearCreditCardCeiling.and.returnValue(throwError(() => ({ status: 0 })));
+    create();
+    startClear();
+    confirmClear();
+    api.clearCreditCardCeiling.and.returnValue(of({ cardId: 'c-principal', removedCents: 100000, refreshPending: false }));
+    fixture.componentInstance['confirmClear']();
+
+    expect(api.clearCreditCardCeiling).toHaveBeenCalledTimes(1);
+  });
 });
