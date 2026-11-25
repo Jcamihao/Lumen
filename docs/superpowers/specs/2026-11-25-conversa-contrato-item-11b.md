@@ -1,4 +1,4 @@
-# Contrato do item 11b: carteira compartilhada (PROPOSTA, aguarda decisões do dono)
+# Contrato do item 11b: carteira compartilhada (APROVADO pelo dono em 2026-11-25: "recomendações" em todas as decisões)
 
 Data: 2026-11-25. Base: develop com a 11a (grupo do plano Compartilhado: membros, convites, plano efetivo, 2 pessoas podendo evoluir até 4). Hoje **nenhum dado é compartilhado**: toda tabela de dados tem `userId` e toda leitura filtra por ele (29 tabelas com `userId`). A 11b muda isso, e é a mudança de maior risco do roteiro: **privacidade e isolamento vêm antes de qualquer tela**.
 
@@ -37,3 +37,11 @@ Carteira única migrando dados (opção a), permissões por categoria ou por ite
 
 ## 6. Riscos
 Mudar a regra "todo dado é filtrado por `userId`" em dezenas de consultas; vazar o total de alguém por agregação; queda do plano no meio de uma edição; migração com dados existentes. A mitigação é o ponto único de acesso, o escopo padrão "Meu" e os testes de isolamento.
+
+## 7. Aprovação e detalhes de implementação (2026-11-25)
+- Todas as recomendações da seção 2 aprovadas. Decisão 3: qualquer membro edita e apaga itens compartilhados (autor registrado). Decisão 10 (aberta no rascunho): **o teto do cartão compartilhado é editável por qualquer membro**, coerente com a 3.
+- **Chave do grupo:** o grupo é identificado pelo **pagador** (`GroupMembership.ownerUserId`). A marca de compartilhamento é `sharedGroupOwnerId` (nulo = privado) no item. Um item só é visível ao parceiro se, **na hora da leitura**: (a) o item tem `sharedGroupOwnerId = G`; (b) o autor é o pagador ou membro ativo (`leftAt` nulo) desse grupo; (c) quem lê é o pagador ou membro ativo de G; (d) o plano efetivo de quem lê e do autor é SHARED ativo. Falhou qualquer uma: o item some para o parceiro (pausa, decisão 5), sem apagar nada.
+- **Totais e agregados:** não mudam. Dashboard, insights, previsão, ciclo e bot continuam por `userId` (escopo "Meu" implícito). Só as listagens ganham `scope` (`mine` padrão, `shared`, `all`).
+- **Categoria dentro de lançamento compartilhado:** o parceiro vê só nome e cor da categoria do lançamento; a categoria só aparece na lista dele se ela própria for compartilhada. O parceiro só pode escolher categorias que ele vê (as dele ou as compartilhadas).
+- **Dúvida registrada para o dono (a implementação segue a opção conservadora):** parceiro **edita** categoria compartilhada mas **não a apaga** (só o autor apaga).
+- **Fatiamento ajustado:** 11b-1a = lançamentos e categorias (backend); 11b-1b = cartões compartilhados (ciclo soma os dois, teto editável por qualquer membro); depois 11b-2 (app), 11b-3 (bot, insights, exportação/exclusão) e 11c.
