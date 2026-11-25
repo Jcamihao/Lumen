@@ -3,7 +3,7 @@ import { AbstractControl } from '@angular/forms';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal, WritableSignal } from '@angular/core';
 import { of, Subject, throwError } from 'rxjs';
-import { CreditCard, CreditCardReceipt, CreditCycle, User } from '../../../core/models/domain.models';
+import { CreditCard, CreditCardReceipt, User } from '../../../core/models/domain.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
@@ -32,24 +32,6 @@ const receipt = (overrides: Partial<CreditCardReceipt> = {}): CreditCardReceipt 
   ...overrides,
 });
 
-const cycle = (overrides: Partial<CreditCycle> = {}): CreditCycle => ({
-  closingDay: 5,
-  dueDay: null,
-  countAllPayments: false,
-  cycleStart: '2026-09-06T00:00:00.000Z',
-  cycleEnd: '2026-10-05T00:00:00.000Z',
-  ceiling: null,
-  spent: 0,
-  remaining: null,
-  percentUsed: null,
-  status: 'none',
-  previousCeiling: null,
-  ...overrides,
-});
-
-const money = (value: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-
 const httpError = (status: number) => new HttpErrorResponse({ status });
 
 describe('CardPageComponent', () => {
@@ -58,7 +40,6 @@ describe('CardPageComponent', () => {
   let toast: { success: jasmine.Spy; error: jasmine.Spy };
   let offline: WritableSignal<boolean>;
   let fixture: ComponentFixture<CardPageComponent>;
-  let cycle$: Subject<CreditCycle>;
 
   const root = () => fixture.nativeElement as HTMLElement;
   const text = () => root().textContent ?? '';
@@ -101,7 +82,6 @@ describe('CardPageComponent', () => {
   };
 
   beforeEach(() => {
-    cycle$ = new Subject<CreditCycle>();
     offline = signal(false);
     api = jasmine.createSpyObj('LifeApiService', [
       'listCreditCards',
@@ -115,9 +95,8 @@ describe('CardPageComponent', () => {
     ]);
     (api as unknown as { offlineMode: WritableSignal<boolean> }).offlineMode = offline;
     api.listCreditCards.and.returnValue(of([card()]));
-    api.getCurrentCreditCycle.and.returnValue(cycle$.asObservable());
     authService = {
-      currentUser: () => ({ preferredCurrency: 'BRL', monthClosingDay: 5 }),
+      currentUser: () => ({ preferredCurrency: 'BRL' }),
       updateStoredUser: jasmine.createSpy('updateStoredUser'),
     };
     toast = { success: jasmine.createSpy('success'), error: jasmine.createSpy('error') };
@@ -357,19 +336,16 @@ describe('CardPageComponent', () => {
       expect(toast.success).toHaveBeenCalledWith('Cartão salvo.');
     });
 
-    it('editar o cartao padrao atualiza o fechamento do usuario local e o ciclo', () => {
+    it('9c-2: editar o padrao nao mexe no usuario local nem busca o ciclo (o espelho morreu)', () => {
       api.updateCreditCard.and.returnValue(of(receipt({ closingDay: 7 })));
       create();
-      cycle$.next(cycle());
-      fixture.detectChanges();
-      api.getCurrentCreditCycle.calls.reset();
-      api.getCurrentCreditCycle.and.returnValue(of(cycle()));
       click('Editar');
       setVal('#edit-c1-closing', '7');
       submit('#edit-c1-name');
 
-      expect(authService.updateStoredUser).toHaveBeenCalledWith(jasmine.objectContaining({ monthClosingDay: 7 }));
-      expect(api.getCurrentCreditCycle).toHaveBeenCalledTimes(1);
+      expect(api.updateCreditCard).toHaveBeenCalled();
+      expect(authService.updateStoredUser).not.toHaveBeenCalled();
+      expect(api.getCurrentCreditCycle).not.toHaveBeenCalled();
     });
 
     it('editar cartao que nao e padrao nao altera o fechamento do usuario', () => {
@@ -420,14 +396,14 @@ describe('CardPageComponent', () => {
       expect(buttons('Tornar padrão').length).toBe(0);
     });
 
-    it('tornar padrao chama a API e atualiza o fechamento do usuario local', () => {
+    it('tornar padrao chama a API e nao toca no usuario local (9c-2)', () => {
       api.listCreditCards.and.returnValue(of([card(), card({ id: 'c2', name: 'Inter', isDefault: false, closingDay: 20 })]));
       api.makeDefaultCreditCard.and.returnValue(of(receipt({ id: 'c2', name: 'Inter', closingDay: 20, isDefault: true })));
       create();
       click('Tornar padrão');
 
       expect(api.makeDefaultCreditCard).toHaveBeenCalledWith('c2');
-      expect(authService.updateStoredUser).toHaveBeenCalledWith(jasmine.objectContaining({ monthClosingDay: 20 }));
+      expect(authService.updateStoredUser).not.toHaveBeenCalled();
       expect(toast.success).toHaveBeenCalledWith('Inter agora é o cartão padrão.');
     });
   });
@@ -554,7 +530,6 @@ describe('CardPageComponent', () => {
       startEdit(c: CreditCard): void;
       confirmArchive(c: CreditCard): void;
       submitForm(): void;
-      saveCeiling(): void;
       mode(): string;
       formError(): string | null;
     };
@@ -611,19 +586,6 @@ describe('CardPageComponent', () => {
       expect(api.archiveCreditCard).toHaveBeenCalledTimes(1);
     });
 
-    it('saveCeiling com gravacao pendente nao duplica a chamada', () => {
-      const pending = new Subject<CreditCycle>();
-      api.setCreditCycleCeiling.and.returnValue(pending.asObservable());
-      create();
-      cycle$.next(cycle());
-      fixture.detectChanges();
-      setVal('#card-ceiling', '1000');
-      model().saveCeiling();
-      model().saveCeiling();
-
-      expect(api.setCreditCycleCeiling).toHaveBeenCalledTimes(1);
-    });
-
     it('o interruptor de arquivados reflete o estado (desmarcado ao abrir, marcado depois de ligar)', () => {
       create();
       const box = () => root().querySelector<HTMLInputElement>('.card-page__toggle input')!;
@@ -636,51 +598,16 @@ describe('CardPageComponent', () => {
     });
   });
 
-  describe('ciclo do cartao padrao', () => {
-    it('mostra o ciclo, quanto resta e o aviso de carregando antes da resposta', () => {
+  describe('9c-2: o ciclo saiu da tela de Cartoes', () => {
+    it('nada na tela fala de teto ou ciclo; nada e chamado para as rotas dele', () => {
       create();
-      expect(text()).toContain('Carregando o ciclo atual');
 
-      cycle$.next(cycle({ ceiling: 1600, spent: 900, remaining: 700, percentUsed: 56, status: 'ok' }));
-      fixture.detectChanges();
-
-      expect(text()).toContain('06 de set. a 05 de out.');
-      expect(text()).toContain(money(700));
-    });
-
-    it('erro no ciclo mostra "Tentar de novo" sem derrubar a lista', () => {
-      create();
-      cycle$.error(httpError(0));
-      fixture.detectChanges();
-
-      expect(text()).toContain('Não foi possível carregar o ciclo atual');
-      expect(text()).toContain('Nubank');
-    });
-
-    it('salvar o teto chama setCreditCycleCeiling', () => {
-      api.setCreditCycleCeiling.and.returnValue(of(cycle({ ceiling: 1600 })));
-      create();
-      cycle$.next(cycle());
-      fixture.detectChanges();
-
-      setVal('#card-ceiling', '1600');
-      submit('#card-ceiling');
-
-      expect(api.setCreditCycleCeiling).toHaveBeenCalledWith({ ceiling: 1600 });
-    });
-
-    it('o checkbox de escopo chama updateCreditCycleSettings com a inversao', () => {
-      api.updateCreditCycleSettings.and.returnValue(of(cycle({ countAllPayments: true })));
-      create();
-      cycle$.next(cycle({ countAllPayments: false }));
-      fixture.detectChanges();
-
-      const checkbox = root().querySelector<HTMLInputElement>('.card-page__scope-toggle input')!;
-      expect(checkbox.checked).toBeFalse();
-      checkbox.click();
-      fixture.detectChanges();
-
-      expect(api.updateCreditCycleSettings).toHaveBeenCalledWith({ countAllPayments: true });
+      expect(text()).not.toContain('teto');
+      expect(text()).not.toContain('Teto');
+      expect(text()).not.toContain('Ciclo');
+      expect(api.getCurrentCreditCycle).not.toHaveBeenCalled();
+      expect(api.setCreditCycleCeiling).not.toHaveBeenCalled();
+      expect(api.updateCreditCycleSettings).not.toHaveBeenCalled();
     });
   });
 });
