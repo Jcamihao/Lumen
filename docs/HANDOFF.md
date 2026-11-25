@@ -2,6 +2,8 @@
 
 Última atualização: 2026-11-25. Escrito para quem nunca viu o projeto.
 
+**Ponto de retomada imediato (2026-11-25, 12.0b MERGEADA — escrita natural e confirmacao com tom):** merge 565d6be, nota v1.24.0 (tag local, nao enviada). Proxima fase do item 12: 12.2 Tarefas no bot (ver docs/superpowers/specs/2026-11-25-item-12-bot-v2-fases.md). Pendente: rodar a integracao Docker da 12.0b-2 com a maquina livre; teste com bot real do Telegram (dono). Nada enviado ao remoto.
+
 **Ponto de retomada imediato (2026-11-25, 12.1 MERGEADA — menu em botoes do Telegram):** merge b5d6307, nota v1.23.0 (tag local, nao enviada). Estado das fases do item 12 em docs/superpowers/specs/2026-11-25-item-12-bot-v2-fases.md. Proxima: 12.0b (escrita natural + confirmacao com tom, contrato docs/superpowers/specs/2026-11-25-conversa-contrato-item-12-0b.md, aguardando aprovacao final do dono), depois 12.2 Tarefas no bot. Teste com bot real do Telegram pendente (dono). Nada enviado ao remoto.
 
 **Ponto de retomada imediato (2026-11-25, PERGUNTAS NATURAIS DO BOT MERGEADAS):** o bot entende perguntas de leitura nao imperativas ("como esta o meu saldo?"); merge dc52a28, nota v1.22.0 (tag local, nao enviada). Proximo: contrato do menu hibrido do Telegram (docs/superpowers/specs/2026-11-25-conversa-contrato-menu-hibrido.md, rascunho): menu em botoes espelhando a sidebar (Inicio, Tarefas, Financas, Cartao, Metas, Avisos, Conta, Ajuda), sair/voltar universal, dica de atalho, preferencias por usuario; Tarefas no bot e a maior lacuna. Fase 4 (texto das mensagens, embedding, curadoria) depende de decisoes do dono (consentimento, retencao, pgvector ou Selah). Nada enviado ao remoto.
