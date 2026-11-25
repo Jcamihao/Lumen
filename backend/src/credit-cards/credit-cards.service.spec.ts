@@ -234,13 +234,10 @@ function createFakeDb() {
     },
   };
 
-  const addUser = (id: string, monthClosingDay = 5) => {
+  const addUser = (id: string) => {
     state.users.set(id, {
       id,
       timezone: 'America/Sao_Paulo',
-      monthClosingDay,
-      creditDueDay: null,
-      creditCycleCountAllPayments: false,
     });
   };
   const addCard = (card: Row) => {
@@ -268,9 +265,9 @@ describe('CreditCardsService', () => {
   beforeEach(() => {
     jest.useFakeTimers({ now: new Date('2026-11-15T12:00:00.000Z') });
     db = createFakeDb();
-    db.addUser('user-a', 5);
-    db.addUser('user-b', 10);
-    db.addUser('user-c', 15);
+    db.addUser('user-a');
+    db.addUser('user-b');
+    db.addUser('user-c');
     db.addCard({ id: 'card-a1', userId: 'user-a', name: 'Principal', closingDay: 5, isDefault: true });
     db.addCard({ id: 'card-a2', userId: 'user-a', name: 'Nubank', closingDay: 20, dueDay: 27 });
     db.addCard({ id: 'card-b1', userId: 'user-b', name: 'Principal', closingDay: 10, isDefault: true });
@@ -410,13 +407,12 @@ describe('CreditCardsService', () => {
   });
 
   describe('editar', () => {
-    it('PATCH do padrao espelha dia, vencimento e countAllPayments no User, depois do lock', async () => {
+    it('PATCH do padrao atualiza so o cartao, sem espelho no User (9c-2), depois do lock', async () => {
       const receipt = await service.update('user-a', 'card-a1', { closingDay: 12, dueDay: null, countAllPayments: true });
 
       expect(receipt).toMatchObject({ id: 'card-a1', closingDay: 12, dueDay: null, countAllPayments: true, isDefault: true, refreshPending: false });
-      expect(user('user-a')).toMatchObject({ monthClosingDay: 12, creditDueDay: null, creditCycleCountAllPayments: true });
       expect(db.log.indexOf('lock:user-a')).toBeLessThan(db.log.indexOf('card.update:card-a1'));
-      expect(db.log.indexOf('card.update:card-a1')).toBeLessThan(db.log.indexOf('user.update'));
+      expect(db.log).not.toContain('user.update');
     });
 
     it('countAllPayments=false em cartao nao padrao e aceito (so true e recusado)', async () => {
@@ -430,7 +426,6 @@ describe('CreditCardsService', () => {
       await service.update('user-a', 'card-a2', { closingDay: 25, dueDay: 3 });
 
       expect(db.log).not.toContain('user.update');
-      expect(user('user-a').monthClosingDay).toBe(5);
     });
 
     it('countAllPayments=true em cartao nao padrao: 400 sem gravar', async () => {
@@ -496,16 +491,15 @@ describe('CreditCardsService', () => {
       await expect(service.setCeiling('user-a', 'card-a2', { ceiling: 100 })).rejects.toBeInstanceOf(ConflictException);
     });
 
-    it('make-default troca o padrao: um so ativo, User espelha o novo, antigo perde countAllPayments', async () => {
+    it('make-default troca o padrao: um so ativo, antigo perde countAllPayments', async () => {
       db.state.cards[0].countAllPayments = true;
-      user('user-a').creditCycleCountAllPayments = true;
 
       const receipt = await service.makeDefault('user-a', 'card-a2');
 
       expect(receipt).toMatchObject({ id: 'card-a2', isDefault: true, closingDay: 20, dueDay: 27, refreshPending: false });
       expect(activeDefaults('user-a').map((c) => c.id)).toEqual(['card-a2']);
       expect(cardsOf('user-a').find((c) => c.id === 'card-a1')).toMatchObject({ isDefault: false, countAllPayments: false });
-      expect(user('user-a')).toMatchObject({ monthClosingDay: 20, creditDueDay: 27, creditCycleCountAllPayments: false });
+      expect(db.log).not.toContain('user.update');
     });
 
     it('make-default no padrao atual: recibo sem escrita', async () => {
@@ -659,7 +653,7 @@ describe('CreditCardsService', () => {
       expect(cardsOf('user-a').filter((c) => c.name.toLowerCase() === 'itau')).toHaveLength(1);
     });
 
-    it('promover padrao e editar o padrao em paralelo: um so padrao e o User espelha o padrao final', async () => {
+    it('promover padrao e editar o padrao em paralelo: um so padrao coerente', async () => {
       await Promise.allSettled([
         service.makeDefault('user-a', 'card-a2'),
         service.update('user-a', 'card-a1', { closingDay: 25 }),
@@ -667,7 +661,6 @@ describe('CreditCardsService', () => {
 
       const defaults = activeDefaults('user-a');
       expect(defaults).toHaveLength(1);
-      expect(user('user-a').monthClosingDay).toBe(defaults[0].closingDay);
     });
   });
 });

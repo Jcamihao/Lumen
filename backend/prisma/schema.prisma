@@ -140,15 +140,6 @@ model User {
   primaryGoal                   String?
   preferredCurrency             String                 @default("BRL")
   monthlyIncome                 Decimal                @default(0) @db.Decimal(12, 2)
-  // Reaproveitado como dia de fechamento do ciclo de credito (nunca foi usado
-  // para nada antes disto: so era coletado no cadastro e guardado).
-  monthClosingDay               Int                    @default(30)
-  // Dia de vencimento da fatura (so informativo por enquanto; nao gera lembrete).
-  creditDueDay                  Int?
-  // false (padrao): teto do ciclo so soma paymentMethod=CREDIT (comportamento original).
-  // true: soma toda EXPENSE do ciclo (credito+debito+PIX+boleto), para quem trata o
-  // "limite" como um teto geral de gastos, nao so do cartao.
-  creditCycleCountAllPayments   Boolean                @default(false)
   timezone                      String                 @default("America/Sao_Paulo")
   /// Ultimo resumo semanal enviado por email pelo pulso agendado do Selah.
   /// Null = nunca recebeu. Evita reenviar no mesmo ciclo semanal.
@@ -428,8 +419,9 @@ model CreditCycleCeiling {
 }
 
 // Cartao de credito nomeado do usuario (contrato item 9, secao 2). O cartao
-// padrao (isDefault, ativo) e o que /credit-cycle e o bot usam; monthClosingDay,
-// creditDueDay e creditCycleCountAllPayments do User ficam em sincronia com ele.
+// padrao (isDefault, ativo) e o que /credit-cycle e o bot usam. Desde a 9c-2 ele
+// e a FONTE UNICA de fechamento/vencimento/escopo do ciclo: o User nao guarda
+// espelho (as colunas antigas foram removidas na migration 20261125120000).
 // Arquivar (archivedAt) em vez de apagar: lancamentos antigos mantem o cardId.
 // Os indices unicos parciais (nome sem caixa entre ativos; um padrao ativo por
 // usuario) estao so na migration: o Prisma nao os modela.

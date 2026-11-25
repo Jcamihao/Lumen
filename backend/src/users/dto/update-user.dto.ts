@@ -1,14 +1,11 @@
 import {
   IsBoolean,
   IsDateString,
-  IsInt,
   IsNumber,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
-  Max,
-  Min,
   MinLength,
 } from "class-validator";
 import { IsAvatarDataUrl } from "../../common/validators/avatar-data-url.validator";
@@ -54,12 +51,6 @@ export class UpdateUserDto {
   @IsOptional()
   @IsNumber()
   monthlyIncome?: number;
-
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(31)
-  monthClosingDay?: number;
 
   @IsOptional()
   @IsString()

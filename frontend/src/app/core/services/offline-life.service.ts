@@ -1462,7 +1462,6 @@ export class OfflineLifeService {
       email: "offline@lumen.local",
       preferredCurrency: "BRL",
       monthlyIncome: 0,
-      monthClosingDay: 30,
       timezone: "America/Sao_Paulo",
       taskCategories: [],
       financeCategories: [],

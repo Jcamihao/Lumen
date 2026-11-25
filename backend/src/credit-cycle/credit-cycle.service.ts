@@ -10,7 +10,7 @@ import { Prisma, TransactionType } from '@prisma/client';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { localToday } from '../recurring-transactions/recurrence.util';
-import { cardSpendWhere, creditCycleBounds, lockUserForCredit, userCycleFieldsFromCard } from './credit-cycle.util';
+import { cardSpendWhere, creditCycleBounds, lockUserForCredit } from './credit-cycle.util';
 import { SetCreditCycleCeilingDto } from './dto/set-credit-cycle-ceiling.dto';
 import { UpdateCreditCycleSettingsDto } from './dto/update-credit-cycle-settings.dto';
 import { CreditLimitChangedError, CreditLimitExpectation, CreditLimitWriteReceipt, CreditLimitWriteUncertainError } from './conversation-write.types';
@@ -69,22 +69,18 @@ export class CreditCycleService {
     return this.getCycleOfCard(userId, card);
   }
 
-  /** Dia de vencimento e contagem de pagamentos vivem no cartao padrao; o User e espelho. */
+  /** Dia de vencimento e escopo de contagem vivem so no cartao padrao (9c-2: sem espelho no User). */
   async updateSettings(userId: string, dto: UpdateCreditCycleSettingsDto) {
     await this.prisma.$transaction(async (tx) => {
       await lockUserForCredit(tx, userId);
       const card = await this.findDefaultCard(tx, userId);
-      const updated = await tx.creditCard.update({
+      await tx.creditCard.update({
         where: { id: card.id },
         data: {
           dueDay: dto.dueDay === undefined ? undefined : dto.dueDay,
           countAllPayments: dto.countAllPayments,
         },
         select: CREDIT_CYCLE_CARD_SELECT,
-      });
-      await tx.user.update({
-        where: { id: userId },
-        data: userCycleFieldsFromCard(updated),
       });
     });
 

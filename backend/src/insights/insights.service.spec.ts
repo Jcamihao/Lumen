@@ -1257,9 +1257,14 @@ describe('InsightsService', () => {
       dueDay?: number | null;
       monthClosingDay?: number;
     } = {}) => {
-      const prisma = buildPrisma([], [], {
-        monthClosingDay: options.monthClosingDay ?? 30,
-        creditDueDay: options.dueDay ?? null,
+      const prisma = buildPrisma([], [], {});
+      // 9c-2: fechamento e vencimento vivem no cartao padrao, nao mais no User.
+      prisma.creditCard.findFirst.mockResolvedValue({
+        id: 'card-1',
+        isDefault: true,
+        countAllPayments: false,
+        closingDay: options.monthClosingDay ?? 30,
+        dueDay: options.dueDay ?? null,
       });
       if (options.ceiling !== undefined && options.ceiling !== null) {
         prisma.creditCycleCeiling.findUnique.mockResolvedValue({ ceiling: options.ceiling });

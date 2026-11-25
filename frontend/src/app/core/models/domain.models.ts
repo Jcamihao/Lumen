@@ -10,7 +10,6 @@ export type User = {
   primaryGoal?: string | null;
   preferredCurrency: string;
   monthlyIncome: number;
-  monthClosingDay: number;
   timezone: string;
   privacyNoticeAcceptedAt?: string | null;
   privacyNoticeVersion?: string | null;

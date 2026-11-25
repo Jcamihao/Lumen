@@ -10,7 +10,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { CreditLimitChangedError, CreditLimitWriteUncertainError } from '../credit-cycle/conversation-write.types';
 import { CreditCycleService } from '../credit-cycle/credit-cycle.service';
-import { lockUserForCredit, userCycleFieldsFromCard } from '../credit-cycle/credit-cycle.util';
+import { lockUserForCredit } from '../credit-cycle/credit-cycle.util';
 import { SetCreditCycleCeilingDto } from '../credit-cycle/dto/set-credit-cycle-ceiling.dto';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { EntitlementsService } from '../billing/entitlements.service';
@@ -158,7 +158,6 @@ export class CreditCardsService {
         },
         select: CARD_SELECT,
       });
-      if (updated.isDefault) await this.syncUser(tx, userId, updated);
       return toReceipt(updated);
     });
   }
@@ -197,7 +196,6 @@ export class CreditCardsService {
         data: { isDefault: true },
         select: CARD_SELECT,
       });
-      await this.syncUser(tx, userId, updated);
       return toReceipt(updated);
     });
   }
@@ -284,11 +282,6 @@ export class CreditCardsService {
     const wanted = name.toLowerCase();
     const clash = active.some((card) => card.id !== exceptId && card.name.toLowerCase() === wanted);
     if (clash) throw new ConflictException('Ja existe um cartao com este nome.');
-  }
-
-  /** Cartao padrao espelha os campos antigos do User na mesma transacao (secao 4.2). */
-  private async syncUser(tx: Db, userId: string, card: CardRow) {
-    await tx.user.update({ where: { id: userId }, data: userCycleFieldsFromCard(card) });
   }
 
   /** Cartao do usuario ou 404 (nunca 403). */

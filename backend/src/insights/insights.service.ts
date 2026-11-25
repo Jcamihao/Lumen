@@ -458,13 +458,14 @@ export class InsightsService {
     ]);
 
     const userToday = localToday(now, user.timezone ?? 'UTC');
-    // 9a: o ciclo de credito continua sendo o do cartao padrao (contrato item 9, secao 4.8).
+    // 9c-2: o ciclo de credito e do cartao padrao (contrato item 9, secao 4.8); sem
+    // cartao (estado corrompido), cai no fechamento 30 e vencimento null.
     const defaultCard = await this.prisma.creditCard.findFirst({
       where: { userId, isDefault: true, archivedAt: null },
-      select: { id: true, isDefault: true, countAllPayments: true, closingDay: true },
+      select: { id: true, isDefault: true, countAllPayments: true, closingDay: true, dueDay: true },
     });
-    // Ciclo do cartao padrao (contrato 4.8); sem cartao, cai no espelho do User.
-    const creditCycle = creditCycleBounds(userToday, defaultCard?.closingDay ?? user.monthClosingDay ?? 30);
+    // Ciclo do cartao padrao (contrato 4.8).
+    const creditCycle = creditCycleBounds(userToday, defaultCard?.closingDay ?? 30);
     const [creditCeilingRow, creditSpentAggregate] = await Promise.all([
       defaultCard
         ? this.prisma.creditCycleCeiling.findUnique({
@@ -518,7 +519,7 @@ export class InsightsService {
       upcomingBills,
       creditCycle: {
         closingDate: creditCycle.end,
-        dueDay: user.creditDueDay ?? null,
+        dueDay: defaultCard?.dueDay ?? null,
         ceiling: creditCeilingRow ? Number(creditCeilingRow.ceiling) : null,
         spent: Number(creditSpentAggregate._sum.amount ?? 0),
       },
