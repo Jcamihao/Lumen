@@ -43,11 +43,12 @@ Navegacao: "voltar", "sair", "menu", "inicio", "cancela", "desistir", "deixa pra
 2. (resolvida) Nomes Avisos/Conta e Plano so consulta: aprovados.
 3. Duvidas da fatia 1 (hoje = total do mes; "quanto devo no X" = fatura).
 
-## 7. Decisoes do dono sobre embedding (2026-11-25, aprovadas)
-- Indice de busca por similaridade em MEMORIA (nao FAISS nem banco de vetores). Estimativa: 5 mil exemplos de 768 dims ~15 MB, busca 2 a 5 ms. Migrar para pgvector so se passar de ~50 mil linhas ou para agrupar mensagens na curadoria.
-- Selah continua STATELESS (sem banco; decisao do handoff dele). Selah gera embeddings e classifica (similaridade + faixas), generico para qualquer app futuro, com cache em memoria por app/instancia (chave = hash do conjunto de exemplos; some no restart e recarrega na primeira chamada). Fallback de menor risco se o cache complicar: Selah so gera embeddings e cada app busca por conta propria.
-- Endpoints novos do Selah: POST /embeddings (textos -> vetores) e POST /classify (mensagem + exemplos com vetores + catalogo -> {intent, score, alternativas}). GeminiProvider hoje NAO tem embeddings: tarefa nova no Selah. Isolamento por chave de API; exemplos de um app nunca aparecem para outro.
-- Lumen guarda tudo: tabela IntentExample (texto mascarado, intencao, vetor, status), candidatos, curadoria, consentimento, retencao e exclusao LGPD. Faixas de similaridade: comecar conservador (abaixo de 0,85 vai ao Selah conversa); alta = leitura direta, media = botoes "Voce quis dizer: X?" (resposta vira dado de curadoria), baixa = Selah. Escrita NUNCA por similaridade (sempre rascunho + confirmacao).
+## 7. Decisoes do dono sobre embedding (2026-11-25, aprovadas; versao 2, substitui a anterior "Selah stateless")
+- Indice de busca por similaridade em MEMORIA (nao FAISS nem banco de vetores), carregado do disco ao subir. Estimativa: 5 mil exemplos de 768 dims ~15 MB, busca 2 a 5 ms. Migrar para pgvector so se passar de ~50 mil linhas ou para agrupar mensagens na curadoria.
+- Selah PASSA A GUARDAR conhecimento (nao dado de usuario): catalogo de intencoes por app e exemplos aprovados, mascarados e sem identificar ninguem, com o vetor. Armazenamento: SQLite em arquivo no volume (backup = copiar o arquivo); se o Selah passar a rodar em mais de uma replica, migrar para Postgres. O handoff do Selah ("stateless, sem banco") precisa ser atualizado: excecao so para esse conhecimento. Isolamento por chave de API: exemplos de um app nunca aparecem para outro.
+- Selah gera embeddings (provedor novo; GeminiProvider hoje NAO tem) e classifica. Endpoints novos, genericos para qualquer app: POST /classify (texto -> {intent, score, alternativas}), POST /examples (registrar/aprovar/remover exemplo e catalogo), POST /embeddings (textos -> vetores, se necessario).
+- Lumen guarda o DADO PESSOAL: texto bruto das mensagens, candidatos, consentimento, retencao (sugestao 180 dias) e exclusao LGPD. So o exemplo aprovado e mascarado sobe ao Selah. Selah nao vira controlador de dado pessoal.
+- Faixas de similaridade: comecar conservador (abaixo de 0,85 vai ao Selah conversa); alta = leitura direta, media = botoes "Voce quis dizer: X?" (resposta vira dado de curadoria), baixa = conversa. Escrita NUNCA por similaridade (sempre rascunho + confirmacao).
 - Degradacao: Selah fora/lento -> ajuda, sem pendurar (timeout e breaker existentes).
-- Ordem: contrato Selah + contrato Lumen -> navegacao/menu -> Tarefas -> curadoria manual -> embedding (indice vazio sem exemplos aprovados).
-- Ainda abertas: guardar texto das mensagens, consentimento, retencao (sugestao 180 dias), tela de curadoria (sugestao: admin do Lumen falando com o Selah).
+- Ordem: navegacao/menu -> Tarefas -> curadoria manual -> contratos Selah e Lumen do embedding -> implementacao (Selah primeiro). Indice vazio sem exemplos aprovados.
+- Ainda abertas: guardar texto das mensagens, consentimento, retencao, tela de curadoria (sugestao: admin do Lumen falando com o Selah).
