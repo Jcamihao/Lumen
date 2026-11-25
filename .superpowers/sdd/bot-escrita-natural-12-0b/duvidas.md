@@ -24,3 +24,8 @@ Data: 2026-11-25. Nada aqui foi decidido pelo agente sem registro. Padrao aplica
    "gastei 35 no uber." mantido, nao tratado aqui.
 8. "50 reais" continua com "reais" na descricao (a suite atual fixa "2 mil reais" -> rest "reais").
    "conto/contos" sai do texto como sufixo de valor. (Padrao: so conto/contos e removido.)
+
+
+## 12.0b-2 (dono)
+1. Mensagens de boas-vindas dos adaptadores (`telegram-adapter.service.ts`, `whatsapp-adapter.service.ts`) e a dica do `receipt-extractor.types.ts` ainda citam "50 mercado". Trocar para "gastei 50 no mercado"? (padrao: sim; nao mexi nesta fatia por estar fora da lista de escopo).
+2. Lista de radicais sensiveis (`tone/tone.texts.ts`, SENSITIVE_STEMS) e de palavras para revisar: aprova ou ajusta? Radical "divid" casa "dividir" (vira neutro sem prejuizo).
