@@ -84,6 +84,8 @@ export type PendingField =
 
 /** Rascunho de lançamento. Sessões antigas não têm `kind`: ausente = TRANSACTION. Dinheiro em centavos. */
 export interface ExpenseOrIncomeDraft {
+  /** messageId de quem abriu o rascunho: semente da variante de tom (contrato 12.0b, secao 3). */
+  toneSeed?: string;
   kind?: 'TRANSACTION';
   type: TransactionType;
   amountCents: number;
@@ -116,6 +118,8 @@ export interface GoalDraft {
 /** Rascunho de aporte em meta ativa (contrato 3b1, secao 3). */
 export interface ContributionDraft {
   kind: 'CONTRIBUTION';
+  /** messageId de quem abriu o rascunho: semente da variante de tom. */
+  toneSeed?: string;
   goalId: string | null;
   /** Para mostrar; o id é a fonte da verdade. */
   goalTitle: string | null;
@@ -194,6 +198,8 @@ export interface RecurringDraft {
 /** Compra parcelada (contrato 3b2b, secao 5): totalCents é o total da compra, nunca o valor da parcela. */
 export interface InstallmentDraft {
   kind: 'INSTALLMENT';
+  /** messageId de quem abriu o rascunho: semente da variante de tom. */
+  toneSeed?: string;
   description: string | null;
   totalCents: number | null;
   installmentsTotal: number | null;

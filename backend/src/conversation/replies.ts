@@ -1,4 +1,5 @@
 import { PaymentMethod, TransactionType } from '@prisma/client';
+import { toneKindFor, toneText } from './tone/tone.service';
 
 const moneyFormatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -58,24 +59,24 @@ export const REPLIES = {
   help:
     'Pode falar direto ou digitar "menu" para navegar por botões.\n' +
     'Início: "como está o meu saldo?", "resumo do mês", "o que vence esta semana".\n' +
-    'Finanças: "gastei 50 no mercado", "recebi 800 de freelance", "gastos com mercado".\n' +
+    'Finanças: "gastei 50 no mercado", "recebi 3000 de salario", "caiu 500 do freela", "comprei um celular em 10x de 150", "gastos com mercado".\n' +
     'Cartão: "como está meu cartão?", "meus cartões", "definir limite do cartão 5000".\n' +
-    'Metas: "minhas metas", "guardar 200 na viagem", "criar meta viagem".',
+    'Metas: "minhas metas", "coloquei 200 na minha caixinha", "criar meta viagem".',
   importReceipt:
     'Para importar uma nota, abra Importações e envie a foto ou o PDF. ' +
     'A leitura é feita aqui no Lumen e você confere tudo antes de gravar.',
   unrecognized: 'Não entendi. Digite "ajuda" para ver os exemplos.',
   aiFallbackBlocked:
     'Não entendi. As perguntas com IA do seu plano já acabaram neste mês. ' +
-    'Exemplos: "50 mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
+    'Exemplos: "gastei 50 no mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
     '"quanto gastei", "gastos com mercado", "limite do cartão".',
   aiFallbackUnavailable:
     'Não entendi. A IA está indisponível agora. ' +
-    'Exemplos: "50 mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
+    'Exemplos: "gastei 50 no mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
     '"quanto gastei", "gastos com mercado", "limite do cartão".',
   aiFallbackHelp:
     'Não entendi. ' +
-    'Exemplos: "50 mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
+    'Exemplos: "gastei 50 no mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
     '"quanto gastei", "gastos com mercado", "limite do cartão".',
   duplicate: 'Essa mensagem já foi processada. Nada foi alterado.',
   whatsappWritesOff: 'Para gravar, confirme no app: abra o assistente e toque em Confirmar. Por aqui eu monto o rascunho e respondo consultas.',
@@ -92,7 +93,7 @@ export const REPLIES = {
   amountTooLarge: 'O valor passa do limite de 1.000.000,00.',
   amountAmbiguous:
     'Valor ambíguo. Escreva com centavos (1234,00 ou 1.234,00) ou sem separador (1234).',
-  amountMissing: 'Não encontrei o valor. Ex.: "50 mercado".',
+  amountMissing: 'Não encontrei o valor. Ex.: "gastei 50 no mercado".',
   descriptionTooLong: 'A descrição passa de 120 caracteres.',
   askAmount: 'Quanto foi? Responda só o valor. Ex.: 50 ou 32,90.',
   askDescription: 'Qual a descrição do lançamento? Ex.: mercado.',
@@ -183,9 +184,16 @@ export function draftText(input: {
   paymentMethod: PaymentMethod | null;
   futureDate: boolean;
   cardName?: string | null;
+  toneSeed?: string;
 }): string {
+  const kind = toneKindFor(transactionSubject(input.type), [input.description, input.category ?? '']);
   const lines = [
-    `Rascunho de ${typeLabel(input.type)}:`,
+    toneText({
+      kind,
+      moment: 'rascunho',
+      seed: input.toneSeed ?? '',
+      values: { valor: formatBrl(input.amountCents), descricao: input.description },
+    }),
     `Valor: ${formatBrl(input.amountCents)}`,
     `Descrição: ${input.description}`,
     `Categoria: ${input.category ?? 'sem categoria'}`,
@@ -202,9 +210,29 @@ export function draftText(input: {
   return lines.join('\n');
 }
 
-export function doneText(type: TransactionType, amountCents: number, description: string, cardName?: string | null): string {
-  const card = cardName ? ` no cartão ${cardName}` : '';
-  return `Registrado: ${typeLabel(type)} de ${formatBrl(amountCents)} (${description})${card}.`;
+function transactionSubject(type: TransactionType): 'RECEITA' | 'DESPESA' {
+  return type === TransactionType.INCOME ? 'RECEITA' : 'DESPESA';
+}
+
+/** Recibo do lançamento gravado: tom do tipo; sensível (descrição ou categoria) força neutro. */
+export function doneText(
+  type: TransactionType,
+  amountCents: number,
+  description: string,
+  cardName?: string | null,
+  tone: { seed?: string; category?: string | null } = {},
+): string {
+  const kind = toneKindFor(transactionSubject(type), [description, tone.category ?? '']);
+  return toneText({
+    kind,
+    moment: 'recibo',
+    seed: tone.seed ?? '',
+    values: {
+      valor: formatBrl(amountCents),
+      descricao: description,
+      cartao: cardName ? ` no cartão ${cardName}` : '',
+    },
+  });
 }
 
 export function categoryOptionsText(names: string[]): string {
@@ -352,12 +380,20 @@ export function goalLabel(input: { title: string; currentCents: number; targetCe
 /** Rascunho de aporte (confirmação). meta já vem formatada por goalLabel ou pelo nome. */
 export function contributionDraftText(input: {
   meta: string;
+  title: string;
   amountCents: number;
   date: string;
   concludes: boolean;
+  toneSeed?: string;
 }): string {
+  const kind = toneKindFor('GUARDAR', [input.title]);
   const lines = [
-    'Rascunho de aporte:',
+    toneText({
+      kind,
+      moment: 'rascunho',
+      seed: input.toneSeed ?? '',
+      values: { valor: formatBrl(input.amountCents), meta: input.title, descricao: input.title },
+    }),
     `Meta: ${input.meta}`,
     `Valor: ${formatBrl(input.amountCents)}`,
     `Data: ${longDate(input.date)}`,
@@ -419,7 +455,7 @@ export function goalCreatedText(input: { title: string; targetCents: number | nu
   return `Meta criada: ${input.title}, alvo ${formatBrl(input.targetCents)}.`;
 }
 
-/** DONE do aporte. percent null = sem alvo. Acrescenta "Meta concluída." quando bateu o alvo. */
+/** DONE do aporte. percent null = sem alvo. Recibo com tom de guardar; acrescenta "Meta concluída." quando bateu o alvo. */
 export function contributionDoneText(input: {
   title: string;
   amountCents: number;
@@ -427,8 +463,15 @@ export function contributionDoneText(input: {
   targetCents: number | null;
   percent: number | null;
   achieved: boolean;
+  toneSeed?: string;
 }): string {
-  const head = `Aporte feito: ${formatBrl(input.amountCents)} em ${input.title}.`;
+  const kind = toneKindFor('GUARDAR', [input.title]);
+  const head = toneText({
+    kind,
+    moment: 'recibo',
+    seed: input.toneSeed ?? '',
+    values: { valor: formatBrl(input.amountCents), meta: input.title, descricao: input.title, cartao: '' },
+  });
   const body =
     input.targetCents === null || input.percent === null
       ? `Agora ${formatBrl(input.currentCents)} guardados.`
@@ -491,15 +534,38 @@ export function installmentDraftText(input: {
   totalCents: number;
   installmentsTotal: number;
   firstDueDate: string;
+  toneSeed?: string;
 }): string {
-  return `Compra parcelada ${input.description}: total ${formatBrl(input.totalCents)} em ${input.installmentsTotal} parcelas, primeira em ${longDate(input.firstDueDate)}.`;
+  const kind = toneKindFor('PARCELADO', [input.description]);
+  const tone = toneText({
+    kind,
+    moment: 'rascunho',
+    seed: input.toneSeed ?? '',
+    values: {
+      descricao: input.description,
+      parcelas: String(input.installmentsTotal),
+      total: formatBrl(input.totalCents),
+    },
+  });
+  return [tone, `Compra parcelada ${input.description}: total ${formatBrl(input.totalCents)} em ${input.installmentsTotal} parcelas, primeira em ${longDate(input.firstDueDate)}.`].join('\n');
 }
 
+/** Recibo do parcelado gravado: só o tom do tipo, com os dados principais. */
 export function installmentCreatedText(input: {
   description: string;
   totalCents: number;
   installmentsTotal: number;
   firstDueDate: string;
+  toneSeed?: string;
 }): string {
-  return `Compra parcelada criada: ${input.description}, total ${formatBrl(input.totalCents)} em ${input.installmentsTotal} parcelas, primeira em ${longDate(input.firstDueDate)}.`;
+  return toneText({
+    kind: toneKindFor('PARCELADO', [input.description]),
+    moment: 'recibo',
+    seed: input.toneSeed ?? '',
+    values: {
+      descricao: input.description,
+      parcelas: String(input.installmentsTotal),
+      total: formatBrl(input.totalCents),
+    },
+  });
 }
