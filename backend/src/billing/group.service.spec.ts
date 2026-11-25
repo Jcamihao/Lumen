@@ -31,6 +31,8 @@ function makeDb() {
     memberships: [] as Row[],
     invites: [] as Row[],
     subs: [] as Row[],
+    transactions: [] as Row[],
+    categories: [] as Row[],
   };
 
   const withInclude = (row: Row, include?: Row): Row => {
@@ -59,6 +61,11 @@ function makeDb() {
           .map((m) => withInclude(m, include));
       },
       count: async ({ where }: any) => state.memberships.filter((m) => matches(m, where)).length,
+      update: async ({ where, data }: any) => {
+        const row = state.memberships.find((m) => m.id === where.id);
+        Object.assign(row, data);
+        return row;
+      },
       updateMany: async ({ where, data }: any) => {
         const targets = state.memberships.filter((m) => matches(m, where));
         targets.forEach((m) => Object.assign(m, data));
@@ -117,6 +124,20 @@ function makeDb() {
     },
     subscription: {
       findMany: async ({ where }: any) => state.subs.filter((s) => matches(s, where)),
+    },
+    transaction: {
+      updateMany: async ({ where, data }: any) => {
+        const targets = state.transactions.filter((t) => matches(t, where));
+        targets.forEach((t) => Object.assign(t, data));
+        return { count: targets.length };
+      },
+    },
+    financeCategory: {
+      updateMany: async ({ where, data }: any) => {
+        const targets = state.categories.filter((c) => matches(c, where));
+        targets.forEach((c) => Object.assign(c, data));
+        return { count: targets.length };
+      },
     },
     user: {
       findUnique: async ({ where, select }: any) => {
@@ -460,6 +481,39 @@ describe('GroupService (contrato 11, 11a)', () => {
       expect(membre.leftAt).toEqual(NOW);
       await expect(service.leave('user-b')).rejects.toBeInstanceOf(NotFoundException);
       await expect(service.leave('user-a')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('saida anula a marca dos itens compartilhados (lancamentos e categorias)', () => {
+    const seed = (db: any) => {
+      db.state.memberships.push(activeMember(db, 'user-a', 'user-b'));
+      db.state.transactions.push(
+        { id: 't-b', userId: 'user-b', sharedGroupOwnerId: 'user-a' },
+        { id: 't-a', userId: 'user-a', sharedGroupOwnerId: 'user-a' },
+        { id: 't-b-private', userId: 'user-b', sharedGroupOwnerId: null },
+      );
+      db.state.categories.push(
+        { id: 'c-b', userId: 'user-b', sharedGroupOwnerId: 'user-a' },
+        { id: 'c-a', userId: 'user-a', sharedGroupOwnerId: 'user-a' },
+      );
+    };
+    const marks = (db: any) => ({
+      tx: db.state.transactions.map((t: any) => t.sharedGroupOwnerId),
+      cat: db.state.categories.map((c: any) => c.sharedGroupOwnerId),
+    });
+
+    it('leave: so os itens de quem saiu voltam a ser privados', async () => {
+      const { db, service } = build();
+      seed(db);
+      await service.leave('user-b');
+      expect(marks(db)).toEqual({ tx: [null, 'user-a', null], cat: [null, 'user-a'] });
+    });
+
+    it('removeMember: so os itens do membro removido voltam a ser privados', async () => {
+      const { db, service } = build();
+      seed(db);
+      await service.removeMember('user-a', db.state.memberships[0].id);
+      expect(marks(db)).toEqual({ tx: [null, 'user-a', null], cat: [null, 'user-a'] });
     });
   });
 
