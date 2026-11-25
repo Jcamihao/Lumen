@@ -308,6 +308,16 @@ describe('ConversationService', () => {
       expect(reply.draft?.description).toBe('freelance');
     });
 
+    it('escrita natural: "caiu 500 do freela" vira rascunho INCOME e "foi 35 no uber" vira EXPENSE', async () => {
+      const income = await service.handleMessage(msg('A', 'caiu 500 do freela'));
+      expect(income.draft?.type).toBe('INCOME');
+      expect(income.draft?.description).toBe('freela');
+
+      const expense = await service.handleMessage(msg('B', 'foi 35 no uber'));
+      expect(expense.draft?.type).toBe('EXPENSE');
+      expect(expense.draft?.description).toBe('uber');
+    });
+
     it('categoria desconhecida pergunta uma vez; "sem categoria" fecha o rascunho', async () => {
       const ask = await service.handleMessage(msg('A', 'gastei 32,90 na farmácia'));
       expect(ask.kind).toBe('ASK_FIELD');
