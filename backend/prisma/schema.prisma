@@ -203,6 +203,9 @@ model User {
   groupMembershipsOwned         GroupMembership[]  @relation("GroupOwner")
   groupMemberships              GroupMembership[]  @relation("GroupMember")
   groupInvitesSent              GroupInvite[]      @relation("GroupInvites")
+  // Itens que este usuario marcou como compartilhados com o grupo (contrato 11b, 11b-1a).
+  sharedTransactions            Transaction[]      @relation("SharedTransactionGroup")
+  sharedFinanceCategories       FinanceCategory[]  @relation("SharedFinanceCategoryGroup")
   telegramLink                  TelegramLink?
   telegramLinkCodes             TelegramLinkCode[]
 
@@ -277,9 +280,13 @@ model FinanceCategory {
   transactions          Transaction[]
   recurringTransactions RecurringTransaction[]
   installmentPurchases  InstallmentPurchase[]
+  // Carteira compartilhada (11b): pagador do grupo em que a categoria esta compartilhada. Nulo = privada.
+  sharedGroupOwnerId    String?
+  sharedGroupOwner      User?                  @relation("SharedFinanceCategoryGroup", fields: [sharedGroupOwnerId], references: [id], onDelete: SetNull)
 
   @@unique([userId, name, type])
   @@index([userId, type])
+  @@index([sharedGroupOwnerId])
 }
 
 model Goal {
@@ -373,9 +380,12 @@ model Transaction {
   installmentsTotal      Int?
   // Cartao usado no lancamento (so com paymentMethod=CREDIT). Nulo = lancamento antigo: conta no cartao padrao.
   cardId                 String?
+  // Carteira compartilhada (11b): pagador do grupo em que o lancamento esta compartilhado. Nulo = privado.
+  sharedGroupOwnerId     String?
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
   user                   User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sharedGroupOwner       User?                 @relation("SharedTransactionGroup", fields: [sharedGroupOwnerId], references: [id], onDelete: SetNull)
   recurringTransaction   RecurringTransaction? @relation(fields: [recurringTransactionId], references: [id], onDelete: SetNull)
   category               FinanceCategory?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   envelope               Envelope?             @relation(fields: [envelopeId], references: [id], onDelete: SetNull)
@@ -394,6 +404,7 @@ model Transaction {
   @@index([linkedTaskId])
   @@index([linkedGoalId])
   @@index([cardId])
+  @@index([sharedGroupOwnerId])
 }
 
 // Conta fixa ou recorrente (aluguel, assinatura, salario). O lancamento e
