@@ -92,10 +92,10 @@ export function matchIntent(raw: string): IntentMatch | null {
   const natural = matchNaturalWrite(raw, tokens, words);
   if (natural) return natural;
 
-  const income = matchIncome(raw, tokens, words);
+  const income = matchIncome(tokens, words);
   if (income) return income;
 
-  const expense = matchExpense(raw, tokens, words);
+  const expense = matchExpense(tokens, words);
   if (expense) return expense;
 
   const goalWrite = matchGoalWrite(raw, tokens, words);
@@ -329,7 +329,7 @@ function matchImportReceipt(raw: string, phrase: string): boolean {
   return false;
 }
 
-function matchIncome(raw: string, tokens: string[], words: string[]): IntentMatch | null {
+function matchIncome(tokens: string[], words: string[]): IntentMatch | null {
   let skip = 0;
   if (words[0] === 'recebi' || words[0] === 'ganhei') {
     skip = 1;
@@ -339,13 +339,13 @@ function matchIncome(raw: string, tokens: string[], words: string[]): IntentMatc
     return null;
   }
   const body = tokens.slice(skip).join(' ');
-  return isAmountStart(body) && !raw.includes('?') ? { intent: 'create_income', body } : missingAmount('create_income', body);
+  return isAmountStart(body) ? { intent: 'create_income', body } : missingAmount('create_income', body);
 }
 
-function matchExpense(raw: string, tokens: string[], words: string[]): IntentMatch | null {
+function matchExpense(tokens: string[], words: string[]): IntentMatch | null {
   const skip = EXPENSE_VERBS.includes(words[0]) ? 1 : 0;
   const body = tokens.slice(skip).join(' ');
-  if (isAmountStart(body) && !raw.includes('?')) return { intent: 'create_expense', body };
+  if (isAmountStart(body)) return { intent: 'create_expense', body };
   return skip === 1 ? missingAmount('create_expense', body) : null;
 }
 

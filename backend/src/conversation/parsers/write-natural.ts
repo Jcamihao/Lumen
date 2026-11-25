@@ -17,12 +17,26 @@ const INFORMAL_VERBS: Array<{ intent: 'create_expense' | 'create_income' | 'cont
 /** Verbos de parcelado: a frase precisa de "em <N>x de <valor>" (valor da parcela). */
 const INSTALLMENT_VERBS: string[][] = [['comprei'], ['parcelei']];
 
+/** Verbos ambiguos ("coloquei 200 no bolso"): so valem como aporte se a frase cita caixinha, cofrinho ou meta. */
+const GOAL_KEYWORD_VERBS = new Set(['coloquei', 'depositei', 'separei']);
+const GOAL_KEYWORDS = new Set(['caixinha', 'caixinhas', 'cofrinho', 'cofrinhos', 'meta', 'metas']);
+
 const FILLER_WORDS = new Set(['so', 'ja', 'ai', 'uns', 'cerca', 'exatos', 'mais']);
 const ARTICLE_WORDS = new Set(['um', 'uma', 'o', 'a', 'meu', 'minha', 'uns', 'umas']);
 /** Palavras de ligacao que nao contam como destino de aporte ("guardei 200 na" nao diz para onde). */
 const CONNECTOR_WORDS = new Set(['na', 'no', 'em', 'para', 'pra', 'pro', 'a', 'o', 'da', 'do', 'de', 'minha', 'meu', 'um', 'uma', 'ao']);
 
 /** Mesmo limite dos comandos de escrita novos (intent.matcher.ts): ate 20 palavras e 500 caracteres. */
+/** Palavra logo depois do numero que mostra contagem ou medida, nao dinheiro ("passei 2 vezes", "entrou 2 pessoas"). */
+const COUNT_WORDS = new Set([
+  'vez', 'vezes', 'pessoa', 'pessoas', 'gente', 'amigo', 'amigos', 'litro', 'litros', 'quilo', 'quilos', 'kg', 'km',
+  'metro', 'metros', 'hora', 'horas', 'minuto', 'minutos', 'segundo', 'segundos', 'dias', 'semana', 'semanas',
+  'mes', 'meses', 'ano', 'anos', 'unidade', 'unidades', 'pedaco', 'pedacos', 'caixa', 'caixas', 'item', 'itens',
+]);
+
+/** Sobra aceita depois do valor da parcela ("em 10x de 150 reais"). */
+const CURRENCY_WORDS = new Set(['', 'reais', 'real']);
+
 const NATURAL_MAX_WORDS = 20;
 const NATURAL_MAX_CHARS = 500;
 
@@ -38,7 +52,9 @@ function matchInformal(tokens: string[], words: string[]): NaturalWrite | null {
   for (const { intent, verbs } of INFORMAL_VERBS) {
     const verb = verbs.find((candidate) => startsWithWords(words, candidate));
     if (verb === undefined) continue;
-    return informalWrite(intent, tokens.slice(verb.length), words.slice(verb.length));
+    const write = informalWrite(intent, tokens.slice(verb.length), words.slice(verb.length));
+    if (write !== null && GOAL_KEYWORD_VERBS.has(verb[0]) && !words.some((word) => GOAL_KEYWORDS.has(word))) return null;
+    return write;
   }
   return null;
 }
@@ -51,6 +67,7 @@ function informalWrite(
   const amountTokens = FILLER_WORDS.has(words[0] ?? '') ? tokens.slice(1) : tokens;
   const body = amountTokens.join(' ');
   const amount = parseAmountPrefix(body);
+  if (amount.ok === true && COUNT_WORDS.has(normalizeWord(firstWord(amount.rest)))) return null;
   if (intent !== 'contribute_goal') {
     return amount.ok === true || amount.reason !== 'NOT_AMOUNT' ? { intent, body } : null;
   }
@@ -67,15 +84,22 @@ function matchInstallment(tokens: string[], words: string[]): NaturalWrite | nul
 
   const description = dropArticles(tokens.slice(verb.length, verb.length + emAt)).join(' ');
   const parcel = parseAmountPrefix(tokens.slice(verb.length + emAt + 3).join(' '));
-  if (description === '' || parcel.ok !== true || parcel.rest !== '') return null;
+  if (description === '' || parcel.ok !== true || !CURRENCY_WORDS.has(normalizeWord(parcel.rest))) return null;
 
   const quantity = rest[emAt + 1];
   const total = parcel.cents * Number(quantity.slice(0, -1));
   return { intent: 'create_installment', body: `${formatCents(total)} ${description} em ${quantity}` };
 }
 
+function firstWord(text: string): string {
+  return text.trim().split(/\s+/)[0] ?? '';
+}
+
+/** O destino do aporte vem depois de uma palavra de ligacao ("na viagem") e diz algo alem dela. */
 function hasDestination(rest: string): boolean {
-  return rest.split(/\s+/).some((word) => word.length > 0 && !CONNECTOR_WORDS.has(normalizeWord(word)));
+  const afterCurrency = rest.replace(/^\s*(reais|real)\b/i, '');
+  if (!CONNECTOR_WORDS.has(normalizeWord(firstWord(afterCurrency)))) return false;
+  return afterCurrency.split(/\s+/).some((word) => word.length > 0 && !CONNECTOR_WORDS.has(normalizeWord(word)));
 }
 
 function dropArticles(tokens: string[]): string[] {

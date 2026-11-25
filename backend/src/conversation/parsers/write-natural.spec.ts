@@ -72,7 +72,6 @@ describe('escrita natural: negativos (pergunta, negacao, hipotese, sem valor, ve
     'quanto foi 35 no uber?',
     'quanto foi 35 no uber',
     'foi 35 no uber?',
-    'gastei 50 no mercado ontem?',
     'recebi 800?',
     'caiu 500?',
     'caiu 500 do freela? nao sei',
@@ -101,12 +100,31 @@ describe('escrita natural: negativos (pergunta, negacao, hipotese, sem valor, ve
     'hoje 500 do freela caiu',
     `foi 35 no ${'a'.repeat(510)}`,
     'separei 300 pra',
-    'recebi 800 de freelance?',
     'depositei?',
     'quero guardar 200 na viagem',
     'vou guardar 200 na viagem',
     'comprei um celular em 10x',
     'comprei um celular em 10x de 150?',
+    'passei 200 vezes la',
+    'passei 2 vezes no mercado',
+    'entrou 2 vezes',
+    'entrou 2 pessoas na fila',
+    'saiu 2 vezes de casa',
+    'foi 2 vezes la',
+    'foi 3 dias no hotel',
+    'coloquei 200 litros de gasolina',
+    'juntei 100 amigos',
+    'coloquei 200 no bolso',
+    'coloquei 200 na mesa',
+    'coloquei 50 reais de gasolina no carro',
+    'depositei 50 no banco',
+    'depositei 50 na conta do joao',
+    'separei 300 pra comida',
+    'juntei 100 pessoas na festa',
+    'guardei 2 caixas na garagem',
+    'separei 300 doces pra festa',
+    'separei 3 brigadeiros pra mim',
+    'guardei 200 viagem',
     'comprei um celular em 10x de 150 ontem',
     'parcelei a geladeira',
     'parcelei a geladeira em 12x de 200?',
@@ -127,6 +145,21 @@ describe('escrita natural: regras de forma', () => {
   it('chamar duas vezes a mesma frase devolve o mesmo resultado', () => {
     const text = 'comprei um celular em 10x de 150';
     expect(matchIntent(text)).toEqual(matchIntent(text));
+  });
+
+  it('com "?" os verbos antigos seguem como na develop (rascunho)', () => {
+    expect(matchIntent('gastei 50 mercado?')).toEqual({ intent: 'create_expense', body: '50 mercado?' });
+    expect(matchIntent('gastei 50 no mercado ontem?')?.intent).toBe('create_expense');
+    expect(matchIntent('recebi 800 de freelance?')?.intent).toBe('create_income');
+    expect(matchIntent('50 mercado?')?.intent).toBe('create_expense');
+    expect(matchIntent('recebi 800?')).toBeNull();
+  });
+
+  it('parcelado aceita "reais" depois da parcela', () => {
+    expect(matchIntent('comprei um celular em 10x de 150 reais')).toEqual({
+      intent: 'create_installment',
+      body: '1500,00 celular em 10x',
+    });
   });
 
   it('com "?" o informal nunca vira escrita, mesmo com valor certo', () => {
