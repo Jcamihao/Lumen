@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { OfflineLifeService } from './offline-life.service';
+import { OfflineLifeService, stripLegacyUserPatchKeys } from './offline-life.service';
 import { AuthService } from './auth.service';
 import { NativeStorageService } from './native-storage.service';
 
@@ -240,6 +240,37 @@ describe('OfflineLifeService', () => {
       const updated = service.queueGoalUpdate(offlineGoal.id, { targetAmount: null });
 
       expect(updated?.targetAmount).toBeNull();
+    });
+  });
+
+  describe('fila do usuario sem o espelho de ciclo (9c-2/11b-1b)', () => {
+    it('stripLegacyUserPatchKeys remove as tres chaves mortas e preserva o resto', () => {
+      const clean = stripLegacyUserPatchKeys({
+        name: 'Marina',
+        monthClosingDay: 12,
+        creditDueDay: 5,
+        creditCycleCountAllPayments: true,
+        timezone: 'America/Sao_Paulo',
+      });
+
+      expect(clean).toEqual({ name: 'Marina', timezone: 'America/Sao_Paulo' });
+      expect(stripLegacyUserPatchKeys(undefined)).toEqual({});
+    });
+
+    it('queueUserUpdate nao grava o espelho na fila nem no usuario local', () => {
+      service.queueUserUpdate({ name: 'Marina Nova', monthClosingDay: 9 });
+
+      const item = service.getReadyQueueSnapshot().find((i) => i.entity === 'user');
+      expect(item?.payload).toEqual({ name: 'Marina Nova' });
+    });
+
+    it('merge em item existente nao reintroduz a chave no payload enfileirado', () => {
+      service.queueUserUpdate({ name: 'Uma', monthClosingDay: 3 });
+      service.queueUserUpdate({ timezone: 'UTC', creditDueDay: 20 });
+
+      const itens = service.getReadyQueueSnapshot().filter((i) => i.entity === 'user');
+      expect(itens.length).toBe(1);
+      expect(itens[0].payload).toEqual({ name: 'Uma', timezone: 'UTC' });
     });
   });
 });
