@@ -475,7 +475,7 @@ export class InsightsService {
       // Mesma regra do ciclo do cartao (cardSpendWhere). Sem cartao padrao ativo: gasto zero.
       defaultCard
         ? this.prisma.transaction.aggregate({
-            where: cardSpendWhere(userId, defaultCard, creditCycle.start, creditCycle.end),
+            where: cardSpendWhere({ userId }, defaultCard, creditCycle.start, creditCycle.end),
             _sum: { amount: true },
           })
         : Promise.resolve({ _sum: { amount: null } }),

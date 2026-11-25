@@ -5,16 +5,19 @@ import { addDaysUtc, daysInMonthUtc, utcDate } from '../recurring-transactions/r
  * Filtro de gasto do ciclo de um cartao (contrato item 9, secoes 4.3 e 4.4). Usado pelo
  * ciclo e pelo insights: manter uma so regra. Padrao com countAllPayments soma toda EXPENSE;
  * os demais somam CREDIT do proprio cartao, e o padrao soma tambem EXPENSE CREDIT sem cartao.
+ * `userWhere` e a parte de QUEM conta (11b-1b): `{ userId }` sozinho, ou o where de escopo
+ * do grupo (o meu + os compartilhados). Fica em AND separado para o OR do escopo nunca
+ * ser sobrescrito pelo OR do escopo do cartao (vazamento).
  */
 export function cardSpendWhere(
-  userId: string,
+  userWhere: Prisma.TransactionWhereInput,
   card: { id: string; isDefault: boolean; countAllPayments: boolean },
   start: Date,
   end: Date,
 ): Prisma.TransactionWhereInput {
-  const range = { userId, type: TransactionType.EXPENSE, date: { gte: start, lte: end } };
-  if (card.isDefault && card.countAllPayments) return range;
-  return { ...range, paymentMethod: 'CREDIT', ...cardScopeWhere(card) };
+  const range: Prisma.TransactionWhereInput = { type: TransactionType.EXPENSE, date: { gte: start, lte: end } };
+  if (card.isDefault && card.countAllPayments) return { AND: [userWhere, range] };
+  return { AND: [userWhere, range, { paymentMethod: 'CREDIT' }, cardScopeWhere(card)] };
 }
 
 /**

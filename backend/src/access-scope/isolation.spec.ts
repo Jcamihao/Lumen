@@ -267,10 +267,13 @@ describe('compartilhamento isolado: A e B no grupo, C em outro grupo, D sem grup
     const b2 = await createTx(ctx, 'user-b', 'de B');
     await ctx.transactions.setSharing('user-b', b2.id, true);
     expect((await ctx.transactions.list('user-a', { scope: 'shared' } as any)).map((t: any) => t.id)).toEqual([b2.id]);
+    // 11b-1b: cartao do membro tambem sai do grupo junto.
+    ctx.state.cards.push({ id: 'card-b1', userId: 'user-b', name: 'Itau de B', sharedGroupOwnerId: 'user-a', archivedAt: null });
 
     await ctx.groups.leave('user-b');
 
     expect(ctx.state.transactions.find((t) => t.id === b2.id)?.sharedGroupOwnerId).toBeNull();
+    expect(ctx.state.cards.find((c) => c.id === 'card-b1')?.sharedGroupOwnerId).toBeNull();
     expect(await ctx.transactions.list('user-a', { scope: 'shared' } as any)).toEqual([]);
     expect((await ctx.transactions.list('user-b', { scope: 'all' } as any)).map((t: any) => t.id)).toEqual([b2.id]);
     await expectRejection(ctx.transactions.setSharing('user-b', b2.id, true), ConflictException);

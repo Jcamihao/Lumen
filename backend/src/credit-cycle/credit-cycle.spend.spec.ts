@@ -5,17 +5,21 @@ import { cardSpendWhere } from './credit-cycle.util';
  * Avaliador minimo do where do Prisma usado pelo filtro de gasto: serve para
  * provar QUEM entra no total de cada cartao, nao so o formato do filtro.
  */
-type Row = { userId: string; type: string; date: Date; paymentMethod: string | null; cardId: string | null; amount: number };
+type Row = { userId: string; sharedGroupOwnerId: string | null; type: string; date: Date; paymentMethod: string | null; cardId: string | null; amount: number };
 
 const matches = (row: Row, where: any): boolean => {
+  if (where.AND && !where.AND.every((clause: any) => matches(row, clause))) return false;
   if (where.OR && !where.OR.some((clause: any) => matches(row, clause))) return false;
   for (const [key, value] of Object.entries(where)) {
-    if (key === 'OR') continue;
+    if (key === 'OR' || key === 'AND') continue;
     if (key === 'date') {
       const v = value as { gte: Date; lte: Date };
       if (row.date < v.gte || row.date > v.lte) return false;
     } else if (value === null) {
       if (row[key as keyof Row] !== null) return false;
+    } else if (key === 'userId' && typeof value === 'object') {
+      const ids = (value as { in: string[] }).in;
+      if (!ids.includes(row.userId)) return false;
     } else if (row[key as keyof Row] !== value) {
       return false;
     }
@@ -32,18 +36,18 @@ const SECOND = { id: 'card-second', isDefault: false, countAllPayments: false };
 const DEFAULT_ALL = { id: 'card-default', isDefault: true, countAllPayments: true };
 
 const ledger: Row[] = [
-  { userId: U, type: 'EXPENSE', date: inCycle, paymentMethod: 'CREDIT', cardId: 'card-default', amount: 10 },
-  { userId: U, type: 'EXPENSE', date: inCycle, paymentMethod: 'CREDIT', cardId: null, amount: 20 },
-  { userId: U, type: 'EXPENSE', date: inCycle, paymentMethod: 'CREDIT', cardId: 'card-second', amount: 40 },
-  { userId: U, type: 'EXPENSE', date: inCycle, paymentMethod: 'PIX', cardId: null, amount: 80 },
-  { userId: U, type: 'EXPENSE', date: inCycle, paymentMethod: 'DEBIT', cardId: null, amount: 160 },
-  { userId: U, type: 'INCOME', date: inCycle, paymentMethod: 'CREDIT', cardId: null, amount: 320 },
-  { userId: U, type: 'EXPENSE', date: new Date('2026-09-01T00:00:00.000Z'), paymentMethod: 'CREDIT', cardId: null, amount: 640 },
+  { userId: U, sharedGroupOwnerId: null, type: 'EXPENSE', date: inCycle, paymentMethod: 'CREDIT', cardId: 'card-default', amount: 10 },
+  { userId: U, sharedGroupOwnerId: null, type: 'EXPENSE', date: inCycle, paymentMethod: 'CREDIT', cardId: null, amount: 20 },
+  { userId: U, sharedGroupOwnerId: null, type: 'EXPENSE', date: inCycle, paymentMethod: 'CREDIT', cardId: 'card-second', amount: 40 },
+  { userId: U, sharedGroupOwnerId: null, type: 'EXPENSE', date: inCycle, paymentMethod: 'PIX', cardId: null, amount: 80 },
+  { userId: U, sharedGroupOwnerId: null, type: 'EXPENSE', date: inCycle, paymentMethod: 'DEBIT', cardId: null, amount: 160 },
+  { userId: U, sharedGroupOwnerId: null, type: 'INCOME', date: inCycle, paymentMethod: 'CREDIT', cardId: null, amount: 320 },
+  { userId: U, sharedGroupOwnerId: null, type: 'EXPENSE', date: new Date('2026-09-01T00:00:00.000Z'), paymentMethod: 'CREDIT', cardId: null, amount: 640 },
 ];
 
 const total = (card: { id: string; isDefault: boolean; countAllPayments: boolean }) =>
   ledger
-    .filter((row) => matches(row, cardSpendWhere(U, card, start, end)))
+    .filter((row) => matches(row, cardSpendWhere({ userId: U }, card, start, end)))
     .reduce((sum, row) => sum + row.amount, 0);
 
 describe('cardSpendWhere: quem entra no gasto de cada cartao (contrato item 9, secao 4.3 e 4.4)', () => {
@@ -52,7 +56,7 @@ describe('cardSpendWhere: quem entra no gasto de cada cartao (contrato item 9, s
   });
 
   it('padrao NAO soma o CREDIT do cartao secundario', () => {
-    const counted = ledger.filter((row) => matches(row, cardSpendWhere(U, DEFAULT, start, end)));
+    const counted = ledger.filter((row) => matches(row, cardSpendWhere({ userId: U }, DEFAULT, start, end)));
     expect(counted.some((row) => row.cardId === 'card-second')).toBe(false);
   });
 
@@ -77,5 +81,47 @@ describe('cardSpendWhere: quem entra no gasto de cada cartao (contrato item 9, s
   it('countAllPayments em cartao nao padrao nao libera o filtro (invariante do contrato)', () => {
     const secondAll = { id: 'card-second', isDefault: false, countAllPayments: true };
     expect(total(secondAll)).toBe(40);
+  });
+});
+
+describe('gasto com escopo do grupo (11b-1b): meu + compartilhado do parceiro, nunca o privado dele', () => {
+  const B = 'user-b';
+  const GROUP = 'owner-x';
+  const scopeAll = { OR: [{ userId: U }, { sharedGroupOwnerId: GROUP, userId: { in: [B] } }] };
+  const partnerLedger: Row[] = [
+    ...ledger,
+    // Parceiro B no MESMO cartao padrao de A (lancamento forcado do D6).
+    { userId: B, sharedGroupOwnerId: GROUP, type: 'EXPENSE', date: inCycle, paymentMethod: 'CREDIT', cardId: 'card-default', amount: 500 },
+    // B compartilhou um PIX qualquer (entra so no countAllPayments).
+    { userId: B, sharedGroupOwnerId: GROUP, type: 'EXPENSE', date: inCycle, paymentMethod: 'PIX', cardId: null, amount: 700 },
+    // B privado no cartao de A (nao deveria existir, mas o filtro nao pode deixar vazar).
+    { userId: B, sharedGroupOwnerId: null, type: 'EXPENSE', date: inCycle, paymentMethod: 'CREDIT', cardId: 'card-default', amount: 900 },
+    // B compartilhado no cartao SECONDARIO de A.
+    { userId: B, sharedGroupOwnerId: GROUP, type: 'EXPENSE', date: inCycle, paymentMethod: 'CREDIT', cardId: 'card-second', amount: 300 },
+  ];
+  const totalIn = (scope: any, card: Row2Card) =>
+    partnerLedger
+      .filter((row) => matches(row, cardSpendWhere(scope, card, start, end)))
+      .reduce((sum, row) => sum + row.amount, 0);
+  type Row2Card = { id: string; isDefault: boolean; countAllPayments: boolean };
+
+  it('padrao de A sem countAll: soma o CREDIT compartilhado de B no cartao de A, nunca o privado', () => {
+    expect(totalIn(scopeAll, DEFAULT)).toBe(10 + 20 + 500);
+  });
+
+  it('privado do parceiro no mesmo cartao fica fora (900 nao entra em nenhum escopo)', () => {
+    expect(totalIn(scopeAll, DEFAULT_ALL)).toBe(310 + 500 + 700 + 300);
+  });
+
+  it('countAll do padrao soma o compartilhado de B de qualquer forma/cartao', () => {
+    expect(totalIn(scopeAll, DEFAULT_ALL)).toBe(10 + 20 + 40 + 80 + 160 + 500 + 700 + 300);
+  });
+
+  it('secundario de A so ve o compartilhado de B que aponta para ele', () => {
+    expect(totalIn(scopeAll, SECOND)).toBe(40 + 300);
+  });
+
+  it('escopo mine e identico ao comportamento antigo (parceiro nunca aparece)', () => {
+    expect(totalIn({ userId: U }, DEFAULT_ALL)).toBe(310);
   });
 });

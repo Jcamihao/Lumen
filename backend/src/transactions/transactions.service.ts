@@ -10,8 +10,8 @@ import { RecurringMaterializerService } from '../recurring-transactions/recurrin
 import { InstallmentMaterializerService } from '../installments/installment-materializer.service';
 import {
   findOwnedCardForLink,
-  resolveCardForCreate,
-  resolveCardForUpdate,
+  resolveCardForCreateShared,
+  resolveCardForUpdateShared,
   withCardGuard,
 } from '../credit-cards/card-link';
 import { cardScopeWhere } from '../credit-cycle/credit-cycle.util';
@@ -115,7 +115,7 @@ export class TransactionsService {
 
     // Cartao so com CREDIT, do proprio usuario e nao arquivado; com cardId a escrita roda sob o lock do User.
     const transaction = await withCardGuard(this.prisma, userId, typeof dto.cardId === 'string', async (db) => {
-      const cardId = await resolveCardForCreate(db, userId, dto.cardId, dto.paymentMethod, dto.type);
+      const link = await resolveCardForCreateShared(db, this.access, userId, dto.cardId, dto.paymentMethod, dto.type);
       return db.transaction.create({
         data: {
           userId,
@@ -128,7 +128,8 @@ export class TransactionsService {
           envelopeId: dto.envelopeId,
           linkedTaskId: dto.linkedTaskId,
           linkedGoalId: dto.linkedGoalId,
-          cardId,
+          cardId: link?.cardId,
+          sharedGroupOwnerId: link?.sharedGroupOwnerId ?? undefined,
         },
         include: {
           category: true,
@@ -214,7 +215,7 @@ export class TransactionsService {
       dto.envelopeId === null ? undefined : dto.envelopeId,
       db,
     );
-    const cardPatch = await resolveCardForUpdate(db, userId, current, dto);
+    const cardPatch = await resolveCardForUpdateShared(db, this.access, userId, current, dto);
     return db.transaction.update({
       where: { id },
       data: {

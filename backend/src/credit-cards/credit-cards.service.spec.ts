@@ -1,4 +1,5 @@
 import { ConflictException, NotFoundException, UnprocessableEntityException, BadRequestException } from '@nestjs/common';
+import { AccessScopeService } from '../access-scope/access-scope.service';
 import { CreditCycleService } from '../credit-cycle/credit-cycle.service';
 import { CreditCardsService, CreditCardWriteUncertainError, MAX_ACTIVE_CARDS_PER_USER } from './credit-cards.service';
 
@@ -25,6 +26,7 @@ function matches(row: Row, where: Row = {}): boolean {
         return eq(value, c.equals);
       }
       if ('lt' in c) return norm(value) < norm(c.lt);
+      if ('in' in c) return (c.in as unknown[]).some((v) => eq(value, v));
       return true;
     }
     return eq(value, cond);
@@ -67,6 +69,8 @@ function createFakeDb() {
     users: new Map<string, Row>(),
     cards: [] as Row[],
     ceilings: [] as Row[],
+    transactions: [] as Row[],
+    memberships: [] as Row[],
     seq: 0,
   };
   const log: string[] = [];
@@ -92,12 +96,16 @@ function createFakeDb() {
     users: new Map([...state.users].map(([k, v]) => [k, { ...v }])),
     cards: state.cards.map((c) => ({ ...c })),
     ceilings: state.ceilings.map((c) => ({ ...c })),
+    transactions: state.transactions.map((t) => ({ ...t })),
+    memberships: state.memberships.map((m) => ({ ...m })),
     seq: state.seq,
   });
   const restore = (snap: ReturnType<typeof snapshotState>) => {
     state.users = snap.users;
     state.cards = snap.cards;
     state.ceilings = snap.ceilings;
+    state.transactions = snap.transactions;
+    state.memberships = snap.memberships;
     state.seq = snap.seq;
   };
 
@@ -126,6 +134,8 @@ function createFakeDb() {
         apply(u, data);
         return { ...u };
       },
+      findMany: async ({ where, select }: Row) =>
+        [...state.users.values()].filter((u) => matches(u, where)).map((u) => pick(u, select)),
     },
     creditCard: {
       count: async ({ where }: Row) => {
@@ -206,6 +216,16 @@ function createFakeDb() {
     },
     transaction: {
       aggregate: async () => ({ _sum: { amount: null } }),
+      updateMany: async ({ where, data }: Row) => {
+        const hit = state.transactions.filter((t) => matches(t, where));
+        log.push('transaction.updateMany');
+        hit.forEach((t) => apply(t, data));
+        return { count: hit.length };
+      },
+    },
+    groupMembership: {
+      findFirst: async ({ where }: Row) => state.memberships.find((m) => matches(m, where)) ?? null,
+      findMany: async ({ where }: Row) => state.memberships.filter((m) => matches(m, where)),
     },
   });
 
@@ -234,11 +254,19 @@ function createFakeDb() {
     },
   };
 
-  const addUser = (id: string) => {
+  const addUser = (id: string, name?: string) => {
     state.users.set(id, {
       id,
+      name: name ?? null,
       timezone: 'America/Sao_Paulo',
     });
+  };
+  /** Membria ativa no grupo de ownerUserId (11b-1b; sharing precisa de grupo + plano SHARED). */
+  const addMembership = (ownerUserId: string, memberUserId: string) => {
+    state.memberships.push({ ownerUserId, memberUserId, leftAt: null });
+  };
+  const addTransaction = (row: Row) => {
+    state.transactions.push({ sharedGroupOwnerId: null, cardId: null, ...row });
   };
   const addCard = (card: Row) => {
     state.cards.push({
@@ -246,19 +274,33 @@ function createFakeDb() {
       countAllPayments: false,
       isDefault: false,
       archivedAt: null,
+      sharedGroupOwnerId: null,
       createdAt: new Date(Date.UTC(2026, 0, 1) + state.cards.length * 1000),
       updatedAt: new Date(Date.UTC(2026, 0, 1)),
       ...card,
     });
   };
 
-  return { prisma, state, log, faults, addUser, addCard, snapshot: () => JSON.stringify({ users: [...state.users.values()], cards: state.cards, ceilings: state.ceilings }) };
+  return {
+    prisma,
+    state,
+    log,
+    faults,
+    addUser,
+    addCard,
+    addMembership,
+    addTransaction,
+    snapshot: () =>
+      JSON.stringify({ users: [...state.users.values()], cards: state.cards, ceilings: state.ceilings, transactions: state.transactions }),
+  };
 }
 
 describe('CreditCardsService', () => {
   let db: ReturnType<typeof createFakeDb>;
   let lifeEngine: { touchUserData: jest.Mock };
-  let entitlements: { assertCanCreate: jest.Mock };
+  let entitlements: { assertCanCreate: jest.Mock; resolvePlan: jest.Mock };
+  let plans: Map<string, string>;
+  let access: AccessScopeService;
   let service: CreditCardsService;
 
   /** Usuarios A, B e C. A tem padrao (Principal, dia 5) e Nubank (dia 20, nao padrao). */
@@ -273,10 +315,15 @@ describe('CreditCardsService', () => {
     db.addCard({ id: 'card-b1', userId: 'user-b', name: 'Principal', closingDay: 10, isDefault: true });
     db.addCard({ id: 'card-c1', userId: 'user-c', name: 'Principal', closingDay: 15, isDefault: true });
     lifeEngine = { touchUserData: jest.fn().mockResolvedValue(undefined) };
-    const creditCycle = new CreditCycleService(db.prisma as any, lifeEngine as any);
-    // Limite por plano (D7): no-op neste spec (testa o teto tecnico); assert específico no bloco do plano.
-    entitlements = { assertCanCreate: jest.fn().mockResolvedValue(undefined) };
-    service = new CreditCardsService(db.prisma as any, lifeEngine as any, creditCycle, entitlements as any);
+    // Acesso compartilhado (11b-1b): individual por padrao; testes de compartilhamento sobem o plano aqui.
+    plans = new Map<string, string>();
+    entitlements = {
+      assertCanCreate: jest.fn().mockResolvedValue(undefined),
+      resolvePlan: jest.fn(async (id: string) => plans.get(id) ?? 'FREE'),
+    };
+    access = new AccessScopeService(db.prisma as any, entitlements as any);
+    const creditCycle = new CreditCycleService(db.prisma as any, lifeEngine as any, access as any);
+    service = new CreditCardsService(db.prisma as any, lifeEngine as any, creditCycle, entitlements as any, access);
   });
   afterEach(() => jest.useRealTimers());
 
@@ -661,6 +708,183 @@ describe('CreditCardsService', () => {
 
       const defaults = activeDefaults('user-a');
       expect(defaults).toHaveLength(1);
+    });
+  });
+
+  describe('cartao compartilhado (11b-1b)', () => {
+    /** Grupo de A (pagadora) com B dentro, os dois no plano Compartilhado. */
+    const shareGroup = () => {
+      plans.set('user-a', 'SHARED');
+      plans.set('user-b', 'SHARED');
+      db.addMembership('user-a', 'user-b');
+      db.state.users.get('user-a')!.name = 'Ana Lima';
+      db.state.users.get('user-b')!.name = 'Bia Souza';
+    };
+    const card = (id: string) => db.state.cards.find((c) => c.id === id)!;
+
+    describe('marcar e desmarcar (PATCH :id/sharing)', () => {
+      it('marca o cartao para o grupo e devolve recibo', async () => {
+        shareGroup();
+
+        const receipt = await service.setSharing('user-a', 'card-a1', true);
+
+        expect(receipt).toMatchObject({ id: 'card-a1', isShared: true });
+        expect(receipt.updatedAt).toEqual(expect.any(String));
+        expect(card('card-a1').sharedGroupOwnerId).toBe('user-a');
+      });
+
+      it('sem grupo ativo: 409 com codigo e nada e gravado', async () => {
+        const error = await service.setSharing('user-a', 'card-a1', true).catch((e) => e);
+
+        expect(error).toBeInstanceOf(ConflictException);
+        expect((error.getResponse() as Row).code).toBe('SHARING_NEEDS_ACTIVE_GROUP');
+        expect(card('card-a1').sharedGroupOwnerId).toBeFalsy();
+      });
+
+      it('idempotente: marcar de novo nao reescreve', async () => {
+        shareGroup();
+        await service.setSharing('user-a', 'card-a1', true);
+        const updatedAt = card('card-a1').updatedAt;
+
+        const receipt = await service.setSharing('user-a', 'card-a1', true);
+
+        expect(card('card-a1').updatedAt).toBe(updatedAt);
+        expect(receipt.isShared).toBe(true);
+      });
+
+      it('desmarcar limpa a marca', async () => {
+        shareGroup();
+        await service.setSharing('user-a', 'card-a1', true);
+
+        await service.setSharing('user-a', 'card-a1', false);
+
+        expect(card('card-a1').sharedGroupOwnerId).toBeNull();
+      });
+
+      it('desmarcar o cartao desmarca o lancamento do parceiro que apontava para ele (privacidade primeiro)', async () => {
+        shareGroup();
+        await service.setSharing('user-a', 'card-a1', true);
+        db.addTransaction({ id: 'tx-b-no-meu', userId: 'user-b', cardId: 'card-a1', sharedGroupOwnerId: 'user-a' });
+        db.addTransaction({ id: 'tx-a-no-meu', userId: 'user-a', cardId: 'card-a1', sharedGroupOwnerId: null });
+
+        await service.setSharing('user-a', 'card-a1', false);
+
+        const bTx = db.state.transactions.find((t) => t.id === 'tx-b-no-meu')!;
+        const aTx = db.state.transactions.find((t) => t.id === 'tx-a-no-meu')!;
+        expect(bTx.sharedGroupOwnerId).toBeNull();
+        expect(aTx.sharedGroupOwnerId).toBeNull();
+      });
+
+      it('cartao arquivado nao pode ser compartilhado (409)', async () => {
+        shareGroup();
+        await service.archive('user-a', 'card-a2');
+
+        await expect(service.setSharing('user-a', 'card-a2', true)).rejects.toBeInstanceOf(ConflictException);
+        expect(card('card-a2').sharedGroupOwnerId).toBeFalsy();
+      });
+
+      it('parceiro nao marca cartao alheio: 404', async () => {
+        shareGroup();
+
+        await expect(service.setSharing('user-b', 'card-a1', true)).rejects.toBeInstanceOf(NotFoundException);
+      });
+    });
+
+    describe('listagem com escopo (GET /credit-cards?scope=)', () => {
+      it('shared mostra o cartao marcado do parceiro com o primeiro nome de quem compartilhou', async () => {
+        shareGroup();
+        await service.setSharing('user-a', 'card-a2', true);
+
+        const list = await service.list('user-b', false, 'shared');
+
+        expect(list).toHaveLength(1);
+        expect(list[0]).toMatchObject({ id: 'card-a2', isShared: true, isMine: false, sharedByName: 'Ana' });
+        expect((list[0] as Row).userId).toBeUndefined();
+        expect((list[0] as Row).sharedGroupOwnerId).toBeUndefined();
+      });
+
+      it('shared nao mostra cartao nao marcado nem arquivado', async () => {
+        shareGroup();
+        expect(await service.list('user-b', false, 'shared')).toEqual([]);
+
+        await service.setSharing('user-a', 'card-a2', true);
+        await service.archive('user-a', 'card-a2');
+
+        expect(await service.list('user-b', false, 'shared')).toEqual([]);
+      });
+
+      it('sem plano SHARED o escopo shared e vazio e mine segue igual a antes', async () => {
+        expect(await service.list('user-b', false, 'shared')).toEqual([]);
+
+        const mine = await service.list('user-b', false, 'mine');
+
+        expect(mine.map((c) => c.id)).toEqual(['card-b1']);
+        expect(mine[0]).toMatchObject({ isShared: false, isMine: true, sharedByName: null });
+      });
+
+      it('all junta os proprios e os compartilhados do parceiro', async () => {
+        shareGroup();
+        await service.setSharing('user-a', 'card-a2', true);
+
+        const all = await service.list('user-b', false, 'all');
+
+        expect(all.map((c) => c.id).sort()).toEqual(['card-a2', 'card-b1']);
+        expect(all.find((c) => c.id === 'card-a2')).toMatchObject({ isMine: false, sharedByName: 'Ana' });
+        expect(all.find((c) => c.id === 'card-b1')).toMatchObject({ isMine: true });
+      });
+
+      it('cartao proprio marcado aparece com isShared no escopo mine', async () => {
+        shareGroup();
+        await service.setSharing('user-a', 'card-a1', true);
+
+        const mine = await service.list('user-a', false, 'mine');
+
+        expect(mine.find((c) => c.id === 'card-a1')).toMatchObject({ isShared: true, isMine: true });
+      });
+    });
+
+    describe('teto no cartao do parceiro (D4)', () => {
+      it('parceiro define o teto no cartao compartilhado; a linha fica com o dono do cartao e os dois engines sao tocados', async () => {
+        shareGroup();
+        await service.setSharing('user-a', 'card-a1', true);
+
+        const receipt = await service.setCeiling('user-b', 'card-a1', { ceiling: 300 });
+
+        expect(receipt).toMatchObject({ cardId: 'card-a1', ceilingCents: 30000 });
+        const row = db.state.ceilings.find((c) => c.cardId === 'card-a1')!;
+        expect(row.userId).toBe('user-a');
+        expect(lifeEngine.touchUserData).toHaveBeenCalledWith('user-b');
+        expect(lifeEngine.touchUserData).toHaveBeenCalledWith('user-a');
+      });
+
+      it('parceiro tambem limpa o teto do cartao compartilhado', async () => {
+        shareGroup();
+        await service.setSharing('user-a', 'card-a1', true);
+        await service.setCeiling('user-b', 'card-a1', { ceiling: 300 });
+
+        const cleared = await service.clearCeiling('user-b', 'card-a1');
+
+        expect(cleared).toMatchObject({ cardId: 'card-a1', removedCents: 30000 });
+        expect(db.state.ceilings.filter((c) => c.cardId === 'card-a1')).toHaveLength(0);
+      });
+
+      it('cartao compartilhado do parceiro entra no ciclo de quem le (gasto com escopo, fuso do dono)', async () => {
+        shareGroup();
+        await service.setSharing('user-a', 'card-a2', true);
+
+        const cycle = await service.cycle('user-b', 'card-a2');
+
+        expect(cycle).toMatchObject({ closingDay: 20, dueDay: 27, status: 'none' });
+      });
+
+      it('editar, arquivar e promover o cartao do parceiro continuam 404 para quem nao e o autor', async () => {
+        shareGroup();
+        await service.setSharing('user-a', 'card-a2', true);
+
+        await expect(service.update('user-b', 'card-a2', { closingDay: 28 })).rejects.toBeInstanceOf(NotFoundException);
+        await expect(service.archive('user-b', 'card-a2')).rejects.toBeInstanceOf(NotFoundException);
+        await expect(service.makeDefault('user-b', 'card-a2')).rejects.toBeInstanceOf(NotFoundException);
+      });
     });
   });
 });
