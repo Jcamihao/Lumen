@@ -54,7 +54,7 @@ export function parseAmountPrefix(input: string): AmountResult {
   if (cents > MAX_AMOUNT_CENTS) {
     return { ok: false, reason: 'TOO_LARGE' };
   }
-  return { ok: true, cents, rest };
+  return { ok: true, cents, rest: rest.replace(/^contos?\b\s*/i, '') };
 }
 
 /** Converte o numero sem "mil"/"k" para centavos, com aritmetica inteira. */
