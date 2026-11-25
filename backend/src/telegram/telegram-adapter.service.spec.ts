@@ -396,7 +396,7 @@ describe('botoes do menu no adaptador (12.1b)', () => {
     expect(conversation.handleMenuAction).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'A', channel: 'TELEGRAM', messageId: 'cb-1', nodeId: 'financas' }),
     );
-    expect(client.editMessageText).toHaveBeenCalledWith('111', 555, 'Menu\n1. Saldo', areaRows);
+    expect(client.editMessageText).toHaveBeenCalledWith('111', 555, 'Finanças', areaRows);
     expect(client.sendMessage).not.toHaveBeenCalled();
   });
 
@@ -416,7 +416,7 @@ describe('botoes do menu no adaptador (12.1b)', () => {
 
     await adapter.process(callback());
 
-    expect(client.sendMessage).toHaveBeenCalledWith('111', 'Menu\n1. Saldo', { kind: 'inline', rows: areaRows });
+    expect(client.sendMessage).toHaveBeenCalledWith('111', 'Finanças', { kind: 'inline', rows: areaRows });
   });
 
   it('"message is not modified" e sucesso silencioso: sem mensagem nova', async () => {
@@ -488,6 +488,23 @@ describe('botoes do menu no adaptador (12.1b)', () => {
     await adapter.process(callback());
 
     expect(conversation.handleMenuAction).not.toHaveBeenCalled();
+    expect(client.answerCallbackQuery).toHaveBeenCalledWith('cb-1');
+    expect(client.editMessageText).not.toHaveBeenCalled();
+    expect(client.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('limite de 20/min: falha do answerCallbackQuery nao lanca', async () => {
+    const { adapter, client } = buildStack({ rateHits: 21 });
+    client.answerCallbackQuery.mockRejectedValueOnce(new Error('http 400'));
+
+    await expect(adapter.process(callback())).resolves.toBeUndefined();
+  });
+
+  it('limite de 20/min em mensagem de texto nao chama answerCallbackQuery', async () => {
+    const { adapter, client } = buildStack({ rateHits: 21 });
+
+    await adapter.process(inbound());
+
     expect(client.answerCallbackQuery).not.toHaveBeenCalled();
   });
 
@@ -535,7 +552,7 @@ describe('botoes do menu no adaptador (12.1b)', () => {
 
     expect(conversation.handleMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({ text: 'menu' }));
     expect(conversation.handleMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ text: 'menu' }));
-    expect(client.sendMessage).toHaveBeenCalledWith('111', 'Menu\n1. Saldo', { kind: 'inline', rows: areaRows });
+    expect(client.sendMessage).toHaveBeenCalledWith('111', 'Finanças', { kind: 'inline', rows: areaRows });
   });
 
   it('"/start" de chat sem vinculo segue o fluxo de vinculo (orientacao), sem motor', async () => {

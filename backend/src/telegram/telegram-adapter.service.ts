@@ -156,7 +156,10 @@ export class TelegramAdapterService implements OnModuleInit, OnModuleDestroy {
   async process(inbound: TelegramInbound): Promise<void> {
     const chatHash = sha256(inbound.chatId);
     const rate = await this.cache.hitRateLimitWindow(`telegram:rate:${chatHash}`, RATE_WINDOW_MS);
-    if (rate && rate.hits > RATE_MAX_HITS) return;
+    if (rate && rate.hits > RATE_MAX_HITS) {
+      if (inbound.kind === 'callback') await this.answerBestEffort(inbound.callbackId);
+      return;
+    }
 
     const userId = await this.links.findUserIdByChatId(inbound.chatId);
     if (inbound.kind === 'callback') {
