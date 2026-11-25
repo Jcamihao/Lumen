@@ -182,6 +182,7 @@ describe('menu por botao e saida universal (12.1a)', () => {
 
       expect(reply.kind).toBe('MENU');
       expect(reply.text.startsWith('Nada para cancelar.\n\nMenu')).toBe(true);
+      expect(reply.menu?.lead).toBe('Nada para cancelar.');
       expect(world.writeCount).toBe(0);
     });
 
@@ -194,6 +195,7 @@ describe('menu por botao e saida universal (12.1a)', () => {
       expect(reply.text).toContain('Rascunho cancelado. Nada foi gravado.');
       expect(reply.text).toContain('Menu');
       expect(reply.menu?.nodeId).toBe('menu');
+      expect(reply.menu?.lead).toBe('Rascunho cancelado. Nada foi gravado.');
       expect(world.sessions).toHaveLength(0);
       expect(world.writeCount).toBe(0);
     });

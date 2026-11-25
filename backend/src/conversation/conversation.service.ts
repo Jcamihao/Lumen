@@ -482,14 +482,16 @@ export class ConversationService {
   /** Saida com rascunho aberto: cancela (texto de sempre) e mostra o menu inicial. */
   private async leaveDraft(userId: string, session: SessionRow, messageId: string): Promise<ConversationReply> {
     const cancelled = await this.cancelSession(userId, session, messageId);
-    return { ...cancelled, text: `${cancelled.text}\n\n${menuText(MENU_ROOT)}`, menu: menuViewOf(MENU_ROOT) };
+    return { ...cancelled, text: `${cancelled.text}\n\n${menuText(MENU_ROOT)}`, menu: { ...menuViewOf(MENU_ROOT), lead: cancelled.text } };
   }
 
   /** Saida sem rascunho: "voltar"/"menu" mostram o menu; cancelar sem nada aberto avisa antes. */
   private async leaveWithoutDraft(input: ConversationInput, kind: ExitKind): Promise<ConversationReply> {
     await this.recordEvent(input, 'menu_open', ConversationOutcome.RECOGNIZED);
     const menu = { ...this.reply('MENU', 'IDLE', menuText(MENU_ROOT)), menu: menuViewOf(MENU_ROOT) };
-    return kind === 'CANCEL' ? { ...menu, text: `${MENU_REPLIES.nothingToCancel}\n\n${menu.text}` } : menu;
+    return kind === 'CANCEL'
+      ? { ...menu, text: `${MENU_REPLIES.nothingToCancel}\n\n${menu.text}`, menu: { ...menu.menu, lead: MENU_REPLIES.nothingToCancel } }
+      : menu;
   }
 
   // ---------- sem sessao ativa ----------

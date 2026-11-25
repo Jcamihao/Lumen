@@ -55,6 +55,7 @@ export function menuRows(view: MenuView): TelegramInlineButton[][] {
 }
 
 function bodyLines(reply: ConversationReply): string[] {
+  if (reply.menu) return [escapeHtml(menuCaption(reply.menu))];
   const lines: string[] = [escapeHtml(reply.text)];
 
   // O texto do motor ja pode ser o cartao completo: repetir as linhas duplicaria o bloco.
@@ -71,11 +72,16 @@ function bodyLines(reply: ConversationReply): string[] {
   return lines;
 }
 
+/** Com botoes, o texto e so o titulo (e o aviso antes dele): a lista numerada e para canal sem botao. */
+function menuCaption(menu: MenuView): string {
+  return menu.lead ? `${menu.lead}\n\n${menu.title}` : menu.title;
+}
+
 function markupOf(reply: ConversationReply): TelegramMarkup {
   if (reply.kind === 'CONFIRM_DRAFT' && reply.quickReplies && reply.quickReplies.length > 0) {
     return { kind: 'confirm', labels: reply.quickReplies.map((label) => escapeHtml(label)) };
   }
-  if (reply.kind === 'MENU' && reply.menu) return { kind: 'inline', rows: menuRows(reply.menu) };
+  if (reply.menu) return { kind: 'inline', rows: menuRows(reply.menu) };
   return FIXED_MENU_MARKUP;
 }
 

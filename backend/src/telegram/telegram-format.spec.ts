@@ -157,8 +157,19 @@ describe('menu inline do Telegram (12.1b)', () => {
   });
 
   it('MENU vira texto escapado e o teclado inline da view', () => {
-    const reply = formatReplyForTelegram({ kind: 'MENU', state: 'IDLE', text: 'Menu <b>', menu: root } as never);
+    const reply = formatReplyForTelegram({ kind: 'MENU', state: 'IDLE', text: 'Menu\n1. Início\nDigite a frase entre aspas', menu: { ...root, title: 'Menu <b>' } } as never);
     expect(reply.parts).toEqual(['Menu &lt;b&gt;']);
+    expect(reply.markup).toEqual({ kind: 'inline', rows: menuRows({ ...root, title: 'Menu <b>' }) });
+  });
+
+  it('MENU no Telegram nao repete a lista numerada nem a dica de digitar', () => {
+    const reply = formatReplyForTelegram({ kind: 'MENU', state: 'IDLE', text: 'Menu\n1. Início\nDigite a frase entre aspas', menu: root } as never);
+    expect(reply.parts).toEqual(['Menu']);
+  });
+
+  it('saida com aviso (rascunho cancelado) mostra aviso e titulo, com os botoes do menu', () => {
+    const reply = formatReplyForTelegram({ kind: 'CANCELLED', state: 'IDLE', text: 'Rascunho cancelado.\n\nMenu\n1. Início', menu: { ...root, lead: 'Rascunho cancelado.' } } as never);
+    expect(reply.parts).toEqual(['Rascunho cancelado.\n\nMenu']);
     expect(reply.markup).toEqual({ kind: 'inline', rows: menuRows(root) });
   });
 

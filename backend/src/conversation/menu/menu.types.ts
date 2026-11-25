@@ -19,6 +19,8 @@ export interface MenuView {
   options: Array<{ id: string; label: string }>;
   backId?: string;
   topId?: string;
+  /** Aviso que vem antes do menu (ex.: rascunho cancelado). Canal com botao mostra so ele e o titulo. */
+  lead?: string;
 }
 
 /** Clique de botao (ou entrada equivalente) vindo do adaptador. Identidade sempre do vinculo, nunca do clique. */
