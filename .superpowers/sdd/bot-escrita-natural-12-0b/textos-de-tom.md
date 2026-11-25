@@ -86,6 +86,7 @@ Casam com a descricao ou a categoria. Forcam tom NEUTRO.
 - `dentist`
 - `internac`
 - `cirurg`
+- `morte`, `morreu`, `falec`, `heranc`, `acident`, `indeniz`, `pensao`, `demiss`, `psicolog`, `terapi`, `abort` (ampliacao aprovada pelo dono em 2026-11-25)
 
 ## Textos de ensino (ajuda e dicas)
 

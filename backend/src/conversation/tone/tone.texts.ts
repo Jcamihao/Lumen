@@ -46,4 +46,5 @@ export const TONE_TEXTS: Record<ToneKind, Record<ToneMoment, readonly string[]>>
 export const SENSITIVE_STEMS: readonly string[] = [
   'saude', 'hospit', 'remedi', 'medic', 'exame', 'doenc', 'funer', 'velori', 'enterr', 'luto',
   'divid', 'multa', 'cobranc', 'dentist', 'internac', 'cirurg',
+  'morte', 'morreu', 'falec', 'heranc', 'acident', 'indeniz', 'pensao', 'demiss', 'psicolog', 'terapi', 'abort',
 ];

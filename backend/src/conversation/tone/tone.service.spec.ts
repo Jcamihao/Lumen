@@ -127,12 +127,13 @@ describe('textos fixos de tom', () => {
     it.each([
       'saude', 'hospital', 'remedio', 'medico', 'exame', 'doenca', 'funeral', 'velorio', 'enterro', 'luto',
       'divida', 'multa', 'cobranca', 'dentista', 'internacao', 'cirurgia',
+      'morte', 'morreu', 'falecimento', 'heranca', 'acidente', 'indenizacao', 'pensao', 'demissao', 'psicologo', 'terapia', 'aborto',
     ])('"%s" e sensivel e forca neutro na receita', (word) => {
       expect(hasSensitiveWord([word])).toBe(true);
       expect(toneKindFor('RECEITA', [word])).toBe('NEUTRO');
     });
 
-    it.each(['comedico', 'amultado', 'reexame', 'pelutor', 'subdivida'])('radical no meio da palavra ("%s") nao e sensivel', (word) => {
+    it.each(['comedico', 'amultado', 'reexame', 'pelutor', 'subdivida', 'transmorte', 'desacidente', 'compensao'])('radical no meio da palavra ("%s") nao e sensivel', (word) => {
       expect(hasSensitiveWord([word])).toBe(false);
     });
   });
