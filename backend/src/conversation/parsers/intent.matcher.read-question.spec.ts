@@ -288,6 +288,9 @@ describe('girias e escrita informal', () => {
     ['quanto guardei', 'envelopes'],
     ['quanto pago de contas fixas', 'fixed_bills'],
     ['manda minhas parcelas', 'installments'],
+    ['quanto tenho de grana?', 'balance'],
+    ['q tenho de saldo', 'balance'],
+    ['quanto tenho no momento', 'balance'],
   ])('"%s" vai para %s', (text, intent) => {
     expect(matchIntent(text)).toEqual({ intent });
   });
@@ -308,6 +311,7 @@ describe('girias e escrita informal', () => {
     'quanto tenho que guardar',
     'qual o limite de velocidade',
     'hj',
+    'bom meu saldo',
   ])('nao casa: "%s"', (text) => {
     expect(matchIntent(text)).toBeNull();
   });
