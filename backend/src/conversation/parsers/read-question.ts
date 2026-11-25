@@ -13,8 +13,7 @@ const FILLER_WORDS = new Set([
   'como', 'qual', 'quais', 'quanto', 'quanta', 'quantos', 'quantas', 'quando', 'que', 'me', 'mostra', 'mostrar',
   'mostre', 'diz', 'dizer', 'fala', 'falar', 'ver', 'quero', 'queria', 'gostaria', 'saber', 'pode', 'poderia',
   'consegue', 'olhada', 'confere', 'conferir', 'consulta', 'consultar', 'vamos', 'favor', 'oi', 'ola', 'bot',
-  'lumen', 'eu',
-  'o', 'a', 'os', 'as', 'um', 'uma', 'uns', 'umas', 'meu', 'minha', 'meus', 'minhas', 'de', 'do', 'da', 'dos',
+  'lumen', 'eu', 'q', 'qnt', 'qto', 'vc', 'voce', 'sabe', 'hj', 'momento', 'pf', 'pfv', 'manda', 'mande', 'passa', 'bora',  'o', 'a', 'os', 'as', 'um', 'uma', 'uns', 'umas', 'meu', 'minha', 'meus', 'minhas', 'de', 'do', 'da', 'dos',
   'das', 'no', 'na', 'nos', 'nas', 'em', 'pra', 'pras', 'para', 'pro', 'por', 'ai', 'la', 'ja', 'alguma', 'algum',
   'e', 'estou', 'esta', 'estao', 'eh', 'ta', 'to', 'foi', 'sao', 'vai',
   'hoje', 'agora', 'atual', 'atualmente', 'ate', 'este', 'esse', 'desse', 'deste', 'neste', 'nesse', 'essa',
@@ -29,10 +28,13 @@ const READ_CORES: Array<{ intent: CoreIntent; cores: string[] }> = [
     intent: 'balance',
     cores: [
       'saldo', 'saldo disponivel', 'com saldo', 'disponivel', 'tenho', 'tem', 'com', 'tenho saldo', 'tenho dinheiro',
-      'dinheiro', 'dinheiro tenho', 'tenho conta', 'tem conta', 'sobrou', 'sobrou mes',
+      'dinheiro', 'dinheiro tenho', 'tenho conta', 'tem conta', 'sobrou', 'sobrou mes', 'tem saldo', 'com conta', 'tenho disponivel', 'tenho saldo disponivel',
+      'tenho saldo conta', 'tenho dinheiro conta', 'tenho conta corrente', 'tenho mes', 'tenho caixa', 'tenho sobrando',
+      'tenho sobra', 'tenho gastar', 'tenho livre',
+      'grana', 'tenho grana', 'com grana', 'grana conta',
     ],
   },
-  { intent: 'month_summary', cores: ['mes', 'financas', 'financeiramente', 'resumo', 'resumo mes', 'resumo financeiro'] },
+  { intent: 'month_summary', cores: ['mes', 'financas', 'financeiramente', 'resumo', 'resumo mes', 'resumo financeiro', 'vida financeira'] },
   {
     intent: 'spend_total',
     cores: [
@@ -44,7 +46,7 @@ const READ_CORES: Array<{ intent: CoreIntent; cores: string[] }> = [
     intent: 'upcoming_dues',
     cores: [
       'vence', 'vencer', 'vencem', 'vencimentos', 'proximos vencimentos', 'contas vencem', 'contas pagar',
-      'tenho pagar', 'falta pagar', 'tenho conta pagar', 'tem conta vencendo', 'vence proxima conta',
+      'tenho pagar', 'falta pagar', 'tenho conta pagar', 'tem conta vencendo', 'vence proxima conta', 'devo pagar', 'contas tenho pagar',
     ],
   },
   {
@@ -56,12 +58,12 @@ const READ_CORES: Array<{ intent: CoreIntent; cores: string[] }> = [
   },
   {
     intent: 'fixed_bills',
-    cores: ['contas fixas', 'despesas fixas', 'despesas fixas tenho', 'contas fixas tenho', 'pago conta fixa'],
+    cores: ['contas fixas', 'despesas fixas', 'despesas fixas tenho', 'contas fixas tenho', 'pago conta fixa', 'pago contas fixas'],
   },
-  { intent: 'goals', cores: ['metas', 'andam metas', 'falta metas'] },
+  { intent: 'goals', cores: ['metas', 'meta', 'andam metas', 'falta metas', 'falta meta'] },
   {
     intent: 'envelopes',
-    cores: ['reservas', 'reserva', 'envelopes', 'guardado', 'tenho guardado', 'guardado tenho', 'tenho reserva'],
+    cores: ['reservas', 'reserva', 'envelopes', 'guardado', 'tenho guardado', 'guardado tenho', 'tenho reserva', 'guardei'],
   },
   { intent: 'list_cards', cores: ['cartoes', 'cartoes tenho'] },
   {
@@ -83,7 +85,7 @@ const KNOWN_WORDS = new Set([
 ]);
 
 /** Cartao nomeado: palavras antes do cabecalho so podem ser pergunta ("como esta", "qual o", "quanto"). */
-const CARD_LEAD_WORDS = new Set(['como', 'qual', 'quanto', 'esta', 'estao', 'o', 'a', 'meu', 'minha', 'e']);
+const CARD_LEAD_WORDS = new Set(['como', 'qual', 'quanto', 'esta', 'estao', 'ta', 'o', 'a', 'meu', 'minha', 'e']);
 const CARD_HEAD_WORDS = new Set(['cartao', 'fatura', 'limite', 'devo']);
 const CARD_CONNECTORS = new Set(['do', 'da', 'no', 'na']);
 /** Preposicao no fim da frase ("quanto sobrou no") e pedido incompleto: nao casa. */
@@ -109,9 +111,17 @@ export function hasReadVocabulary(text: string): boolean {
 
 function matchCoreReading(words: string[]): IntentMatch | null {
   if (DANGLING_CONNECTORS.has(words[words.length - 1])) return null;
-  const core = words.filter((word) => !FILLER_WORDS.has(word)).join(' ');
+  const core = withoutGreeting(words).filter((word) => word !== '' && !FILLER_WORDS.has(word)).join(' ');
   const intent = INTENT_BY_CORE.get(core);
   return intent === undefined ? null : { intent };
+}
+
+/** Saudacao so vale no comeco ("bom dia, qual meu saldo"); solta no meio, "bom" muda o sentido. */
+const GREETINGS = new Set(['dia', 'tarde', 'noite']);
+
+function withoutGreeting(words: string[]): string[] {
+  const isGreeting = (words[0] === 'bom' || words[0] === 'boa') && GREETINGS.has(words[1]);
+  return isGreeting ? words.slice(2) : words;
 }
 
 /** "como esta a fatura do Nubank?", "qual o limite do Nubank", "quanto devo no Nubank", "como esta meu cartao Nubank". */

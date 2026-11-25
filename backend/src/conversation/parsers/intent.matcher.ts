@@ -103,7 +103,7 @@ export function matchIntent(raw: string): IntentMatch | null {
   const phrase = words.join(' ');
   if (phrase === 'ajuda' || startsWithPhrase(phrase, 'o que voce faz')) return { intent: 'help' };
   if (matchImportReceipt(raw, phrase)) return { intent: 'import_receipt' };
-  if (startsWithPhrase(phrase, 'saldo') || startsWithPhrase(phrase, 'quanto tenho')) {
+  if (startsWithPhrase(phrase, 'saldo') || phrase === 'quanto tenho') {
     return { intent: 'balance' };
   }
   if (startsWithPhrase(phrase, 'resumo')) return { intent: 'month_summary' };
