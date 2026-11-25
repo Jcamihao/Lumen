@@ -649,6 +649,13 @@ export const KEYWORD: Record<Who, { category: string; goal: string }> = {
   C: { category: 'farmacia', goal: 'casa' },
 };
 
+/** Falha se o texto contem qualquer dado de outra conta (para respostas de botao e menu). */
+export function expectNoLeakFor(who: Who, text: string): void {
+  for (const forbidden of forbiddenFor(who)) {
+    if (text.includes(forbidden)) throw new Error(`vazamento de dado de outra conta na resposta de ${who}: ${forbidden}`);
+  }
+}
+
 /** Tudo que pertence a uma conta e que as outras nunca podem ver em nenhuma resposta. */
 export function forbiddenFor(who: Who): string[] {
   const out: string[] = [];
