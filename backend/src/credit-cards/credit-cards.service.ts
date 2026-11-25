@@ -13,6 +13,7 @@ import { CreditCycleService } from '../credit-cycle/credit-cycle.service';
 import { lockUserForCredit, userCycleFieldsFromCard } from '../credit-cycle/credit-cycle.util';
 import { SetCreditCycleCeilingDto } from '../credit-cycle/dto/set-credit-cycle-ceiling.dto';
 import { LifeEngineService } from '../life-engine/life-engine.service';
+import { EntitlementsService } from '../billing/entitlements.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCreditCardDto } from './dto/create-credit-card.dto';
 import { UpdateCreditCardDto } from './dto/update-credit-card.dto';
@@ -91,6 +92,7 @@ export class CreditCardsService {
     private readonly prisma: PrismaService,
     private readonly lifeEngineService: LifeEngineService,
     private readonly creditCycle: CreditCycleService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   /** Ativos por padrao; includeArchived traz o historico. Sempre so do proprio usuario. */
@@ -112,6 +114,8 @@ export class CreditCardsService {
     if (dto.countAllPayments === true) {
       throw new BadRequestException('So o cartao padrao pode somar todos os pagamentos.');
     }
+    // Limite por plano (contrato 11, D7): FREE 1, Individual 5, Compartilhado 10.
+    await this.entitlements.assertCanCreate(userId, 'creditCards');
     return this.write(userId, async (tx) => {
       const active = await tx.creditCard.count({ where: { userId, archivedAt: null } });
       if (active >= MAX_ACTIVE_CARDS_PER_USER) {

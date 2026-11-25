@@ -6,9 +6,9 @@ export class CreateGrantDto {
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ enum: ['INDIVIDUAL'] })
-  @IsIn(['INDIVIDUAL'])
-  plan!: 'INDIVIDUAL';
+  @ApiProperty({ enum: ['INDIVIDUAL', 'SHARED'], description: 'D9: concessao SHARED vale como assinatura comum (beneficiado vira pagador).' })
+  @IsIn(['INDIVIDUAL', 'SHARED'])
+  plan!: 'INDIVIDUAL' | 'SHARED';
 
   @ApiPropertyOptional({ description: 'Fim da concessão (ISO). Omitido = sem fim.' })
   @IsOptional()

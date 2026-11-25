@@ -488,7 +488,13 @@ export function realCreditCardsService(world: World): CreditCardsService {
     $queryRaw: jest.fn(async () => []),
     $transaction: jest.fn(async (fn: (tx: Row) => Promise<unknown>) => fn(prisma)),
   };
-  const service = new CreditCardsService(prisma as never, { touchUserData: jest.fn(async () => undefined) } as never, {} as never);
+  const service = new CreditCardsService(
+    prisma as never,
+    { touchUserData: jest.fn(async () => undefined) } as never,
+    {} as never,
+    // Limite por plano (D7) e no-op neste fixture: o teto tecnico de 10 continua valendo.
+    { assertCanCreate: jest.fn(async () => undefined) } as never,
+  );
   // Spy que mantem a implementacao real: o teste conta chamadas e pode forcar uma falha pontual.
   jest.spyOn(service, 'update');
   jest.spyOn(service, 'create');
