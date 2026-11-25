@@ -36,6 +36,7 @@ export function createSharedFakeDb(clockStart: Date) {
     invites: [] as Row[],
     transactions: [] as Row[],
     categories: [] as Row[],
+    cards: [] as Row[],
     /** Gancho executado antes de cada leitura com FOR NO KEY UPDATE (simula a corrida entre escritores). */
     beforeLock: null as null | (() => Promise<void>),
   };
@@ -112,6 +113,7 @@ export function createSharedFakeDb(clockStart: Date) {
     groupInvite: table(state.invites, 'invite', undefined, { revokedAt: null, acceptedAt: null, acceptedUserId: null }),
     transaction: table(state.transactions, 'tx', withRelations, { sharedGroupOwnerId: null }),
     financeCategory: table(state.categories, 'cat', undefined, { sharedGroupOwnerId: null, icon: null }),
+    creditCard: table(state.cards, 'card', undefined, { sharedGroupOwnerId: null, archivedAt: null }),
     $queryRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
       const sql = strings.join('?');
       const id = values[0];
