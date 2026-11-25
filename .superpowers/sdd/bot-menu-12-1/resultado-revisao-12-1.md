@@ -15,6 +15,17 @@ Isolamento da identidade do clique: sem falha achada. Dono vem so do vinculo cha
 5. **Observacao.** Clique acima de 20/min por chat (limite compartilhado com mensagens) e descartado sem answerCallbackQuery: o botao fica com o relogio ate o Telegram expirar. Nao grava nada, so UX.
 6. **Observacao.** O laco de long polling e unico consumidor: nao ha cliques concorrentes do mesmo chat dentro de uma instancia. Duas instancias dependem do unique (userId, channel, messageId); o contrato ja exige instancia unica.
 
+## Ajustes pedidos pelo coordenador depois do GO (2026-11-25)
+
+Duvidas 2 e 3 viraram ajuste tecnico dentro do contrato 12.1; duvida 1 segue como estava (aberta para o dono).
+
+- **Texto do MENU no Telegram sem ruido.** `MenuView.lead` (aviso antes do menu: "Nada para cancelar." ou "Rascunho cancelado...") e `menuCaption` no formatador: com view de menu, o Telegram manda so `[lead\n\n]titulo` e os botoes inline (inclusive na saida com rascunho, que antes vinha com botao fixo). WhatsApp e app seguem com a lista numerada (`text` do motor nao mudou).
+- **Clique descartado por rate limit** recebe `answerCallbackQuery` best effort (falha so loga); texto descartado nao chama; nada grava.
+- Mutantes N1 a N11 (caption, lead, escape, inline, rate sem answer, answer em texto, sem best effort, processa mesmo assim, lead some): 11 mortos, 0 sobreviventes.
+- Numeros: tsc ok; jest conversation+telegram+whatsapp em UTC, America/Sao_Paulo, Asia/Tokyo: 41 suites, 1831 testes; suite inteira (UTC): 99 suites, 3097 testes; testes tocados 15x: 173 de 173; graphify update ok.
+- Nao reexecutei a integracao Docker para estes dois ajustes (so testes unitarios e mutantes): NAO verificado contra a Bot API falsa.
+- Achados 4 e 5 acima ficam resolvidos por estes ajustes.
+
 ## Integracao real (2026-11-25)
 
 Conteineres rv12-pg (postgres:16-alpine) e rv12-redis (redis:7-alpine), portas aleatorias em 127.0.0.1 (a publicacao de porta fixa falhou no Docker Desktop: erro 500 de forwards/expose). 35 migrations aplicadas. Backend build subido com ENV inline, Bot API falsa em node http (127.0.0.1:53121), contas A, B, C vinculadas pelo fluxo real (link-code + codigo no chat).
