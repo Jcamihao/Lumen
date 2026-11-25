@@ -32,7 +32,7 @@ const fakeCards = () => {
 };
 
 describe('TransactionsService: cardId em lancamento (isolamento A/B/C)', () => {
-  const build = (existing: any = null) => {
+  const build = (existing: any = null, options: { access?: any } = {}) => {
     const cards = fakeCards();
     const prisma: any = {
       $transaction: jest.fn(async (cb: any) => cb(prisma)),
@@ -56,8 +56,13 @@ describe('TransactionsService: cardId em lancamento (isolamento A/B/C)', () => {
     };
     const materializer = { materializeDue: jest.fn().mockResolvedValue(0) };
     const lifeEngine = { touchUserData: jest.fn().mockResolvedValue(undefined) };
-    const service = new TransactionsService(prisma, lifeEngine as any, materializer as any, materializer as any, { canSeeItem: async (r: string, i: any) => i.userId === r, scopeWhere: async (userId: string) => ({ userId }), firstNamesById: async () => new Map() } as any);
-    return { service, prisma };
+    const accessStub = options.access ?? {
+      canSeeItem: async (reader: string, item: any) => item.userId === reader,
+      scopeWhere: async (userId: string) => ({ userId }),
+      firstNamesById: async () => new Map(),
+    };
+    const service = new TransactionsService(prisma, lifeEngine as any, materializer as any, materializer as any, accessStub as any);
+    return { service, prisma, cards };
   };
 
   const base = { type: TransactionType.EXPENSE, description: 'Mercado', amount: 10, date: '2026-10-05' };
@@ -246,6 +251,99 @@ describe('TransactionsService: cardId em lancamento (isolamento A/B/C)', () => {
       const { service, prisma } = build();
       await service.list(USER_A, {} as any);
       expect(prisma.transaction.findMany.mock.calls[0][0].where.cardId).toBeUndefined();
+    });
+  });
+
+  describe('cartao compartilhado na escrita do lancamento (11b-1b, D6)', () => {
+    const GROUP = 'user-a'; // A e a pagadora do grupo; B e a dona do cartao compartilhado.
+    const CARD_B2 = '55555555-5555-4555-8555-555555555555'; // B, compartilhado, ativo
+    const CARD_B3 = '66666666-6666-4666-8666-666666666666'; // B, compartilhado, arquivado
+
+    const sharedAccess = {
+      canSeeItem: async (reader: string, item: any) => item.userId === reader || item.sharedGroupOwnerId === GROUP,
+      resolve: async () => ({ groupOwnerId: GROUP, memberIds: [GROUP, USER_B] }),
+      scopeWhere: async (userId: string) => ({ userId }),
+      firstNamesById: async () => new Map(),
+    };
+    const withSharedCards = (cards: { rows: any[] }) => {
+      cards.rows.push(
+        { id: CARD_B2, userId: USER_B, name: 'Itau de B compartilhado', isDefault: false, archivedAt: null, sharedGroupOwnerId: GROUP, countAllPayments: false, closingDay: 8, dueDay: 15 },
+        { id: CARD_B3, userId: USER_B, name: 'Inter de B', isDefault: false, archivedAt: new Date('2026-06-01T00:00:00Z'), sharedGroupOwnerId: GROUP, countAllPayments: false, closingDay: 1, dueDay: 8 },
+      );
+    };
+
+    it('lancar no cartao compartilhado do parceiro: grava o cardId e o lancamento nasce compartilhado', async () => {
+      const { service, prisma, cards } = build(null, { access: sharedAccess });
+      withSharedCards(cards);
+
+      const created: any = await service.create(USER_A, { ...base, paymentMethod: PaymentMethod.CREDIT, cardId: CARD_B2 } as any);
+
+      expect(created.cardName).toBe('Itau de B compartilhado');
+      const data = prisma.transaction.create.mock.calls[0][0].data;
+      expect(data.cardId).toBe(CARD_B2);
+      expect(data.sharedGroupOwnerId).toBe(GROUP);
+    });
+
+    it('cartao do parceiro sem a marca de compartilhamento continua 404', async () => {
+      const { service } = build(null, { access: sharedAccess });
+
+      const error = await service.create(USER_A, { ...base, paymentMethod: PaymentMethod.CREDIT, cardId: CARD_B1 } as any).catch((e) => e);
+
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.message).toBe(CARD_NOT_FOUND_MESSAGE);
+    });
+
+    it('cartao compartilhado que o dono arquivou: 404 (sem 403, sem vazamento)', async () => {
+      const { service, cards } = build(null, { access: sharedAccess });
+      withSharedCards(cards);
+
+      const error = await service.create(USER_A, { ...base, paymentMethod: PaymentMethod.CREDIT, cardId: CARD_B3 } as any).catch((e) => e);
+
+      expect(error).toBeInstanceOf(NotFoundException);
+    });
+
+    it('cartao proprio com grupo ativo NAO nasce compartilhado (compartilhar continua ato por item)', async () => {
+      const { service, prisma } = build(null, { access: sharedAccess });
+
+      await service.create(USER_A, { ...base, paymentMethod: PaymentMethod.CREDIT, cardId: CARD_A1 } as any);
+
+      expect(prisma.transaction.create.mock.calls[0][0].data.sharedGroupOwnerId).toBeUndefined();
+    });
+
+    it('mover lancamento para o cartao compartilhado do parceiro tambem amarra ao grupo', async () => {
+      const existing = { id: 'tx-1', userId: USER_A, cardId: CARD_A1, paymentMethod: PaymentMethod.CREDIT, type: TransactionType.EXPENSE, sharedGroupOwnerId: null };
+      const { service, prisma, cards } = build(existing, { access: sharedAccess });
+      withSharedCards(cards);
+
+      await service.update(USER_A, 'tx-1', { cardId: CARD_B2 } as any);
+
+      const data = prisma.transaction.update.mock.calls[0][0].data;
+      expect(data.cardId).toBe(CARD_B2);
+      expect(data.sharedGroupOwnerId).toBe(GROUP);
+    });
+
+    it('manter o mesmo cardId (o do parceiro) nao reescreve a marca de compartilhamento', async () => {
+      const existing = { id: 'tx-1', userId: USER_B, cardId: CARD_B2, paymentMethod: PaymentMethod.CREDIT, type: TransactionType.EXPENSE, sharedGroupOwnerId: GROUP };
+      const { service, prisma, cards } = build(existing, { access: sharedAccess });
+      withSharedCards(cards);
+
+      await service.update(USER_B, 'tx-1', { cardId: CARD_B2, description: 'novo' } as any);
+
+      const data = prisma.transaction.update.mock.calls[0][0].data;
+      expect(data.cardId).toBeUndefined();
+      expect(data.sharedGroupOwnerId).toBeUndefined();
+      expect(data.description).toBe('novo');
+    });
+
+    it('trocar para PIX limpa o cardId que apontava para o cartao do parceiro', async () => {
+      const existing = { id: 'tx-1', userId: USER_A, cardId: CARD_B2, paymentMethod: PaymentMethod.CREDIT, type: TransactionType.EXPENSE, sharedGroupOwnerId: GROUP };
+      const { service, prisma, cards } = build(existing, { access: sharedAccess });
+      withSharedCards(cards);
+
+      await service.update(USER_A, 'tx-1', { paymentMethod: PaymentMethod.PIX } as any);
+
+      const data = prisma.transaction.update.mock.calls[0][0].data;
+      expect(data.cardId).toBeNull();
     });
   });
 });
