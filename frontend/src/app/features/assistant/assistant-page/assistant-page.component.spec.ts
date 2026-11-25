@@ -1887,4 +1887,90 @@ describe("AssistantPageComponent — assistente manual", () => {
       expect(buttonWithText("apagar")).toBeUndefined();
     });
   });
+
+  describe("rascunhos de cartão (9c-1b)", () => {
+    const cardCreateDraft = (overrides: Partial<DraftView> = {}): DraftView => ({
+      ...draft(),
+      kind: "CARD_CREATE",
+      title: "Criar cartão",
+      amount: null,
+      description: null,
+      category: null,
+      date: null,
+      type: "EXPENSE",
+      rows: [
+        { label: "Nome", value: "Nubank" },
+        { label: "Fechamento", value: "a informar" },
+      ],
+      pendingField: "closingDay",
+      ...overrides,
+    });
+
+    it("criar cartão pedindo o fechamento: mostra o nome, 'Falta informar: dia de fechamento.' e nenhum Confirmar", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({ state: "COLLECTING_FIELDS", draft: cardCreateDraft() }),
+      );
+      create();
+
+      expect(text()).toContain("Criar cartão");
+      expect(text()).toContain("Nubank");
+      expect(text()).toContain("Falta informar: dia de fechamento.");
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+    });
+
+    it("criar cartão pronto para confirmar: mostra Confirmar e Cancelar", () => {
+      conversation.sendMessage.and.returnValue(
+        of<ConversationReply>({
+          kind: "CONFIRM_DRAFT",
+          state: "AWAITING_CONFIRMATION",
+          text: "Criar o cartão Nubank?",
+          draft: cardCreateDraft({ rows: [{ label: "Nome", value: "Nubank" }, { label: "Fechamento", value: "dia 10" }], pendingField: null }),
+          quickReplies: ["confirmar", "cancelar"],
+        }),
+      );
+      create();
+      typeAndSend("criar cartao nubank fecha dia 10");
+
+      expect(text()).toContain("dia 10");
+      expect(buttonWithText("Confirmar")).toBeDefined();
+      expect(buttonWithText("Cancelar")).toBeDefined();
+    });
+
+    it("renomear cartão pronto para confirmar mostra o nome antigo e o novo", () => {
+      conversation.sendMessage.and.returnValue(
+        of<ConversationReply>({
+          kind: "CONFIRM_DRAFT",
+          state: "AWAITING_CONFIRMATION",
+          text: "Renomear?",
+          draft: {
+            ...cardCreateDraft(),
+            kind: "CARD_RENAME",
+            title: "Renomear cartão",
+            rows: [{ label: "Antes", value: "Nubank" }, { label: "Depois", value: "Roxinho" }],
+            pendingField: null,
+          },
+          quickReplies: ["confirmar", "cancelar"],
+        }),
+      );
+      create();
+      typeAndSend("renomear cartao nubank para roxinho");
+
+      expect(text()).toContain("Renomear cartão");
+      expect(text()).toContain("Roxinho");
+      expect(buttonWithText("Confirmar")).toBeDefined();
+    });
+
+    it("lançamento sem escolha de cartão restaurado diz 'Falta informar: cartão.'", () => {
+      conversation.getSession.and.returnValue(
+        of<ConversationSessionView>({
+          state: "COLLECTING_FIELDS",
+          draft: draft({ paymentMethod: "CREDIT", pendingField: "card" }),
+        }),
+      );
+      create();
+
+      expect(text()).toContain("Falta informar: cartão.");
+      expect(buttonWithText("Confirmar")).toBeUndefined();
+    });
+  });
 });

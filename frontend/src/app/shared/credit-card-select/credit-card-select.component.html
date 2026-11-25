@@ -1,0 +1,8 @@
+<div class="proto-field" *ngIf="visible()">
+  <label [for]="fieldId()">Cartão</label>
+  <select [id]="fieldId()" [formControl]="control()">
+    <option *ngFor="let card of activeCards()" [value]="card.id">
+      {{ card.name }}<ng-container *ngIf="card.isDefault"> (padrão)</ng-container>
+    </option>
+  </select>
+</div>

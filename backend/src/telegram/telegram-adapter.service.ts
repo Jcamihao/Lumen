@@ -36,8 +36,22 @@ const BOT_COMMANDS = [
   { command: 'saldo', description: 'Balanço do mês' },
   { command: 'gastos', description: 'Gastos por categoria' },
   { command: 'cartao', description: 'Limite e uso do cartão' },
+  { command: 'cartoes', description: 'Meus cartões' },
   { command: 'ajuda', description: 'O que eu sei fazer' },
 ];
+
+/** Comando do menu que vira a frase equivalente do motor. */
+const COMMAND_PHRASES: Record<string, string> = {
+  '/saldo': 'saldo',
+  '/gastos': 'gastos',
+  '/ajuda': 'ajuda',
+  '/cartao': 'cartao',
+  '/cartoes': 'meus cartoes',
+};
+
+export function toEngineText(text: string): string {
+  return COMMAND_PHRASES[normalizeCommand(text)] ?? text;
+}
 
 export function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -194,7 +208,7 @@ export class TelegramAdapterService implements OnModuleInit, OnModuleDestroy {
       userId,
       channel: 'TELEGRAM',
       messageId: inbound.messageId,
-      text: inbound.text,
+      text: toEngineText(inbound.text),
       receivedAt: new Date(),
     });
     // Duplicata: o motor ja respondeu a primeira vez; reenviar repetiria a mesma resposta.

@@ -17,14 +17,16 @@ import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
 import { formatDayLabel, todayLocalInputValue } from '../../../core/utils/date.utils';
 import { readErrorMessage } from '../../../core/utils/http-error.utils';
+import { cardIdForPayload } from '../../../core/utils/credit-card.utils';
 import { formatCurrency } from '../../../core/utils/money.utils';
 import { paymentMethodLabel } from '../../../core/utils/payment-method.utils';
 import { readPlanLimitAction, readPlanLimitMessage } from '../../../core/utils/plan-limit.utils';
+import { CreditCardSelectComponent } from '../../../shared/credit-card-select/credit-card-select.component';
 import { PaymentMethodPickerComponent } from '../../../shared/payment-method-picker/payment-method-picker.component';
 
 @Component({
     selector: 'app-installment-purchases-card',
-    imports: [CommonModule, ReactiveFormsModule, PaymentMethodPickerComponent],
+    imports: [CommonModule, ReactiveFormsModule, PaymentMethodPickerComponent, CreditCardSelectComponent],
     templateUrl: './installment-purchases-card.component.html',
     styleUrls: ['./installment-purchases-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush
@@ -53,6 +55,7 @@ export class InstallmentPurchasesCardComponent {
     installmentsTotal: [2 as number | null, [Validators.required, Validators.min(2), Validators.max(60)]],
     categoryId: [''],
     paymentMethod: ['' as PaymentMethod | ''],
+    cardId: [''],
     firstDueDate: [todayLocalInputValue(), Validators.required],
   });
 
@@ -81,6 +84,7 @@ export class InstallmentPurchasesCardComponent {
       installmentsTotal: 2,
       categoryId: '',
       paymentMethod: '',
+      cardId: '',
       firstDueDate: todayLocalInputValue(),
     });
   }
@@ -101,6 +105,7 @@ export class InstallmentPurchasesCardComponent {
         installmentsTotal: Number(raw.installmentsTotal),
         categoryId: raw.categoryId || undefined,
         paymentMethod: raw.paymentMethod || undefined,
+        cardId: cardIdForPayload(raw.cardId, raw.paymentMethod === 'CREDIT'),
         firstDueDate: raw.firstDueDate || undefined,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -189,7 +194,7 @@ export class InstallmentPurchasesCardComponent {
   }
 
   protected paymentText(item: InstallmentPurchase) {
-    return paymentMethodLabel(item.paymentMethod);
+    return [paymentMethodLabel(item.paymentMethod), item.cardName].filter(Boolean).join(' · ') || null;
   }
 
   protected money(value: number) {

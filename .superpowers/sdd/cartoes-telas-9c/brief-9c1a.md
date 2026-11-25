@@ -1,0 +1,16 @@
+# Brief 9c-1a: tela de Cartoes no app (branch feat/cartoes-telas-9c; NUNCA troque de branch)
+
+Leia ANTES: CLAUDE.md da raiz, ~/.claude/CLAUDE.md, docs/superpowers/specs/2026-11-24-conversa-contrato-item-9c.md (aprovado), docs/superpowers/specs/2026-11-23-conversa-contrato-item-9.md (secoes 2, 4, 5: API), backend/src/credit-cards/credit-cards.controller.ts e dto (contrato da API: GET/POST /credit-cards, PATCH/DELETE /credit-cards/:id, POST :id/make-default, ?includeArchived=true). Frontend: frontend/src/app/features/card/card-page (hoje edita so User.monthClosingDay), core/services/life-api.service.ts, core/models/domain.models.ts, e um cartao de config existente como padrao visual/estrutura (ex.: features/settings/telegram-card).
+
+## Escopo (so isto)
+1. Modelos TypeScript e metodos no servico de API para cartoes (listar com/sem arquivados, criar, editar, arquivar, tornar padrao). Sem mudar o backend.
+2. Transformar a card-page na LISTA DE CARTOES: cada cartao com nome, selo "Padrao", dia de fechamento, vencimento (ou "sem vencimento"); acoes: criar, editar (nome, fechamento, vencimento), tornar padrao, arquivar. Interruptor "mostrar arquivados" (escondidos por padrao; arquivado aparece marcado e sem acoes; sem desarquivar). Padrao nao arquiva: botao desabilitado com o texto "Torne outro cartao padrao antes de arquivar". Arquivar pede confirmacao em duas etapas. Teto de 10: ao atingir, o botao criar desabilita com texto claro. Erros da API (409 nome repetido, 400, 404) mostrados em texto em portugues, sem perder o que o usuario digitou.
+3. Estados: carregando, vazio (nao ocorre: sempre ha o Principal), erro de rede com tentar de novo. Claro/escuro, 390 e 1280 px, acessivel (labels, foco, teclado). Nada de numero de cartao: so apelido e dias.
+4. Modo offline: sem criar/editar cartao offline (mensagem clara); nao quebre o offline existente. Nao mexa nos formularios de lancamento nem no card do ciclo (9c-1b).
+5. Manter funcionando o que a card-page fazia (fechamento do cartao padrao) agora pelo PATCH do cartao; nao remova campos do User (9c-2).
+
+## Testes
+Karma/Jasmine: componente (lista, criar, editar, validacoes 1..31, padrao, arquivar com 2 etapas, arquivados, teto 10, erros 409/404, offline), servico (URLs e corpos). Mutantes >= 8 proprios (registre mortos/sobreviventes/equivalentes e cubra os sobreviventes). Rode: cd frontend e os comandos do projeto (veja package.json: ng test em modo headless, ng build); suites do backend nao precisam rodar. graphify update . na raiz.
+
+## Regras
+Comentarios em portugues sem acentos no codigo; textos da tela em portugues com acentos como o resto do app. Clean Code/Clean Architecture dentro do padrao ja existente do projeto. Fale curto (caveman). NAO toque nos containers lumen-postgres-1, lumen-redis-1, wa-akg-db, detect-objects nem nas portas 5433, 6380, 3306, 8000; sem Docker nesta fatia (integracao real e da revisao). Commits separados com caminhos explicitos (feat; test; docs), Conventional Commits em portugues, Co-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>. Nunca amend/reset/push. Duvida de produto: duvidas.md, nao decida. Termine com .superpowers/sdd/cartoes-telas-9c/resultado-9c1a.md (mudancas, comandos e numeros, mutantes, NAO verificado). Nao pergunte nada.

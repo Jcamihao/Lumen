@@ -11,6 +11,19 @@
   <div class="proto-surface__body">
     <p class="credit-cycle-card__hint" *ngIf="loading()">Carregando...</p>
 
+    <div class="credit-cycle-card__tabs" role="tablist" aria-label="Cartões" *ngIf="showTabs()">
+      <button
+        *ngFor="let card of cards()"
+        type="button"
+        role="tab"
+        class="proto-button proto-button--ghost credit-cycle-card__tab"
+        [attr.aria-selected]="card.id === selectedCardId()"
+        (click)="selectCard(card.id)"
+      >
+        {{ card.name }}
+      </button>
+    </div>
+
     <div class="proto-empty" *ngIf="loadFailed()">
       <strong>Não foi possível carregar o teto de crédito</strong>
       <p>Confira sua conexão e tente de novo.</p>
@@ -51,6 +64,65 @@
           </p>
         </div>
       </ng-template>
+
+      <div class="credit-cycle-card__edit" *ngIf="canEdit()">
+        <button
+          *ngIf="!editing() && !confirmingClear()"
+          type="button"
+          class="proto-button proto-button--secondary"
+          (click)="openCeilingEdit(data.ceiling, data.previousCeiling)"
+        >
+          {{ data.ceiling === null ? 'Definir teto' : 'Alterar teto' }}
+        </button>
+
+        <button
+          *ngIf="!editing() && !confirmingClear() && data.ceiling !== null"
+          type="button"
+          class="proto-button proto-button--ghost"
+          (click)="startClear()"
+        >
+          Limpar teto
+        </button>
+
+        <div class="credit-cycle-card__clear" *ngIf="confirmingClear()">
+          <p class="proto-muted">Tirar o teto deste ciclo? O cartão fica sem teto até você definir outro.</p>
+          <p class="proto-muted" role="alert" *ngIf="clearError() as message">{{ message }}</p>
+          <div class="credit-cycle-card__actions">
+            <button type="button" class="proto-button" [disabled]="clearing() || clearUncertain()" (click)="confirmClear()">
+              {{ clearing() ? 'Limpando...' : 'Confirmar' }}
+            </button>
+            <button type="button" class="proto-button proto-button--secondary" [disabled]="clearing()" (click)="cancelClear()">
+              Cancelar
+            </button>
+          </div>
+        </div>
+
+        <form *ngIf="editing()" class="credit-cycle-card__form" (submit)="$event.preventDefault(); saveCeiling()" (keydown.escape)="cancelCeilingEdit()" novalidate>
+          <div class="proto-field">
+            <label for="credit-cycle-ceiling">Teto do ciclo</label>
+            <input
+              id="credit-cycle-ceiling"
+              type="number"
+              inputmode="decimal"
+              min="0.01"
+              step="0.01"
+              placeholder="0,00"
+              [formControl]="ceilingControl"
+              [attr.aria-invalid]="saveError() ? 'true' : null"
+            />
+          </div>
+          <p class="proto-muted" role="alert" *ngIf="saveError() as message">{{ message }}</p>
+          <div class="credit-cycle-card__actions">
+            <button type="submit" class="proto-button" [disabled]="saving() || uncertain()">
+              {{ saving() ? 'Salvando...' : 'Salvar teto' }}
+            </button>
+            <button type="button" class="proto-button proto-button--secondary" [disabled]="saving()" (click)="cancelCeilingEdit()">
+              Cancelar
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 </article>
+

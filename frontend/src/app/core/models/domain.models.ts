@@ -96,6 +96,9 @@ export type Transaction = {
   installmentPurchaseId?: string | null;
   installmentNumber?: number | null;
   installmentsTotal?: number | null;
+  /** Cartao usado (so com paymentMethod CREDIT); nome para as listas. */
+  cardId?: string | null;
+  cardName?: string | null;
 };
 
 export type RecurrenceFrequency = "WEEKLY" | "MONTHLY" | "YEARLY";
@@ -109,6 +112,8 @@ export type RecurringTransaction = {
   categoryId?: string | null;
   category?: FinanceCategory | null;
   paymentMethod?: PaymentMethod | null;
+  cardId?: string | null;
+  cardName?: string | null;
   frequency: RecurrenceFrequency;
   /** Dia do mes de referencia (mensal/anual). */
   anchorDay: number;
@@ -130,6 +135,8 @@ export type InstallmentPurchase = {
   categoryId?: string | null;
   category?: FinanceCategory | null;
   paymentMethod?: PaymentMethod | null;
+  cardId?: string | null;
+  cardName?: string | null;
   anchorDay: number;
   /** Proxima parcela a gerar (AAAA-MM-DDT00:00:00.000Z); null quando ja gerou todas. */
   nextDueDate: string | null;
@@ -576,6 +583,36 @@ export type CreditCycle = {
   status: CreditCycleStatus;
   /** Teto do ciclo anterior, sugerido no formulario quando o atual ainda nao tem um. */
   previousCeiling: number | null;
+};
+
+/** Cartao de credito nomeado (9a). So apelido e dias; nunca numero de cartao. */
+export type CreditCard = {
+  id: string;
+  name: string;
+  closingDay: number;
+  dueDay: number | null;
+  countAllPayments: boolean;
+  isDefault: boolean;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Recibo do que foi persistido numa escrita de cartao (devolvido pela API). */
+export type CreditCardReceipt = {
+  id: string;
+  name: string;
+  closingDay: number;
+  dueDay: number | null;
+  countAllPayments: boolean;
+  isDefault: boolean;
+};
+
+export type CreditCardInput = {
+  name?: string;
+  closingDay?: number;
+  dueDay?: number | null;
+  countAllPayments?: boolean;
 };
 
 export type FeedbackSummary = {
