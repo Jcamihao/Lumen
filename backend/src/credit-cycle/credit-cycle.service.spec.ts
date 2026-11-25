@@ -181,15 +181,16 @@ describe('CreditCycleService', () => {
   });
 
   describe('updateSettings', () => {
-    it('grava o dia de vencimento', async () => {
+    it('grava o dia de vencimento no cartao padrao, sem tocar no User (9c-2)', async () => {
       const { service, prisma } = build();
 
       await service.updateSettings('user-1', { dueDay: 12 });
 
-      expect(prisma.user.update.mock.calls[0][0]).toMatchObject({
-        where: { id: 'user-1' },
-        data: { creditDueDay: 12 },
+      expect(prisma.creditCard.update.mock.calls[0][0]).toMatchObject({
+        where: { id: 'card-1' },
+        data: { dueDay: 12 },
       });
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
 
     it('null limpa o dia de vencimento', async () => {
@@ -197,7 +198,8 @@ describe('CreditCycleService', () => {
 
       await service.updateSettings('user-1', { dueDay: null });
 
-      expect(prisma.user.update.mock.calls[0][0].data.creditDueDay).toBeNull();
+      expect(prisma.creditCard.update.mock.calls[0][0].data.dueDay).toBeNull();
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
 
     it('recalcula os insights apos mudar as configuracoes', async () => {
@@ -208,12 +210,13 @@ describe('CreditCycleService', () => {
       expect(lifeEngine.touchUserData).toHaveBeenCalledWith('user-1');
     });
 
-    it('grava countAllPayments quando enviado', async () => {
+    it('grava countAllPayments no cartao, sem espelho no User', async () => {
       const { service, prisma } = build();
 
       await service.updateSettings('user-1', { countAllPayments: true });
 
-      expect(prisma.user.update.mock.calls[0][0].data.creditCycleCountAllPayments).toBe(true);
+      expect(prisma.creditCard.update.mock.calls[0][0].data.countAllPayments).toBe(true);
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
 
     it('nao mexe em countAllPayments quando nao enviado (so o dueDay)', async () => {
@@ -222,7 +225,7 @@ describe('CreditCycleService', () => {
       await service.updateSettings('user-1', { dueDay: 5 });
 
       expect(prisma.creditCard.update.mock.calls[0][0].data.countAllPayments).toBeUndefined();
-      expect(prisma.user.update.mock.calls[0][0].data.creditCycleCountAllPayments).toBe(false);
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
   });
 
@@ -604,8 +607,8 @@ describe('ciclo por cartao (9a-1)', () => {
     });
   });
 
-  describe('sincronia User <-> cartao padrao (9a-1)', () => {
-    it('updateSettings grava cartao padrao e User na mesma transacao, depois do lock', async () => {
+  describe('fim do espelho no User (9c-2)', () => {
+    it('updateSettings grava so o cartao padrao, na transacao depois do lock, e nao toca no User', async () => {
       const { service, prisma } = build();
 
       await service.updateSettings('user-1', { dueDay: 15, countAllPayments: true });
@@ -613,7 +616,7 @@ describe('ciclo por cartao (9a-1)', () => {
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(prisma.creditCard.update.mock.invocationCallOrder[0]);
       expect(prisma.creditCard.update.mock.calls[0][0]).toMatchObject({ where: { id: 'card-1' }, data: { dueDay: 15, countAllPayments: true } });
-      expect(prisma.user.update.mock.calls[0][0].data).toEqual({ monthClosingDay: 5, creditDueDay: 15, creditCycleCountAllPayments: true });
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
   });
 });
