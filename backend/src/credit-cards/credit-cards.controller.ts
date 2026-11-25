@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from '@
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
+import { SetSharingDto } from '../access-scope/dto/set-sharing.dto';
 import { SetCreditCycleCeilingDto } from '../credit-cycle/dto/set-credit-cycle-ceiling.dto';
 import { CreditCardsService } from './credit-cards.service';
 import { CreateCreditCardDto } from './dto/create-credit-card.dto';
@@ -15,9 +16,9 @@ export class CreditCardsController {
   constructor(private readonly creditCards: CreditCardsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Cartoes do usuario (ativos; includeArchived=true traz o historico)' })
+  @ApiOperation({ summary: 'Cartoes (ativos; scope shared/all traz os cartoes compartilhados do grupo; includeArchived=true traz o historico)' })
   list(@CurrentUser() user: AuthenticatedUser, @Query() query: ListCreditCardsQueryDto) {
-    return this.creditCards.list(user.sub, query.includeArchived === 'true');
+    return this.creditCards.list(user.sub, query.includeArchived === 'true', query.scope ?? 'mine');
   }
 
   @Post()
@@ -52,6 +53,16 @@ export class CreditCardsController {
   @ApiOperation({ summary: 'Promove o cartao a padrao (espelha no User na mesma transacao). Devolve recibo.' })
   makeDefault(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.creditCards.makeDefault(user.sub, id);
+  }
+
+  @Patch(':id/sharing')
+  @ApiOperation({ summary: 'Marca/desmarca o cartao para o grupo Compartilhado (so o autor; arquivado: 409). Devolve recibo (id, isShared, updatedAt).' })
+  setSharing(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: SetSharingDto,
+  ) {
+    return this.creditCards.setSharing(user.sub, id, dto.shared);
   }
 
   @Get(':id/cycle')

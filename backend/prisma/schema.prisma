@@ -194,9 +194,10 @@ model User {
   groupMembershipsOwned         GroupMembership[]  @relation("GroupOwner")
   groupMemberships              GroupMembership[]  @relation("GroupMember")
   groupInvitesSent              GroupInvite[]      @relation("GroupInvites")
-  // Itens que este usuario marcou como compartilhados com o grupo (contrato 11b, 11b-1a).
+  // Itens que este usuario marcou como compartilhados com o grupo (contrato 11b, 11b-1a/1b).
   sharedTransactions            Transaction[]      @relation("SharedTransactionGroup")
   sharedFinanceCategories       FinanceCategory[]  @relation("SharedFinanceCategoryGroup")
+  sharedCreditCards             CreditCard[]       @relation("SharedCreditCardGroup")
   telegramLink                  TelegramLink?
   telegramLinkCodes             TelegramLinkCode[]
 
@@ -434,6 +435,8 @@ model CreditCard {
   countAllPayments      Boolean              @default(false)
   isDefault             Boolean              @default(false)
   archivedAt            DateTime?
+  sharedGroupOwnerId    String?
+  sharedGroupOwner      User?                @relation("SharedCreditCardGroup", fields: [sharedGroupOwnerId], references: [id], onDelete: SetNull)
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
   user                  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -443,6 +446,7 @@ model CreditCard {
   recurringTransactions RecurringTransaction[]
 
   @@index([userId, archivedAt])
+  @@index([sharedGroupOwnerId])
 }
 
 // Valor reservado que se recarrega todo mes e NAO desconta de nenhum teto
