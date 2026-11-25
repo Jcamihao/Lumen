@@ -5,8 +5,8 @@ import { CacheQueueService } from '../cache-queue/cache-queue.service';
 import { ConversationService } from '../conversation/conversation.service';
 import { ConversationReply } from '../conversation/conversation.types';
 import { PrismaService } from '../prisma/prisma.service';
-import { TelegramBotClient, TelegramInbound, parseTelegramUpdate } from './telegram-bot.client';
-import { formatReplyForTelegram } from './telegram-format';
+import { TelegramBotClient, TelegramBotError, TelegramCallbackInbound, TelegramInbound, TelegramMarkup, TelegramMessageInbound, parseTelegramUpdate } from './telegram-bot.client';
+import { FIXED_MENU_MARKUP, formatReplyForTelegram, nodeIdFromCallback } from './telegram-format';
 import { TelegramLinkService } from './telegram-link.service';
 import { looksLikeLinkCode } from '../whatsapp/whatsapp-link.service';
 import { maskChatId } from './telegram-mask';
@@ -23,12 +23,12 @@ const BACKOFF_MAX_MS = 60_000;
 const OFFSET_ROW_ID = 'poll';
 
 export const TELEGRAM_TEXTS = {
-  linked: 'Pronto! Este chat está vinculado ao seu Lumen. Mande, por exemplo, "50 mercado" ou "saldo".',
+  linked: 'Pronto! Este chat está vinculado ao seu Lumen. Mande, por exemplo, "gastei 50 no mercado" ou "saldo".',
   linkFailed: 'Não consegui validar este código. Gere um novo no Lumen, em Configurações > Conta > Telegram, e envie de novo.',
   hint: 'Este chat ainda não está vinculado a uma conta do Lumen. Abra o Lumen, vá em Configurações > Conta > Telegram e gere um código de vínculo.',
   media: 'Notas e arquivos são enviados pela tela de Importações do app do Lumen. Por aqui eu leio só texto.',
   unlinked: 'Chat desvinculado. Para usar o Lumen por aqui de novo, gere um novo código de vínculo no app.',
-  empty: 'Não entendi a mensagem. Mande um texto curto, por exemplo "50 mercado" ou "saldo".',
+  empty: 'Não entendi a mensagem. Mande um texto curto, por exemplo "gastei 50 no mercado" ou "saldo".',
   tooLong: 'Mensagem muito longa. Mande um texto de até 1000 caracteres.',
 };
 
@@ -38,10 +38,14 @@ const BOT_COMMANDS = [
   { command: 'cartao', description: 'Limite e uso do cartão' },
   { command: 'cartoes', description: 'Meus cartões' },
   { command: 'ajuda', description: 'O que eu sei fazer' },
+  { command: 'menu', description: 'Abrir o menu de botões' },
+  { command: 'start', description: 'Abrir o menu' },
 ];
 
 /** Comando do menu que vira a frase equivalente do motor. */
 const COMMAND_PHRASES: Record<string, string> = {
+  '/menu': 'menu',
+  '/start': 'menu',
   '/saldo': 'saldo',
   '/gastos': 'gastos',
   '/ajuda': 'ajuda',
@@ -152,9 +156,16 @@ export class TelegramAdapterService implements OnModuleInit, OnModuleDestroy {
   async process(inbound: TelegramInbound): Promise<void> {
     const chatHash = sha256(inbound.chatId);
     const rate = await this.cache.hitRateLimitWindow(`telegram:rate:${chatHash}`, RATE_WINDOW_MS);
-    if (rate && rate.hits > RATE_MAX_HITS) return;
+    if (rate && rate.hits > RATE_MAX_HITS) {
+      if (inbound.kind === 'callback') await this.answerBestEffort(inbound.callbackId);
+      return;
+    }
 
     const userId = await this.links.findUserIdByChatId(inbound.chatId);
+    if (inbound.kind === 'callback') {
+      await this.handleCallback(inbound, userId, rate !== null);
+      return;
+    }
     if (!userId) {
       // Sem Redis, chat sem vinculo fica mudo (falha fechada), igual ao WhatsApp.
       if (!rate || !inbound.hasText) return;
@@ -165,14 +176,14 @@ export class TelegramAdapterService implements OnModuleInit, OnModuleDestroy {
     await this.handleLinked(inbound, userId);
   }
 
-  private async handleUnlinked(inbound: TelegramInbound, chatHash: string): Promise<void> {
+  private async handleUnlinked(inbound: TelegramMessageInbound, chatHash: string): Promise<void> {
     if (looksLikeLinkCode(inbound.text)) {
       // A tentativa e contada antes do resgate (INCR atomico): tentativas em paralelo nao furam o limite.
       const attempts = await this.cache.hitRateLimitWindow(`telegram:linkfail:${chatHash}`, LINK_FAIL_WINDOW_MS);
       if (!attempts || attempts.hits > LINK_FAIL_MAX) return;
 
       const linked = await this.links.redeem(inbound.chatId, inbound.text);
-      await this.send(inbound.chatId, [linked ? TELEGRAM_TEXTS.linked : TELEGRAM_TEXTS.linkFailed]);
+      await this.send(inbound.chatId, [linked ? TELEGRAM_TEXTS.linked : TELEGRAM_TEXTS.linkFailed], linked ? FIXED_MENU_MARKUP : undefined);
       return;
     }
 
@@ -183,9 +194,59 @@ export class TelegramAdapterService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async handleLinked(inbound: TelegramInbound, userId: string): Promise<void> {
+  /**
+   * Clique de botao. Sem vinculo, so limpa o aviso do botao (e fica mudo se o Redis caiu, como a mensagem).
+   * O no vem do callback_data (conferido por nodeIdFromCallback); o dono vem so do vinculo.
+   */
+  private async handleCallback(inbound: TelegramCallbackInbound, userId: string | null, redisUp: boolean): Promise<void> {
+    if (!userId) {
+      if (redisUp) await this.answerBestEffort(inbound.callbackId);
+      return;
+    }
+    const nodeId = nodeIdFromCallback(inbound.data);
+    if (!nodeId) return;
+
+    await this.answerBestEffort(inbound.callbackId);
+    const reply = await this.conversation.handleMenuAction({
+      userId,
+      channel: 'TELEGRAM',
+      messageId: inbound.callbackId,
+      nodeId,
+      receivedAt: new Date(),
+    });
+    if (reply.kind === 'DUPLICATE') return;
+
+    const formatted = formatReplyForTelegram(reply);
+    if (reply.kind === 'MENU') {
+      await this.showMenuInPlace(inbound, formatted.parts, formatted.markup);
+      return;
+    }
+    await this.send(inbound.chatId, formatted.parts, formatted.markup);
+  }
+
+  /** Menu no lugar: edita a mensagem do clique. "Not modified" (menu ja igual) e sucesso silencioso; outra falha (velha, apagada) manda mensagem nova. */
+  private async showMenuInPlace(inbound: TelegramCallbackInbound, parts: string[], markup: TelegramMarkup): Promise<void> {
+    const rows = markup.kind === 'inline' ? markup.rows : [];
+    try {
+      await this.client.editMessageText(inbound.chatId, inbound.messageId, parts[0], rows);
+    } catch (error) {
+      if (error instanceof TelegramBotError && error.notModified) return;
+      this.logger.warn(`telegram edicao do menu falhou: ${(error as Error).name}`);
+      await this.send(inbound.chatId, parts, markup);
+    }
+  }
+
+  private async answerBestEffort(callbackId: string): Promise<void> {
+    try {
+      await this.client.answerCallbackQuery(callbackId);
+    } catch (error) {
+      this.logger.warn(`telegram resposta do botao falhou: ${(error as Error).name}`);
+    }
+  }
+
+  private async handleLinked(inbound: TelegramMessageInbound, userId: string): Promise<void> {
     if (!inbound.hasText) {
-      await this.send(inbound.chatId, [TELEGRAM_TEXTS.media]);
+      await this.send(inbound.chatId, [TELEGRAM_TEXTS.media], FIXED_MENU_MARKUP);
       return;
     }
 
@@ -196,11 +257,11 @@ export class TelegramAdapterService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     if (text.length === 0) {
-      await this.send(inbound.chatId, [TELEGRAM_TEXTS.empty]);
+      await this.send(inbound.chatId, [TELEGRAM_TEXTS.empty], FIXED_MENU_MARKUP);
       return;
     }
     if (text.length > MAX_TEXT_CHARS) {
-      await this.send(inbound.chatId, [TELEGRAM_TEXTS.tooLong]);
+      await this.send(inbound.chatId, [TELEGRAM_TEXTS.tooLong], FIXED_MENU_MARKUP);
       return;
     }
 
@@ -215,14 +276,14 @@ export class TelegramAdapterService implements OnModuleInit, OnModuleDestroy {
     if (reply.kind === 'DUPLICATE') return;
 
     const formatted = formatReplyForTelegram(reply);
-    await this.send(inbound.chatId, formatted.parts, formatted.keyboard);
+    await this.send(inbound.chatId, formatted.parts, formatted.markup);
   }
 
   /** Envia partes em ordem; o teclado (D4) so acompanha a ultima. Falha para no meio: loga e nao lanca. */
-  async send(chatId: string, parts: string[], keyboard?: string[]): Promise<void> {
+  async send(chatId: string, parts: string[], markup?: TelegramMarkup): Promise<void> {
     for (let index = 0; index < parts.length; index += 1) {
       try {
-        await this.client.sendMessage(chatId, parts[index], index === parts.length - 1 ? keyboard : undefined);
+        await this.client.sendMessage(chatId, parts[index], index === parts.length - 1 ? markup : undefined);
       } catch (error) {
         this.logger.warn(`telegram envio falhou para ${maskChatId(chatId)}: ${(error as Error).message}`);
         return;

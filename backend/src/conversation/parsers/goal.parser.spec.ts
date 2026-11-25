@@ -47,6 +47,8 @@ describe('parseContributionBody', () => {
     ['', { ok: true, amountCents: null, name: null }],
     ['na', { ok: true, amountCents: null, name: null }],
     ['200 reais na viagem', { ok: true, amountCents: 20_000, name: 'viagem' }],
+    ['200 na minha caixinha viagem', { ok: true, amountCents: 20_000, name: 'viagem' }],
+    ['200 na caixinha', { ok: true, amountCents: 20_000, name: null }],
     ['200 na minha viagem', { ok: true, amountCents: 20_000, name: 'viagem' }],
     ['3k para casa', { ok: true, amountCents: 300_000, name: 'casa' }],
   ])('"%s"', (body, expected) => {

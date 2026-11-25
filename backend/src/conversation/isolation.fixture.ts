@@ -549,13 +549,18 @@ export function seedWorld(): World {
 
 export interface Engine {
   service: ConversationService;
-  settings: { writesEnabled: boolean };
+  settings: { writesEnabled: boolean; telegramWritesEnabled: boolean };
 }
 
 /** Motor real sobre o mundo fake. `settings.writesEnabled` liga e desliga a trava do WhatsApp na hora. */
-export function buildEngine(world: World, writesEnabled = true): Engine {
-  const settings = { writesEnabled };
-  const config = { get: jest.fn((key: string) => (key === 'whatsapp.writesEnabled' ? settings.writesEnabled : undefined)) };
+export function buildEngine(world: World, writesEnabled = true, telegramWritesEnabled = false): Engine {
+  const settings = { writesEnabled, telegramWritesEnabled };
+  const config = {
+    get: jest.fn((key: string) => {
+      if (key === 'telegram.writesEnabled') return settings.telegramWritesEnabled;
+      return key === 'whatsapp.writesEnabled' ? settings.writesEnabled : undefined;
+    }),
+  };
   const s = world.services;
   type Deps = ConstructorParameters<typeof ConversationService>;
   const service = new ConversationService(
@@ -653,6 +658,13 @@ export const KEYWORD: Record<Who, { category: string; goal: string }> = {
   B: { category: 'padaria', goal: 'moto' },
   C: { category: 'farmacia', goal: 'casa' },
 };
+
+/** Falha se o texto contem qualquer dado de outra conta (para respostas de botao e menu). */
+export function expectNoLeakFor(who: Who, text: string): void {
+  for (const forbidden of forbiddenFor(who)) {
+    if (text.includes(forbidden)) throw new Error(`vazamento de dado de outra conta na resposta de ${who}: ${forbidden}`);
+  }
+}
 
 /** Tudo que pertence a uma conta e que as outras nunca podem ver em nenhuma resposta. */
 export function forbiddenFor(who: Who): string[] {
