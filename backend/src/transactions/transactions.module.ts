@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AccessScopeModule } from '../access-scope/access-scope.module';
 import { LifeEngineModule } from '../life-engine/life-engine.module';
 import { RecurringMaterializerModule } from '../recurring-transactions/recurring-materializer.module';
 import { InstallmentMaterializerModule } from '../installments/installment-materializer.module';
@@ -6,7 +7,7 @@ import { TransactionsController } from './transactions.controller';
 import { TransactionsService } from './transactions.service';
 
 @Module({
-  imports: [LifeEngineModule, RecurringMaterializerModule, InstallmentMaterializerModule],
+  imports: [LifeEngineModule, RecurringMaterializerModule, InstallmentMaterializerModule, AccessScopeModule],
   controllers: [TransactionsController],
   providers: [TransactionsService],
   exports: [TransactionsService],

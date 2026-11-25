@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { SetSharingDto } from '../access-scope/dto/set-sharing.dto';
 import { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { ListTransactionsQueryDto } from './dto/list-transactions-query.dto';
@@ -54,5 +55,15 @@ export class TransactionsController {
   @ApiOperation({ summary: 'Remove transacao financeira' })
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.transactionsService.remove(user.sub, id);
+  }
+
+  @Patch(':id/sharing')
+  @ApiOperation({ summary: 'Marca ou desmarca o lancamento como compartilhado com o grupo (so o autor)' })
+  setSharing(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: SetSharingDto,
+  ) {
+    return this.transactionsService.setSharing(user.sub, id, dto.shared);
   }
 }

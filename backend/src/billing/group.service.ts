@@ -8,6 +8,8 @@ import { createHash, randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { subscriptionGrantsAccess } from './access.util';
+import { lockUserRow } from '../access-scope/lock';
+import { firstNameOf } from '../access-scope/shared-view';
 import { CreateGroupInviteDto } from './dto/create-group-invite.dto';
 import { getPlan } from './plans.catalog';
 
@@ -22,11 +24,6 @@ const INVALID_INVITE_MESSAGE = 'Este convite de grupo é inválido ou expirou.';
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
-}
-
-function firstNameOf(name: string | null): string | null {
-  const first = name?.trim().split(/\s+/)[0];
-  return first ? first : null;
 }
 
 export interface GroupMemberView {
@@ -259,6 +256,8 @@ export class GroupService {
       await this.prisma.$transaction(async (tx) => {
         // Serializa aceites do mesmo grupo (a busca de lugares + saida do grupo anterior).
         await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${invite.ownerUserId} FOR NO KEY UPDATE`;
+        // Ordem unica (contrato 11b, item 6): depois do pagador, a linha de quem entra.
+        await lockUserRow(tx, userId);
 
         const ownerSubs = await tx.subscription.findMany({
           where: { ownerUserId: invite.ownerUserId, plan: 'SHARED' },
@@ -274,10 +273,17 @@ export class GroupService {
         }
 
         // Sai do grupo anterior se era membro (D5); nunca de grupo proprio (ja barrado acima).
+        const previous = await tx.groupMembership.findFirst({
+          where: { memberUserId: userId, leftAt: null },
+          select: { ownerUserId: true },
+        });
         await tx.groupMembership.updateMany({
           where: { memberUserId: userId, leftAt: null },
           data: { leftAt: new Date() },
         });
+        if (previous) {
+          await this.detachSharedItems(tx, userId, previous.ownerUserId);
+        }
         await tx.groupMembership.create({
           data: { ownerUserId: invite.ownerUserId, memberUserId: userId },
         });
@@ -316,26 +322,59 @@ export class GroupService {
     };
   }
 
-  /** Membro sai sozinho (D3), em duas etapas na UI; aqui so grava o leftAt. */
+  /**
+   * Membro sai sozinho (D3), em duas etapas na UI. Na mesma transacao, os itens compartilhados
+   * que ele criou para este grupo voltam a ser privados (contrato 11b, item 6).
+   */
   async leave(userId: string): Promise<void> {
-    const updated = await this.prisma.groupMembership.updateMany({
-      where: { memberUserId: userId, leftAt: null },
-      data: { leftAt: new Date() },
+    await this.prisma.$transaction(async (tx) => {
+      await lockUserRow(tx, userId);
+      const membership = await tx.groupMembership.findFirst({
+        where: { memberUserId: userId, leftAt: null },
+        select: { id: true, ownerUserId: true },
+      });
+      if (!membership) {
+        throw new NotFoundException('Voce nao faz parte de nenhum grupo.');
+      }
+      await tx.groupMembership.update({
+        where: { id: membership.id },
+        data: { leftAt: new Date() },
+      });
+      await this.detachSharedItems(tx, userId, membership.ownerUserId);
     });
-    if (updated.count === 0) {
-      throw new NotFoundException('Voce nao faz parte de nenhum grupo.');
-    }
   }
 
   async removeMember(userId: string, membershipId: string): Promise<void> {
     const now = new Date();
     await this.assertPayer(userId, now);
-    const updated = await this.prisma.groupMembership.updateMany({
-      where: { id: membershipId, ownerUserId: userId, leftAt: null },
-      data: { leftAt: now },
+    await this.prisma.$transaction(async (tx) => {
+      const membership = await tx.groupMembership.findFirst({
+        where: { id: membershipId, ownerUserId: userId, leftAt: null },
+        select: { memberUserId: true },
+      });
+      if (!membership) {
+        throw new NotFoundException('Membro nao encontrado neste grupo.');
+      }
+      await lockUserRow(tx, membership.memberUserId);
+      const updated = await tx.groupMembership.updateMany({
+        where: { id: membershipId, ownerUserId: userId, leftAt: null },
+        data: { leftAt: now },
+      });
+      if (updated.count === 0) {
+        throw new NotFoundException('Membro nao encontrado neste grupo.');
+      }
+      await this.detachSharedItems(tx, membership.memberUserId, userId);
     });
-    if (updated.count === 0) {
-      throw new NotFoundException('Membro nao encontrado neste grupo.');
-    }
+  }
+
+  /** Tira a marca de compartilhamento dos itens do membro que saiu deste grupo (nunca apaga nada). */
+  private async detachSharedItems(
+    tx: Prisma.TransactionClient,
+    memberUserId: string,
+    ownerUserId: string,
+  ): Promise<void> {
+    const where = { userId: memberUserId, sharedGroupOwnerId: ownerUserId };
+    await tx.transaction.updateMany({ where, data: { sharedGroupOwnerId: null } });
+    await tx.financeCategory.updateMany({ where, data: { sharedGroupOwnerId: null } });
   }
 }

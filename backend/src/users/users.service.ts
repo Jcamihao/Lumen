@@ -6,7 +6,8 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { Prisma, TransactionType, UserRole } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
-import { toCategoryResponse } from "../finance-categories/finance-categories.service";
+import { toPrivacyTransactionExport } from "../transactions/shared-transaction.view";
+import { toCategoryResponse, toPrivacyCategoryExport } from "../finance-categories/finance-categories.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { PRINCIPAL_CARD_NAME } from "../credit-cycle/credit-cycle.util";
 import { DEFAULT_TAG_GROUPS } from "../tag-groups/tag-groups.service";
@@ -471,7 +472,7 @@ export class UsersService {
       },
       datasets: {
         taskCategories: taskCategories,
-        financeCategories: financeCategories.map(toCategoryResponse),
+        financeCategories: financeCategories.map(toPrivacyCategoryExport),
         tasks: tasks.map((task) => ({
           ...task,
           estimatedAmount:
@@ -479,10 +480,7 @@ export class UsersService {
               ? Number(task.estimatedAmount)
               : null,
         })),
-        transactions: transactions.map((transaction) => ({
-          ...transaction,
-          amount: Number(transaction.amount),
-        })),
+        transactions: transactions.map(toPrivacyTransactionExport),
         goals: goals.map((goal) => ({
           ...goal,
           targetAmount:
