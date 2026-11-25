@@ -22,10 +22,10 @@ export type ReceiptExtractInput = {
 };
 
 export const RECEIPT_UNREADABLE_MESSAGE =
-  'Não consegui ler esta nota. Lance o gasto pelo chat ("50 mercado") ou pela tela de Finanças.';
+  'Não consegui ler esta nota. Lance o gasto pelo chat ("gastei 50 no mercado") ou pela tela de Finanças.';
 
 export const RECEIPT_TIMEOUT_MESSAGE =
-  'A leitura demorou demais. Tente uma foto mais nítida, ou lance o gasto pelo chat ("50 mercado") ou pela tela de Finanças.';
+  'A leitura demorou demais. Tente uma foto mais nítida, ou lance o gasto pelo chat ("gastei 50 no mercado") ou pela tela de Finanças.';
 
 export const RECEIPT_BUSY_MESSAGE = 'Muitas leituras agora, tente em instantes.';
 
