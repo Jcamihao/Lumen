@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { TelegramAdapterService, TELEGRAM_TEXTS } from './telegram-adapter.service';
-import { TelegramCallbackInbound, TelegramMessageInbound } from './telegram-bot.client';
+import { TelegramBotError, TelegramCallbackInbound, TelegramMessageInbound } from './telegram-bot.client';
 
 type Row = Record<string, any>;
 
@@ -417,6 +417,27 @@ describe('botoes do menu no adaptador (12.1b)', () => {
     await adapter.process(callback());
 
     expect(client.sendMessage).toHaveBeenCalledWith('111', 'Menu\n1. Saldo', { kind: 'inline', rows: areaRows });
+  });
+
+  it('"message is not modified" e sucesso silencioso: sem mensagem nova', async () => {
+    const { adapter, conversation, client } = buildStack();
+    conversation.handleMenuAction.mockResolvedValueOnce(menuReply());
+    client.editMessageText.mockRejectedValueOnce(new TelegramBotError('http 400', true));
+
+    await adapter.process(callback());
+
+    expect(client.answerCallbackQuery).toHaveBeenCalledWith('cb-1');
+    expect(client.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('erro de edicao do Telegram que nao e "not modified" ainda cai em mensagem nova', async () => {
+    const { adapter, conversation, client } = buildStack();
+    conversation.handleMenuAction.mockResolvedValueOnce(menuReply());
+    client.editMessageText.mockRejectedValueOnce(new TelegramBotError('http 400'));
+
+    await adapter.process(callback());
+
+    expect(client.sendMessage).toHaveBeenCalledTimes(1);
   });
 
   it('chat sem vinculo: so responde o callback vazio e ignora, sem motor e sem mensagem', async () => {

@@ -136,6 +136,24 @@ describe('TelegramBotClient (Bot API crua, D8)', () => {
     expect(error.message).not.toContain('echo');
   });
 
+  it('erro 400 "message is not modified" marca notModified sem vazar a descricao', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ ok: false, error_code: 400, description: 'Bad Request: message is not modified: exactly the same' }, 400));
+    const client = new TelegramBotClient(config as never);
+
+    const error = await client.editMessageText('1', 5, 'oi', []).catch((e) => e);
+    expect(error).toBeInstanceOf(TelegramBotError);
+    expect(error.notModified).toBe(true);
+    expect(error.message).not.toContain('exactly');
+  });
+
+  it('outro erro 400 nao marca notModified', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ ok: false, description: 'Bad Request: message to edit not found' }, 400));
+    const client = new TelegramBotClient(config as never);
+
+    const error = await client.editMessageText('1', 5, 'oi', []).catch((e) => e);
+    expect(error.notModified).toBe(false);
+  });
+
   it('falha de rede vira network sem URL nem token na mensagem', async () => {
     fetchMock.mockRejectedValue(Object.assign(new Error('boom https://api.telegram.org/botTOKEN-SECRETO/x'), { name: 'TypeError' }));
     const client = new TelegramBotClient(config as never);

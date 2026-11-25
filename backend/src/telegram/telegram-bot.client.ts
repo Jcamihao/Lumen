@@ -6,11 +6,14 @@ import { ConfigService } from '@nestjs/config';
  * so 'timeout', 'network' ou o status HTTP.
  */
 export class TelegramBotError extends Error {
-  constructor(readonly reason: string) {
+  /** Telegram recusou a edicao porque o texto e o teclado ja eram iguais. So esta marca sai da descricao. */
+  constructor(readonly reason: string, readonly notModified = false) {
     super(`Telegram: chamada falhou (${reason})`);
     this.name = 'TelegramBotError';
   }
 }
+
+const NOT_MODIFIED_DESCRIPTION = 'message is not modified';
 
 export interface TelegramInlineButton {
   text: string;
@@ -136,15 +139,15 @@ export class TelegramBotClient {
       throw new TelegramBotError(name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'network');
     }
 
-    let payload: { ok?: unknown; result?: unknown } | null = null;
+    let payload: { ok?: unknown; result?: unknown; description?: unknown } | null = null;
     try {
-      payload = (await response.json()) as { ok?: unknown; result?: unknown } | null;
+      payload = (await response.json()) as { ok?: unknown; result?: unknown; description?: unknown } | null;
     } catch {
       payload = null;
     }
     // Sem isso um 200 com ok:false viraria "sucesso" com resultado vazio.
     if (!response.ok || !payload || payload.ok !== true) {
-      throw new TelegramBotError(`http ${response.status}`);
+      throw new TelegramBotError(`http ${response.status}`, isNotModified(payload));
     }
     return payload.result ?? null;
   }
@@ -195,6 +198,10 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function isSafeId(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
+function isNotModified(payload: { description?: unknown } | null): boolean {
+  return typeof payload?.description === 'string' && payload.description.includes(NOT_MODIFIED_DESCRIPTION);
 }
 
 function replyMarkupBody(markup: TelegramMarkup): Record<string, unknown> {

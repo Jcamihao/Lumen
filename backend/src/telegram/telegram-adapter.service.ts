@@ -5,7 +5,7 @@ import { CacheQueueService } from '../cache-queue/cache-queue.service';
 import { ConversationService } from '../conversation/conversation.service';
 import { ConversationReply } from '../conversation/conversation.types';
 import { PrismaService } from '../prisma/prisma.service';
-import { TelegramBotClient, TelegramCallbackInbound, TelegramInbound, TelegramMarkup, TelegramMessageInbound, parseTelegramUpdate } from './telegram-bot.client';
+import { TelegramBotClient, TelegramBotError, TelegramCallbackInbound, TelegramInbound, TelegramMarkup, TelegramMessageInbound, parseTelegramUpdate } from './telegram-bot.client';
 import { FIXED_MENU_MARKUP, formatReplyForTelegram, nodeIdFromCallback } from './telegram-format';
 import { TelegramLinkService } from './telegram-link.service';
 import { looksLikeLinkCode } from '../whatsapp/whatsapp-link.service';
@@ -221,12 +221,13 @@ export class TelegramAdapterService implements OnModuleInit, OnModuleDestroy {
     await this.send(inbound.chatId, formatted.parts, formatted.markup);
   }
 
-  /** Menu no lugar: edita a mensagem do clique. Se a edicao falhar (velha, apagada, igual), manda mensagem nova. */
+  /** Menu no lugar: edita a mensagem do clique. "Not modified" (menu ja igual) e sucesso silencioso; outra falha (velha, apagada) manda mensagem nova. */
   private async showMenuInPlace(inbound: TelegramCallbackInbound, parts: string[], markup: TelegramMarkup): Promise<void> {
     const rows = markup.kind === 'inline' ? markup.rows : [];
     try {
       await this.client.editMessageText(inbound.chatId, inbound.messageId, parts[0], rows);
     } catch (error) {
+      if (error instanceof TelegramBotError && error.notModified) return;
       this.logger.warn(`telegram edicao do menu falhou: ${(error as Error).name}`);
       await this.send(inbound.chatId, parts, markup);
     }
