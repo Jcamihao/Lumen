@@ -372,7 +372,7 @@ export class TransactionsService {
           throw new ConflictException('Lancamento alterado desde a leitura.');
         }
         if (typeof dto.categoryId === 'string') {
-          await this.assertCategoryVisible(tx, readerId, dto.categoryId, current.type);
+          await this.assertCategoryOfAuthorVisible(tx, readerId, authorId, dto.categoryId, current.type);
         }
         return tx.transaction.update({
           where: { id },
@@ -424,14 +424,19 @@ export class TransactionsService {
     return row;
   }
 
-  private async assertCategoryVisible(
+  /**
+   * O parceiro so escolhe categoria que o AUTOR criou e que ele enxerga (compartilhada). Categoria do
+   * proprio parceiro nunca entra no lancamento do autor: o autor leria id, orcamento e userId dela.
+   */
+  private async assertCategoryOfAuthorVisible(
     tx: Prisma.TransactionClient,
     readerId: string,
+    authorId: string,
     categoryId: string,
     type: TransactionType,
   ) {
-    const scope = await this.access.scopeWhere(readerId, 'all', tx);
-    const category = await tx.financeCategory.findFirst({ where: { id: categoryId, ...scope } });
+    const scope = await this.access.scopeWhere(readerId, 'shared', tx);
+    const category = await tx.financeCategory.findFirst({ where: { id: categoryId, AND: [scope, { userId: authorId }] } });
     if (!category) {
       throw new NotFoundException('Categoria financeira invalida.');
     }

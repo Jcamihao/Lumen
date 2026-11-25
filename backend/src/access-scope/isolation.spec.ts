@@ -194,6 +194,24 @@ describe('compartilhamento isolado: A e B no grupo, C em outro grupo, D sem grup
     expect(ctx.state.transactions.find((t) => t.id === a2.id)).toBeUndefined();
   });
 
+  it('parceiro nunca poe categoria propria (privada ou compartilhada) no lancamento do autor', async () => {
+    const ctx = setup();
+    const own = await ctx.categories.create('user-b', { name: 'DoBeto', color: '#333', type: 'EXPENSE', monthlyBudget: 333 } as any);
+    const ownShared = await ctx.categories.create('user-b', { name: 'DoBetoComp', color: '#444', type: 'EXPENSE' } as any);
+    await ctx.categories.setSharing('user-b', ownShared.id, true);
+    const a2 = await createTx(ctx, 'user-a', 'antes');
+    await ctx.transactions.setSharing('user-a', a2.id, true);
+
+    for (const category of [own, ownShared]) {
+      await expectRejection(
+        ctx.transactions.update('user-b', a2.id, { categoryId: category.id } as any),
+        NotFoundException,
+        'Categoria financeira invalida.',
+      );
+    }
+    expect(ctx.state.transactions.find((t) => t.id === a2.id)?.categoryId ?? null).toBeNull();
+  });
+
   it('parceiro nao apaga nem edita item privado do autor (404 igual ao inexistente)', async () => {
     const ctx = setup();
     const a1 = await createTx(ctx, 'user-a', 'privado');

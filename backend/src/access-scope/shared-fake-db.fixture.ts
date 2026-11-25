@@ -8,6 +8,7 @@ export function matches(row: Row, where: Row = {}): boolean {
   return Object.entries(where).every(([key, cond]) => {
     if (cond === undefined) return true;
     if (key === 'OR') return (cond as Row[]).some((branch) => matches(row, branch));
+    if (key === 'AND') return (cond as Row[]).every((branch) => matches(row, branch));
     const value = row[key];
     if (cond === null) return value === null || value === undefined;
     if (cond instanceof Date) return value?.getTime() === cond.getTime();
