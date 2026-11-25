@@ -122,4 +122,18 @@ describe('textos fixos de tom', () => {
       }
     }
   });
+
+  describe('cobertura de radicais (revisao 12.0b-2)', () => {
+    it.each([
+      'saude', 'hospital', 'remedio', 'medico', 'exame', 'doenca', 'funeral', 'velorio', 'enterro', 'luto',
+      'divida', 'multa', 'cobranca', 'dentista', 'internacao', 'cirurgia',
+    ])('"%s" e sensivel e forca neutro na receita', (word) => {
+      expect(hasSensitiveWord([word])).toBe(true);
+      expect(toneKindFor('RECEITA', [word])).toBe('NEUTRO');
+    });
+
+    it.each(['comedico', 'amultado', 'reexame', 'pelutor', 'subdivida'])('radical no meio da palavra ("%s") nao e sensivel', (word) => {
+      expect(hasSensitiveWord([word])).toBe(false);
+    });
+  });
 });
