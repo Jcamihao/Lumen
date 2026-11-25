@@ -42,3 +42,12 @@ Navegacao: "voltar", "sair", "menu", "inicio", "cancela", "desistir", "deixa pra
 1. Fase 4: guardar texto? consentimento? retencao 180 dias? pgvector ou Selah?
 2. (resolvida) Nomes Avisos/Conta e Plano so consulta: aprovados.
 3. Duvidas da fatia 1 (hoje = total do mes; "quanto devo no X" = fatura).
+
+## 7. Decisoes do dono sobre embedding (2026-11-25, aprovadas)
+- Indice de busca por similaridade em MEMORIA (nao FAISS nem banco de vetores). Estimativa: 5 mil exemplos de 768 dims ~15 MB, busca 2 a 5 ms. Migrar para pgvector so se passar de ~50 mil linhas ou para agrupar mensagens na curadoria.
+- Selah continua STATELESS (sem banco; decisao do handoff dele). Selah gera embeddings e classifica (similaridade + faixas), generico para qualquer app futuro, com cache em memoria por app/instancia (chave = hash do conjunto de exemplos; some no restart e recarrega na primeira chamada). Fallback de menor risco se o cache complicar: Selah so gera embeddings e cada app busca por conta propria.
+- Endpoints novos do Selah: POST /embeddings (textos -> vetores) e POST /classify (mensagem + exemplos com vetores + catalogo -> {intent, score, alternativas}). GeminiProvider hoje NAO tem embeddings: tarefa nova no Selah. Isolamento por chave de API; exemplos de um app nunca aparecem para outro.
+- Lumen guarda tudo: tabela IntentExample (texto mascarado, intencao, vetor, status), candidatos, curadoria, consentimento, retencao e exclusao LGPD. Faixas de similaridade: comecar conservador (abaixo de 0,85 vai ao Selah conversa); alta = leitura direta, media = botoes "Voce quis dizer: X?" (resposta vira dado de curadoria), baixa = Selah. Escrita NUNCA por similaridade (sempre rascunho + confirmacao).
+- Degradacao: Selah fora/lento -> ajuda, sem pendurar (timeout e breaker existentes).
+- Ordem: contrato Selah + contrato Lumen -> navegacao/menu -> Tarefas -> curadoria manual -> embedding (indice vazio sem exemplos aprovados).
+- Ainda abertas: guardar texto das mensagens, consentimento, retencao (sugestao 180 dias), tela de curadoria (sugestao: admin do Lumen falando com o Selah).
