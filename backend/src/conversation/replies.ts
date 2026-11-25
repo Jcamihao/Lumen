@@ -56,8 +56,11 @@ export const REPLIES = {
   futureDueWarning: 'Os lançamentos serão gerados nos vencimentos.',
   catchUpWarning: 'Outros cadastros já vencidos também podem ser atualizados junto, como na tela.',
   help:
-    'Exemplos: "50 mercado" (gasto), "recebi 800 de freelance" (receita), "saldo", "resumo", ' +
-    '"quanto gastei", "gastos com mercado", "limite do cartão".',
+    'Pode falar direto ou digitar "menu" para navegar por botões.\n' +
+    'Início: "como está o meu saldo?", "resumo do mês", "o que vence esta semana".\n' +
+    'Finanças: "gastei 50 no mercado", "recebi 800 de freelance", "gastos com mercado".\n' +
+    'Cartão: "como está meu cartão?", "meus cartões", "definir limite do cartão 5000".\n' +
+    'Metas: "minhas metas", "guardar 200 na viagem", "criar meta viagem".',
   importReceipt:
     'Para importar uma nota, abra Importações e envie a foto ou o PDF. ' +
     'A leitura é feita aqui no Lumen e você confere tudo antes de gravar.',

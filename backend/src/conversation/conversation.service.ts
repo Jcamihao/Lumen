@@ -54,6 +54,11 @@ import {
   splitTrailingAmount,
 } from './parsers/goal.parser';
 import { normalize } from './parsers/normalize';
+import { MENU_ROOT, MENU_ROOT_ID } from './menu/menu.tree';
+import { getMenuNode } from './menu/menu.tree.queries';
+import { ExitKind, exitKindOf } from './menu/exit-words';
+import { MENU_REPLIES, menuText, menuViewOf, withDica } from './menu/menu.view';
+import { MenuActionInput, MenuNode } from './menu/menu.types';
 import type { TargetChangeDraft, TransactionChangeDraft } from './conversation.types';
 import { UpdateTransactionDto } from '../transactions/dto/update-transaction.dto';
 import { UpdateGoalDto } from '../goals/dto/update-goal.dto';
@@ -182,7 +187,6 @@ const TTL_MS: Record<'COLLECTING_FIELDS' | 'AWAITING_CONFIRMATION', number> = {
   AWAITING_CONFIRMATION: 5 * 60_000,
 };
 
-const CANCEL_WORDS = new Set(['cancelar', 'parar', 'voltar']);
 const CONFIRM_WORDS = new Set(['confirmar', 'sim', 'ok']);
 const CONNECTORS = new Set(['na', 'no', 'em', 'de', 'do', 'da', 'com', 'pra', 'para']);
 const MAX_CATEGORY_OPTIONS = 5;
@@ -427,15 +431,82 @@ export class ConversationService {
     return { state: 'IDLE' };
   }
 
+  // ---------- menu por botao e saida universal (12.1a) ----------
+
+  /**
+   * Clique do menu. Sem estado no servidor: o destino vem do id do no (conferido na arvore) e o dono so do vinculo.
+   * Mesmo messageId de novo = DUPLICATE. Id desconhecido cai no menu inicial, sem erro.
+   */
+  async handleMenuAction(input: MenuActionInput): Promise<ConversationReply> {
+    const { userId, channel, messageId, receivedAt } = input;
+    const duplicate = await this.prisma.conversationEvent.findFirst({
+      where: { userId, channel, messageId },
+      select: { id: true },
+    });
+    const session = await this.loadSession(userId, channel);
+    if (duplicate) {
+      return this.reply('DUPLICATE', this.stateView(session), REPLIES.duplicate);
+    }
+    if (session && session.expiresAt < receivedAt) {
+      return this.expireSession(userId, session, messageId);
+    }
+    const node = getMenuNode(input.nodeId) ?? MENU_ROOT;
+    const action = node.action;
+    if (node.children || !action) {
+      return this.openMenuNode(input, session, node);
+    }
+    if (action.type === 'instruction') {
+      return this.menuInstruction(input, session, node, action.text);
+    }
+    return this.runMenuPhrase(input, action.phrase, node.example);
+  }
+
+  private async openMenuNode(input: MenuActionInput, session: SessionRow | null, node: MenuNode): Promise<ConversationReply> {
+    const intent = node.id === MENU_ROOT_ID ? 'menu_open' : `menu_nav:${node.id}`;
+    await this.recordEventRaw({ userId: input.userId, channel: input.channel, messageId: input.messageId, intent, outcome: ConversationOutcome.RECOGNIZED });
+    return { ...this.reply('MENU', this.stateView(session), menuText(node)), menu: menuViewOf(node) };
+  }
+
+  /** Folha de instrucao: a frase pronta para digitar. Nao grava nada. */
+  private async menuInstruction(input: MenuActionInput, session: SessionRow | null, node: MenuNode, text: string): Promise<ConversationReply> {
+    await this.recordEventRaw({ userId: input.userId, channel: input.channel, messageId: input.messageId, intent: `menu_nav:${node.id}`, outcome: ConversationOutcome.RECOGNIZED });
+    return this.reply('HELP', this.stateView(session), withDica(text, node.example));
+  }
+
+  /** Folha de frase: executa o mesmo caminho de handleMessage. O evento e o da propria acao (um por messageId). */
+  private async runMenuPhrase(input: MenuActionInput, phrase: string, example: string | undefined): Promise<ConversationReply> {
+    const reply = await this.handleMessage({ userId: input.userId, channel: input.channel, messageId: input.messageId, text: phrase, receivedAt: input.receivedAt });
+    return reply.kind === 'DUPLICATE' ? reply : { ...reply, text: withDica(reply.text, example) };
+  }
+
+  /** Saida com rascunho aberto: cancela (texto de sempre) e mostra o menu inicial. */
+  private async leaveDraft(userId: string, session: SessionRow, messageId: string): Promise<ConversationReply> {
+    const cancelled = await this.cancelSession(userId, session, messageId);
+    return { ...cancelled, text: `${cancelled.text}\n\n${menuText(MENU_ROOT)}`, menu: { ...menuViewOf(MENU_ROOT), lead: cancelled.text } };
+  }
+
+  /** Saida sem rascunho: "voltar"/"menu" mostram o menu; cancelar sem nada aberto avisa antes. */
+  private async leaveWithoutDraft(input: ConversationInput, kind: ExitKind): Promise<ConversationReply> {
+    await this.recordEvent(input, 'menu_open', ConversationOutcome.RECOGNIZED);
+    const menu = { ...this.reply('MENU', 'IDLE', menuText(MENU_ROOT)), menu: menuViewOf(MENU_ROOT) };
+    return kind === 'CANCEL'
+      ? { ...menu, text: `${MENU_REPLIES.nothingToCancel}\n\n${menu.text}`, menu: { ...menu.menu, lead: MENU_REPLIES.nothingToCancel } }
+      : menu;
+  }
+
   // ---------- sem sessao ativa ----------
 
   private async handleWithoutSession(args: { input: ConversationInput; text: string }): Promise<ConversationReply> {
     const { input, text } = args;
+    const exit = exitKindOf(text);
+    if (exit) {
+      return this.leaveWithoutDraft(input, exit);
+    }
     const intent = await this.resolveLooseCardRead(input.userId, text.length > 0 ? matchIntent(text) : null);
 
     if (!intent) {
       const word = normalize(text);
-      const control = CONFIRM_WORDS.has(word) || CANCEL_WORDS.has(word);
+      const control = CONFIRM_WORDS.has(word);
       return this.handleUnrecognized(input, text, control);
     }
     if (intent.intent === 'create_expense' || intent.intent === 'create_income') {
@@ -1429,8 +1500,8 @@ export class ConversationService {
     const intent = await this.resolveLooseCardRead(userId, text.length > 0 ? matchIntent(text) : null);
     const awaiting = session.state === ConversationState.AWAITING_CONFIRMATION;
 
-    if (CANCEL_WORDS.has(words)) {
-      return this.cancelSession(userId, session, input.messageId);
+    if (exitKindOf(text)) {
+      return this.leaveDraft(userId, session, input.messageId);
     }
     const deleteAwaiting = awaiting && isDeleteChange(session.draft);
     const clearAwaiting = awaiting && isClearLimitDraft(session.draft);

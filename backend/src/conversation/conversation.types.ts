@@ -1,4 +1,5 @@
 import { ConversationChannel, ConversationState, PaymentMethod, TransactionType } from '@prisma/client';
+import type { MenuView } from './menu/menu.types';
 
 export type { ConversationChannel };
 
@@ -13,6 +14,7 @@ export type ConversationReplyKind =
   | 'CANCELLED'
   | 'EXPIRED'
   | 'HELP'
+  | 'MENU'
   | 'DUPLICATE'
   | 'ERROR';
 
@@ -312,4 +314,6 @@ export interface ConversationReply {
   unrecognized?: true;
   /** Resposta veio do fallback de IA (ASSISTANT_AI_MODE=fallback). Nunca vem de escrita. */
   aiFallback?: true;
+  /** Menu por botao/lista (kind MENU): o canal desenha; o text ja serve de lista numerada. */
+  menu?: MenuView;
 }
