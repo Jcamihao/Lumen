@@ -19,7 +19,10 @@ Commits revisados: `b43271a..7303002` + commits desta revisão:
 O confirm do "Limpar teto" só fechava com Esc se o foco estivesse no componente. Em Chrome real, clicar no botão com o mouse deixa o foco no `body` → Esc não fechava (karma com dispatch em `document` e o teste antigo com foco no input mascararam o caso). Corrigido com listener no window (`@HostListener keydown.escape`, guardado por `confirmingClear()` — Esc com foco editando outro campo não fecha). O teste antigo que despachava no input foi atualizado para o evento real (bubbling do campo). O formulário de EDIÇÃO do teto (9c-1b) tem a mesma limitação histórica (Esc só com foco num campo, que é natural lá) — deixado como está, registrado como pendência de padrão de UI.
 
 ## Redescoberta importante (ferramental)
-O service worker do PWA (`ngsw` do `ng build`) mantém controle da página mesmo após `getRegistrations().unregister()+update()` — requests ficam invisíveis ao CDP `Fetch` e a injeção de falha não funciona. Solução: iniciar Chrome com `--disable-features=ServiceWorker` (registrado aqui; o script `test-cartoes.mjs` do 9c-1a tinha fallback silencioso para mock que mascara isso).
+O service worker do PWA (`ngsw` do `ng build`) mantém controle da página mesmo após `getRegistrations().unregister()+update()` — requests ficam invisíveis ao CDP `Fetch` e a injeção de falha não funciona. Solução: iniciar Chrome com `--disable-features=ServiceWorker` + reload antes de habilitar a interceptação (registrado aqui e na nota do release).
+
+## Armadilha de boot do backend (registrada na revisão)
+O `ConfigModule` do backend lê **somente o `.env` da raiz do repositório** (arquivo do dono, aponta para `localhost:5433`) — `backend/.env` NÃO é lido por ele. Subir backend de teste SEMPRE com env inline: `env PORT=3100 DATABASE_URL=... REDIS_URL=... JWT_SECRET=... node dist/main.js`. Sem `PORT` ele tenta a 3000 (porta do orquestrador-ia-server-1 do dono — a colisão EADDRINUSE protegeu, nada foi roubado). Sem env inline ele tenta o 5433 do dono (a conexão nem completou, nada foi lido/escrito lá).
 
 ## Perguntas de produto do prompt (recomendações aplicadas — dono fora, "aceitar")
 - Erro nas abas de cartões offline: **aceitar** como está (banner no bloco, sem retry automático).
