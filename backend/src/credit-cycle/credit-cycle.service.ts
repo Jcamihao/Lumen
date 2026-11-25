@@ -7,6 +7,8 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { Prisma, TransactionType } from '@prisma/client';
+import { AccessScopeService } from '../access-scope/access-scope.service';
+import { buildScopeWhere } from '../access-scope/read-scope';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { localToday } from '../recurring-transactions/recurrence.util';
@@ -29,14 +31,16 @@ export interface CeilingRemovalReceipt {
   refreshPending: boolean;
 }
 
-/** Campos do cartao usados pelo ciclo. */
+/** Campos do cartao usados pelo ciclo (11b-1b: userId decide o fuso do ciclo; sharedGroupOwnerId, a visibilidade). */
 export const CREDIT_CYCLE_CARD_SELECT = {
   id: true,
+  userId: true,
   closingDay: true,
   dueDay: true,
   countAllPayments: true,
   isDefault: true,
   archivedAt: true,
+  sharedGroupOwnerId: true,
 } satisfies Prisma.CreditCardSelect;
 
 export type CycleCard = Prisma.CreditCardGetPayload<{ select: typeof CREDIT_CYCLE_CARD_SELECT }>;
@@ -55,18 +59,31 @@ export class CreditCycleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly lifeEngineService: LifeEngineService,
+    private readonly access: AccessScopeService,
   ) {}
 
-  /** Ciclo aberto do cartao padrao (mesma resposta de sempre). */
+  /** Ciclo aberto do cartao padrao (mesma resposta de sempre; com grupo ativo, soma os compartilhados). */
   async getCurrent(userId: string) {
     const card = await this.findDefaultCard(this.prisma, userId);
-    return this.getCycleOfCard(userId, card);
+    return this.getCycleOfCard(card, await this.readerSpendWhere(userId));
   }
 
-  /** Ciclo aberto de um cartao do proprio usuario; cartao alheio responde 404. */
+  /** Ciclo aberto de um cartao do proprio usuario ou compartilhado do parceiro (11b-1b); os demais: 404. */
   async getCycleForCard(userId: string, cardId: string) {
-    const card = await this.findOwnedCard(this.prisma, userId, cardId);
-    return this.getCycleOfCard(userId, card);
+    const card = await this.findVisibleCard(this.prisma, userId, cardId);
+    return this.getCycleOfCard(card, await this.readerSpendWhere(userId));
+  }
+
+  /**
+   * De quem o gasto do ciclo conta: sem grupo com parceiro e exatamente `{ userId }` de sempre
+   * (nenhum shape novo para quem nao compartilha); com parceiro, o escopo "all" da casa
+   * (o meu + os compartilhados dele).
+   */
+  private async readerSpendWhere(userId: string): Promise<Prisma.TransactionWhereInput> {
+    const view = await this.access.resolve(userId);
+    const partnerIds = view.groupOwnerId ? view.memberIds.filter((id) => id !== userId) : [];
+    if (partnerIds.length === 0) return { userId };
+    return buildScopeWhere(userId, view, 'all');
   }
 
   /** Dia de vencimento e escopo de contagem vivem so no cartao padrao (9c-2: sem espelho no User). */
@@ -100,18 +117,18 @@ export class CreditCycleService {
     expected: CreditLimitExpectation,
     cardId?: string,
   ): Promise<CreditLimitWriteReceipt> {
-    const receipt = await this.persistCeiling(userId, dto, expected, cardId);
-    return { ...receipt, refreshPending: await this.refreshAfterCeiling(userId) };
+    const { cardOwnerId, ...receipt } = await this.persistCeiling(userId, dto, expected, cardId);
+    return { ...receipt, refreshPending: await this.refreshAfterCeiling(userId, cardOwnerId) };
   }
 
-  /** Teto de um cartao do usuario (PUT /credit-cards/:id/ceiling). Devolve recibo. */
+  /** Teto de um cartao (PUT /credit-cards/:id/ceiling): proprio ou compartilhado do parceiro. Devolve recibo. */
   async setCeilingForCard(
     userId: string,
     cardId: string,
     dto: SetCreditCycleCeilingDto,
   ): Promise<CreditLimitWriteReceipt> {
-    const receipt = await this.persistCeiling(userId, dto, undefined, cardId);
-    return { ...receipt, refreshPending: await this.refreshAfterCeiling(userId) };
+    const { cardOwnerId, ...receipt } = await this.persistCeiling(userId, dto, undefined, cardId);
+    return { ...receipt, refreshPending: await this.refreshAfterCeiling(userId, cardOwnerId) };
   }
 
   /**
@@ -129,20 +146,23 @@ export class CreditCycleService {
 
   private async clearCeiling(userId: string, cardId: string, expected?: CreditLimitExpectation): Promise<CeilingRemovalReceipt> {
     let callbackFinished = false;
-    let removed: Omit<CeilingRemovalReceipt, 'refreshPending'>;
+    let removed: Omit<CeilingRemovalReceipt, 'refreshPending'> & { cardOwnerId: string };
+    // Mesmo desenho do persistCeiling: trava a linha do DONO do cartao (peek antes do lock).
+    const ownerGuess =
+      (await this.prisma.creditCard.findFirst({ where: { id: cardId }, select: { userId: true } }))?.userId ?? userId;
     try {
       removed = await this.prisma.$transaction(async (tx) => {
-        await lockUserForCredit(tx, userId);
-        const user = await tx.user.findUniqueOrThrow({
-          where: { id: userId },
-          select: { timezone: true },
-        });
-        const card = await this.findOwnedCard(tx, userId, cardId);
+        await lockUserForCredit(tx, ownerGuess);
+        const card = await this.findVisibleCard(tx, userId, cardId);
         if (card.archivedAt) {
           throw new ConflictException('Cartao arquivado nao tem teto para limpar.');
         }
         const now = new Date();
-        const { start, end } = creditCycleBounds(localToday(now, user.timezone), card.closingDay);
+        const ownerUser = await tx.user.findUniqueOrThrow({
+          where: { id: card.userId },
+          select: { timezone: true },
+        });
+        const { start, end } = creditCycleBounds(localToday(now, ownerUser.timezone), card.closingDay);
         const current = await tx.creditCycleCeiling.findUnique({
           where: { cardId_closingDate: { cardId: card.id, closingDate: end } },
         });
@@ -162,13 +182,15 @@ export class CreditCycleService {
           removedCents: snapshot.previousCeilingCents ?? 0,
           cycleStart: snapshot.cycleStart,
           cycleEnd: snapshot.cycleEnd,
+          cardOwnerId: card.userId,
         };
       });
     } catch (error) {
       if (callbackFinished) throw new CreditLimitWriteUncertainError();
       throw error;
     }
-    return { ...removed, refreshPending: await this.refreshAfterCeiling(userId) };
+    const { cardOwnerId, ...receipt } = removed;
+    return { ...receipt, refreshPending: await this.refreshAfterCeiling(userId, cardOwnerId) };
   }
 
   /** Cartao padrao ativo. Sem ele e' falha de invariante (migration e cadastro criam um). */
@@ -194,9 +216,32 @@ export class CreditCycleService {
     return card;
   }
 
-  private async getCycleOfCard(userId: string, card: CycleCard) {
+  /** Cartao proprio ou compartilhado do parceiro (11b-1b). Os demais: 404, nunca 403. */
+  private async findVisibleCard(db: Db | PrismaService, userId: string, cardId: string): Promise<CycleCard & { id: string }> {
+    const card = await db.creditCard.findFirst({
+      where: { id: cardId },
+      select: CREDIT_CYCLE_CARD_SELECT,
+    });
+    if (!card) throw new NotFoundException('Cartao nao encontrado.');
+    if (card.userId === userId) return card;
+    if (card.archivedAt) throw new NotFoundException('Cartao nao encontrado.');
+    if (!(await this.access.canSeeItem(userId, card, db as Prisma.TransactionClient))) {
+      throw new NotFoundException('Cartao nao encontrado.');
+    }
+    return card;
+  }
+
+  /**
+   * Ciclo aberto do cartao. O fuso que marca as datas do ciclo e o do DONO do cartao (e assim
+   * que as linhas de teto ficam na mesma chave para os dois membros); `userWhere` decide de
+   * quem entra no gasto (o leitor, com os compartilhados).
+   */
+  private async getCycleOfCard(
+    card: CycleCard & { id: string; userId: string },
+    userWhere: Prisma.TransactionWhereInput,
+  ) {
     const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
+      where: { id: card.userId },
       select: { timezone: true },
     });
 
@@ -207,7 +252,7 @@ export class CreditCycleService {
         where: { cardId_closingDate: { cardId: card.id, closingDate: end } },
       }),
       this.prisma.transaction.aggregate({
-        where: cardSpendWhere(userId, card, start, end),
+        where: cardSpendWhere(userWhere, card, start, end),
         _sum: { amount: true },
       }),
       // Sugestao para o formulario quando ainda nao ha teto definido neste ciclo.
@@ -247,21 +292,27 @@ export class CreditCycleService {
       throw new BadRequestException('Informe um limite positivo com até duas casas decimais.');
     }
     let callbackFinished = false;
+    // A linha bloqueada passa a ser a do DONO do cartao (parceiro pode escrever teto no
+    // compartilhado, 11b-1b D4): um unico lock por transacao, sem ordem cruzada possivel.
+    // O dono do cartao nunca muda, entao o peek antes do lock so escolhe a linha a travar.
+    const ownerGuess = cardId
+      ? (await this.prisma.creditCard.findFirst({ where: { id: cardId }, select: { userId: true } }))?.userId ?? userId
+      : userId;
     try {
       return await this.prisma.$transaction(async (tx) => {
-        await lockUserForCredit(tx, userId);
-        const user = await tx.user.findUniqueOrThrow({
-          where: { id: userId },
-          select: { timezone: true },
-        });
+        await lockUserForCredit(tx, ownerGuess);
         const card = cardId
-          ? await this.findOwnedCard(tx, userId, cardId)
+          ? await this.findVisibleCard(tx, userId, cardId)
           : await this.findDefaultCard(tx, userId);
         if (card.archivedAt) {
           throw new ConflictException('Cartao arquivado nao recebe teto.');
         }
         const now = new Date();
-        const { start, end } = creditCycleBounds(localToday(now, user.timezone), card.closingDay);
+        const ownerUser = await tx.user.findUniqueOrThrow({
+          where: { id: card.userId },
+          select: { timezone: true },
+        });
+        const { start, end } = creditCycleBounds(localToday(now, ownerUser.timezone), card.closingDay);
         const current = await tx.creditCycleCeiling.findUnique({
           where: { cardId_closingDate: { cardId: card.id, closingDate: end } },
         });
@@ -276,11 +327,11 @@ export class CreditCycleService {
         }
         const saved = await tx.creditCycleCeiling.upsert({
           where: { cardId_closingDate: { cardId: card.id, closingDate: end } },
-          create: { cardId: card.id, userId, closingDate: end, ceiling: new Prisma.Decimal(dto.ceiling) },
+          create: { cardId: card.id, userId: card.userId, closingDate: end, ceiling: new Prisma.Decimal(dto.ceiling) },
           update: { ceiling: new Prisma.Decimal(dto.ceiling) },
         });
         callbackFinished = true;
-        return { id: saved.id, ceilingCents: Math.round(Number(saved.ceiling) * 100), cycleStart: snapshot.cycleStart, cycleEnd: snapshot.cycleEnd };
+        return { id: saved.id, ceilingCents: Math.round(Number(saved.ceiling) * 100), cycleStart: snapshot.cycleStart, cycleEnd: snapshot.cycleEnd, cardOwnerId: card.userId };
       });
     } catch (error) {
       if (callbackFinished) throw new CreditLimitWriteUncertainError();
@@ -288,14 +339,21 @@ export class CreditCycleService {
     }
   }
 
-  private async refreshAfterCeiling(userId: string): Promise<boolean> {
-    try {
-      await this.lifeEngineService.touchUserData(userId);
-      return false;
-    } catch (error) {
-      this.logger.warn({ operation: 'setCeiling.refresh', errorName: error instanceof Error ? error.name : 'Unknown' });
-      return true;
+  /**
+   * Touch no engine de quem escreveu e, se o teto mexeu no cartao de outro membro, no do
+   * dono tambem (o insight dele le o ciclo desse cartao). Melhor esforço: falha so marca pending.
+   */
+  private async refreshAfterCeiling(userId: string, ownerUserId?: string): Promise<boolean> {
+    let pending = false;
+    for (const target of [...new Set([userId, ownerUserId ?? userId])]) {
+      try {
+        await this.lifeEngineService.touchUserData(target);
+      } catch (error) {
+        this.logger.warn({ operation: 'setCeiling.refresh', errorName: error instanceof Error ? error.name : 'Unknown' });
+        pending = true;
+      }
     }
+    return pending;
   }
 
   private buildResponse(input: {

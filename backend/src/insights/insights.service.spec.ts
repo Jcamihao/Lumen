@@ -1336,12 +1336,12 @@ describe('InsightsService: gasto do ciclo pelo cartao padrao (contrato item 9, s
     const prisma: any = buildPrisma([], [], { creditCycleCountAllPayments: false });
     prisma.creditCard.findFirst.mockResolvedValue({ id: 'card-default', isDefault: true, countAllPayments: false });
     await new InsightsService(prisma).refreshForUser('user-1');
-    expect(wheres(prisma)).toContainEqual(
-      expect.objectContaining({
-        paymentMethod: 'CREDIT',
-        OR: [{ cardId: 'card-default' }, { cardId: null, paymentMethod: 'CREDIT', type: 'EXPENSE' }],
-      }),
-    );
+    // 11b-1b: cardSpendWhere virou AND de clausulas (escopo separado do escopo do cartao).
+    expect(wheres(prisma).some((where) =>
+      Array.isArray(where.AND) &&
+      where.AND.some((c: any) => c.paymentMethod === 'CREDIT') &&
+      where.AND.some((c: any) =>
+        c.OR?.[0]?.cardId === 'card-default'))).toBe(true);
   });
 
   it('cartao padrao com countAllPayments: nenhum agregado do ciclo filtra por forma ou cartao', async () => {
@@ -1376,6 +1376,11 @@ describe('InsightsService: ciclo pelo dia de fechamento do cartao padrao', () =>
     await new InsightsService(prisma).refreshForUser('user-1');
     const expectedStart = creditCycleBounds(localToday(new Date(), 'UTC'), 5).start;
     const wheres = prisma.transaction.aggregate.mock.calls.map(([args]: any) => args.where);
-    expect(wheres).toContainEqual(expect.objectContaining({ date: { gte: expectedStart, lte: expect.any(Date) } }));
+    // AND-form (11b-1b): a clausula de data do ciclo e uma das partes do AND.
+    expect(
+      wheres.some((where) =>
+        Array.isArray(where.AND) &&
+        where.AND.some((c: any) => c.date?.gte?.getTime?.() === expectedStart.getTime())),
+    ).toBe(true);
   });
 });
