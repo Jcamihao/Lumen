@@ -194,6 +194,21 @@ describe('compartilhamento isolado: A e B no grupo, C em outro grupo, D sem grup
     expect(ctx.state.transactions.find((t) => t.id === a2.id)).toBeUndefined();
   });
 
+  it('categoria compartilhada de outro grupo, sem grupo ou sem plano: 404 igual ao inexistente em editar, excluir e marcar', async () => {
+    const ctx = setup();
+    const shared = await ctx.categories.create('user-a', { name: 'Casa', color: '#222', type: 'EXPENSE' } as any);
+    await ctx.categories.setSharing('user-a', shared.id, true);
+    const missing = await expectRejection(ctx.categories.remove('user-c', 'categoria-inexistente'), NotFoundException);
+
+    for (const reader of ['user-c', 'user-d']) {
+      const removed = await expectRejection(ctx.categories.remove(reader, shared.id), NotFoundException);
+      expect(removed.message).toBe(missing.message);
+      await expectRejection(ctx.categories.update(reader, shared.id, { name: 'Hack' } as any), NotFoundException);
+      await expectRejection(ctx.categories.setSharing(reader, shared.id, false), NotFoundException);
+    }
+    expect(ctx.state.categories.find((c) => c.id === shared.id)?.sharedGroupOwnerId).toBe('user-a');
+  });
+
   it('parceiro nunca poe categoria propria (privada ou compartilhada) no lancamento do autor', async () => {
     const ctx = setup();
     const own = await ctx.categories.create('user-b', { name: 'DoBeto', color: '#333', type: 'EXPENSE', monthlyBudget: 333 } as any);

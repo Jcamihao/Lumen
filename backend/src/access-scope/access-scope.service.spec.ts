@@ -79,6 +79,15 @@ describe('AccessScopeService.resolve (quem le, com membership e plano conferidos
     expect((await access.resolve('user-b')).memberIds.sort()).toEqual(['user-a', 'user-b', 'user-c']);
   });
 
+  it('ex-membro que comprou plano SHARED proprio le o proprio grupo, nunca o antigo (e o antigo nao o lista)', async () => {
+    const { access, state } = build();
+    state.subs.push(sub('user-a'), sub('user-c'));
+    member(state, 'user-a', 'user-c');
+    state.memberships[0].leftAt = NOW;
+    expect(await access.resolve('user-c')).toEqual({ groupOwnerId: 'user-c', memberIds: ['user-c'] });
+    expect(await access.resolve('user-a')).toEqual({ groupOwnerId: 'user-a', memberIds: ['user-a'] });
+  });
+
   it('membro que saiu nao tem acesso ao grupo', async () => {
     const { access, state } = build();
     state.subs.push(sub('user-a'));

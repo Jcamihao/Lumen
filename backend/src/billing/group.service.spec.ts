@@ -484,6 +484,39 @@ describe('GroupService (contrato 11, 11a)', () => {
     });
   });
 
+  describe('saida anula a marca dos itens compartilhados (lancamentos e categorias)', () => {
+    const seed = (db: any) => {
+      db.state.memberships.push(activeMember(db, 'user-a', 'user-b'));
+      db.state.transactions.push(
+        { id: 't-b', userId: 'user-b', sharedGroupOwnerId: 'user-a' },
+        { id: 't-a', userId: 'user-a', sharedGroupOwnerId: 'user-a' },
+        { id: 't-b-private', userId: 'user-b', sharedGroupOwnerId: null },
+      );
+      db.state.categories.push(
+        { id: 'c-b', userId: 'user-b', sharedGroupOwnerId: 'user-a' },
+        { id: 'c-a', userId: 'user-a', sharedGroupOwnerId: 'user-a' },
+      );
+    };
+    const marks = (db: any) => ({
+      tx: db.state.transactions.map((t: any) => t.sharedGroupOwnerId),
+      cat: db.state.categories.map((c: any) => c.sharedGroupOwnerId),
+    });
+
+    it('leave: so os itens de quem saiu voltam a ser privados', async () => {
+      const { db, service } = build();
+      seed(db);
+      await service.leave('user-b');
+      expect(marks(db)).toEqual({ tx: [null, 'user-a', null], cat: [null, 'user-a'] });
+    });
+
+    it('removeMember: so os itens do membro removido voltam a ser privados', async () => {
+      const { db, service } = build();
+      seed(db);
+      await service.removeMember('user-a', db.state.memberships[0].id);
+      expect(marks(db)).toEqual({ tx: [null, 'user-a', null], cat: [null, 'user-a'] });
+    });
+  });
+
   describe('removeMember', () => {
     it('pagador remove membro; id de outro grupo ou inexistente e 404; membro que tenta remover ouve 403 (D12)', async () => {
       const { db, service } = build();
