@@ -2,6 +2,8 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { TransactionType } from '@prisma/client';
 import { FinanceCategoriesService } from './finance-categories.service';
 
+const access = { canSeeItem: async (r: string, i: any) => i.userId === r, scopeWhere: async (userId: string) => ({ userId }), firstNamesById: async () => new Map() } as any;
+
 // Decimal do Prisma: serializa como string; Number() resolve.
 const decimal = (value: number) => ({ toString: () => String(value), valueOf: () => value }) as any;
 
@@ -33,7 +35,7 @@ describe('FinanceCategoriesService — orcamento mensal', () => {
 
   it('cria categoria de despesa com orcamento e devolve numero', async () => {
     const prisma = buildPrisma();
-    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any);
+    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any, access);
 
     const result = await service.create('user-1', {
       name: 'Mercado',
@@ -48,7 +50,7 @@ describe('FinanceCategoriesService — orcamento mensal', () => {
 
   it('recusa orcamento em categoria de receita (400)', async () => {
     const prisma = buildPrisma();
-    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any);
+    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any, access);
 
     await expect(
       service.create('user-1', {
@@ -63,27 +65,27 @@ describe('FinanceCategoriesService — orcamento mensal', () => {
 
   it('define o orcamento de uma categoria de despesa existente', async () => {
     const prisma = buildPrisma();
-    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any);
+    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any, access);
 
     const result = await service.update('user-1', 'cat-1', { monthlyBudget: 1000 });
 
     expect(prisma.financeCategory.update.mock.calls[0][0].data.monthlyBudget).toBe(1000);
-    expect(result.monthlyBudget).toBe(1000);
+    expect((result as any).monthlyBudget).toBe(1000);
   });
 
   it('remove o orcamento quando recebe null', async () => {
     const prisma = buildPrisma(stored({ monthlyBudget: decimal(1000) }));
-    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any);
+    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any, access);
 
     const result = await service.update('user-1', 'cat-1', { monthlyBudget: null });
 
     expect(prisma.financeCategory.update.mock.calls[0][0].data.monthlyBudget).toBeNull();
-    expect(result.monthlyBudget).toBeNull();
+    expect((result as any).monthlyBudget).toBeNull();
   });
 
   it('recusa orcamento em categoria que nao e de despesa', async () => {
     const prisma = buildPrisma(stored({ type: TransactionType.INCOME }));
-    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any);
+    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any, access);
 
     await expect(
       service.update('user-1', 'cat-1', { monthlyBudget: 500 }),
@@ -93,7 +95,7 @@ describe('FinanceCategoriesService — orcamento mensal', () => {
 
   it('limpa o teto quando a categoria deixa de ser despesa', async () => {
     const prisma = buildPrisma(stored({ monthlyBudget: decimal(900) }));
-    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any);
+    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any, access);
 
     await service.update('user-1', 'cat-1', { type: TransactionType.INCOME });
 
@@ -102,13 +104,13 @@ describe('FinanceCategoriesService — orcamento mensal', () => {
 
   it('nao mexe em categoria de outro usuario', async () => {
     const prisma = buildPrisma(null);
-    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any);
+    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any, access);
 
     await expect(
       service.update('user-1', 'cat-alheia', { monthlyBudget: 10 }),
     ).rejects.toThrow(NotFoundException);
     expect(prisma.financeCategory.findFirst).toHaveBeenCalledWith({
-      where: { id: 'cat-alheia', userId: 'user-1' },
+      where: { id: 'cat-alheia', OR: [{ userId: 'user-1' }, { sharedGroupOwnerId: { not: null } }] },
     });
     expect(prisma.financeCategory.update).not.toHaveBeenCalled();
   });
@@ -119,7 +121,7 @@ describe('FinanceCategoriesService — orcamento mensal', () => {
       stored({ monthlyBudget: decimal(750.5) }),
       stored({ id: 'cat-2', monthlyBudget: null }),
     ]);
-    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any);
+    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any, access);
 
     const result = await service.list('user-1');
 
@@ -129,7 +131,7 @@ describe('FinanceCategoriesService — orcamento mensal', () => {
   it('recalcula os insights quando o orcamento muda, mas nao quando so o nome muda', async () => {
     const prisma = buildPrisma();
     const engine = lifeEngine();
-    const service = new FinanceCategoriesService(prisma as any, engine as any);
+    const service = new FinanceCategoriesService(prisma as any, engine as any, access);
 
     await service.update('user-1', 'cat-1', { name: 'Mercado e feira' });
     expect(engine.touchUserData).not.toHaveBeenCalled();
@@ -143,7 +145,7 @@ describe('FinanceCategoriesService — orcamento mensal', () => {
     prisma.financeCategory.create.mockRejectedValue(
       Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }),
     );
-    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any);
+    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any, access);
 
     await expect(
       service.create('user-1', { name: 'Alimentacao', color: '#f00', type: TransactionType.EXPENSE }),
@@ -155,7 +157,7 @@ describe('FinanceCategoriesService — orcamento mensal', () => {
     prisma.financeCategory.update.mockRejectedValue(
       Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }),
     );
-    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any);
+    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any, access);
 
     await expect(service.update('user-1', 'cat-1', { name: 'Alimentacao' })).rejects.toThrow(
       BadRequestException,
@@ -165,7 +167,7 @@ describe('FinanceCategoriesService — orcamento mensal', () => {
   it('erro que nao e de unicidade continua subindo (nao e engolido)', async () => {
     const prisma = buildPrisma();
     prisma.financeCategory.create.mockRejectedValue(new Error('conexao caiu'));
-    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any);
+    const service = new FinanceCategoriesService(prisma as any, lifeEngine() as any, access);
 
     await expect(
       service.create('user-1', { name: 'Mercado', color: '#0f0', type: TransactionType.EXPENSE }),

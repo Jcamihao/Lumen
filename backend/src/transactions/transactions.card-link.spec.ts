@@ -56,7 +56,7 @@ describe('TransactionsService: cardId em lancamento (isolamento A/B/C)', () => {
     };
     const materializer = { materializeDue: jest.fn().mockResolvedValue(0) };
     const lifeEngine = { touchUserData: jest.fn().mockResolvedValue(undefined) };
-    const service = new TransactionsService(prisma, lifeEngine as any, materializer as any, materializer as any);
+    const service = new TransactionsService(prisma, lifeEngine as any, materializer as any, materializer as any, { canSeeItem: async (r: string, i: any) => i.userId === r, scopeWhere: async (userId: string) => ({ userId }), firstNamesById: async () => new Map() } as any);
     return { service, prisma };
   };
 

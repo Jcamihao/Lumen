@@ -31,6 +31,8 @@ function makeDb() {
     memberships: [] as Row[],
     invites: [] as Row[],
     subs: [] as Row[],
+    transactions: [] as Row[],
+    categories: [] as Row[],
   };
 
   const withInclude = (row: Row, include?: Row): Row => {
@@ -59,6 +61,11 @@ function makeDb() {
           .map((m) => withInclude(m, include));
       },
       count: async ({ where }: any) => state.memberships.filter((m) => matches(m, where)).length,
+      update: async ({ where, data }: any) => {
+        const row = state.memberships.find((m) => m.id === where.id);
+        Object.assign(row, data);
+        return row;
+      },
       updateMany: async ({ where, data }: any) => {
         const targets = state.memberships.filter((m) => matches(m, where));
         targets.forEach((m) => Object.assign(m, data));
@@ -117,6 +124,20 @@ function makeDb() {
     },
     subscription: {
       findMany: async ({ where }: any) => state.subs.filter((s) => matches(s, where)),
+    },
+    transaction: {
+      updateMany: async ({ where, data }: any) => {
+        const targets = state.transactions.filter((t) => matches(t, where));
+        targets.forEach((t) => Object.assign(t, data));
+        return { count: targets.length };
+      },
+    },
+    financeCategory: {
+      updateMany: async ({ where, data }: any) => {
+        const targets = state.categories.filter((c) => matches(c, where));
+        targets.forEach((c) => Object.assign(c, data));
+        return { count: targets.length };
+      },
     },
     user: {
       findUnique: async ({ where, select }: any) => {
