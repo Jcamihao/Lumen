@@ -54,6 +54,11 @@ import {
   splitTrailingAmount,
 } from './parsers/goal.parser';
 import { normalize } from './parsers/normalize';
+import { MENU_ROOT, MENU_ROOT_ID } from './menu/menu.tree';
+import { getMenuNode } from './menu/menu.tree.queries';
+import { ExitKind, exitKindOf } from './menu/exit-words';
+import { MENU_REPLIES, menuText, menuViewOf, withDica } from './menu/menu.view';
+import { MenuActionInput, MenuNode } from './menu/menu.types';
 import type { TargetChangeDraft, TransactionChangeDraft } from './conversation.types';
 import { UpdateTransactionDto } from '../transactions/dto/update-transaction.dto';
 import { UpdateGoalDto } from '../goals/dto/update-goal.dto';
@@ -182,7 +187,6 @@ const TTL_MS: Record<'COLLECTING_FIELDS' | 'AWAITING_CONFIRMATION', number> = {
   AWAITING_CONFIRMATION: 5 * 60_000,
 };
 
-const CANCEL_WORDS = new Set(['cancelar', 'parar', 'voltar']);
 const CONFIRM_WORDS = new Set(['confirmar', 'sim', 'ok']);
 const CONNECTORS = new Set(['na', 'no', 'em', 'de', 'do', 'da', 'com', 'pra', 'para']);
 const MAX_CATEGORY_OPTIONS = 5;
@@ -254,6 +258,11 @@ interface OwnedGoalRow extends GoalRow {
   userId: string;
 }
 /** Meta já em centavos, pronta para o motor (id e dono conferidos em listGoals). */
+/** Semente do tom (messageId de abertura). Rascunhos sem campo usam texto vazio: sempre a mesma variante. */
+function toneSeedOf(draft: SessionDraft): string | undefined {
+  return 'toneSeed' in draft ? draft.toneSeed : undefined;
+}
+
 interface GoalSnap {
   id: string;
   title: string;
@@ -427,15 +436,82 @@ export class ConversationService {
     return { state: 'IDLE' };
   }
 
+  // ---------- menu por botao e saida universal (12.1a) ----------
+
+  /**
+   * Clique do menu. Sem estado no servidor: o destino vem do id do no (conferido na arvore) e o dono so do vinculo.
+   * Mesmo messageId de novo = DUPLICATE. Id desconhecido cai no menu inicial, sem erro.
+   */
+  async handleMenuAction(input: MenuActionInput): Promise<ConversationReply> {
+    const { userId, channel, messageId, receivedAt } = input;
+    const duplicate = await this.prisma.conversationEvent.findFirst({
+      where: { userId, channel, messageId },
+      select: { id: true },
+    });
+    const session = await this.loadSession(userId, channel);
+    if (duplicate) {
+      return this.reply('DUPLICATE', this.stateView(session), REPLIES.duplicate);
+    }
+    if (session && session.expiresAt < receivedAt) {
+      return this.expireSession(userId, session, messageId);
+    }
+    const node = getMenuNode(input.nodeId) ?? MENU_ROOT;
+    const action = node.action;
+    if (node.children || !action) {
+      return this.openMenuNode(input, session, node);
+    }
+    if (action.type === 'instruction') {
+      return this.menuInstruction(input, session, node, action.text);
+    }
+    return this.runMenuPhrase(input, action.phrase, node.example);
+  }
+
+  private async openMenuNode(input: MenuActionInput, session: SessionRow | null, node: MenuNode): Promise<ConversationReply> {
+    const intent = node.id === MENU_ROOT_ID ? 'menu_open' : `menu_nav:${node.id}`;
+    await this.recordEventRaw({ userId: input.userId, channel: input.channel, messageId: input.messageId, intent, outcome: ConversationOutcome.RECOGNIZED });
+    return { ...this.reply('MENU', this.stateView(session), menuText(node)), menu: menuViewOf(node) };
+  }
+
+  /** Folha de instrucao: a frase pronta para digitar. Nao grava nada. */
+  private async menuInstruction(input: MenuActionInput, session: SessionRow | null, node: MenuNode, text: string): Promise<ConversationReply> {
+    await this.recordEventRaw({ userId: input.userId, channel: input.channel, messageId: input.messageId, intent: `menu_nav:${node.id}`, outcome: ConversationOutcome.RECOGNIZED });
+    return this.reply('HELP', this.stateView(session), withDica(text, node.example));
+  }
+
+  /** Folha de frase: executa o mesmo caminho de handleMessage. O evento e o da propria acao (um por messageId). */
+  private async runMenuPhrase(input: MenuActionInput, phrase: string, example: string | undefined): Promise<ConversationReply> {
+    const reply = await this.handleMessage({ userId: input.userId, channel: input.channel, messageId: input.messageId, text: phrase, receivedAt: input.receivedAt });
+    return reply.kind === 'DUPLICATE' ? reply : { ...reply, text: withDica(reply.text, example) };
+  }
+
+  /** Saida com rascunho aberto: cancela (texto de sempre) e mostra o menu inicial. */
+  private async leaveDraft(userId: string, session: SessionRow, messageId: string): Promise<ConversationReply> {
+    const cancelled = await this.cancelSession(userId, session, messageId);
+    return { ...cancelled, text: `${cancelled.text}\n\n${menuText(MENU_ROOT)}`, menu: { ...menuViewOf(MENU_ROOT), lead: cancelled.text } };
+  }
+
+  /** Saida sem rascunho: "voltar"/"menu" mostram o menu; cancelar sem nada aberto avisa antes. */
+  private async leaveWithoutDraft(input: ConversationInput, kind: ExitKind): Promise<ConversationReply> {
+    await this.recordEvent(input, 'menu_open', ConversationOutcome.RECOGNIZED);
+    const menu = { ...this.reply('MENU', 'IDLE', menuText(MENU_ROOT)), menu: menuViewOf(MENU_ROOT) };
+    return kind === 'CANCEL'
+      ? { ...menu, text: `${MENU_REPLIES.nothingToCancel}\n\n${menu.text}`, menu: { ...menu.menu, lead: MENU_REPLIES.nothingToCancel } }
+      : menu;
+  }
+
   // ---------- sem sessao ativa ----------
 
   private async handleWithoutSession(args: { input: ConversationInput; text: string }): Promise<ConversationReply> {
     const { input, text } = args;
+    const exit = exitKindOf(text);
+    if (exit) {
+      return this.leaveWithoutDraft(input, exit);
+    }
     const intent = await this.resolveLooseCardRead(input.userId, text.length > 0 ? matchIntent(text) : null);
 
     if (!intent) {
       const word = normalize(text);
-      const control = CONFIRM_WORDS.has(word) || CANCEL_WORDS.has(word);
+      const control = CONFIRM_WORDS.has(word);
       return this.handleUnrecognized(input, text, control);
     }
     if (intent.intent === 'create_expense' || intent.intent === 'create_income') {
@@ -613,6 +689,7 @@ export class ConversationService {
 
     const draft: ExpenseOrIncomeDraft = {
       kind: 'TRANSACTION',
+      toneSeed: input.messageId,
       type,
       amountCents: cents,
       description: description.length >= DESCRIPTION_MIN ? description : null,
@@ -749,6 +826,7 @@ export class ConversationService {
     const goal = candidates.length === 1 ? candidates[0] : null;
     const draft: ContributionDraft = {
       kind: 'CONTRIBUTION',
+      toneSeed: input.messageId,
       goalId: goal?.id ?? null,
       goalTitle: goal?.title ?? null,
       amountCents,
@@ -1135,6 +1213,7 @@ export class ConversationService {
 
     const draft: InstallmentDraft = {
       kind: 'INSTALLMENT',
+      toneSeed: input.messageId,
       description,
       totalCents,
       installmentsTotal,
@@ -1429,8 +1508,8 @@ export class ConversationService {
     const intent = await this.resolveLooseCardRead(userId, text.length > 0 ? matchIntent(text) : null);
     const awaiting = session.state === ConversationState.AWAITING_CONFIRMATION;
 
-    if (CANCEL_WORDS.has(words)) {
-      return this.cancelSession(userId, session, input.messageId);
+    if (exitKindOf(text)) {
+      return this.leaveDraft(userId, session, input.messageId);
     }
     const deleteAwaiting = awaiting && isDeleteChange(session.draft);
     const clearAwaiting = awaiting && isClearLimitDraft(session.draft);
@@ -1900,9 +1979,10 @@ export class ConversationService {
       return this.reply('DUPLICATE', 'IDLE', REPLIES.duplicate);
     }
 
+    const categoryName = (await this.toDraftView(session)).category;
     let applied: AppliedAction;
     try {
-      applied = await this.applyByKind(userId, draft);
+      applied = await this.applyByKind(userId, draft, categoryName);
     } catch (error) {
       if (isWriteUncertain(error)) {
         // Commit sem confirmação: não restaura, não libera a chave e não oferece nova gravação (contrato 3).
@@ -1983,7 +2063,7 @@ export class ConversationService {
   }
 
   /** Um caso por tipo de rascunho. Só este método chama o serviço financeiro ou de metas. */
-  private async applyByKind(userId: string, draft: SessionDraft): Promise<AppliedAction> {
+  private async applyByKind(userId: string, draft: SessionDraft, categoryName: string | null): Promise<AppliedAction> {
     if (isTransactionChangeDraft(draft)) {
       return this.applyTransactionChange(userId, draft);
     }
@@ -2014,7 +2094,7 @@ export class ConversationService {
     if (draft.kind === 'INSTALLMENT') {
       return this.applyInstallment(userId, draft);
     }
-    return this.applyTransaction(userId, draft);
+    return this.applyTransaction(userId, draft, categoryName);
   }
 
   /** Reserva: envelope e provisão inicial na mesma transação, no serviço (EnvelopesService.createForConversation). */
@@ -2131,6 +2211,7 @@ export class ConversationService {
         totalCents: receipt.totalCents,
         installmentsTotal: receipt.installmentsTotal,
         firstDueDate: receipt.firstDueDate,
+        toneSeed: draft.toneSeed,
       }),
       data: { installmentPurchaseId: receipt.id },
       resultRef: receipt.id,
@@ -2684,7 +2765,7 @@ export class ConversationService {
           : RC_REPLIES.installmentChanged;
   }
 
-  private async applyTransaction(userId: string, draft: ExpenseOrIncomeDraft): Promise<AppliedAction> {
+  private async applyTransaction(userId: string, draft: ExpenseOrIncomeDraft, categoryName: string | null): Promise<AppliedAction> {
     const created = await this.transactions.create(userId, {
       type: draft.type,
       description: draft.description,
@@ -2697,7 +2778,10 @@ export class ConversationService {
       cardId: draft.cardId ?? undefined,
     });
     return {
-      text: doneText(draft.type, draft.amountCents, draft.description ?? '', draft.cardName ?? null),
+      text: doneText(draft.type, draft.amountCents, draft.description ?? '', draft.cardName ?? null, {
+        seed: draft.toneSeed,
+        category: categoryName,
+      }),
       data: { transactionId: created.id },
       resultRef: created.id,
     };
@@ -2739,6 +2823,7 @@ export class ConversationService {
         targetCents,
         percent: percentOf(currentCents, targetCents),
         achieved: goal.status === 'ACHIEVED',
+        toneSeed: draft.toneSeed,
       }),
       data: { goalId: goal.id },
       resultRef: goal.id,
@@ -3265,6 +3350,7 @@ export class ConversationService {
         totalCents: draft.totalCents ?? 0,
         installmentsTotal: draft.installmentsTotal ?? 0,
         firstDueDate: draft.firstDueDate ?? today,
+        toneSeed: toneSeedOf(draft),
       });
     }
     if (draft.kind === 'GOAL') {
@@ -3275,9 +3361,11 @@ export class ConversationService {
       const amountCents = draft.amountCents ?? 0;
       return contributionDraftText({
         meta: this.contributionGoalLabel(draft, goal),
+        title: truncate(goal?.title ?? draft.goalTitle ?? ''),
         amountCents,
         date: draft.date,
         concludes: goal !== null && concludesGoal(goal, amountCents),
+        toneSeed: toneSeedOf(draft),
       });
     }
     return draftText({
@@ -3289,6 +3377,7 @@ export class ConversationService {
       paymentMethod: draft.paymentMethod,
       cardName: draft.cardName ?? null,
       futureDate: draft.date > today,
+      toneSeed: toneSeedOf(draft),
     });
   }
 

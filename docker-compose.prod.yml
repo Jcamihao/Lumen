@@ -69,6 +69,12 @@ services:
       SELAH_RECEIPT_ROUTE: ${SELAH_RECEIPT_ROUTE:-/v1/adapters/lumen/receipt-parser/parse}
       SELAH_TIMEOUT_MS: ${SELAH_TIMEOUT_MS:-50000}
       SELAH_RECEIPT_TIMEOUT_MS: ${SELAH_RECEIPT_TIMEOUT_MS:-60000}
+      SELAH_FALLBACK_TIMEOUT_MS: ${SELAH_FALLBACK_TIMEOUT_MS:-15000}
+      # off (padrao) | fallback: a IA so entra quando o motor de regras nao entende a frase.
+      ASSISTANT_AI_MODE: ${ASSISTANT_AI_MODE:-off}
+      SELAH_PULSE_HOUR: ${SELAH_PULSE_HOUR:-7}
+      SELAH_ESCALATION_DAYS: ${SELAH_ESCALATION_DAYS:-3}
+      AUTH_REFRESH_REUSE_GRACE_SECONDS: ${AUTH_REFRESH_REUSE_GRACE_SECONDS:-30}
       RESEND_ENABLED: ${RESEND_ENABLED:-false}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_BASE_URL: ${RESEND_BASE_URL:-https://api.resend.com}
@@ -80,6 +86,22 @@ services:
       ASAAS_BASE_URL: ${ASAAS_BASE_URL:-https://api-sandbox.asaas.com/v3}
       ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN:-}
       ASAAS_TIMEOUT_MS: ${ASAAS_TIMEOUT_MS:-10000}
+      # Canais de conversa: todos desligados por padrao. Segredos so no servidor, nunca em commit.
+      WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-false}
+      WHATSAPP_WRITES_ENABLED: ${WHATSAPP_WRITES_ENABLED:-false}
+      WA_AKG_BASE_URL: ${WA_AKG_BASE_URL:-}
+      WA_AKG_API_KEY: ${WA_AKG_API_KEY:-}
+      WA_AKG_SESSION_ID: ${WA_AKG_SESSION_ID:-}
+      WA_AKG_WEBHOOK_SECRET: ${WA_AKG_WEBHOOK_SECRET:-}
+      WA_AKG_TIMEOUT_MS: ${WA_AKG_TIMEOUT_MS:-8000}
+      WHATSAPP_CONTACT_NUMBER: ${WHATSAPP_CONTACT_NUMBER:-}
+      # Telegram: long polling, entao exatamente UMA instancia do backend com TELEGRAM_ENABLED=true.
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      TELEGRAM_WRITES_ENABLED: ${TELEGRAM_WRITES_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BASE_URL: ${TELEGRAM_BASE_URL:-https://api.telegram.org}
+      TELEGRAM_TIMEOUT_MS: ${TELEGRAM_TIMEOUT_MS:-8000}
+      TELEGRAM_POLL_TIMEOUT_S: ${TELEGRAM_POLL_TIMEOUT_S:-25}
     ports:
       - '127.0.0.1:${BACKEND_HOST_PORT:-3010}:3000'
 

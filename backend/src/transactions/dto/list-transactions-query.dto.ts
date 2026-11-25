@@ -1,7 +1,8 @@
 import { PaymentMethod, TransactionType } from '@prisma/client';
 import { IsDateString, IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { ReadScopeQueryDto } from '../../access-scope/dto/read-scope-query.dto';
 
-export class ListTransactionsQueryDto {
+export class ListTransactionsQueryDto extends ReadScopeQueryDto {
   @IsOptional()
   @IsEnum(TransactionType)
   type?: TransactionType;

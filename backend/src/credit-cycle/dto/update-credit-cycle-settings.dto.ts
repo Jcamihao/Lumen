@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsInt, IsOptional, Max, Min } from 'class-validator';
 
 export class UpdateCreditCycleSettingsDto {
-  /** null remove o dia de vencimento (o dia de fechamento fica em /users/me, e' o mesmo monthClosingDay). */
+  /** null remove o dia de vencimento. Dia de fechamento e' do cartao (PUT /credit-cards/:id). */
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsInt()

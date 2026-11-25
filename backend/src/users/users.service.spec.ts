@@ -226,7 +226,7 @@ describe("UsersService - cartao padrao (9a-1)", () => {
       return prisma;
     };
 
-    it("mudar o dia de fechamento atualiza o cartao padrao na mesma transacao", async () => {
+    it("mudar o dia de fechamento pelo /users/me e ignorado (9c-2: so o cartao decide)", async () => {
       const prisma = buildUpdatePrisma();
       const service = buildService(prisma);
       jest.spyOn(service, "getMe").mockResolvedValue({} as any);
@@ -234,11 +234,8 @@ describe("UsersService - cartao padrao (9a-1)", () => {
       await service.updateMe("user-1", { monthClosingDay: 12 } as any);
 
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-      expect(prisma.user.update.mock.invocationCallOrder[0]).toBeLessThan(prisma.creditCard.updateMany.mock.invocationCallOrder[0]);
-      expect(prisma.creditCard.updateMany).toHaveBeenCalledWith({
-        where: { userId: "user-1", isDefault: true, archivedAt: null },
-        data: { closingDay: 12 },
-      });
+      expect(prisma.creditCard.updateMany).not.toHaveBeenCalled();
+      expect(prisma.user.update.mock.calls[0][0].data).not.toHaveProperty("monthClosingDay");
     });
 
     it("sem dia de fechamento no pedido: cartao padrao intacto", async () => {

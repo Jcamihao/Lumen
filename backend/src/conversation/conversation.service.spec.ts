@@ -5,6 +5,7 @@ import { PlanLimitException } from '../billing/plan-limit.exception';
 import { ConversationInput } from './conversation.types';
 import { ConversationService } from './conversation.service';
 import { REPLIES, formatBrl } from './replies';
+import { toneText } from './tone/tone.service';
 import { EnvelopeMonthChangedError, EnvelopeWriteUncertainError } from '../envelopes/conversation-write.types';
 import { CreditLimitChangedError, CreditLimitWriteUncertainError } from '../credit-cycle/conversation-write.types';
 import { RecurringFirstDueChangedError, RecurringWriteUncertainError } from '../recurring-transactions/conversation-write.types';
@@ -248,6 +249,19 @@ describe('ConversationService', () => {
   }
 
   describe('criacao de rascunho', () => {
+    it('mesmo messageId de abertura: rascunho e recibo usam a mesma variante de tom', async () => {
+      const draft = await service.handleMessage(msg('A', '50 mercado', T0, '00000000-0000-4000-8000-0000000000aa'));
+      expect(draft.text.split('\n')[0]).toBe(
+        toneText({ kind: 'NEUTRO', moment: 'rascunho', seed: '00000000-0000-4000-8000-0000000000aa', values: { valor: formatBrl(5000), descricao: 'mercado' } }),
+      );
+
+      const done = await service.handleMessage(msg('A', 'confirmar', T0, '00000000-0000-4000-8000-0000000000bb'));
+      expect(done.kind).toBe('DONE');
+      expect(done.text).toBe(
+        toneText({ kind: 'NEUTRO', moment: 'recibo', seed: '00000000-0000-4000-8000-0000000000aa', values: { valor: formatBrl(5000), descricao: 'mercado', cartao: '' } }),
+      );
+    });
+
     it('"50 mercado" cria rascunho com categoria, nao grava na primeira mensagem', async () => {
       const reply = await draftFor('A', '50 mercado');
 
@@ -306,6 +320,16 @@ describe('ConversationService', () => {
       expect(reply.kind).toBe('ASK_FIELD');
       expect(reply.draft?.type).toBe('INCOME');
       expect(reply.draft?.description).toBe('freelance');
+    });
+
+    it('escrita natural: "caiu 500 do freela" vira rascunho INCOME e "foi 35 no uber" vira EXPENSE', async () => {
+      const income = await service.handleMessage(msg('A', 'caiu 500 do freela'));
+      expect(income.draft?.type).toBe('INCOME');
+      expect(income.draft?.description).toBe('freela');
+
+      const expense = await service.handleMessage(msg('B', 'foi 35 no uber'));
+      expect(expense.draft?.type).toBe('EXPENSE');
+      expect(expense.draft?.description).toBe('uber');
     });
 
     it('categoria desconhecida pergunta uma vez; "sem categoria" fecha o rascunho', async () => {
@@ -1486,13 +1510,25 @@ describe('ConversationService', () => {
     });
 
     describe('aporte', () => {
+      it('aporte: rascunho e recibo usam a semente do messageId de abertura', async () => {
+        for (const seed of ['00000000-0000-4000-8000-00000000000a', '00000000-0000-4000-8000-00000000001b', '00000000-0000-4000-8000-00000000002c', '00000000-0000-4000-8000-00000000003d', '00000000-0000-4000-8000-00000000004e', '00000000-0000-4000-8000-00000000005f'] as const) {
+          setGoals([goalRow()]);
+          const goalDraft = await service.handleMessage(msg('A', 'guardar 200 na viagem', T0, seed));
+          expect(goalDraft.text.split('\n')[0]).toBe(
+            toneText({ kind: 'CELEBRANDO', moment: 'rascunho', seed, values: { valor: formatBrl(20000), meta: 'Viagem', descricao: 'Viagem' } }),
+          );
+          const done = await service.handleMessage(msg('A', 'confirmar', T0, randomUUID()));
+          expect(done.text.startsWith(
+            toneText({ kind: 'CELEBRANDO', moment: 'recibo', seed, values: { valor: formatBrl(20000), meta: 'Viagem', descricao: 'Viagem', cartao: '' } }),
+          )).toBe(true);
+        }
+      });
+
       it('meta única é usada sem perguntar; o rascunho mostra meta, valor e data', async () => {
         setGoals([goalRow()]);
         const reply = await service.handleMessage(msg('A', 'guardar 200 na viagem'));
         expect(reply.kind).toBe('CONFIRM_DRAFT');
-        expect(text(reply)).toContain(
-          'Rascunho de aporte:\nMeta: Viagem (R$ 1.200,00 de R$ 3.000,00)\nValor: R$ 200,00\nData: 15/11/2026',
-        );
+        expect(text(reply)).toContain('Meta: Viagem (R$ 1.200,00 de R$ 3.000,00)\nValor: R$ 200,00\nData: 15/11/2026');
         expect(reply.draft?.rows).toEqual([
           { label: 'Meta', value: 'Viagem (R$ 1.200,00 de R$ 3.000,00)' },
           { label: 'Valor', value: 'R$ 200,00' },
@@ -1512,7 +1548,8 @@ describe('ConversationService', () => {
           date: '2026-11-15T00:00:00.000Z',
           createTransaction: true,
         });
-        expect(reply.text).toBe('Aporte feito: R$ 200,00 em Viagem. Agora R$ 1.400,00 de R$ 3.000,00 (46%).');
+        expect(reply.text).toContain('R$ 200,00');
+        expect(reply.text.endsWith('Agora R$ 1.400,00 de R$ 3.000,00 (46%).')).toBe(true);
         expect(reply.data).toEqual({ goalId: 'goal-1' });
       });
 
@@ -1687,7 +1724,8 @@ describe('ConversationService', () => {
         expect(text(draft)).not.toContain('conclui a meta');
         goals.contribute.mockResolvedValueOnce({ id: 'goal-1', title: 'Viagem', status: 'ACTIVE', targetAmount: null, currentAmount: 250 });
         const reply = await service.handleMessage(msg('A', 'confirmar'));
-        expect(reply.text).toBe('Aporte feito: R$ 200,00 em Viagem. Agora R$ 250,00 guardados.');
+        expect(reply.text).toContain('R$ 200,00');
+        expect(reply.text.endsWith('Agora R$ 250,00 guardados.')).toBe(true);
       });
 
       it('meta apagada entre rascunho e confirmação descarta com a mensagem do contrato', async () => {
@@ -2908,6 +2946,20 @@ describe('ConversationService', () => {
         expect(rowValue(reply, 'Total da compra')).toEqual(['a informar']);
       });
 
+      it('parcelado: rascunho e recibo usam a semente do messageId de abertura', async () => {
+        for (const seed of ['00000000-0000-4000-8000-00000000000a', '00000000-0000-4000-8000-00000000001b', '00000000-0000-4000-8000-00000000002c', '00000000-0000-4000-8000-00000000003d', '00000000-0000-4000-8000-00000000004e', '00000000-0000-4000-8000-00000000005f'] as const) {
+          const reply = await service.handleMessage(msg('A', 'criar parcelado 1200 geladeira em 12x primeiro 20/11/2026', T0, seed));
+          expect(reply.kind).toBe('CONFIRM_DRAFT');
+          expect(reply.text.split('\n')[0]).toBe(
+            toneText({ kind: 'ATENTO', moment: 'rascunho', seed, values: { descricao: 'geladeira', parcelas: '12', total: formatBrl(120000) } }),
+          );
+          const done = await confirm('A', reply.draft!.draftId, reply.draft!.draftVersion);
+          expect(done.text.startsWith(
+            toneText({ kind: 'ATENTO', moment: 'recibo', seed, values: { descricao: 'geladeira', parcelas: '12', total: formatBrl(120000) } }),
+          )).toBe(true);
+        }
+      });
+
       it('confirmar grava uma vez com total em reais e recibo; DONE com a compra', async () => {
         const draft = await installmentDraft();
 
@@ -2919,12 +2971,9 @@ describe('ConversationService', () => {
           { description: 'geladeira', totalAmount: 1200, installmentsTotal: 12, firstDueDate: '2026-11-20' },
           { notBefore: 'today' },
         );
-        expect(reply).toEqual({
-          kind: 'DONE',
-          state: 'IDLE',
-          text: `Compra parcelada criada: geladeira, total ${formatBrl(120000)} em 12 parcelas, primeira em 20/11/2026.`,
-          data: { installmentPurchaseId: 'inst-9' },
-        });
+        expect(reply).toMatchObject({ kind: 'DONE', state: 'IDLE', data: { installmentPurchaseId: 'inst-9' } });
+        expect(reply.text).toContain('geladeira');
+        expect(reply.text).toContain(`total ${formatBrl(120000)}`);
         expect(installmentEvents().at(-1)).toMatchObject({ outcome: ConversationOutcome.COMPLETED, resultRef: 'inst-9' });
       });
 
@@ -2938,9 +2987,8 @@ describe('ConversationService', () => {
         const reply = await confirm('A', draft.draftId, draft.draftVersion);
 
         expect(reply.kind).toBe('DONE');
-        expect(reply.text).toBe(
-          `Compra parcelada criada: geladeira, total ${formatBrl(120000)} em 12 parcelas, primeira em 20/11/2026.\n${REPLIES.materializationPending}`,
-        );
+        expect(reply.text.endsWith(`\n${REPLIES.materializationPending}`)).toBe(true);
+        expect(reply.text).toContain('geladeira');
         expect(reply.data).toEqual({ installmentPurchaseId: 'inst-9' });
         expect(db.sessions).toHaveLength(0);
       });

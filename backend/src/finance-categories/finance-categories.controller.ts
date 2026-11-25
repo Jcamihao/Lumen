@@ -1,5 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ReadScopeQueryDto } from '../access-scope/dto/read-scope-query.dto';
+import { SetSharingDto } from '../access-scope/dto/set-sharing.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
 import { CreateFinanceCategoryDto } from './dto/create-finance-category.dto';
@@ -14,8 +16,8 @@ export class FinanceCategoriesController {
 
   @Get()
   @ApiOperation({ summary: 'Lista categorias financeiras do usuario' })
-  list(@CurrentUser() user: AuthenticatedUser) {
-    return this.financeCategoriesService.list(user.sub);
+  list(@CurrentUser() user: AuthenticatedUser, @Query() query: ReadScopeQueryDto) {
+    return this.financeCategoriesService.list(user.sub, query.scope);
   }
 
   @Post()
@@ -41,5 +43,15 @@ export class FinanceCategoriesController {
   @ApiOperation({ summary: 'Remove categoria financeira' })
   remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.financeCategoriesService.remove(user.sub, id);
+  }
+
+  @Patch(':id/sharing')
+  @ApiOperation({ summary: 'Marca ou desmarca a categoria como compartilhada com o grupo (so o autor)' })
+  setSharing(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: SetSharingDto,
+  ) {
+    return this.financeCategoriesService.setSharing(user.sub, id, dto.shared);
   }
 }

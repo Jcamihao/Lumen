@@ -19,6 +19,7 @@ export type ConversationReplyKind =
   | 'CANCELLED'
   | 'EXPIRED'
   | 'HELP'
+  | 'MENU'
   | 'DUPLICATE'
   | 'ERROR';
 

@@ -3,12 +3,9 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, ValidatorFn, Validators } from '@angular/forms';
-import { CreditCard, CreditCardReceipt, CreditCycle, User } from '../../../core/models/domain.models';
-import { AuthService } from '../../../core/services/auth.service';
+import { CreditCard } from '../../../core/models/domain.models';
 import { LifeApiService } from '../../../core/services/life-api.service';
 import { ToastService } from '../../../core/services/toast.service';
-import { formatDayLabel } from '../../../core/utils/date.utils';
-import { formatCurrency } from '../../../core/utils/money.utils';
 
 /** Teto tecnico de cartoes ativos por usuario (igual ao do backend). */
 export const MAX_ACTIVE_CARDS = 10;
@@ -24,8 +21,9 @@ const nonBlank: ValidatorFn = (control) =>
 
 /**
  * Cartoes de credito do usuario: lista, criar, editar (nome, fechamento,
- * vencimento), tornar padrao e arquivar. Abaixo, o ciclo do cartao padrao
- * (teto e escopo), que continua aqui como antes.
+ * vencimento), tornar padrao e arquivar. Desde a 9c-2 o teto e o escopo do
+ * ciclo nao moram mais aqui: o lugar unico e o card do ciclo em Financas,
+ * com abas por cartao (9c-1b/1c).
  */
 @Component({
     selector: 'app-card-page',
@@ -36,7 +34,6 @@ const nonBlank: ValidatorFn = (control) =>
 })
 export class CardPageComponent {
   private readonly api = inject(LifeApiService);
-  protected readonly authService = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly toast = inject(ToastService);
 
@@ -79,22 +76,11 @@ export class CardPageComponent {
     dueDay: new FormControl<number | null>(null, [Validators.min(1), Validators.max(31)]),
   });
 
-  // Ciclo do cartao padrao (teto e escopo)
-  protected readonly cycle = signal<CreditCycle | null>(null);
-  protected readonly cycleLoading = signal(true);
-  protected readonly cycleFailed = signal(false);
-  protected readonly savingCycle = signal(false);
-
-  protected readonly ceilingControl = new FormControl<number | null>(null, [
-    Validators.required,
-    Validators.min(0.01),
-  ]);
-
-  protected readonly currencyCode = () => this.authService.currentUser()?.preferredCurrency ?? 'BRL';
+  // Ciclo do cartao padrao (teto, escopo, restante): saiu daqui na 9c-2. O
+  // lugar unico e o card do ciclo em Financas (abas por cartao).
 
   constructor() {
     this.loadCards();
-    this.loadCycle();
   }
 
   protected loadCards() {
@@ -120,26 +106,6 @@ export class CardPageComponent {
     this.showArchived.update((value) => !value);
     this.confirmArchiveId.set(null);
     this.loadCards();
-  }
-
-  protected loadCycle() {
-    this.cycleLoading.set(true);
-    this.cycleFailed.set(false);
-
-    this.api
-      .getCurrentCreditCycle()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (cycle) => {
-          this.cycle.set(cycle);
-          this.ceilingControl.setValue(cycle.ceiling ?? cycle.previousCeiling ?? null);
-          this.cycleLoading.set(false);
-        },
-        error: () => {
-          this.cycleLoading.set(false);
-          this.cycleFailed.set(true);
-        },
-      });
   }
 
   // ---- Criar / editar ----
@@ -196,10 +162,9 @@ export class CardPageComponent {
       : this.api.updateCreditCard(id, payload);
 
     request$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (receipt) => {
+      next: () => {
         this.saving.set(false);
         this.cancelForm();
-        this.syncDefaultReceipt(receipt);
         this.toast.success(creating ? 'Cartão criado.' : 'Cartão salvo.');
         this.loadCards();
       },
@@ -225,7 +190,6 @@ export class CardPageComponent {
       .subscribe({
         next: (receipt) => {
           this.busyCardId.set(null);
-          this.syncDefaultReceipt(receipt);
           this.toast.success(`${receipt.name} agora é o cartão padrão.`);
           this.loadCards();
         },
@@ -272,57 +236,6 @@ export class CardPageComponent {
       });
   }
 
-  // ---- Ciclo do cartao padrao ----
-
-  protected saveCeiling() {
-    if (this.ceilingControl.invalid || this.savingCycle()) {
-      this.ceilingControl.markAsTouched();
-      return;
-    }
-
-    this.savingCycle.set(true);
-
-    this.api
-      .setCreditCycleCeiling({ ceiling: Number(this.ceilingControl.value) })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (cycle) => {
-          this.cycle.set(cycle);
-          this.savingCycle.set(false);
-          this.toast.success('Teto do ciclo salvo.');
-        },
-        error: () => {
-          this.savingCycle.set(false);
-          this.toast.error('Não foi possível salvar o teto agora.');
-        },
-      });
-  }
-
-  protected toggleCountAllPayments() {
-    const current = this.cycle();
-    if (!current || this.savingCycle()) return;
-
-    const next = !current.countAllPayments;
-    this.savingCycle.set(true);
-
-    this.api
-      .updateCreditCycleSettings({ countAllPayments: next })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (cycle) => {
-          this.cycle.set(cycle);
-          this.savingCycle.set(false);
-          this.toast.success(
-            next ? 'Agora o teto soma crédito, débito e PIX.' : 'Agora o teto soma só o crédito.',
-          );
-        },
-        error: () => {
-          this.savingCycle.set(false);
-          this.toast.error('Não foi possível salvar agora.');
-        },
-      });
-  }
-
   // ---- Textos e validacao ----
 
   protected nameError() {
@@ -336,25 +249,6 @@ export class CardPageComponent {
     const control = this.cardForm.controls[field];
     if (!control.touched || control.valid) return null;
     return 'Use um dia de 1 a 31.';
-  }
-
-  protected cycleRangeLabel(cycle: CreditCycle) {
-    return `${formatDayLabel(cycle.cycleStart, { day: '2-digit', month: 'short' })} a ${formatDayLabel(cycle.cycleEnd, { day: '2-digit', month: 'short' })}`;
-  }
-
-  protected statusText(cycle: CreditCycle) {
-    if (cycle.status === 'none') {
-      return 'Nenhum teto definido pra este ciclo ainda.';
-    }
-    if (cycle.status === 'over') {
-      return `Passou ${this.formatMoney(Math.abs(cycle.remaining ?? 0))} do teto (${cycle.percentUsed}%)`;
-    }
-
-    return `${cycle.percentUsed}% usado · restam ${this.formatMoney(cycle.remaining ?? 0)}`;
-  }
-
-  protected formatMoney(value: number) {
-    return formatCurrency(value, this.currencyCode());
   }
 
   /** Mensagem de erro da API em portugues; o formulario preserva o que foi digitado. */
@@ -379,16 +273,5 @@ export class CardPageComponent {
 
   private statusOf(error: unknown) {
     return error instanceof HttpErrorResponse ? error.status : 0;
-  }
-
-  /** Se o cartao escrito virou o padrao, o fechamento do usuario local e o ciclo acompanham. */
-  private syncDefaultReceipt(receipt: CreditCardReceipt) {
-    if (!receipt.isDefault) return;
-
-    const user = this.authService.currentUser();
-    if (user) {
-      this.authService.updateStoredUser({ ...user, monthClosingDay: receipt.closingDay } as User);
-    }
-    this.loadCycle();
   }
 }

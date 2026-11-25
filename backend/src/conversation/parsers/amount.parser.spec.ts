@@ -21,6 +21,13 @@ describe('parseAmountPrefix', () => {
     }
   });
 
+  it.each([
+    ['50 conto', 5000, ''],
+    ['50 contos mercado', 5000, 'mercado'],
+  ])('aceita "conto" como reais: %s', (input, cents, rest) => {
+    expect(parseAmountPrefix(input)).toEqual({ ok: true, cents, rest });
+  });
+
   it('separa o resto do texto', () => {
     const result = parseAmountPrefix('50 mercado');
     expect(result).toEqual({ ok: true, cents: 5000, rest: 'mercado' });

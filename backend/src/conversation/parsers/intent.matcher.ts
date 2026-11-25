@@ -1,6 +1,8 @@
 import { normalizeWord } from './normalize';
 import { parseAmountPrefix } from './amount.parser';
 import { cleanCardTerm } from '../credit-limit';
+import { CARD_LOOSE_MAX_WORDS, hasReadVocabulary, matchReadQuestion } from './read-question';
+import { matchNaturalWrite } from './write-natural';
 
 export type ReadIntent =
   | 'balance'
@@ -25,7 +27,7 @@ const FINANCE_READ_PHRASES: Array<{ intent: ReadIntent; phrases: string[] }> = [
   { intent: 'upcoming_dues', phrases: ['o que vence', 'vencimentos', 'proximos vencimentos', 'contas a vencer'] },
   { intent: 'installments', phrases: ['minhas parcelas', 'parcelas', 'parcelados', 'compras parceladas'] },
   { intent: 'fixed_bills', phrases: ['contas fixas', 'despesas fixas', 'gastos recorrentes', 'recorrencias'] },
-  { intent: 'goals', phrases: ['minhas metas', 'metas'] },
+  { intent: 'goals', phrases: ['minhas metas', 'metas', 'minhas caixinhas', 'caixinhas'] },
   {
     intent: 'envelopes',
     phrases: ['minhas reservas', 'reservas', 'como esta minha reserva', 'envelopes'],
@@ -64,7 +66,7 @@ const MISSING_AMOUNT_MAX_WORDS = 3;
 
 /** Comando de escrita de meta (contrato 3b1, secao 3): até 6 palavras no total e sem "?". */
 const GOAL_COMMAND_MAX_WORDS = 6;
-const GOAL_CREATE_PHRASES = ['criar meta', 'nova meta', 'criar cofrinho'];
+const GOAL_CREATE_PHRASES = ['criar meta', 'nova meta', 'criar cofrinho', 'criar caixinha', 'nova caixinha'];
 const GOAL_CONTRIBUTE_PHRASES = ['guardar', 'aportar', 'poupar', 'depositar', 'colocar', 'aporte de'];
 
 /**
@@ -87,6 +89,9 @@ export function matchIntent(raw: string): IntentMatch | null {
   const transactionChange = matchTransactionChange(raw, tokens, words);
   if (transactionChange) return transactionChange;
 
+  const natural = matchNaturalWrite(raw, tokens, words);
+  if (natural) return natural;
+
   const income = matchIncome(tokens, words);
   if (income) return income;
 
@@ -102,7 +107,7 @@ export function matchIntent(raw: string): IntentMatch | null {
   const phrase = words.join(' ');
   if (phrase === 'ajuda' || startsWithPhrase(phrase, 'o que voce faz')) return { intent: 'help' };
   if (matchImportReceipt(raw, phrase)) return { intent: 'import_receipt' };
-  if (startsWithPhrase(phrase, 'saldo') || startsWithPhrase(phrase, 'quanto tenho')) {
+  if (startsWithPhrase(phrase, 'saldo') || phrase === 'quanto tenho') {
     return { intent: 'balance' };
   }
   if (startsWithPhrase(phrase, 'resumo')) return { intent: 'month_summary' };
@@ -122,7 +127,7 @@ export function matchIntent(raw: string): IntentMatch | null {
   ) {
     return { intent: 'credit_card' };
   }
-  return null;
+  return matchReadQuestion(raw, tokens, words);
 }
 
 /** "meus cartoes" e variantes: lista os cartoes ativos (contrato 9b, secao 2.4). Frase exata, sem nome. */
@@ -144,8 +149,6 @@ const CARD_READ_HEADS: Array<{ head: string; loose: boolean }> = [
   { head: 'fatura no', loose: true },
   { head: 'fatura na', loose: true },
 ];
-/** Forma sem a palavra cartao so vira leitura com ate esse numero de palavras no nome (evita pergunta longa). */
-const CARD_LOOSE_MAX_WORDS = 4;
 
 /**
  * Leitura por cartao (9b-2). Sem valor na frase: "limite do Nubank", "quanto sobrou no Nubank", "fatura do Nubank",
@@ -167,7 +170,7 @@ function matchCardRead(raw: string, tokens: string[], words: string[]): IntentMa
       continue;
     }
     if (explicit) return { intent: 'credit_card', cardTerm: term };
-    if (raw.includes('?') || term.split(/\s+/).length > CARD_LOOSE_MAX_WORDS) continue;
+    if (raw.includes('?') || term.split(/\s+/).length > CARD_LOOSE_MAX_WORDS || hasReadVocabulary(term)) continue;
     return { intent: 'credit_card', cardTerm: term, loose: true };
   }
   return null;
@@ -221,7 +224,7 @@ function matchTransactionChange(raw: string, tokens: string[], words: string[]):
   // O substantivo escolhe o alvo (contrato 8b, secao 3); sem substantivo é lançamento (contrato 8a).
   while (rest.length > 0 && CHANGE_ARTICLES.has(normalizeWord(rest[0]))) rest = rest.slice(1);
   const noun = rest.length > 0 ? normalizeWord(rest[0]) : '';
-  if (noun === 'meta' || noun === 'metas' || noun === 'cofrinho') {
+  if (noun === 'meta' || noun === 'metas' || noun === 'cofrinho' || noun === 'caixinha' || noun === 'caixinhas') {
     return { intent: action === 'delete' ? 'delete_goal' : 'edit_goal', body: rest.slice(1).join(' ').trim() };
   }
   if (noun === 'reserva' || noun === 'reservas' || noun === 'envelope') {

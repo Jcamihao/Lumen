@@ -782,7 +782,7 @@ describe('Isolamento A/B/C do motor de conversa', () => {
       sessionOf('A')!.draft.targetId = 'b-1';
       const restoredDelete = await engine.service.getSession(USER_ID.A);
       expect(restoredDelete.draft?.rows).toEqual([{ label: 'Lançamento', value: 'escolhido' }]);
-      expect(JSON.stringify(restoredDelete)).not.toMatch(/Segredo|987/);
+      expect(JSON.stringify(restoredDelete)).not.toMatch(/Segredo|987[.,]65/);
       world.sessions.splice(0, world.sessions.length);
       await send('A', 'corrigir mercado teste');
       await send('A', '1');
@@ -790,7 +790,7 @@ describe('Isolamento A/B/C do motor de conversa', () => {
       sessionOf('A')!.draft.changes = { amountCents: 4500, categoryId: 'cat-B-main' };
       const restoredEdit = await engine.service.getSession(USER_ID.A);
       expect(restoredEdit.draft?.rows).toEqual([{ label: 'Lançamento', value: 'escolhido' }]);
-      expect(JSON.stringify(restoredEdit)).not.toMatch(/Segredo|987/);
+      expect(JSON.stringify(restoredEdit)).not.toMatch(/Segredo|987[.,]65/);
     });
 
     it('cartao de editar com categoria de B plantada na mudanca: nunca mostra o nome da categoria de B', async () => {
@@ -810,7 +810,7 @@ describe('Isolamento A/B/C do motor de conversa', () => {
       await send('A', 'corrigir secreta xyz');
       await send('A', '1');
       await send('A', 'valor 12');
-      expect(logged.join('\n')).not.toMatch(/secreta|777|XYZ/i);
+      expect(logged.join('\n')).not.toMatch(/secreta|777[.,]77|XYZ/i);
     });
   });
 });

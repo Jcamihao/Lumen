@@ -40,22 +40,6 @@ export async function lockUserForCredit(tx: Prisma.TransactionClient, userId: st
 }
 
 /**
- * Campos do User que espelham o cartao padrao (contrato item 9, secao 4.2).
- * Mantidos na mesma transacao enquanto o front nao migra (9c).
- */
-export function userCycleFieldsFromCard(card: {
-  closingDay: number;
-  dueDay: number | null;
-  countAllPayments: boolean;
-}) {
-  return {
-    monthClosingDay: card.closingDay,
-    creditDueDay: card.dueDay,
-    creditCycleCountAllPayments: card.countAllPayments,
-  };
-}
-
-/**
  * Ocorrencia do dia de fechamento num mes especifico, clampada para meses
  * curtos (fechamento 31 em fevereiro vira 28/29). `monthIndex` pode vir fora
  * de 0-11 de proposito: Date.UTC normaliza sozinho (-1 = dezembro do ano

@@ -6,7 +6,8 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { Prisma, TransactionType, UserRole } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
-import { toCategoryResponse } from "../finance-categories/finance-categories.service";
+import { toPrivacyTransactionExport } from "../transactions/shared-transaction.view";
+import { toCategoryResponse, toPrivacyCategoryExport } from "../finance-categories/finance-categories.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { PRINCIPAL_CARD_NAME } from "../credit-cycle/credit-cycle.util";
 import { DEFAULT_TAG_GROUPS } from "../tag-groups/tag-groups.service";
@@ -64,12 +65,11 @@ export class UsersService {
             input.monthlyIncome !== undefined
               ? new Prisma.Decimal(input.monthlyIncome)
               : new Prisma.Decimal(0),
-          monthClosingDay: input.monthClosingDay ?? 30,
-          timezone: input.timezone ?? "America/Sao_Paulo",
           privacyNoticeAcceptedAt: privacyAccepted ? now : null,
           privacyNoticeVersion: privacyAccepted
             ? CURRENT_PRIVACY_NOTICE_VERSION
             : null,
+          timezone: input.timezone ?? "America/Sao_Paulo",
           aiAssistantEnabled: aiEnabled,
           aiAssistantConsentAt: aiEnabled ? now : null,
           aiAssistantConsentVersion: aiEnabled
@@ -81,7 +81,8 @@ export class UsersService {
         data: {
           userId: created.id,
           name: PRINCIPAL_CARD_NAME,
-          closingDay: created.monthClosingDay,
+          // 9c-2: o dia coletado no cadastro vive so no cartao (o User nao guarda mais espelho).
+          closingDay: Math.min(31, Math.max(1, input.monthClosingDay ?? 30)),
           dueDay: null,
           countAllPayments: false,
           isDefault: true,
@@ -224,7 +225,6 @@ export class UsersService {
             dto.monthlyIncome !== undefined
               ? new Prisma.Decimal(dto.monthlyIncome)
               : undefined,
-          monthClosingDay: dto.monthClosingDay,
           timezone: dto.timezone,
           emailWeeklyDigest: dto.emailWeeklyDigest,
           emailReminders: dto.emailReminders,
@@ -252,13 +252,8 @@ export class UsersService {
                 }),
         },
       });
-      // Cartao padrao acompanha o dia de fechamento do User (contrato item 9, secao 4.2).
-      if (dto.monthClosingDay !== undefined) {
-        await tx.creditCard.updateMany({
-          where: { userId, isDefault: true, archivedAt: null },
-          data: { closingDay: dto.monthClosingDay },
-        });
-      }
+      // 9c-2: PATCH /users nao toca mais no ciclo. Fechamento/vencimento/escopo se
+      // editam pelo cartao (PUT /credit-cards/:id e /credit-cycle/settings).
     });
 
     return this.getMe(userId);
@@ -471,7 +466,7 @@ export class UsersService {
       },
       datasets: {
         taskCategories: taskCategories,
-        financeCategories: financeCategories.map(toCategoryResponse),
+        financeCategories: financeCategories.map(toPrivacyCategoryExport),
         tasks: tasks.map((task) => ({
           ...task,
           estimatedAmount:
@@ -479,10 +474,7 @@ export class UsersService {
               ? Number(task.estimatedAmount)
               : null,
         })),
-        transactions: transactions.map((transaction) => ({
-          ...transaction,
-          amount: Number(transaction.amount),
-        })),
+        transactions: transactions.map(toPrivacyTransactionExport),
         goals: goals.map((goal) => ({
           ...goal,
           targetAmount:
