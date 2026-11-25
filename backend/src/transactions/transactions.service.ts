@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, TransactionType } from '@prisma/client';
 import { AccessScopeService } from '../access-scope/access-scope.service';
-import { lockUserRow } from '../access-scope/lock';
+import { isRecordNotFound, lockUserRow } from '../access-scope/lock';
 import { ReadScope } from '../access-scope/read-scope';
 import { ownSharingFlags, SharingReceipt, toSharingReceipt, withoutSharingMark } from '../access-scope/shared-view';
 import { LifeEngineService } from '../life-engine/life-engine.service';
@@ -186,6 +186,9 @@ export class TransactionsService {
           'Ja existe um lancamento desta conta fixa nessa data.',
         );
       }
+      if (isRecordNotFound(error)) {
+        throw new NotFoundException('Transacao nao encontrada.');
+      }
 
       throw error;
     });
@@ -238,9 +241,13 @@ export class TransactionsService {
     }
 
     await this.findTransaction(this.prisma, userId, id);
-    await this.prisma.transaction.delete({
-      where: { id },
-    });
+    await this.prisma.transaction
+      .delete({
+        where: { id },
+      })
+      .catch((error) => {
+        throw isRecordNotFound(error) ? new NotFoundException('Transacao nao encontrada.') : error;
+      });
 
     await this.lifeEngineService.touchUserData(userId);
     return { success: true };
@@ -252,6 +259,12 @@ export class TransactionsService {
    * Trava o User do autor primeiro (ordem unica do contrato 11b, item 6).
    */
   async setSharing(userId: string, id: string, shared: boolean): Promise<SharingReceipt> {
+    return this.markSharing(userId, id, shared).catch((error) => {
+      throw isRecordNotFound(error) ? new NotFoundException('Transacao nao encontrada.') : error;
+    });
+  }
+
+  private async markSharing(userId: string, id: string, shared: boolean): Promise<SharingReceipt> {
     return this.prisma.$transaction(async (tx) => {
       await lockUserRow(tx, userId);
       const item = await tx.transaction.findFirst({

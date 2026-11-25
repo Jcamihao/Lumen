@@ -174,3 +174,33 @@ describe('FinanceCategoriesService — orcamento mensal', () => {
     ).rejects.toThrow('conexao caiu');
   });
 });
+
+describe('FinanceCategoriesService - categoria excluida por outra requisicao (P2025)', () => {
+  const gone = () => Object.assign(new Error('Record to update not found'), { code: 'P2025' });
+  const build = () => {
+    const prisma: any = {
+      financeCategory: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'cat-1', userId: 'user-1', sharedGroupOwnerId: null, type: 'EXPENSE', monthlyBudget: null, updatedAt: new Date() }),
+        update: jest.fn().mockRejectedValue(gone()),
+        delete: jest.fn().mockRejectedValue(gone()),
+      },
+      transaction: { updateMany: jest.fn() },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+    };
+    prisma.$transaction = jest.fn(async (cb: any) => cb(prisma));
+    const accessWithGroup = { ...access, requireActiveGroupForSharing: async () => 'payer-1' };
+    return new FinanceCategoriesService(prisma, { touchUserData: jest.fn() } as any, accessWithGroup);
+  };
+
+  it('marcar compartilhada devolve 404, nao 500', async () => {
+    await expect(build().setSharing('user-1', 'cat-1', true)).rejects.toThrow(NotFoundException);
+  });
+
+  it('editar devolve 404, nao 500', async () => {
+    await expect(build().update('user-1', 'cat-1', { name: 'Novo' } as any)).rejects.toThrow(NotFoundException);
+  });
+
+  it('excluir devolve 404, nao 500', async () => {
+    await expect(build().remove('user-1', 'cat-1')).rejects.toThrow(NotFoundException);
+  });
+});

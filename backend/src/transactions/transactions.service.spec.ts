@@ -54,6 +54,34 @@ describe("TransactionsService", () => {
       touchUserData: jest.fn().mockResolvedValue(undefined),
     }) as any;
 
+  describe('item excluido por outra requisicao entre a leitura e a escrita (P2025)', () => {
+    const gone = () => Object.assign(new Error('Record to update not found'), { code: 'P2025' });
+    const build = () => {
+      const prisma = buildPrisma({
+        transaction: {
+          findMany: jest.fn(),
+          findFirst: jest.fn().mockResolvedValue({ id: 'tx-1', userId: 'user-1', sharedGroupOwnerId: null, updatedAt: new Date() }),
+          update: jest.fn().mockRejectedValue(gone()),
+          create: jest.fn(),
+          delete: jest.fn().mockRejectedValue(gone()),
+        },
+      });
+      return new TransactionsService(prisma, buildLifeEngine(), buildMaterializer(), buildMaterializer(), buildAccess());
+    };
+
+    it('marcar compartilhado devolve 404, nao 500', async () => {
+      await expect(build().setSharing('user-1', 'tx-1', true)).rejects.toThrow(NotFoundException);
+    });
+
+    it('editar devolve 404, nao 500', async () => {
+      await expect(build().update('user-1', 'tx-1', { description: 'novo nome' } as any)).rejects.toThrow(NotFoundException);
+    });
+
+    it('excluir duas vezes ao mesmo tempo devolve 404, nao 500', async () => {
+      await expect(build().remove('user-1', 'tx-1')).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('conflito de data em lancamento de conta fixa', () => {
     it('devolve 400 quando o indice unico (conta fixa + data) recusa a edicao', async () => {
       const prisma = buildPrisma({

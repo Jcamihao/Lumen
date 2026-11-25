@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { FinanceCategory, Prisma, TransactionType } from '@prisma/client';
 import { AccessScopeService } from '../access-scope/access-scope.service';
-import { lockUserRow } from '../access-scope/lock';
+import { isRecordNotFound, lockUserRow } from '../access-scope/lock';
 import { ReadScope } from '../access-scope/read-scope';
 import {
   isSharedItem,
@@ -154,9 +154,13 @@ export class FinanceCategoriesService {
       where: { categoryId: id },
       data: { categoryId: null },
     });
-    await this.prisma.financeCategory.delete({
-      where: { id },
-    });
+    await this.prisma.financeCategory
+      .delete({
+        where: { id },
+      })
+      .catch((error) => {
+        throw this.friendlyDuplicateNameError(error);
+      });
 
     return { success: true };
   }
@@ -166,6 +170,12 @@ export class FinanceCategoriesService {
    * ativo (409 com codigo). Idempotente. Trava o User do autor primeiro (ordem unica, item 6).
    */
   async setSharing(userId: string, id: string, shared: boolean): Promise<SharingReceipt> {
+    return this.markSharing(userId, id, shared).catch((error) => {
+      throw this.friendlyDuplicateNameError(error);
+    });
+  }
+
+  private async markSharing(userId: string, id: string, shared: boolean): Promise<SharingReceipt> {
     return this.prisma.$transaction(async (tx) => {
       await lockUserRow(tx, userId);
       const category = await tx.financeCategory.findFirst({
@@ -235,6 +245,9 @@ export class FinanceCategoriesService {
   private friendlyDuplicateNameError(error: unknown) {
     if ((error as { code?: string } | null)?.code === 'P2002') {
       return new BadRequestException('Você já tem uma categoria com este nome.');
+    }
+    if (isRecordNotFound(error)) {
+      return new NotFoundException('Categoria financeira nao encontrada.');
     }
 
     return error;
