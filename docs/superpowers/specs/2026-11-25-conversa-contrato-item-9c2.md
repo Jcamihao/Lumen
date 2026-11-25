@@ -21,8 +21,12 @@ os outros cartões desde a 9a. Fim do espelho da 9a.
   ficam), mas o valor vai direto para o `closingDay` do cartão Principal (clamp 1..31,
   padrão 30). Cadastro passa a criar só o cartão, sem espelho no User.
 - **D3 — `PATCH /users` perde `monthClosingDay`** (path legado: o front de Configurações
-  já não o envia; Cartões edita pelo cartão desde a 9c-1). Campo sai do DTO.
-  Se vier payload com a chave, passa batido (whitelist do ValidationPipe).
+  já não o envia; Cartões edita pelo cartão desde a 9c-1). Campo sai do DTO e o
+  `ValidationPipe` (`forbidNonWhitelisted: true`) passa a **recusar com 400** payload
+  que ainda mandar a chave — verificado na integração (nenhum client do repo envia).
+  Detalhamento honesto: o path legado **já sincronizava** o cartão (`updateMany` na
+  mesma transação), então a dessincronização sempre esteve protegida no código; o
+  SELECT abaixo fica como paranoia de deploy, não como correção de risco real.
 - **D4 — fim da duplicação**: a tela de Cartões **para de editar** "Teto do ciclo" e o
   escopo (soma tudo / só crédito). O lugar único do teto passa a ser o **card do ciclo**
   no `/finance`, que desde a 9c-1b tem abas por cartão com teto próprio e o botão
@@ -36,9 +40,9 @@ os outros cartões desde a 9a. Fim do espelho da 9a.
 ## Checagem antes de aplicar em produção (substitui a da 9a-3 para este deploy)
 A migration da 9a converteu os valores do User em dados do cartão com clamp 1..31
 (ver `resultado-9a3.md` — o SELECT antigo continua válido para ambiente que ainda não
-rodou a 9a). Mas entre a 9a e esta fatia, o `PATCH /users` legado podia escrever
-`monthClosingDay` **sem tocar no cartão** (D3 o matava pela metade). Antes do deploy da
-9c-2, rodar:
+rodou a 9a). O `PATCH /users` legado mantinha o cartão em sincronia na mesma transação
+(D3), então na teoria nada dessincroniza; o SELECT abaixo é checagem de deploy barata
+pega escrita direta no banco ou bug antigo não visto. Antes do deploy da 9c-2, rodar:
 
 ```sql
 SELECT u."id", u."email", u."monthClosingDay", c."closingDay", u."creditDueDay", c."dueDay", u."creditCycleCountAllPayments", c."countAllPayments"
