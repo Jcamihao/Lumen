@@ -231,3 +231,88 @@ describe('limites de leitura por cartao e de frase', () => {
     });
   });
 });
+
+describe('prefixo antigo "quanto tenho" so vale para a frase exata', () => {
+  it.each([
+    ['quanto tenho', 'balance'],
+    ['quanto tenho?', 'balance'],
+    ['Quanto Tenho', 'balance'],
+    ['quanto tenho hoje', 'balance'],
+    ['quanto tenho disponivel hoje', 'balance'],
+    ['quanto tenho de saldo na conta', 'balance'],
+    ['quanto tenho de dinheiro na conta?', 'balance'],
+    ['quanto tenho esse mês', 'balance'],
+    ['quanto tenho guardado', 'envelopes'],
+    ['quanto tenho de reserva', 'envelopes'],
+    ['quanto tenho na reserva?', 'envelopes'],
+    ['quanto tenho de limite', 'credit_card'],
+    ['quanto tenho de fatura', 'credit_card'],
+    ['quanto tenho de parcela', 'installments'],
+    ['quanto tenho que pagar', 'upcoming_dues'],
+  ])('"%s" vai para %s', (text, intent) => {
+    expect(matchIntent(text)).toEqual({ intent });
+  });
+
+  it.each([
+    'quanto tenho que guardar por mês para comprar um carro de 50 mil',
+    'quanto tenho que guardar por mes',
+    'quanto tenho a receber',
+    'quanto tenho de divida',
+    'quanto tenho no nubank',
+    'quanto tenho na conta do nubank',
+    'quanto tenho no cartao',
+    'quanto tenho na carteira',
+    'quanto tenho de saldo no nubank',
+  ])('nao vira saldo: "%s"', (text) => {
+    expect(matchIntent(text)).toBeNull();
+  });
+});
+
+describe('girias e escrita informal', () => {
+  it.each([
+    ['vc sabe meu saldo?', 'balance'],
+    ['TO COM QUANTO NA CONTA', 'balance'],
+    ['to com quanto de grana', 'balance'],
+    ['quanto eu tenho na conta hj', 'balance'],
+    ['qnt tenho na conta', 'balance'],
+    ['quanto tem de saldo', 'balance'],
+    ['manda o saldo', 'balance'],
+    ['bora ver o saldo', 'balance'],
+    ['bom dia, qual meu saldo?', 'balance'],
+    ['boa noite saldo', 'balance'],
+    ['como ta minha vida financeira', 'month_summary'],
+    ['o que eu devo pagar', 'upcoming_dues'],
+    ['quais contas tenho que pagar', 'upcoming_dues'],
+    ['quais contas vencem hj', 'upcoming_dues'],
+    ['quanto falta pra meta', 'goals'],
+    ['quanto guardei', 'envelopes'],
+    ['quanto pago de contas fixas', 'fixed_bills'],
+    ['manda minhas parcelas', 'installments'],
+  ])('"%s" vai para %s', (text, intent) => {
+    expect(matchIntent(text)).toEqual({ intent });
+  });
+
+  it('"como ta a fatura do Nubank" le fatura do cartao', () => {
+    expect(matchIntent('como ta a fatura do Nubank')).toEqual({ intent: 'credit_card', cardTerm: 'Nubank', loose: true });
+  });
+
+  it.each([
+    'meu saldo e bom?',
+    'bom saldo',
+    'bom dia',
+    'mano qual o meu saldo',
+    'vc acha que tenho saldo',
+    'me escreve um poema sobre saldo',
+    'quanto devo de luz',
+    'quanto ganhei esse mes',
+    'quanto tenho que guardar',
+    'qual o limite de velocidade',
+    'hj',
+  ])('nao casa: "%s"', (text) => {
+    expect(matchIntent(text)).toBeNull();
+  });
+
+  it('"?" solto no meio nao quebra o nucleo', () => {
+    expect(matchIntent('quanto ? tenho')).toEqual({ intent: 'balance' });
+  });
+});
