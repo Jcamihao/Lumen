@@ -1,6 +1,6 @@
-# Contrato: plano Família (rascunho para veto do dono)
+# Contrato do item 13: plano Família
 
-Data: 2026-11-26. Origem: pedido do dono. Status: **rascunho**; o preço está em aberto (seção 6). Nada de código foi escrito.
+Data: 2026-11-26. Origem: pedido do dono. Status: **rascunho**. Preço, vagas e cotas já estão decididos (seção 6). **As suposições das seções 2 e 4 serão revisadas com o dono quando as tarefas do item forem planejadas** (decisão do dono em 2026-11-26). Nada de código foi escrito.
 
 ## 1. O que o dono decidiu (2026-11-26)
 - Existem **dois planos**: Compartilhado e Família. Os dois aceitam **de 2 a 4 pessoas**.
