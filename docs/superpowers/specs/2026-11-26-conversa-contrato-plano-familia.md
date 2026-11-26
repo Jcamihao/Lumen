@@ -21,7 +21,7 @@ Lançamentos, categorias e cartões compartilhados (11b-1), contas fixas e parce
 5. **Resumo mensal da família por e-mail**, no dia 1, para todos os membros que não desligaram o e-mail (respeita as preferências de e-mail).
 6. **Tarefas da casa.** Lista compartilhada com responsável e prazo. Muda a regra do item 11 ("tarefa nunca é compartilhada"): o dono aprovou, então vale só para a Família.
 7. **Lembrete de conta compartilhada para todos os membros**, e não só para quem criou.
-8. **Cotas maiores** de importação de nota fiscal e de perguntas ao assistente. Números no catálogo de planos (seção 6).
+8. **Cotas maiores** de cartões ativos e de perguntas ao assistente. Números no catálogo de planos (seção 6). (Correção: o catálogo não tem cota de nota fiscal.)
 
 ## 4. Regras técnicas (decididas por esta sessão; o dono pode vetar)
 - **D1 Aporte em meta alheia.** O `GoalsService.contribute` hoje trava e lê a meta com `id + userId`. Passa a aceitar o dono ou um membro com acesso. O lançamento (TRANSFER com `linkedGoalId`) nasce com o `userId` de quem aportou; `currentAmount` da meta continua sendo a soma. O "quem colocou quanto" sai dos lançamentos ligados à meta, por `userId`.
@@ -45,11 +45,10 @@ Lançamentos, categorias e cartões compartilhados (11b-1), contas fixas e parce
 
 Ordem recomendada: 1, 2, 3, 4, 6, 5, 7, 8, 9.
 
-## 6. Em aberto para o dono
-- **Preço da Família** (mensal e anual). Hoje o Compartilhado custa R$ 24,90 por mês ou R$ 249 por ano.
-- **Preço por grupo ou por vaga?** Com 2 a 4 pessoas, a conta muda. Recomendação: preço fixo por grupo até 4 pessoas, mais simples de vender e de cobrar.
-- **Quantas vagas o Compartilhado terá de fato** (2, 3 ou 4). O dono disse "2 a 4" para os dois.
-- **Cotas** (nota fiscal e assistente) de cada plano.
+## 6. Decidido pelo dono (2026-11-26) e ainda em aberto
+- **Preço da Família: R$ 34,90 por mês ou R$ 300 por ano.** Preço **fixo por grupo**, não por vaga.
+- **Vagas:** Compartilhado e Família aceitam de 2 a 4 pessoas (capacidade do plano = 4; o grupo pode ter 2, 3 ou 4). O preço do Compartilhado continua R$ 24,90 por mês ou R$ 249 por ano, por grupo.
+- **Em aberto: cotas.** O catálogo só tem estes números por plano: cartões ativos (Grátis 1, Individual 5, Compartilhado 10), perguntas ao assistente por mês (Grátis 5, Individual 300, Compartilhado 300) e limites de metas, reservas, contas fixas e parcelados (ilimitados nos planos pagos). **Não existe cota de importação de nota fiscal no catálogo**; a ideia 8 só pode mexer nesses números. Proposta para a Família: 15 cartões ativos e 600 perguntas ao assistente por mês. Falta o dono aprovar ou trocar.
 
 ## 7. NÃO verificado
 Nada foi implementado nem testado. Falta conferir no código: o fluxo de cobrança do Asaas por plano, as telas de Metas e Reservas do app, e como o resumo mensal atual é montado. A suposição da seção 3, item 2, sobre `envelopeId` foi conferida no schema (`Transaction.envelopeId`), mas não o cálculo do "gasto" na `EnvelopesService`.
