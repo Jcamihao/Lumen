@@ -31,7 +31,7 @@ describe('menu por botao e saida universal (12.1a)', () => {
       const reply = await click('A', 'menu');
 
       expect(reply).toMatchObject({ kind: 'MENU', state: 'IDLE', menu: { nodeId: 'menu' } });
-      expect(reply.menu?.title).toMatch(/^(Bom dia|Boa tarde|Boa noite)! Lumen · o que vamos fazer hoje\?\n/);
+      expect(reply.menu?.title).toMatch(/^(Bom dia|Boa tarde|Boa noite)! ✨ Lumen · o que vamos fazer hoje\?\n/);
       expect(reply.menu?.title).toContain('💰 Finanças: lançar, consultar, editar e apagar');
       expect(reply.menu?.options.map((option) => option.id)).toEqual(['inicio', 'financas', 'cartao', 'metas', 'ajuda']);
       expect(reply.menu?.backId).toBeUndefined();
@@ -45,8 +45,8 @@ describe('menu por botao e saida universal (12.1a)', () => {
 
       expect(reply).toMatchObject({ kind: 'MENU', menu: { nodeId: 'financas', backId: 'menu', topId: 'menu' } });
       expect(reply.menu?.options).toHaveLength(8);
-      expect(reply.text).toContain('1. Lançar despesa: registrar um gasto — "gastei 50 no mercado"');
-      expect(reply.text).toContain('3. Gastos por categoria: ver gastos de uma categoria — "gastos com mercado"');
+      expect(reply.text).toContain('1. 🛒 Lançar despesa: registrar um gasto — "gastei 50 no mercado"');
+      expect(reply.text).toContain('3. 🏷️ Gastos por categoria: ver gastos de uma categoria — "gastos com mercado"');
       expect(lastEventOf('A')).toMatchObject({ intent: 'menu_nav:financas' });
     });
 
@@ -169,7 +169,7 @@ describe('menu por botao e saida universal (12.1a)', () => {
       const reply = await say('A', 'voltar');
 
       expect(reply).toMatchObject({ kind: 'MENU', state: 'IDLE', menu: { nodeId: 'menu' } });
-      expect(reply.text).toMatch(/^(Bom dia|Boa tarde|Boa noite)! Lumen · o que vamos fazer hoje\?/);
+      expect(reply.text).toMatch(/^(Bom dia|Boa tarde|Boa noite)! ✨ Lumen · o que vamos fazer hoje\?/);
       expect(lastEventOf('A')).toMatchObject({ intent: 'menu_open' });
     });
 
@@ -210,7 +210,7 @@ describe('menu por botao e saida universal (12.1a)', () => {
 
       expect(reply.kind).toBe('CANCELLED');
       expect(reply.text).toContain('Rascunho cancelado. Nada foi gravado.');
-      expect(reply.text).toContain('Lumen · o que vamos fazer hoje?');
+      expect(reply.text).toContain('✨ Lumen · o que vamos fazer hoje?');
       expect(reply.menu?.nodeId).toBe('menu');
       expect(reply.menu?.lead).toBe('Rascunho cancelado. Nada foi gravado.');
       expect(world.sessions).toHaveLength(0);

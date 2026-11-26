@@ -16,9 +16,14 @@ function titleLine(node: MenuNode, greeting?: string): string {
   return greeting && node.id === MENU_ROOT_ID ? `${greeting}! ${node.title}` : node.title;
 }
 
-/** Cabecalho com botoes: titulo e uma linha de guia por opcao. */
+/** Titulo e frase de abertura do grupo (quando tem). */
+function openingLines(node: MenuNode, greeting?: string): string[] {
+  return node.intro ? [titleLine(node, greeting), node.intro] : [titleLine(node, greeting)];
+}
+
+/** Cabecalho com botoes: abertura e uma linha de guia por opcao. */
 function menuHeader(node: MenuNode, greeting?: string): string {
-  return [titleLine(node, greeting), ...(node.children ?? []).map(guideOf)].join('\n');
+  return [...openingLines(node, greeting), ...(node.children ?? []).map(guideOf)].join('\n');
 }
 
 /** Forma do menu para o canal: opcoes, e Voltar/Menu quando nao e a raiz. */
@@ -39,7 +44,7 @@ export function menuText(node: MenuNode, greeting?: string): string {
     const hint = child.example && !child.children ? ` — "${child.example}"` : '';
     return `${index + 1}. ${guideOf(child)}${hint}`;
   });
-  return [titleLine(node, greeting), ...lines, MENU_REPLIES.navigationHint].join('\n');
+  return [...openingLines(node, greeting), ...lines, MENU_REPLIES.navigationHint].join('\n');
 }
 
 /** Todo resultado obtido por botao termina com a frase de atalho da folha (contrato secao 3, item 6). */
