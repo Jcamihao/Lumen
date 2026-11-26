@@ -12,8 +12,13 @@ export type AmountResult =
  * Aceita: 32,90 | 32.90 | 1.234,56 | 1.234 | 1234 | 2 mil | 2k | 2,5 mil | R$ 10.
  * Ambiguo (1,234 ou 1,234.56) devolve AMBIGUOUS: quem chama pede correcao, nunca chuta.
  */
+/** Cifrao depois do numero ("3$", "3,50$") vale como "reais": tira o sinal e deixa o numero. */
+export function dropTrailingCurrencySign(text: string): string {
+  return text.replace(/(\d)\s?\$(?!\d)/g, '$1');
+}
+
 export function parseAmountPrefix(input: string): AmountResult {
-  let text = input.trim().replace(/^r\$\s*/i, '');
+  let text = dropTrailingCurrencySign(input).trim().replace(/^r\$\s*/i, '');
   let negative = false;
   if (text.startsWith('-')) {
     negative = true;

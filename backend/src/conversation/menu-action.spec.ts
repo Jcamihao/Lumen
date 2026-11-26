@@ -179,6 +179,17 @@ describe('menu por botao e saida universal (12.1a)', () => {
       }
     });
 
+    it('apos tocar em Lancar despesa, frase completa com 3$ preenche valor e descricao', async () => {
+      await click('A', 'financas.despesa');
+
+      const reply = await say('A', 'Gastei 3$ tomando café na padaria');
+
+      expect(reply.text).not.toContain('Não encontrei o valor');
+      expect(world.sessions).toHaveLength(1);
+      expect(world.sessions[0].draft).toMatchObject({ amountCents: 300 });
+      expect(String((world.sessions[0].draft as { description: string }).description).toLowerCase()).toContain('padaria');
+    });
+
     it('saudacoes sem rascunho mostram o menu', async () => {
       for (const word of ['oi', 'Oiieee', 'bom dia', 'opa', 'olá']) {
         expect({ word, kind: (await say('A', word)).kind }).toEqual({ word, kind: 'MENU' });
