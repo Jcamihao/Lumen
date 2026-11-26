@@ -1592,6 +1592,11 @@ export class ConversationService {
       await this.recordEvent(input, session.intent, ConversationOutcome.UNRECOGNIZED);
       return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: REPLIES.confirmReminder });
     }
+    if (intent && (intent.intent === 'create_expense' || intent.intent === 'create_income') && intent.missingAmount !== true && isAwaitingFirstAmount(pendingDraft)) {
+      // Rascunho vazio (so esperava o valor, ex.: botao Lancar despesa) e a frase ja traz valor: a frase vira o lancamento.
+      await this.prisma.conversationSession.deleteMany({ where: { id: session.id, userId } });
+      return this.startDraft({ input, intent });
+    }
     if (intent) {
       // Comando de escrita com rascunho em coleta: não substitui o rascunho em silencio.
       await this.recordEvent(input, session.intent, ConversationOutcome.UNRECOGNIZED);
@@ -4248,6 +4253,13 @@ function dueWarningRows(firstDueDate: string | null, today: string, todayWarning
 }
 
 /** Erro de commit desconhecido, vindo de qualquer um dos quatro domínios de gravação. */
+/** Rascunho de gasto/receita que ainda nao recebeu nada alem do pedido do valor. */
+function isAwaitingFirstAmount(draft: SessionDraft): boolean {
+  const candidate = draft as Partial<ExpenseOrIncomeDraft>;
+  const isTransaction = candidate.kind === undefined || candidate.kind === 'TRANSACTION';
+  return isTransaction && candidate.pendingField === 'amount' && candidate.amountCents === 0 && candidate.description === null;
+}
+
 function isWriteUncertain(error: unknown): boolean {
   return (
     error instanceof EnvelopeWriteUncertainError ||

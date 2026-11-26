@@ -1,5 +1,5 @@
 import { normalizeWord } from './normalize';
-import { parseAmountPrefix } from './amount.parser';
+import { dropTrailingCurrencySign, parseAmountPrefix } from './amount.parser';
 import { cleanCardTerm } from '../credit-limit';
 import { CARD_LOOSE_MAX_WORDS, hasReadVocabulary, matchReadQuestion } from './read-question';
 import { matchNaturalWrite } from './write-natural';
@@ -73,7 +73,8 @@ const GOAL_CONTRIBUTE_PHRASES = ['guardar', 'aportar', 'poupar', 'depositar', 'c
  * Casa a mensagem com uma intencao da tabela do contrato. Devolve null se nada casou.
  * Ordem importa: create antes de leitura; "gastos com X" antes de "gastos".
  */
-export function matchIntent(raw: string): IntentMatch | null {
+export function matchIntent(rawText: string): IntentMatch | null {
+  const raw = dropTrailingCurrencySign(rawText);
   const tokens = raw.trim().split(/\s+/).filter((token) => token.length > 0);
   const words = tokens.map(normalizeWord);
   if (words.length === 0) {
