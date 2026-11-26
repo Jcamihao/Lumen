@@ -23,6 +23,7 @@ export const TG_REPLIES = {
   askWhichGoal: 'Qual meta? Diga parte do nome. Ex.: apagar meta viagem',
   askWhichEnvelope: 'Qual reserva? Diga parte do nome. Ex.: apagar reserva gasolina',
   pickHeaderGoal: 'Qual meta? Responda com o número:',
+  goalListMore: 'Tem mais metas. Para achar outra, responda cancelar e diga parte do nome. Ex.: apagar meta viagem',
   goalListEmpty: 'Você ainda não tem metas. Crie a primeira em Menu → Metas → Criar meta.',
   pickHeaderEnvelope: 'Qual reserva? Responda com o número:',
   askChangeGoal: 'O que mudar? título, valor 500, sem alvo ou prazo 20/12. Ex.: valor 800',

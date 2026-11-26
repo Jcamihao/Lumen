@@ -216,7 +216,8 @@ describe('editar/apagar metas por conversa (8b, secoes 3 a 5)', () => {
     }));
     const { send, sessions } = buildService({ goals: many });
     const reply = await send('apagar meta');
-    expect(reply.text.split('\n')).toHaveLength(11);
+    expect(reply.text.split('\n')).toHaveLength(12);
+    expect(reply.text.split('\n').at(-1)).toContain('Tem mais metas');
     await send('10');
     expect((sessions[0].draft as Row).targetId).toBe('g9');
   });

@@ -1435,10 +1435,12 @@ export class ConversationService {
   /** Criar cartao: a unica pergunta e o dia de fechamento (1 a 31); resposta invalida repete a pergunta sem sair do rascunho. */
   private async answerCardCreate(userId: string, draft: CardCreateDraft, value: string): Promise<PendingAnswer> {
     if (draft.pendingField === 'name') {
-      const name = value.trim().replace(/\s+/g, ' ');
-      if (name.length < CARD_NAME_MIN || name.length > CARD_NAME_MAX) {
-        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: CARD_WRITE_REPLIES.askName, prefix: CARD_WRITE_REPLIES.nameLength };
+      // A resposta aceita a frase de sempre ("Nubank fecha dia 10"): nome e dias saem dela, nada vira nome por engano.
+      const parsedName = parseCardCreate(value);
+      if (parsedName.ok === false) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: CARD_WRITE_REPLIES.askName, prefix: parsedName.text };
       }
+      const name = parsedName.name.replace(/\s+/g, ' ');
       const cards = await this.activeCards(userId);
       if (cards.length >= MAX_ACTIVE_CARDS_PER_USER) {
         return { status: 'ERROR', text: CARD_WRITE_REPLIES.createLimit(MAX_ACTIVE_CARDS_PER_USER) };
@@ -1447,6 +1449,8 @@ export class ConversationService {
         return { status: 'ASK', outcome: ConversationOutcome.ERROR, question: CARD_WRITE_REPLIES.askName, prefix: CARD_WRITE_REPLIES.createNameTaken };
       }
       draft.name = name;
+      draft.closingDay = parsedName.closingDay;
+      draft.dueDay = parsedName.dueDay;
       draft.pendingField = draft.closingDay === null ? 'closingDay' : null;
       return { status: 'UPDATED' };
     }
@@ -2791,14 +2795,15 @@ export class ConversationService {
       const goals = await this.prisma.goal.findMany({
         where: { userId: input.userId },
         select: { id: true },
-        orderBy: { updatedAt: 'desc' },
-        take: TARGET_LIST_MAX,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        take: TARGET_LIST_MAX + 1,
       });
       if (goals.length === 0) {
         await this.recordEvent(input, intent, ConversationOutcome.RECOGNIZED);
         return this.reply('INFO', 'IDLE', TG_REPLIES.goalListEmpty);
       }
-      draft.candidateIds = goals.map((goal) => goal.id);
+      draft.candidateIds = goals.slice(0, TARGET_LIST_MAX).map((goal) => goal.id);
+      draft.hasMore = goals.length > TARGET_LIST_MAX;
     }
     const today = await this.todayYmd(input.userId, input.receivedAt);
     return this.saveNewDraft({ input, intent, draft, today });
@@ -2883,7 +2888,7 @@ export class ConversationService {
   }
 
   /** Lista numerada dos candidatos que ainda existem (sumido sai da lista, numeracao preserva a ordem). */
-  private async targetListText(userId: string, kind: TargetChangeDraft['kind'], ids: string[]): Promise<string> {
+  private async targetListText(userId: string, kind: TargetChangeDraft['kind'], ids: string[], hasMore = false): Promise<string> {
     const header =
       kind === 'GOAL_CHANGE'
         ? TG_REPLIES.pickHeaderGoal
@@ -2923,7 +2928,7 @@ export class ConversationService {
           return candidate ? formatGoalLine(index, candidate) : null;
         })
         .filter((line): line is string => line !== null);
-      return [header, ...lines].join('\n');
+      return [header, ...lines, ...(hasMore ? [TG_REPLIES.goalListMore] : [])].join('\n');
     }
     const rows = await this.prisma.envelope.findMany({ where: { userId, id: { in: ids } }, select: ENVELOPE_CHANGE_SELECT });
     const byId = new Map(rows.map((row) => [row.id, toEnvelopeCandidateRow(row)]));
@@ -2959,7 +2964,7 @@ export class ConversationService {
         return {
           status: 'ASK',
           outcome: ConversationOutcome.UNRECOGNIZED,
-          question: await this.targetListText(userId, draft.kind, draft.candidateIds),
+          question: await this.targetListText(userId, draft.kind, draft.candidateIds, draft.hasMore === true),
         };
       }
       const row = await this.loadTargetCandidate(userId, draft.kind, chosen);
@@ -3950,7 +3955,7 @@ export class ConversationService {
               ? RC_REPLIES.askWhichRecurring
               : RC_REPLIES.askWhichInstallment;
       }
-      return this.targetListText(userId, draft.kind, draft.candidateIds);
+      return this.targetListText(userId, draft.kind, draft.candidateIds, draft.hasMore === true);
     }
     if (draft.kind === 'RECURRING') {
       if (draft.pendingField === 'description') return REPLIES.askDraftDescription;

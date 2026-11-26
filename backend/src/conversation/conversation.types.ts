@@ -293,6 +293,8 @@ export interface TargetChangeDraft {
   };
   pendingField: 'targetChoice' | 'change' | null;
   reviewReason?: string;
+  /** Lista de metas do menu cortada em 10: as demais se acham pelo nome. */
+  hasMore?: boolean;
 }
 
 export type SessionDraft =

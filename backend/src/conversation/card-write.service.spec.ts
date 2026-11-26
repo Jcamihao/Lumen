@@ -565,6 +565,20 @@ describe('cartao guiado pelo menu (menu guiado, fatia 4)', () => {
     expect(world.sessions).toHaveLength(1);
   });
 
+  it('criar cartao sem nome: a resposta aceita a frase de sempre (nome e fechamento na mesma resposta)', async () => {
+    await say('A', 'criar cartao');
+    const draft = await say('A', 'Roxinho fecha dia 10 vence dia 17');
+    expect(draft.kind).toBe('CONFIRM_DRAFT');
+    expect(draft.text).toContain('Criar o cartão Roxinho. Fecha: dia 10. Vence: dia 17.');
+  });
+
+  it('criar cartao sem nome: palavra de dia sem numero recusa e repete a pergunta do nome', async () => {
+    await say('A', 'criar cartao');
+    const reply = await say('A', 'Roxinho fecha');
+    expect(reply.text).toContain(CARD_WRITE_REPLIES.askName);
+    expect(world.sessions[0].draft).toMatchObject({ name: null, pendingField: 'name' });
+  });
+
   it('palavra que parece consulta vale como nome do cartao (Saldo), mas o botao de leitura nao', async () => {
     await say('A', 'criar cartao');
     const named = await say('A', 'Saldo');
