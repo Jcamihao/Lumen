@@ -19,6 +19,8 @@ export const CL_REPLIES = {
 export interface ChatCard {
   id: string;
   name: string;
+  /** So a lista de escolha do menu usa; as demais leituras ignoram. */
+  isDefault?: boolean;
 }
 
 export type LimitBody =

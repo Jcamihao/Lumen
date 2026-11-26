@@ -16,6 +16,7 @@ function matchesWhere(row: Row, where: Row = {}): boolean {
     if (expected && typeof expected === 'object' && !(expected instanceof Date)) {
       if ('in' in expected) return (expected.in as unknown[]).includes(row[key]);
       if ('gte' in expected) return row[key] >= (expected.gte as Date);
+      if ('not' in expected) return row[key] !== expected.not;
     }
     return row[key] === expected;
   });
@@ -77,18 +78,22 @@ function buildDb(transactions: Row[], categories: Row[] = []) {
       findFirst: jest.fn(async () => null),
     },
     transaction: {
-      findMany: jest.fn(async ({ where, orderBy, take }: { where: Row; orderBy?: unknown; take?: number }) => {
+      findMany: jest.fn(async ({ where, orderBy, take, skip }: { where: Row; orderBy?: unknown; take?: number; skip?: number }) => {
         let rows = transactions.filter((row) => matchesWhere(row, where));
         // Honra o orderBy pedido (o fake nao ordena por conta propria): mutar a ordem do servico tem de quebrar teste.
         const order = (orderBy as Array<Record<string, 'asc' | 'desc'>>) ?? [];
         rows = [...rows].sort((a, b) => {
           for (const clause of order) {
             const [key, dir] = Object.entries(clause)[0];
-            const diff = (a[key] as Date).getTime() - (b[key] as Date).getTime();
+            const timeOf = (value: unknown) => (value as { getTime?: () => number } | null)?.getTime?.();
+            const left = timeOf(a[key]) ?? String(a[key]);
+            const right = timeOf(b[key]) ?? String(b[key]);
+            const diff = typeof left === 'number' ? left - (right as number) : left.localeCompare(right as string);
             if (diff !== 0) return dir === 'desc' ? -diff : diff;
           }
           return 0;
         });
+        if (skip !== undefined) rows = rows.slice(skip);
         if (take !== undefined) rows = rows.slice(0, take);
         return clone(rows);
       }),
@@ -230,14 +235,117 @@ describe('editar/apagar: busca, lista e escolha (8a, secoes 3 e 4)', () => {
     expect(db.sessions[0].version).toBe(before);
   });
 
-  it('apagar sem termo pergunta qual lancamento, e o texto seguinte e a busca', async () => {
+  it('apagar sem termo mostra a lista dos ultimos lancamentos manuais (mais recente primeiro)', async () => {
     const { send, db } = buildService(ROWS);
     const first = await send('apagar');
     expect(first.kind).toBe('ASK_FIELD');
-    expect(first.text).toBe('Qual lançamento? Diga parte da descrição, a categoria ou o valor. Ex.: apagar mercado');
-    const second = await send('mercado');
-    expect(second.kind).toBe('ASK_FIELD');
-    expect((db.sessions[0].draft as Row).candidateIds).toEqual(['t1', 't2']);
+    expect(first.text).toBe(
+      ['Qual lançamento? Responda com o número:', '1. 14/11 · Mercado do bairro · R$ 50,00', '2. 12/11 · Mercado grande · R$ 120,00', '3. 01/05 · Padaria antiga · R$ 9,00'].join('\n'),
+    );
+    expect((db.sessions[0].draft as Row).candidateIds).toEqual(['t1', 't2', 't5']);
+  });
+
+  it('na lista dos ultimos, o numero escolhe o lancamento', async () => {
+    const { send, db } = buildService(ROWS);
+    await send('apagar');
+    const picked = await send('2');
+    expect((db.sessions[0].draft as Row).targetId).toBe('t2');
+    expect(picked.kind).toBe('CONFIRM_DRAFT');
+  });
+});
+
+describe('lista dos ultimos lancamentos com paginacao (menu guiado, fatia 1)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: T0 });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const many = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      txRow({ id: `p${String(index).padStart(2, '0')}`, userId: 'A', description: `Gasto ${index}`, amount: '5.00', date: day('2026-11-20'), createdAt: new Date(2026, 10, 1, 0, index) }),
+    );
+
+  it('mostra 15 por pagina, do mais recente, e avisa que ha mais', async () => {
+    const { send, db } = buildService(many(20));
+    const reply = await send('apagar lancamento');
+    const lines = reply.text.split('\n');
+    expect(lines).toHaveLength(1 + 15 + 1);
+    expect(lines[1]).toBe('1. 20/11 · Gasto 19 · R$ 5,00');
+    expect(lines[15]).toBe('15. 20/11 · Gasto 5 · R$ 5,00');
+    expect(lines[16]).toBe('Para ver os próximos, diga mais.');
+    expect((db.sessions[0].draft as Row).candidateIds).toHaveLength(15);
+  });
+
+  it('"mais" mostra os 5 restantes, renumera de 1 e some o aviso', async () => {
+    const { send } = buildService(many(20));
+    await send('apagar');
+    const second = await send('mais');
+    const lines = second.text.split('\n');
+    expect(lines).toHaveLength(1 + 5);
+    expect(lines[1]).toBe('1. 20/11 · Gasto 4 · R$ 5,00');
+    expect(lines[5]).toBe('5. 20/11 · Gasto 0 · R$ 5,00');
+    expect(second.text).not.toContain('diga mais');
+  });
+
+  it('numero da segunda pagina escolhe o lancamento certo', async () => {
+    const { send, db } = buildService(many(20));
+    await send('apagar');
+    await send('mais');
+    await send('3');
+    expect((db.sessions[0].draft as Row).targetId).toBe('p02');
+    expect((db.sessions[0].draft as Row).listOffset).toBeUndefined();
+  });
+
+  it('numero 15 da primeira pagina escolhe o ultimo da pagina', async () => {
+    const { send, db } = buildService(many(20));
+    await send('apagar');
+    await send('15');
+    expect((db.sessions[0].draft as Row).targetId).toBe('p05');
+  });
+
+  it('exatamente 15 lancamentos: sem aviso de mais; "mais" avisa que acabou e repete a lista', async () => {
+    const { send } = buildService(many(15));
+    const first = await send('editar lancamento');
+    expect(first.text).not.toContain('diga mais');
+    const more = await send('mais');
+    expect(more.text.startsWith('Não há mais lançamentos.')).toBe(true);
+    expect(more.text).toContain('1. 20/11 · Gasto 14 · R$ 5,00');
+  });
+
+  it('16 lancamentos: a segunda pagina tem 1 item', async () => {
+    const { send } = buildService(many(16));
+    await send('apagar');
+    const second = await send('mais');
+    expect(second.text.split('\n')).toHaveLength(2);
+    expect(second.text).toContain('1. 20/11 · Gasto 0 · R$ 5,00');
+  });
+
+  it('so entram lancamentos manuais e do proprio usuario na lista', async () => {
+    const extras = [
+      txRow({ id: 'x1', userId: 'A', description: 'Transf', type: 'TRANSFER', date: day('2026-11-15') }),
+      txRow({ id: 'x2', userId: 'A', description: 'Nota', receiptScan: { id: 'r1' }, date: day('2026-11-15') }),
+      txRow({ id: 'x3', userId: 'A', description: 'Meta', linkedGoalId: 'g1', date: day('2026-11-15') }),
+      txRow({ id: 'x4', userId: 'A', description: 'Parcela', installmentPurchaseId: 'i1', date: day('2026-11-15') }),
+    ];
+    const { send, db } = buildService([...ROWS, ...extras]);
+    await send('apagar lancamento');
+    expect((db.sessions[0].draft as Row).candidateIds).toEqual(['t1', 't2', 't5']);
+  });
+
+  it('sem lancamentos: mensagem amigavel, sem sessao', async () => {
+    const { send, db } = buildService([]);
+    const reply = await send('editar lancamento');
+    expect(reply.text).toBe('Você ainda não tem lançamentos que dê para mudar por aqui. Para registrar um, diga: gastei 50 no mercado.');
+    expect(db.sessions).toHaveLength(0);
+  });
+
+  it('busca por termo continua com lista de 5 e sem "mais"', async () => {
+    const { send, db } = buildService(many(20));
+    await send('apagar gasto');
+    expect((db.sessions[0].draft as Row).candidateIds).toHaveLength(5);
+    expect((db.sessions[0].draft as Row).listOffset).toBeUndefined();
   });
 });
 
@@ -626,7 +734,7 @@ describe('revisao 8a-1: travas de apagar e editar', () => {
     const reply = await send('corrigir mercado');
     expect(reply.text).toContain('Responda a pergunta ou "cancelar"');
     expect(db.sessions[0].version).toBe(before);
-    expect((db.sessions[0].draft as Row).candidateIds).toEqual([]);
+    expect((db.sessions[0].draft as Row).targetId).toBeNull();
   });
 
   it('ajuda durante a lista nao vira busca nem muda a sessao', async () => {
@@ -636,7 +744,7 @@ describe('revisao 8a-1: travas de apagar e editar', () => {
     const reply = await send('ajuda');
     expect(reply.kind).toBe('HELP');
     expect(db.sessions[0].version).toBe(before);
-    expect((db.sessions[0].draft as Row).candidateIds).toEqual([]);
+    expect((db.sessions[0].draft as Row).targetId).toBeNull();
   });
 });
 

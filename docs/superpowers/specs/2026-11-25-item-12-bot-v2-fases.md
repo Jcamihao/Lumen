@@ -8,6 +8,7 @@ Criado em 2026-11-25. Contrato: docs/superpowers/specs/2026-11-25-conversa-contr
 | 12.1 | Navegacao: menu em botoes no Telegram (Inicio, Tarefas, Financas, Cartao, Metas, Avisos, Conta, Ajuda), sair/voltar/menu/inicio universal, dica de atalho depois de cada operacao, ajuda com exemplos naturais | contrato da navegacao aprovado | FEITA (v1.23.0, b5d6307) |
 | 12.1b | (parte da 12.1) adaptador Telegram dos botoes | 12.1a | FEITA (v1.23.0) |
 | 12.0b | Escrita natural (passado, informal, "caixinha") + confirmacao com tom; contrato: 2026-11-25-conversa-contrato-item-12-0b.md | 12.1 mergeada | FEITA (v1.24.0, 565d6be) |
+| 12.1c | Menu guiado: listas e perguntas em vez de "diga: ..." (lancamentos, categorias, metas, cartoes); saudacao e titulos com guia; contrato: 2026-11-26-bot-menu-guiado-contrato.md | 12.1 | FEITA (v1.26.0, a3e6a41) |
 | 12.2 | Tarefas no bot: criar, listar, concluir, editar, apagar | 12.1 | a fazer |
 | 12.3 | Avisos (lembretes e alertas) e Conta (plano so consulta, feedback) | 12.1 | a fazer |
 | 12.4 | Lacunas: Inicio (insights, previsao), Financas (categorias, lancamentos recentes), Cartao (padrao, arquivar), Metas (retirar, historico de aportes) | 12.1 | a fazer |

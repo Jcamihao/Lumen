@@ -25,6 +25,8 @@ export interface ConversationInput {
   messageId: string;
   text: string;
   receivedAt: Date;
+  /** Frase vinda de um botao do menu: nunca vale como resposta de nome ou tipo de um rascunho aberto. */
+  viaMenu?: true;
 }
 
 export type DraftKind =
@@ -41,7 +43,10 @@ export type DraftKind =
   | 'RECURRING_CHANGE'
   | 'INSTALLMENT_CHANGE'
   | 'CARD_RENAME'
-  | 'CARD_CREATE';
+  | 'CARD_CREATE'
+  | 'CATEGORY_CREATE'
+  | 'CATEGORY_CHANGE'
+  | 'CARD_PICK';
 
 /**
  * Rascunho para a tela: valores formatados, sem ids internos alem de draftId/draftVersion.
@@ -177,10 +182,45 @@ export interface CardRenameDraft {
  */
 export interface CardCreateDraft {
   kind: 'CARD_CREATE';
-  name: string;
+  name: string | null;
   closingDay: number | null;
   dueDay: number | null;
-  pendingField: 'closingDay' | null;
+  pendingField: 'name' | 'closingDay' | null;
+}
+
+/**
+ * Escolha de cartao pelo menu (menu guiado, fatia 4): lista numerada dos cartoes ativos e, para renomear, o novo nome.
+ * Ao terminar vira o rascunho de sempre (limpar teto ou renomear) no mesmo lugar.
+ */
+export interface CardPickDraft {
+  kind: 'CARD_PICK';
+  purpose: 'CLEAR_LIMIT' | 'SET_LIMIT' | 'RENAME';
+  cardIds: string[];
+  cardId: string | null;
+  cardName: string | null;
+  pendingField: 'card' | 'name';
+}
+
+/** Criar categoria por conversa (menu guiado, fatia 2): nome e tipo; cor automatica, sem icone nem orcamento. */
+export interface CategoryCreateDraft {
+  kind: 'CATEGORY_CREATE';
+  name: string | null;
+  type: 'EXPENSE' | 'INCOME' | null;
+  pendingField: 'name' | 'type' | null;
+}
+
+/** Editar (so o nome) ou excluir categoria propria por conversa: lista, escolha pelo numero e confirmacao. */
+export interface CategoryChangeDraft {
+  kind: 'CATEGORY_CHANGE';
+  action: 'EDIT' | 'DELETE';
+  candidateIds: string[];
+  /** A lista foi cortada em 15: as demais categorias ficam no app. */
+  hasMore?: boolean;
+  targetId: string | null;
+  /** Nome da categoria quando foi escolhida: se mudar antes da confirmacao, nada e aplicado. */
+  targetName: string | null;
+  newName: string | null;
+  pendingField: 'category' | 'name' | null;
 }
 
 /** Conta fixa (contrato 3b2b, secao 5): só despesa; categoria e pagamento ficam não informados. */
@@ -222,6 +262,10 @@ export interface TransactionChangeDraft {
   changes: { amountCents?: number; description?: string; categoryId?: string | null; date?: string };
   pendingField: 'transaction' | 'change' | null;
   reviewReason?: string;
+  /** Lista dos ultimos lancamentos (menu): quantos ja foram mostrados antes da pagina atual. Ausente = busca por termo. */
+  listOffset?: number;
+  /** Na lista dos ultimos: ha pagina seguinte. */
+  hasMore?: boolean;
 }
 
 /**
@@ -249,6 +293,8 @@ export interface TargetChangeDraft {
   };
   pendingField: 'targetChoice' | 'change' | null;
   reviewReason?: string;
+  /** Lista de metas do menu cortada em 10: as demais se acham pelo nome. */
+  hasMore?: boolean;
 }
 
 export type SessionDraft =
@@ -262,7 +308,10 @@ export type SessionDraft =
   | TransactionChangeDraft
   | TargetChangeDraft
   | CardRenameDraft
-  | CardCreateDraft;
+  | CardCreateDraft
+  | CategoryCreateDraft
+  | CategoryChangeDraft
+  | CardPickDraft;
 
 /** Dados numericos para a tela (centavos). Presentes em INFO e DONE. */
 export interface ReplyData {
@@ -287,6 +336,8 @@ export interface ReplyData {
     dueDay: number | null;
   };
   transactionId?: string;
+  /** Categoria criada, renomeada ou excluida por conversa (DONE). */
+  categoryId?: string;
   /** 9b-3: cartao renomeado (DONE). */
   cardId?: string;
   /** Consultas do item 3a (contrato secao 4). Centavos; datas 'AAAA-MM-DD'. */

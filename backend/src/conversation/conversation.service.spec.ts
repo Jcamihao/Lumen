@@ -111,6 +111,7 @@ function buildFakeDb() {
     financeCategory: {
       findMany: jest.fn(async ({ where }: { where: Row }) => clone(categories.filter((row) => matches(row, where)))),
       findFirst: jest.fn(async ({ where }: { where: Row }) => clone(categories.find((row) => matches(row, where)) ?? null)),
+      count: jest.fn(async ({ where }: { where: Row }) => categories.filter((row) => matches(row, where)).length),
     },
     transaction: {
       groupBy: jest.fn(async () => [
@@ -139,6 +140,7 @@ describe('ConversationService', () => {
   let goals: { list: jest.Mock; create: jest.Mock; contribute: jest.Mock };
   let envelopes: { list: jest.Mock; createForConversation: jest.Mock };
   let entitlements: { assertCanCreate: jest.Mock };
+  let financeCategories: { create: jest.Mock; update: jest.Mock; remove: jest.Mock };
   let assistant: { tryFallbackAnswer: jest.Mock };
   let service: ConversationService;
   let warn: jest.SpyInstance;
@@ -206,6 +208,23 @@ describe('ConversationService', () => {
     };
     envelopes = { list: jest.fn(async () => []), createForConversation: jest.fn(async () => ({})) };
     entitlements = { assertCanCreate: jest.fn(async () => undefined) };
+    financeCategories = {
+      create: jest.fn(async (userId: string, dto: Row) => {
+        const row = { id: `cat-new-${db.categories.length}`, userId, ...dto };
+        db.categories.push(row);
+        return row;
+      }),
+      update: jest.fn(async (userId: string, id: string, dto: Row) => {
+        const row = db.categories.find((candidate) => candidate.id === id && candidate.userId === userId);
+        Object.assign(row as Row, dto);
+        return row;
+      }),
+      remove: jest.fn(async (userId: string, id: string) => {
+        const index = db.categories.findIndex((candidate) => candidate.id === id && candidate.userId === userId);
+        db.categories.splice(index, 1);
+        return { success: true };
+      }),
+    };
     writesEnabled = true;
     telegramWritesEnabled = true;
     aiMode = 'off';
@@ -230,6 +249,7 @@ describe('ConversationService', () => {
       configService as unknown as Deps[9],
       assistant as unknown as Deps[10],
       { update: jest.fn() } as unknown as Deps[11],
+      financeCategories as unknown as Deps[12],
     );
   });
 
@@ -347,8 +367,185 @@ describe('ConversationService', () => {
       db.categories.push({ id: 'cat-mercadinho', userId: 'A', name: 'Mercadinho', type: 'EXPENSE' });
       const reply = await service.handleMessage(msg('A', '50 merc'));
       expect(reply.kind).toBe('ASK_FIELD');
-      expect(reply.text).toContain('1) Mercado');
-      expect(reply.text).toContain('2) Mercadinho');
+      expect(reply.text).toContain('1. Mercado');
+      expect(reply.text).toContain('2. Mercadinho');
+      expect(reply.text).toContain('Menu → Finanças → Categorias');
+    });
+  });
+
+  describe('categoria sem casar com nenhuma', () => {
+    it('lista todas as categorias do tipo (por nome) e o caminho para criar outra', async () => {
+      db.categories.push({ id: 'cat-transporte', userId: 'A', name: 'Transporte', type: 'EXPENSE' });
+      const reply = await service.handleMessage(msg('A', '50 xyzabc'));
+      expect(reply.kind).toBe('ASK_FIELD');
+      expect(reply.text).toContain('Qual a categoria?');
+      expect(reply.text).toContain('Mercado');
+      expect(reply.text).toMatch(/\d+\. Transporte/);
+      expect(reply.text).toContain('Menu → Finanças → Categorias');
+    });
+
+    it('o numero da lista escolhe a categoria', async () => {
+      db.categories.push({ id: 'cat-transporte', userId: 'A', name: 'Transporte', type: 'EXPENSE' });
+      const asked = await service.handleMessage(msg('A', '50 xyzabc'));
+      const number = /(\d+)\. Transporte/.exec(asked.text)?.[1] ?? '0';
+      const reply = await service.handleMessage(msg('A', number));
+      expect(reply.kind).toBe('CONFIRM_DRAFT');
+      expect(reply.draft?.category).toBe('Transporte');
+    });
+  });
+
+  describe('categorias por conversa (menu guiado, fatia 2)', () => {
+    it('"criar categoria" pergunta nome, depois tipo, confirma e grava pelo servico da API', async () => {
+      const ask = await service.handleMessage(msg('A', 'criar categoria'));
+      expect(ask.kind).toBe('ASK_FIELD');
+      expect(ask.text).toContain('Qual o nome da nova categoria?');
+      const type = await service.handleMessage(msg('A', 'Pets'));
+      expect(type.text).toContain('despesa ou de receita');
+      const confirm = await service.handleMessage(msg('A', '1'));
+      expect(confirm.kind).toBe('CONFIRM_DRAFT');
+      expect(confirm.text).toContain('Criar categoria: Pets (despesa)');
+      expect(financeCategories.create).not.toHaveBeenCalled();
+      const done = await service.handleMessage(msg('A', 'confirmar'));
+      expect(done.kind).toBe('DONE');
+      expect(done.text).toContain('Categoria criada: Pets (despesa)');
+      expect(financeCategories.create).toHaveBeenCalledWith('A', { name: 'Pets', color: expect.stringMatching(/^#[0-9a-f]{6}$/), type: 'EXPENSE' });
+    });
+
+    it('nome na frase pula a pergunta do nome; tipo na frente tambem pula o do tipo', async () => {
+      const withName = await service.handleMessage(msg('A', 'criar categoria Pets'));
+      expect(withName.text).toContain('despesa ou de receita');
+      await service.handleMessage(msg('A', 'cancelar'));
+      const both = await service.handleMessage(msg('A', 'criar categoria receita Freela'));
+      expect(both.kind).toBe('CONFIRM_DRAFT');
+      expect(both.text).toContain('Freela (receita)');
+    });
+
+    it('nome que ja existe no mesmo tipo e recusado sem gravar', async () => {
+      await service.handleMessage(msg('A', 'criar categoria Mercado'));
+      const reply = await service.handleMessage(msg('A', '1'));
+      expect(reply.text).toContain('Você já tem uma categoria com este nome.');
+      expect(reply.text).toContain('Qual o nome da nova categoria?');
+      expect(financeCategories.create).not.toHaveBeenCalled();
+    });
+
+    it('nome curto demais e recusado', async () => {
+      const reply = await service.handleMessage(msg('A', 'criar categoria a'));
+      expect(reply.text).toContain('pelo menos 2 letras');
+      expect(db.sessions).toHaveLength(0);
+    });
+
+    it('"editar categoria" lista so as do proprio usuario, escolhe pelo numero, pergunta o novo nome e grava so o nome', async () => {
+      const list = await service.handleMessage(msg('A', 'editar categoria'));
+      expect(list.text).toContain('Qual categoria? Responda com o número:');
+      expect(list.text).toMatch(/\d\. Mercado \(despesa\)/);
+      expect((db.sessions[0].draft as Row).candidateIds).not.toContain('cat-mercado-b');
+      const number = /(\d)\. Mercado \(despesa\)/.exec(list.text)?.[1] ?? '0';
+      const ask = await service.handleMessage(msg('A', number));
+      expect(ask.text).toContain('Qual o novo nome para "Mercado"?');
+      const confirm = await service.handleMessage(msg('A', 'Supermercado'));
+      expect(confirm.kind).toBe('CONFIRM_DRAFT');
+      expect(confirm.text).toContain('Renomear "Mercado" para "Supermercado"');
+      const done = await service.handleMessage(msg('A', 'confirmar'));
+      expect(done.text).toBe('Renomeei "Mercado" para "Supermercado".');
+      expect(financeCategories.update).toHaveBeenCalledWith('A', 'cat-mercado', { name: 'Supermercado' });
+    });
+
+    it('defesa: id de categoria de outro usuario no rascunho nunca e aceito na escolha', async () => {
+      await service.handleMessage(msg('A', 'editar categoria'));
+      (db.sessions[0].draft as Row).candidateIds = ['cat-mercado-b'];
+      const reply = await service.handleMessage(msg('A', '1'));
+      expect(reply.text).toContain('Não encontrei mais essa categoria.');
+      expect(financeCategories.update).not.toHaveBeenCalled();
+    });
+
+    it('editar: novo nome igual ao de outra categoria do mesmo tipo e recusado', async () => {
+      await service.handleMessage(msg('A', 'editar categoria Mercado'));
+      const reply = await service.handleMessage(msg('A', 'Alimentação'));
+      expect(reply.text).toContain('Você já tem uma categoria com este nome.');
+      expect(financeCategories.update).not.toHaveBeenCalled();
+    });
+
+    it('"excluir categoria": confirmar nao apaga, so a palavra apagar; o aviso diz que os lancamentos ficam sem categoria', async () => {
+      const list = await service.handleMessage(msg('A', 'excluir categoria'));
+      const number = /(\d)\. Mercado \(despesa\)/.exec(list.text)?.[1] ?? '0';
+      const confirm = await service.handleMessage(msg('A', number));
+      expect(confirm.text).toContain('Excluir a categoria "Mercado"?');
+      expect(confirm.text).toContain('ficam sem categoria');
+      const refused = await service.handleMessage(msg('A', 'confirmar'));
+      expect(refused.text).toContain('Para apagar, responda apagar.');
+      expect(financeCategories.remove).not.toHaveBeenCalled();
+      const done = await service.handleMessage(msg('A', 'apagar'));
+      expect(done.kind).toBe('DONE');
+      expect(financeCategories.remove).toHaveBeenCalledWith('A', 'cat-mercado');
+    });
+
+    it('nome na frase acha a categoria direto; nome desconhecido avisa', async () => {
+      const direct = await service.handleMessage(msg('A', 'apagar categoria Salário'));
+      expect(direct.text).toContain('Excluir a categoria "Salário"?');
+      await service.handleMessage(msg('A', 'cancelar'));
+      const none = await service.handleMessage(msg('A', 'excluir categoria xyzabc'));
+      expect(none.kind).toBe('INFO');
+      expect(db.sessions).toHaveLength(0);
+    });
+
+    it('falha 5xx ao gravar categoria: resultado desconhecido, nao restaura nem repete', async () => {
+      await service.handleMessage(msg('A', 'criar categoria receita Freela'));
+      financeCategories.create.mockRejectedValueOnce(new Error('queda no meio do commit'));
+      const reply = await service.handleMessage(msg('A', 'confirmar'));
+      expect(reply.kind).toBe('ERROR');
+      expect(reply.text).toContain('Confira a tela de Finanças');
+      expect(db.sessions).toHaveLength(0);
+      expect(financeCategories.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('categoria renomeada no app entre a escolha e a confirmacao: nada e aplicado', async () => {
+      await service.handleMessage(msg('A', 'excluir categoria Mercado'));
+      (db.categories.find((row) => row.id === 'cat-mercado') as Row).name = 'Supermercado';
+      const reply = await service.handleMessage(msg('A', 'apagar'));
+      expect(reply.text).toContain('mudou desde que você escolheu');
+      expect(financeCategories.remove).not.toHaveBeenCalled();
+    });
+
+    it('categoria compartilhada: o aviso de excluir cita a outra pessoa', async () => {
+      (db.categories.find((row) => row.id === 'cat-mercado') as Row).sharedGroupOwnerId = 'A';
+      const reply = await service.handleMessage(msg('A', 'excluir categoria Mercado'));
+      expect(reply.text).toContain('compartilhada');
+    });
+
+    it('nomes que parecem consulta ou tipo valem como resposta ao criar categoria', async () => {
+      await service.handleMessage(msg('A', 'criar categoria'));
+      const type = await service.handleMessage(msg('A', 'Metas'));
+      expect(type.text).toContain('despesa ou de receita');
+      const confirm = await service.handleMessage(msg('A', 'receita'));
+      expect(confirm.kind).toBe('CONFIRM_DRAFT');
+      expect(confirm.text).toContain('Metas (receita)');
+    });
+
+    it('mais de 15 categorias: lista corta em 15, avisa do app e a busca por nome ainda acha as do fim', async () => {
+      for (let index = 0; index < 18; index += 1) {
+        db.categories.push({ id: `cat-x${index}`, userId: 'A', name: `Zeta ${String(index).padStart(2, '0')}`, type: 'EXPENSE' });
+      }
+      const list = await service.handleMessage(msg('A', 'excluir categoria'));
+      expect(list.text.split('\n').filter((line) => /^\d+\. /.test(line))).toHaveLength(15);
+      expect(list.text).toContain('as outras ficam no app');
+      await service.handleMessage(msg('A', 'cancelar'));
+      const direct = await service.handleMessage(msg('A', 'excluir categoria Zeta 17'));
+      expect(direct.text).toContain('Excluir a categoria "Zeta 17"?');
+    });
+
+    it('usuario sem categorias recebe o caminho para criar', async () => {
+      const reply = await service.handleMessage(msg('C', 'editar categoria'));
+      expect(reply.text).toContain('Menu → Finanças → Categorias → Criar categoria');
+    });
+
+    it('"minhas categorias" lista as de despesa com o total do mes e o caminho do menu', async () => {
+      const reply = await service.handleMessage(msg('A', 'minhas categorias'));
+      expect(reply.kind).toBe('INFO');
+      const plain = reply.text.replace(/\s/g, ' ');
+      expect(plain).toContain('1. Mercado: R$ 300,00');
+      expect(plain).toContain('2. Alimentação: R$ 120,50');
+      expect(reply.text).not.toContain('Salário');
+      expect(reply.text).toContain('Menu → Finanças → Categorias');
     });
   });
 
@@ -1557,7 +1754,7 @@ describe('ConversationService', () => {
         setGoals([goalRow({ id: 'goal-1', title: 'Viagem' }), goalRow({ id: 'goal-2', title: 'Casa', currentAmount: 0 })]);
         const ask = await service.handleMessage(msg('A', 'guardar 200'));
         expect(ask.kind).toBe('ASK_FIELD');
-        expect(text(ask)).toContain('Qual meta? 1) Viagem 2) Casa.');
+        expect(text(ask)).toContain('Qual meta? Responda com o número:\n1. Viagem\n2. Casa');
         expect(ask.draft?.pendingField).toBe('goal');
 
         const draft = await service.handleMessage(msg('A', '2'));
@@ -1577,13 +1774,24 @@ describe('ConversationService', () => {
         expect(draft.draft?.rows).toContainEqual({ label: 'Valor', value: 'R$ 200,00' });
       });
 
+      it('"guardar" sozinho (botao do menu) lista as metas ativas; sem metas, mostra o caminho para criar', async () => {
+        setGoals([goalRow({ id: 'goal-1', title: 'Viagem' }), goalRow({ id: 'goal-2', title: 'Casa' })]);
+        const ask = await service.handleMessage(msg('A', 'guardar'));
+        expect(ask.kind).toBe('ASK_FIELD');
+        expect(text(ask)).toContain('Qual meta? Responda com o número:\n1. Viagem\n2. Casa');
+        await service.handleMessage(msg('A', 'cancelar'));
+        setGoals([]);
+        const none = await service.handleMessage(msg('A', 'guardar'));
+        expect(none.text).toContain('Menu → Metas → Criar meta');
+      });
+
       it('opção removida não desloca o número para outra meta', async () => {
         setGoals([goalRow({ id: 'goal-1', title: 'Viagem' }), goalRow({ id: 'goal-2', title: 'Casa' })]);
         await service.handleMessage(msg('A', 'guardar 200'));
         setGoals([goalRow({ id: 'goal-2', title: 'Casa' })]);
         const first = await service.handleMessage(msg('A', '1'));
         expect(first.kind).toBe('ASK_FIELD');
-        expect(first.text).toContain('1) indisponível 2) Casa');
+        expect(first.text).toContain('1. indisponível\n2. Casa');
         expect(goals.contribute).not.toHaveBeenCalled();
         const second = await service.handleMessage(msg('A', '2'));
         expect(second.kind).toBe('CONFIRM_DRAFT');
@@ -2314,14 +2522,15 @@ describe('ConversationService', () => {
       });
 
       it('leitura do ciclo falha com corpo vazio: também ERROR genérico, sem 500', async () => {
-        creditCycle.getCurrent = jest.fn(async () => {
+        await send('A', 'definir limite');
+        const failing = jest.fn(async () => {
           throw new Error('x');
         });
+        (creditCycle as Record<string, unknown>).getCycleForCard = failing;
+        const reply = await send('A', '1');
 
-        const reply = await send('A', 'definir limite');
-
-        expect(reply).toMatchObject({ kind: 'ERROR', state: 'IDLE', text: REPLIES.consultError });
-        expect(db.sessions).toHaveLength(0);
+        expect(reply).toMatchObject({ kind: 'ERROR', text: REPLIES.consultError });
+        expect(failing).toHaveBeenCalled();
       });
 
       it('confirmar grava com o ciclo do rascunho e devolve DONE com resultRef do teto', async () => {
@@ -2429,11 +2638,14 @@ describe('ConversationService', () => {
     });
 
     describe('valor do limite', () => {
-      it('corpo vazio pergunta o valor', async () => {
-        const reply = await send('A', 'definir limite do cartão');
+      it('corpo vazio com varios cartoes lista os cartoes; o numero escolhe e o motor pergunta o valor desse cartao', async () => {
+        const list = await send('A', 'definir limite do cartão');
+        expect(list).toMatchObject({ kind: 'ASK_FIELD', text: ['Qual cartão? Responda com o número:', '1. Nubank (padrão)', '2. Itaú'].join('\n') });
 
-        expect(reply).toMatchObject({ kind: 'ASK_FIELD', text: REPLIES.askCreditLimit });
-        expect(db.sessions[0].draft).toMatchObject({ ceilingCents: null, pendingField: 'amount' });
+        const reply = await send('A', '2');
+
+        expect(reply).toMatchObject({ kind: 'ASK_FIELD', text: 'Qual o limite para este ciclo do cartão Itaú?' });
+        expect(db.sessions[0].draft).toMatchObject({ kind: 'CREDIT_LIMIT', ceilingCents: null, pendingField: 'amount', cardId: 'cr-itau', cardName: 'Itaú' });
       });
 
       it('"definir limite 5000 Nubank" escolhe o cartao pelo nome e pega o valor (8d)', async () => {
@@ -2465,10 +2677,11 @@ describe('ConversationService', () => {
 
       it('resposta ao pedido de valor precisa ser só o valor', async () => {
         await send('A', 'definir limite do cartão');
+        await send('A', '1');
 
         expect(await send('A', '5000 Nubank')).toMatchObject({
           kind: 'ASK_FIELD',
-          text: `${REPLIES.amountOnly}\n${REPLIES.askCreditLimit}`,
+          text: `${REPLIES.amountOnly}\nQual o limite para este ciclo do cartão Nubank?`,
         });
         expect(await send('A', '5000')).toMatchObject({ kind: 'CONFIRM_DRAFT' });
       });

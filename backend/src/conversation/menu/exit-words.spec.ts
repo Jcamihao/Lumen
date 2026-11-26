@@ -1,4 +1,14 @@
-import { exitKindOf } from './exit-words';
+import { exitKindOf, isGreeting } from './exit-words';
+
+describe('saudacao', () => {
+  it.each(['oi','Oi!','oiieee','oiiii','ola','olá','olaaa','opa','Opa!','eae','e ai','salve','hey','hello','fala','bom dia','Bom dia!','boa tarde','boa noite','oi bom dia','oi tudo bem','bom dia tudo bem'])('"%s" e saudacao', (t) => {
+    expect(isGreeting(t)).toBe(true);
+  });
+
+  it.each(['','menu','saldo','oi gastei 20 no mercado','bom dia quanto tenho','ajuda','sim','ok','nao','quero ver o saldo','ola mundo cruel'])('"%s" nao e saudacao', (t) => {
+    expect(isGreeting(t)).toBe(false);
+  });
+});
 
 describe('saida universal', () => {
   it.each([

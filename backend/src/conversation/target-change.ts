@@ -13,6 +13,8 @@ import { TX_REPLIES, formatCents } from './transaction-change';
 
 /** Lista numerada igual à do 8a: até 5 candidatos (contrato 8b, secao 3). */
 export const TARGET_CHANGE_MAX_CANDIDATES = 5;
+/** Lista de metas ao editar/apagar sem termo (menu guiado): ate 10, mais recentes primeiro. */
+export const TARGET_LIST_MAX = 10;
 /** Limites de nome/título: os mesmos dos DTOs da tela (Goal.title e Envelope.name). */
 export const TARGET_NAME_MIN = GOAL_TITLE_MIN;
 export const TARGET_NAME_MAX = GOAL_TITLE_MAX;
@@ -21,6 +23,8 @@ export const TG_REPLIES = {
   askWhichGoal: 'Qual meta? Diga parte do nome. Ex.: apagar meta viagem',
   askWhichEnvelope: 'Qual reserva? Diga parte do nome. Ex.: apagar reserva gasolina',
   pickHeaderGoal: 'Qual meta? Responda com o número:',
+  goalListMore: 'Tem mais metas. Para achar outra, responda cancelar e diga parte do nome. Ex.: apagar meta viagem',
+  goalListEmpty: 'Você ainda não tem metas. Crie a primeira em Menu → Metas → Criar meta.',
   pickHeaderEnvelope: 'Qual reserva? Responda com o número:',
   askChangeGoal: 'O que mudar? título, valor 500, sem alvo ou prazo 20/12. Ex.: valor 800',
   askChangeEnvelope: 'O que mudar? nome padaria ou valor mensal 150. Ex.: valor mensal 150',

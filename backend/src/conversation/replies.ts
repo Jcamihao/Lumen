@@ -97,7 +97,7 @@ export const REPLIES = {
   descriptionTooLong: 'A descrição passa de 120 caracteres.',
   askAmount: 'Quanto foi? Responda só o valor. Ex.: 50 ou 32,90.',
   askDescription: 'Qual a descrição do lançamento? Ex.: mercado.',
-  askCategoryNoOptions: 'Qual a categoria? Responda o nome ou "sem categoria".',
+  askCategoryNoOptions: 'Qual a categoria? Você ainda não tem nenhuma. Responda "sem categoria" ou crie em Menu → Finanças → Categorias.',
   noCeiling: 'Não há limite definido neste ciclo do cartão.',
   futureDate: 'A data é futura. Confira antes de confirmar.',
   noCategoryMatch: (query: string) => `Não encontrei a categoria "${query}" neste mês.`,
@@ -107,7 +107,7 @@ export const REPLIES = {
   noDues: (days: number) => `Nada vence nos próximos ${days} dias.`,
   noGoals: 'Você ainda não tem metas ativas.',
   noEnvelopes: 'Você ainda não tem reservas.',
-  noActiveGoals: 'Você não tem metas ativas.',
+  noActiveGoals: 'Você não tem metas ativas. Crie a primeira em Menu → Metas → Criar meta.',
   askGoalTitle: 'Qual o nome da meta? Ex.: viagem.',
   askGoalTarget: 'Qual o valor-alvo? Responda o valor ou "sem alvo".',
   askContributionAmount: 'Quanto quer guardar? Responda só o valor. Ex.: 200 ou 32,90.',
@@ -151,6 +151,21 @@ export function monthSummaryText(incomeCents: number, expenseCents: number, bala
 export function spendTotalText(expenseCents: number): string {
   return `Gastos do mês: ${formatBrl(expenseCents)}.`;
 }
+
+export function categoriesListText(input: { rows: Array<{ name: string; cents: number }>; hidden: number; uncategorizedCents: number }): string {
+  const lines = input.rows.map((row, index) => `${index + 1}. ${row.name}: ${formatBrl(row.cents)}`);
+  return [
+    '🏷️ Seus gastos por categoria neste mês:',
+    ...lines,
+    ...(input.hidden > 0 ? [`... e mais ${input.hidden}.`] : []),
+    ...(input.uncategorizedCents > 0 ? [`Sem categoria: ${formatBrl(input.uncategorizedCents)}`] : []),
+    'Para ver uma só, diga: gastos com mercado.',
+    'Criar, editar ou excluir: Menu → Finanças → Categorias.',
+  ].join('\n');
+}
+
+export const CATEGORIES_EMPTY =
+  'Você ainda não tem categorias de despesa. Crie a primeira em Menu → Finanças → Categorias → Criar categoria.';
 
 export function categoryTotalText(name: string, cents: number): string {
   return `Gastos com ${name} no mês: ${formatBrl(cents)}.`;
@@ -235,8 +250,16 @@ export function doneText(
   });
 }
 
+export const CATEGORY_MENU_HINT = 'Quer outra? Em Menu → Finanças → Categorias você cria, edita ou exclui.';
+
+/** Pergunta de categoria: uma linha por opcao, como responder e onde criar categoria nova. */
 export function categoryOptionsText(names: string[]): string {
-  return `Qual a categoria? ${names.map((name, index) => `${index + 1}) ${name}`).join(' ')} ou "sem categoria".`;
+  return [
+    'Qual a categoria?',
+    ...names.map((name, index) => `${index + 1}. ${name}`),
+    'Responda o número ou o nome, ou "sem categoria".',
+    CATEGORY_MENU_HINT,
+  ].join('\n');
 }
 
 /** 'AAAA-MM-DD' -> 'dd/mm' (texto curto da consulta). */
@@ -407,7 +430,7 @@ export function contributionDraftText(input: {
 
 /** Pergunta de meta quando a escolha é ambígua (opções numeradas, como a categoria). */
 export function goalOptionsText(names: string[]): string {
-  return `Qual meta? ${names.map((name, index) => `${index + 1}) ${name}`).join(' ')}.`;
+  return ['Qual meta? Responda com o número:', ...names.map((name, index) => `${index + 1}. ${name}`)].join('\n');
 }
 
 /** 'AAAA-MM-DD' -> 'MM/AAAA' (mês da provisão, sempre UTC). */

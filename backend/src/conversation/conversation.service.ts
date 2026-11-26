@@ -56,7 +56,8 @@ import {
 import { normalize } from './parsers/normalize';
 import { MENU_ROOT, MENU_ROOT_ID } from './menu/menu.tree';
 import { getMenuNode } from './menu/menu.tree.queries';
-import { ExitKind, exitKindOf } from './menu/exit-words';
+import { ExitKind, exitKindOf, isGreeting } from './menu/exit-words';
+import { greetingFor } from './menu/greeting';
 import { MENU_REPLIES, menuText, menuViewOf, withDica } from './menu/menu.view';
 import { MenuActionInput, MenuNode } from './menu/menu.types';
 import type { TargetChangeDraft, TransactionChangeDraft } from './conversation.types';
@@ -78,6 +79,7 @@ import {
 import {
   TG_REPLIES,
   TARGET_CHANGE_MAX_CANDIDATES,
+  TARGET_LIST_MAX,
   type EnvelopeCandidate,
   type GoalCandidate,
   STATUS_PT,
@@ -92,6 +94,8 @@ import {
 } from './target-change';
 import {
   TX_CHANGE_MAX_CANDIDATES,
+  TX_LIST_PAGE_SIZE,
+  formatCompactLine,
   TX_CHANGE_WINDOW_DAYS,
   TX_DAY_MS,
   TX_REPLIES,
@@ -111,7 +115,10 @@ import { CARD_EXPENSE_REPLIES, findCardPhrase, removeTokenRange } from './card-e
 import { CARD_READ_REPLIES, cardListText, namedCardText } from './card-read';
 import {
   CARD_WRITE_REPLIES,
+  CARD_NAME_MAX,
+  CARD_NAME_MIN,
   cardCreateDraftText,
+  cardPickLine,
   cardCreatedText,
   cardRenameDraftText,
   cardRenamedText,
@@ -120,6 +127,21 @@ import {
   parseCardRename,
   parseClosingDayAnswer,
 } from './card-write';
+import { FinanceCategoriesService } from '../finance-categories/finance-categories.service';
+import {
+  CATEGORY_PICK_MAX,
+  CATEGORY_REPLIES,
+  CategoryWriteUncertainError,
+  categoryCreateDraftText,
+  categoryNameTaken,
+  categoryPickLine,
+  categoryTypeLabel,
+  checkCategoryName,
+  isCategoryChangeDraft,
+  nextCategoryColor,
+  parseCategoryCreateBody,
+  parseCategoryType,
+} from './category-write';
 import { MAX_ACTIVE_CARDS_PER_USER, CreditCardsService, CreditCardWriteUncertainError } from '../credit-cards/credit-cards.service';
 import { CARD_ARCHIVED_MESSAGE, CARD_NEEDS_CREDIT_MESSAGE, CARD_NOT_FOUND_MESSAGE } from '../credit-cards/card-link';
 import { parseEnvelopeBody } from './parsers/envelope.parser';
@@ -129,6 +151,8 @@ import {
   balanceText,
   cardText,
   categoryOptionsText,
+  categoriesListText,
+  CATEGORIES_EMPTY,
   categoryTotalText,
   contributionDoneText,
   contributionDraftText,
@@ -170,6 +194,9 @@ import {
   CreditLimitDraft,
   CardRenameDraft,
   CardCreateDraft,
+  CardPickDraft,
+  CategoryChangeDraft,
+  CategoryCreateDraft,
   DraftKind,
   DraftView,
   EnvelopeDraft,
@@ -190,6 +217,8 @@ const TTL_MS: Record<'COLLECTING_FIELDS' | 'AWAITING_CONFIRMATION', number> = {
 const CONFIRM_WORDS = new Set(['confirmar', 'sim', 'ok']);
 const CONNECTORS = new Set(['na', 'no', 'em', 'de', 'do', 'da', 'com', 'pra', 'para']);
 const MAX_CATEGORY_OPTIONS = 5;
+/** Lista completa de categorias oferecida quando a descricao nao casa com nenhuma. */
+const MAX_CATEGORY_LIST = 10;
 /** Reserva criada pelo bot: cor da primeira opção do formulário; sem ícone (contrato 3b2, seção 4). */
 const ENVELOPE_COLOR = '#f18f01';
 const ENVELOPE_NAME_MIN = 2;
@@ -213,6 +242,7 @@ const READ_INTENTS: Array<ReadIntent | 'credit_card'> = [
   'envelopes',
   'credit_card',
   'list_cards',
+  'categories',
 ];
 /** Janela de "o que vence" em dias, a partir de hoje no fuso do usuário (contrato D4). */
 const UPCOMING_WINDOW_DAYS = 30;
@@ -220,6 +250,8 @@ const UPCOMING_WINDOW_DAYS = 30;
 const UPCOMING_MAX_ITEMS = 8;
 /** Limite de linhas nas demais listas (contrato D5). */
 const LIST_MAX_ITEMS = 5;
+/** Linhas na lista de categorias com totais do mes. */
+const CATEGORIES_LIST_MAX = 15;
 /** Tamanho máximo de descrição/título em uma linha da resposta (contrato secao 5). */
 const LINE_MAX_CHARS = 60;
 const MAX_GOAL_PERCENT = 100;
@@ -349,6 +381,7 @@ export class ConversationService {
     private readonly configService: ConfigService,
     private readonly assistant: AssistantService,
     private readonly creditCards: CreditCardsService,
+    private readonly financeCategories: FinanceCategoriesService,
   ) {}
 
   /** Mensagem digitada (canal APP ou WhatsApp). Ordem de decisao: contrato secao 6 e motor. */
@@ -469,7 +502,8 @@ export class ConversationService {
   private async openMenuNode(input: MenuActionInput, session: SessionRow | null, node: MenuNode): Promise<ConversationReply> {
     const intent = node.id === MENU_ROOT_ID ? 'menu_open' : `menu_nav:${node.id}`;
     await this.recordEventRaw({ userId: input.userId, channel: input.channel, messageId: input.messageId, intent, outcome: ConversationOutcome.RECOGNIZED });
-    return { ...this.reply('MENU', this.stateView(session), menuText(node)), menu: menuViewOf(node) };
+    const greeting = node.id === MENU_ROOT_ID ? await this.greetingOf(input.userId, input.receivedAt) : undefined;
+    return { ...this.reply('MENU', this.stateView(session), menuText(node, greeting)), menu: menuViewOf(node, greeting) };
   }
 
   /** Folha de instrucao: a frase pronta para digitar. Nao grava nada. */
@@ -480,20 +514,22 @@ export class ConversationService {
 
   /** Folha de frase: executa o mesmo caminho de handleMessage. O evento e o da propria acao (um por messageId). */
   private async runMenuPhrase(input: MenuActionInput, phrase: string, example: string | undefined): Promise<ConversationReply> {
-    const reply = await this.handleMessage({ userId: input.userId, channel: input.channel, messageId: input.messageId, text: phrase, receivedAt: input.receivedAt });
+    const reply = await this.handleMessage({ userId: input.userId, channel: input.channel, messageId: input.messageId, text: phrase, receivedAt: input.receivedAt, viaMenu: true });
     return reply.kind === 'DUPLICATE' ? reply : { ...reply, text: withDica(reply.text, example) };
   }
 
   /** Saida com rascunho aberto: cancela (texto de sempre) e mostra o menu inicial. */
-  private async leaveDraft(userId: string, session: SessionRow, messageId: string): Promise<ConversationReply> {
+  private async leaveDraft(userId: string, session: SessionRow, messageId: string, receivedAt: Date): Promise<ConversationReply> {
     const cancelled = await this.cancelSession(userId, session, messageId);
-    return { ...cancelled, text: `${cancelled.text}\n\n${menuText(MENU_ROOT)}`, menu: { ...menuViewOf(MENU_ROOT), lead: cancelled.text } };
+    const greeting = await this.greetingOf(userId, receivedAt);
+    return { ...cancelled, text: `${cancelled.text}\n\n${menuText(MENU_ROOT, greeting)}`, menu: { ...menuViewOf(MENU_ROOT, greeting), lead: cancelled.text } };
   }
 
   /** Saida sem rascunho: "voltar"/"menu" mostram o menu; cancelar sem nada aberto avisa antes. */
   private async leaveWithoutDraft(input: ConversationInput, kind: ExitKind): Promise<ConversationReply> {
     await this.recordEvent(input, 'menu_open', ConversationOutcome.RECOGNIZED);
-    const menu = { ...this.reply('MENU', 'IDLE', menuText(MENU_ROOT)), menu: menuViewOf(MENU_ROOT) };
+    const greeting = await this.greetingOf(input.userId, input.receivedAt);
+    const menu = { ...this.reply('MENU', 'IDLE', menuText(MENU_ROOT, greeting)), menu: menuViewOf(MENU_ROOT, greeting) };
     return kind === 'CANCEL'
       ? { ...menu, text: `${MENU_REPLIES.nothingToCancel}\n\n${menu.text}`, menu: { ...menu.menu, lead: MENU_REPLIES.nothingToCancel } }
       : menu;
@@ -506,6 +542,9 @@ export class ConversationService {
     const exit = exitKindOf(text);
     if (exit) {
       return this.leaveWithoutDraft(input, exit);
+    }
+    if (isGreeting(text)) {
+      return this.leaveWithoutDraft(input, 'MENU');
     }
     const intent = await this.resolveLooseCardRead(input.userId, text.length > 0 ? matchIntent(text) : null);
 
@@ -526,16 +565,27 @@ export class ConversationService {
     if (intent.intent === 'create_envelope') {
       return this.startEnvelopeDraft({ input, body: intent.body });
     }
+    if (intent.intent === 'set_credit_limit' && intent.body.trim() === '') {
+      return this.startCardPick({ input, purpose: 'SET_LIMIT' });
+    }
     if (intent.intent === 'set_credit_limit') {
       return this.startCreditLimitDraft({ input, body: intent.body });
     }
     if (intent.intent === 'clear_credit_limit') {
+      if (intent.body.trim() === '') return this.startCardPick({ input, purpose: 'CLEAR_LIMIT' });
       return this.startCreditLimitClearDraft({ input, body: intent.body });
     }
     if (intent.intent === 'create_card') {
       return this.startCardCreateDraft({ input, body: intent.body });
     }
+    if (intent.intent === 'create_category') {
+      return this.startCategoryCreateDraft({ input, body: intent.body });
+    }
+    if (intent.intent === 'edit_category' || intent.intent === 'delete_category') {
+      return this.startCategoryChangeDraft({ input, action: intent.intent === 'delete_category' ? 'DELETE' : 'EDIT', body: intent.body });
+    }
     if (intent.intent === 'rename_card') {
+      if (intent.body.trim() === '') return this.startCardPick({ input, purpose: 'RENAME' });
       return this.startCardRenameDraft({ input, body: intent.body });
     }
     if (intent.intent === 'create_recurring') {
@@ -960,20 +1010,58 @@ export class ConversationService {
       }
     }
 
+    const prepared = await this.prepareClearLimitDraft(userId, card);
+    if ('errorText' in prepared) {
+      await this.recordEvent(input, 'clear_credit_limit', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', prepared.errorText);
+    }
+    if ('alreadyClear' in prepared) {
+      await this.recordEvent(input, 'clear_credit_limit', ConversationOutcome.RECOGNIZED);
+      return this.reply('INFO', 'IDLE', CL_REPLIES.alreadyClear);
+    }
+    return this.saveNewDraft({ input, intent: 'clear_credit_limit', draft: prepared.draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  /** Cartao escolhido para definir o teto: le o ciclo atual e monta o rascunho que pergunta o valor. Nao grava nada. */
+  private async prepareSetLimitDraft(userId: string, card: { id: string; name: string }): Promise<{ draft: CreditLimitDraft } | { errorText: string }> {
+    let cycle: Awaited<ReturnType<CreditCycleService['getCurrent']>>;
+    try {
+      cycle = await this.creditCycle.getCycleForCard(userId, card.id);
+    } catch (error) {
+      this.logger.warn(`Leitura falhou: intent=set_credit_limit erro=${error instanceof Error ? error.name : typeof error}`);
+      return { errorText: REPLIES.consultError };
+    }
+    return {
+      draft: {
+        kind: 'CREDIT_LIMIT',
+        action: 'set',
+        ceilingCents: null,
+        cardId: card.id,
+        cardName: card.name,
+        cycleStart: toYmd(new Date(cycle.cycleStart)),
+        cycleEnd: toYmd(new Date(cycle.cycleEnd)),
+        previousCeilingCents: cycle.ceiling === null ? null : toCents(cycle.ceiling),
+        countAllPayments: cycle.countAllPayments,
+        pendingField: 'amount',
+      },
+    };
+  }
+
+  /** Cartao escolhido: le o ciclo atual e monta o rascunho de limpar o teto (ou diz que nao ha teto). Nao grava nada. */
+  private async prepareClearLimitDraft(
+    userId: string,
+    card: { id: string; name: string },
+  ): Promise<{ draft: CreditLimitDraft } | { errorText: string } | { alreadyClear: true }> {
     let cycle: Awaited<ReturnType<CreditCycleService['getCurrent']>>;
     try {
       cycle = await this.creditCycle.getCycleForCard(userId, card.id);
     } catch (error) {
       this.logger.warn(`Leitura falhou: intent=clear_credit_limit erro=${error instanceof Error ? error.name : typeof error}`);
-      await this.recordEvent(input, 'clear_credit_limit', ConversationOutcome.ERROR);
-      return this.reply('ERROR', 'IDLE', REPLIES.consultError);
+      return { errorText: REPLIES.consultError };
     }
-
     if (cycle.ceiling === null) {
-      await this.recordEvent(input, 'clear_credit_limit', ConversationOutcome.RECOGNIZED);
-      return this.reply('INFO', 'IDLE', CL_REPLIES.alreadyClear);
+      return { alreadyClear: true };
     }
-
     const draft: CreditLimitDraft = {
       kind: 'CREDIT_LIMIT',
       action: 'clear',
@@ -986,7 +1074,301 @@ export class ConversationService {
       countAllPayments: cycle.countAllPayments,
       pendingField: null,
     };
-    return this.saveNewDraft({ input, intent: 'clear_credit_limit', draft, today: await this.todayYmd(userId, receivedAt) });
+    return { draft };
+  }
+
+  /** Criar categoria: nome e tipo (despesa ou receita); o que faltar e perguntado. Cor automatica, sem icone nem orcamento. */
+  private async startCategoryCreateDraft(args: { input: ConversationInput; body: string }): Promise<ConversationReply> {
+    const { input, body } = args;
+    const { userId, receivedAt } = input;
+    const parsed = parseCategoryCreateBody(body);
+    let name: string | null = null;
+    if (parsed.name !== null) {
+      const checked = checkCategoryName(parsed.name);
+      if (checked.ok === false) {
+        await this.recordEvent(input, 'create_category', ConversationOutcome.ERROR);
+        return this.reply('ERROR', 'IDLE', checked.text);
+      }
+      name = checked.name;
+    }
+    if (name !== null && parsed.type !== null && (await this.isCategoryNameTaken(userId, name, parsed.type))) {
+      await this.recordEvent(input, 'create_category', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', CATEGORY_REPLIES.nameTaken);
+    }
+    const draft: CategoryCreateDraft = {
+      kind: 'CATEGORY_CREATE',
+      name,
+      type: parsed.type,
+      pendingField: name === null ? 'name' : parsed.type === null ? 'type' : null,
+    };
+    return this.saveNewDraft({ input, intent: 'create_category', draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  private async isCategoryNameTaken(userId: string, name: string, type: string, exceptId = ''): Promise<boolean> {
+    const own = await this.prisma.financeCategory.findMany({ where: { userId, type: type as TransactionType }, select: { id: true, name: true, type: true } });
+    return categoryNameTaken(own, name, type, exceptId);
+  }
+
+  private async answerCategoryCreate(userId: string, draft: CategoryCreateDraft, value: string): Promise<PendingAnswer> {
+    if (draft.pendingField === 'name') {
+      const checked = checkCategoryName(value);
+      if (checked.ok === false) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: CATEGORY_REPLIES.askName, prefix: checked.text };
+      }
+      draft.name = checked.name;
+      draft.pendingField = draft.type === null ? 'type' : null;
+    } else if (draft.pendingField === 'type') {
+      const type = parseCategoryType(value);
+      if (type === null) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: CATEGORY_REPLIES.askType };
+      }
+      draft.type = type;
+      draft.pendingField = null;
+    } else {
+      return { status: 'ERROR', text: REPLIES.collectingReminder };
+    }
+    if (draft.name !== null && draft.type !== null && (await this.isCategoryNameTaken(userId, draft.name, draft.type))) {
+      draft.name = null;
+      draft.pendingField = 'name';
+      return { status: 'ASK', outcome: ConversationOutcome.ERROR, question: CATEGORY_REPLIES.askName, prefix: CATEGORY_REPLIES.nameTaken };
+    }
+    return { status: 'UPDATED' };
+  }
+
+  /** Criar categoria: o FinanceCategoriesService grava (nome unico por tipo sob o indice); o texto sai do recibo. */
+  private async applyCategoryCreate(userId: string, draft: CategoryCreateDraft): Promise<AppliedAction> {
+    if (draft.name === null || draft.type === null) {
+      throw new Error('rascunho de criar categoria incompleto');
+    }
+    const count = await this.prisma.financeCategory.count({ where: { userId } });
+    const { name, type } = draft;
+    const receipt = await this.guardCategoryWrite(() => this.financeCategories.create(userId, { name, color: nextCategoryColor(count), type }));
+    return {
+      text: `Categoria criada: ${receipt.name} (${categoryTypeLabel(draft.type)}). Ela já aparece quando você lançar um gasto ou receita. 🎉`,
+      data: { categoryId: receipt.id },
+      resultRef: receipt.id,
+    };
+  }
+
+  /** 4xx do servico = recusa provada (nada gravado); qualquer outra falha pode ter gravado: resultado desconhecido, nao repete. */
+  private async guardCategoryWrite<T>(write: () => Promise<T>): Promise<T> {
+    try {
+      return await write();
+    } catch (error) {
+      if (error instanceof HttpException && error.getStatus() < 500) throw error;
+      throw new CategoryWriteUncertainError();
+    }
+  }
+
+  /** Editar (so o nome) ou excluir categoria propria: lista numerada, escolha pelo numero, confirmacao. */
+  private async startCategoryChangeDraft(args: { input: ConversationInput; action: 'EDIT' | 'DELETE'; body: string }): Promise<ConversationReply> {
+    const { input, action, body } = args;
+    const { userId, receivedAt } = input;
+    const intent = action === 'DELETE' ? 'delete_category' : 'edit_category';
+    const own = await this.ownCategories(userId);
+    if (own.length === 0) {
+      await this.recordEvent(input, intent, ConversationOutcome.RECOGNIZED);
+      return this.reply('INFO', 'IDLE', CATEGORY_REPLIES.none);
+    }
+    let pool = own;
+    if (body.length > 0) {
+      const matchedIds = new Set(matchCategory(body, own).map((category) => category.id));
+      pool = own.filter((category) => matchedIds.has(category.id));
+      if (pool.length === 0) {
+        await this.recordEvent(input, intent, ConversationOutcome.RECOGNIZED);
+        return this.reply('INFO', 'IDLE', REPLIES.noCategoryMatch(body));
+      }
+    }
+    const draft: CategoryChangeDraft = {
+      kind: 'CATEGORY_CHANGE',
+      action,
+      candidateIds: pool.slice(0, CATEGORY_PICK_MAX).map((category) => category.id),
+      hasMore: pool.length > CATEGORY_PICK_MAX,
+      targetId: null,
+      targetName: null,
+      newName: null,
+      pendingField: 'category',
+    };
+    if (body.length > 0 && pool.length === 1) {
+      draft.targetId = pool[0].id;
+      draft.targetName = pool[0].name;
+      draft.candidateIds = [];
+      draft.pendingField = action === 'EDIT' ? 'name' : null;
+    }
+    return this.saveNewDraft({ input, intent, draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  /** Categorias do proprio usuario (nunca as do parceiro), despesas antes de receitas, por nome. */
+  private async ownCategories(userId: string): Promise<Array<{ id: string; name: string; type: string }>> {
+    const rows = await this.prisma.financeCategory.findMany({
+      where: { userId },
+      select: { id: true, name: true, type: true },
+      orderBy: { name: 'asc' },
+    });
+    // Despesas antes de receitas (o resto segue por nome).
+    return [...rows].sort((a, b) => Number(a.type === 'INCOME') - Number(b.type === 'INCOME'));
+  }
+
+  private async categoryPickText(userId: string, draft: CategoryChangeDraft): Promise<string> {
+    const rows = await this.prisma.financeCategory.findMany({ where: { userId, id: { in: draft.candidateIds } }, select: { id: true, name: true, type: true } });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const lines = draft.candidateIds.flatMap((id, index) => {
+      const row = byId.get(id);
+      return row ? [categoryPickLine(index, row)] : [];
+    });
+    return [CATEGORY_REPLIES.pickHeader, ...lines, ...(draft.hasMore ? [CATEGORY_REPLIES.pickMoreInApp] : [])].join('\n');
+  }
+
+  private async answerCategoryChange(userId: string, draft: CategoryChangeDraft, value: string): Promise<PendingAnswer> {
+    if (draft.pendingField === 'category') {
+      const chosen = /^\d{1,2}$/.test(value) ? draft.candidateIds[Number(value) - 1] : undefined;
+      if (chosen === undefined) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: await this.categoryPickText(userId, draft) };
+      }
+      const row = await this.prisma.financeCategory.findFirst({ where: { id: chosen, userId }, select: { id: true, name: true } });
+      if (row === null) {
+        return { status: 'ERROR', text: CATEGORY_REPLIES.gone };
+      }
+      draft.targetId = row.id;
+      draft.targetName = row.name;
+      draft.candidateIds = [];
+      delete draft.hasMore;
+      draft.pendingField = draft.action === 'EDIT' ? 'name' : null;
+      return { status: 'UPDATED' };
+    }
+    if (draft.pendingField === 'name' && draft.targetId !== null) {
+      const target = await this.prisma.financeCategory.findFirst({ where: { id: draft.targetId, userId }, select: { id: true, name: true, type: true } });
+      if (target === null) {
+        return { status: 'ERROR', text: CATEGORY_REPLIES.gone };
+      }
+      const checked = checkCategoryName(value);
+      if (checked.ok === false) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: CATEGORY_REPLIES.askNewName(target.name), prefix: checked.text };
+      }
+      if (normalize(checked.name) === normalize(target.name) && checked.name === target.name) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: CATEGORY_REPLIES.askNewName(target.name), prefix: CATEGORY_REPLIES.sameName };
+      }
+      if (await this.isCategoryNameTaken(userId, checked.name, target.type, target.id)) {
+        return { status: 'ASK', outcome: ConversationOutcome.ERROR, question: CATEGORY_REPLIES.askNewName(target.name), prefix: CATEGORY_REPLIES.nameTaken };
+      }
+      draft.newName = checked.name;
+      draft.pendingField = null;
+      return { status: 'UPDATED' };
+    }
+    return { status: 'ERROR', text: REPLIES.collectingReminder };
+  }
+
+  private async categoryChangeDraftText(userId: string, draft: CategoryChangeDraft): Promise<string> {
+    const target = draft.targetId === null ? null : await this.prisma.financeCategory.findFirst({ where: { id: draft.targetId, userId }, select: { name: true, sharedGroupOwnerId: true } });
+    const name = target?.name ?? 'a escolher';
+    if (draft.action === 'DELETE') {
+      const shared = target?.sharedGroupOwnerId ? ` ${CATEGORY_REPLIES.sharedWarning}` : '';
+      return `Excluir a categoria "${name}"? ${CATEGORY_REPLIES.deleteWarning}${shared}`;
+    }
+    return `Renomear "${name}" para "${draft.newName ?? 'a informar'}". Responda confirmar para salvar ou cancelar.`;
+  }
+
+  /** Aplica na confirmacao: relê a categoria com id + userId; sumida = recusa sem gravar. */
+  private async applyCategoryChange(userId: string, draft: CategoryChangeDraft): Promise<AppliedAction> {
+    const target = draft.targetId === null ? null : await this.prisma.financeCategory.findFirst({ where: { id: draft.targetId, userId }, select: { id: true, name: true } });
+    if (target === null) {
+      throw new NotFoundException(CATEGORY_REPLIES.gone);
+    }
+    if (draft.targetName !== null && target.name !== draft.targetName) {
+      throw new ConflictException(CATEGORY_REPLIES.changedMeanwhile);
+    }
+    if (draft.action === 'DELETE') {
+      await this.guardCategoryWrite(() => this.financeCategories.remove(userId, target.id));
+      return { text: `Excluí a categoria "${target.name}". Os lançamentos dela ficaram sem categoria.`, data: { categoryId: target.id }, resultRef: target.id };
+    }
+    if (draft.newName === null) {
+      throw new Error('rascunho de editar categoria sem nome novo');
+    }
+    const newName = draft.newName;
+    await this.guardCategoryWrite(() => this.financeCategories.update(userId, target.id, { name: newName }));
+    return { text: `Renomeei "${target.name}" para "${draft.newName}".`, data: { categoryId: target.id }, resultRef: target.id };
+  }
+
+  /** Botao do menu (limpar teto ou renomear) sem nome na frase: um cartao so segue direto; varios, lista numerada. */
+  private async startCardPick(args: { input: ConversationInput; purpose: 'CLEAR_LIMIT' | 'SET_LIMIT' | 'RENAME' }): Promise<ConversationReply> {
+    const { input, purpose } = args;
+    const { userId, receivedAt } = input;
+    const intent = purpose === 'RENAME' ? 'rename_card' : purpose === 'SET_LIMIT' ? 'set_credit_limit' : 'clear_credit_limit';
+    const cards = await this.activeCards(userId);
+    if (cards.length === 0) {
+      await this.recordEvent(input, intent, ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', CARD_READ_REPLIES.none);
+    }
+    if (cards.length === 1 && purpose === 'CLEAR_LIMIT') {
+      return this.startCreditLimitClearDraft({ input, body: cards[0].name });
+    }
+    if (cards.length === 1 && purpose === 'SET_LIMIT') {
+      return this.startCreditLimitDraft({ input, body: '' });
+    }
+    const single = cards.length === 1 ? cards[0] : null;
+    const draft: CardPickDraft = {
+      kind: 'CARD_PICK',
+      purpose,
+      cardIds: single ? [] : cards.map((card) => card.id),
+      cardId: single?.id ?? null,
+      cardName: single?.name ?? null,
+      pendingField: single ? 'name' : 'card',
+    };
+    return this.saveNewDraft({ input, intent, draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  private async cardPickText(userId: string, draft: CardPickDraft): Promise<string> {
+    const active = await this.activeCards(userId);
+    const lines = draft.cardIds.flatMap((id, index) => {
+      const card = active.find((candidate) => candidate.id === id);
+      return card ? [cardPickLine(index, card)] : [];
+    });
+    return [CARD_WRITE_REPLIES.pickHeader, ...lines].join('\n');
+  }
+
+  /** Escolha do cartao (numero) e, para renomear, o novo nome; ao final o rascunho vira o de sempre, no mesmo lugar. */
+  private async answerCardPick(userId: string, draft: CardPickDraft, value: string): Promise<PendingAnswer> {
+    const active = await this.activeCards(userId);
+    if (draft.pendingField === 'card') {
+      const chosenId = /^\d{1,2}$/.test(value) ? draft.cardIds[Number(value) - 1] : undefined;
+      if (chosenId === undefined) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: await this.cardPickText(userId, draft) };
+      }
+      const card = active.find((candidate) => candidate.id === chosenId);
+      if (!card) {
+        return { status: 'ERROR', text: CARD_WRITE_REPLIES.cardGone };
+      }
+      if (draft.purpose === 'RENAME') {
+        draft.cardId = card.id;
+        draft.cardName = card.name;
+        draft.cardIds = [];
+        draft.pendingField = 'name';
+        return { status: 'UPDATED' };
+      }
+      if (draft.purpose === 'SET_LIMIT') {
+        const setting = await this.prepareSetLimitDraft(userId, card);
+        if ('errorText' in setting) return { status: 'ERROR', text: setting.errorText };
+        replaceDraft(draft, setting.draft);
+        return { status: 'UPDATED' };
+      }
+      const prepared = await this.prepareClearLimitDraft(userId, card);
+      if ('errorText' in prepared) return { status: 'ERROR', text: prepared.errorText };
+      if ('alreadyClear' in prepared) return { status: 'ERROR', text: CARD_WRITE_REPLIES.alreadyClear };
+      replaceDraft(draft, prepared.draft);
+      return { status: 'UPDATED' };
+    }
+    const card = active.find((candidate) => candidate.id === draft.cardId);
+    if (!card) {
+      return { status: 'ERROR', text: CARD_WRITE_REPLIES.cardGone };
+    }
+    const newName = value.trim().replace(/\s+/g, ' ');
+    const ask = (prefix: string): PendingAnswer => ({ status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: CARD_WRITE_REPLIES.askNewName(card.name), prefix });
+    if (newName.length < CARD_NAME_MIN || newName.length > CARD_NAME_MAX) return ask(CARD_WRITE_REPLIES.nameLength);
+    if (card.name === newName) return ask(CARD_WRITE_REPLIES.sameName);
+    if (nameTakenBy(active, newName, card.id)) return ask(CARD_WRITE_REPLIES.nameTaken);
+    const renamed: CardRenameDraft = { kind: 'CARD_RENAME', cardId: card.id, currentName: card.name, newName, pendingField: null };
+    replaceDraft(draft, renamed);
+    return { status: 'UPDATED' };
   }
 
   /**
@@ -997,15 +1379,20 @@ export class ConversationService {
     const { input, body } = args;
     const { userId, receivedAt } = input;
 
-    const parsed = parseCardCreate(body);
-    if (parsed.ok === false) {
-      await this.recordEvent(input, 'create_card', ConversationOutcome.ERROR);
-      return this.reply('ERROR', 'IDLE', parsed.text);
-    }
     const cards = await this.activeCards(userId);
     if (cards.length >= MAX_ACTIVE_CARDS_PER_USER) {
       await this.recordEvent(input, 'create_card', ConversationOutcome.ERROR);
       return this.reply('ERROR', 'IDLE', CARD_WRITE_REPLIES.createLimit(MAX_ACTIVE_CARDS_PER_USER));
+    }
+    if (body.trim() === '') {
+      // Botao do menu: sem nome na frase, o motor pergunta o nome e depois o dia de fechamento.
+      const empty: CardCreateDraft = { kind: 'CARD_CREATE', name: null, closingDay: null, dueDay: null, pendingField: 'name' };
+      return this.saveNewDraft({ input, intent: 'create_card', draft: empty, today: await this.todayYmd(userId, receivedAt) });
+    }
+    const parsed = parseCardCreate(body);
+    if (parsed.ok === false) {
+      await this.recordEvent(input, 'create_card', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', parsed.text);
     }
     if (nameTakenBy(cards, parsed.name, '')) {
       await this.recordEvent(input, 'create_card', ConversationOutcome.ERROR);
@@ -1023,16 +1410,17 @@ export class ConversationService {
 
   /** Criar cartao: o CreditCardsService confere teto e nome unico sob o lock; o texto sai do recibo. */
   private async applyCardCreate(userId: string, draft: CardCreateDraft): Promise<AppliedAction> {
-    if (draft.closingDay === null) {
-      throw new Error('rascunho de criar cartao sem dia de fechamento');
+    if (draft.closingDay === null || draft.name === null) {
+      throw new Error('rascunho de criar cartao incompleto');
     }
+    const name = draft.name;
     // Confere de novo o nome parecido antes de gravar (a API so barra o igual sem caixa). Fora do lock; a janela e minima.
     const cards = await this.activeCards(userId);
-    if (nameTakenBy(cards, draft.name, '')) {
+    if (nameTakenBy(cards, name, '')) {
       throw new ConflictException('Ja existe um cartao com este nome.');
     }
     const receipt = await this.creditCards.create(userId, {
-      name: draft.name,
+      name,
       closingDay: draft.closingDay,
       dueDay: draft.dueDay,
     });
@@ -1045,14 +1433,34 @@ export class ConversationService {
   }
 
   /** Criar cartao: a unica pergunta e o dia de fechamento (1 a 31); resposta invalida repete a pergunta sem sair do rascunho. */
-  private answerCardCreate(draft: CardCreateDraft, value: string): PendingAnswer {
+  private async answerCardCreate(userId: string, draft: CardCreateDraft, value: string): Promise<PendingAnswer> {
+    if (draft.pendingField === 'name') {
+      // A resposta aceita a frase de sempre ("Nubank fecha dia 10"): nome e dias saem dela, nada vira nome por engano.
+      const parsedName = parseCardCreate(value);
+      if (parsedName.ok === false) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: CARD_WRITE_REPLIES.askName, prefix: parsedName.text };
+      }
+      const name = parsedName.name.replace(/\s+/g, ' ');
+      const cards = await this.activeCards(userId);
+      if (cards.length >= MAX_ACTIVE_CARDS_PER_USER) {
+        return { status: 'ERROR', text: CARD_WRITE_REPLIES.createLimit(MAX_ACTIVE_CARDS_PER_USER) };
+      }
+      if (nameTakenBy(cards, name, '')) {
+        return { status: 'ASK', outcome: ConversationOutcome.ERROR, question: CARD_WRITE_REPLIES.askName, prefix: CARD_WRITE_REPLIES.createNameTaken };
+      }
+      draft.name = name;
+      draft.closingDay = parsedName.closingDay;
+      draft.dueDay = parsedName.dueDay;
+      draft.pendingField = draft.closingDay === null ? 'closingDay' : null;
+      return { status: 'UPDATED' };
+    }
     if (draft.pendingField === 'closingDay') {
       const day = parseClosingDayAnswer(value);
       if (day === null) {
         return {
           status: 'ASK',
           outcome: ConversationOutcome.UNRECOGNIZED,
-          question: CARD_WRITE_REPLIES.askClosingDay(draft.name),
+          question: CARD_WRITE_REPLIES.askClosingDay(draft.name ?? ''),
           prefix: CARD_WRITE_REPLIES.closingDayInvalid,
         };
       }
@@ -1271,6 +1679,15 @@ export class ConversationService {
         return this.reply('INFO', 'IDLE', found.status === 'NONE' ? TX_REPLIES.notFound : TX_REPLIES.onlyNonEditable);
       }
       draft.candidateIds = found.ids;
+    } else {
+      const page = await this.recentTransactionsPage(input.userId, 0);
+      if (page.ids.length === 0) {
+        await this.recordEvent(input, intent, ConversationOutcome.RECOGNIZED);
+        return this.reply('INFO', 'IDLE', TX_REPLIES.emptyList);
+      }
+      draft.candidateIds = page.ids;
+      draft.listOffset = 0;
+      draft.hasMore = page.hasMore;
     }
     const today = await this.todayYmd(input.userId, input.receivedAt);
     return this.saveNewDraft({ input, intent, draft, today });
@@ -1302,6 +1719,25 @@ export class ConversationService {
     return { status: 'FOUND', ids: editable.map((candidate) => candidate.id) };
   }
 
+  /** Pagina dos lancamentos mais recentes que se pode mudar por conversa (so manuais, sem transferencia). */
+  private async recentTransactionsPage(userId: string, offset: number): Promise<{ ids: string[]; hasMore: boolean }> {
+    const rows = await this.prisma.transaction.findMany({
+      where: {
+        userId,
+        type: { not: TransactionType.TRANSFER },
+        recurringTransactionId: null,
+        installmentPurchaseId: null,
+        linkedGoalId: null,
+        receiptScan: null,
+      },
+      select: { id: true },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+      skip: offset,
+      take: TX_LIST_PAGE_SIZE + 1,
+    });
+    return { ids: rows.slice(0, TX_LIST_PAGE_SIZE).map((row) => row.id), hasMore: rows.length > TX_LIST_PAGE_SIZE };
+  }
+
   /** Lançamento do usuário pelo id (id + userId, nunca só o id). */
   private async loadTxCandidate(userId: string, id: string): Promise<TxCandidate | null> {
     const row = await this.prisma.transaction.findFirst({ where: { id, userId }, select: TX_SELECT });
@@ -1309,16 +1745,37 @@ export class ConversationService {
   }
 
   /** Lista numerada dos candidatos ainda existentes (a numeração segue a ordem original). */
-  private async transactionListText(userId: string, ids: string[]): Promise<string> {
+  private async transactionListText(userId: string, draft: TransactionChangeDraft): Promise<string> {
+    const ids = draft.candidateIds;
+    const compact = draft.listOffset !== undefined;
     const rows = await this.prisma.transaction.findMany({ where: { userId, id: { in: ids } }, select: TX_SELECT });
     const byId = new Map(rows.map((row) => [row.id, toTxCandidate(row)]));
     const lines = ids
       .map((id, index) => {
         const candidate = byId.get(id);
-        return candidate?.eligible ? formatCandidateLine(index, candidate) : null;
+        if (!candidate?.eligible) return null;
+        return compact ? formatCompactLine(index, candidate) : formatCandidateLine(index, candidate);
       })
       .filter((line): line is string => line !== null);
-    return [TX_REPLIES.pickHeader, ...lines].join('\n');
+    return [TX_REPLIES.pickHeader, ...lines, ...(draft.hasMore ? [TX_REPLIES.moreHint] : [])].join('\n');
+  }
+
+  /** "mais": mostra os proximos lancamentos; sem mais, avisa e repete a pagina atual. */
+  private async nextTransactionsPage(userId: string, draft: TransactionChangeDraft): Promise<PendingAnswer> {
+    if (!draft.hasMore) {
+      const list = await this.transactionListText(userId, draft);
+      return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: `${TX_REPLIES.noMore}\n${list}` };
+    }
+    const offset = (draft.listOffset ?? 0) + TX_LIST_PAGE_SIZE;
+    const page = await this.recentTransactionsPage(userId, offset);
+    if (page.ids.length === 0) {
+      draft.hasMore = false;
+      return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: `${TX_REPLIES.noMore}\n${await this.transactionListText(userId, draft)}` };
+    }
+    draft.candidateIds = page.ids;
+    draft.listOffset = offset;
+    draft.hasMore = page.hasMore;
+    return { status: 'UPDATED' };
   }
 
   /** Resposta à lista: número escolhe; sem candidatos, o texto é a busca. Mudança de campo: etapa de editar. */
@@ -1338,12 +1795,15 @@ export class ConversationService {
         draft.candidateIds = found.ids;
         return { status: 'UPDATED' };
       }
-      const chosen = /^[1-5]$/.test(value) ? draft.candidateIds[Number(value) - 1] : undefined;
+      if (draft.listOffset !== undefined && normalize(value) === 'mais') {
+        return this.nextTransactionsPage(userId, draft);
+      }
+      const chosen = /^\d{1,2}$/.test(value) ? draft.candidateIds[Number(value) - 1] : undefined;
       if (chosen === undefined) {
         return {
           status: 'ASK',
           outcome: ConversationOutcome.UNRECOGNIZED,
-          question: await this.transactionListText(userId, draft.candidateIds),
+          question: await this.transactionListText(userId, draft),
         };
       }
       const row = await this.loadTxCandidate(userId, chosen);
@@ -1357,6 +1817,8 @@ export class ConversationService {
       draft.targetId = row.id;
       draft.targetUpdatedAt = row.updatedAt.toISOString();
       draft.candidateIds = [];
+      delete draft.listOffset;
+      delete draft.hasMore;
       draft.pendingField = draft.action === 'EDIT' ? 'change' : null;
       return { status: 'UPDATED' };
     }
@@ -1509,7 +1971,7 @@ export class ConversationService {
     const awaiting = session.state === ConversationState.AWAITING_CONFIRMATION;
 
     if (exitKindOf(text)) {
-      return this.leaveDraft(userId, session, input.messageId);
+      return this.leaveDraft(userId, session, input.messageId, input.receivedAt);
     }
     const deleteAwaiting = awaiting && isDeleteChange(session.draft);
     const clearAwaiting = awaiting && isClearLimitDraft(session.draft);
@@ -1553,6 +2015,12 @@ export class ConversationService {
       // Edição: "valor 45", "descrição padaria" etc. (também depois da prévia, para mudar mais de um campo).
       return this.fillPendingField({ input, session, text });
     }
+    if (input.viaMenu !== true && isCategoryCreateAnswer(pendingDraft, text, intent) && !awaiting) {
+      return this.fillPendingField({ input, session, text });
+    }
+    if (isCategoryChangeDraft(pendingDraft) && pendingDraft.pendingField === 'category' && !awaiting && (intent === null || /^\d/.test(text))) {
+      return this.fillPendingField({ input, session, text });
+    }
     if (isTargetChangeDraft(pendingDraft) && pendingDraft.pendingField === 'targetChoice' && !awaiting && (intent === null || /^\d/.test(text))) {
       // Meta/reserva: número escolhe; texto vira busca (contrato 8b, secao 3). Comando conhecido segue a regra do motor.
       return this.fillPendingField({ input, session, text });
@@ -1584,6 +2052,11 @@ export class ConversationService {
     if (awaiting) {
       await this.recordEvent(input, session.intent, ConversationOutcome.UNRECOGNIZED);
       return this.draftReply(session, await this.todayYmd(userId, input.receivedAt), { prefix: REPLIES.confirmReminder });
+    }
+    if (intent && (intent.intent === 'create_expense' || intent.intent === 'create_income') && intent.missingAmount !== true && isAwaitingFirstAmount(pendingDraft)) {
+      // Rascunho vazio (so esperava o valor, ex.: botao Lancar despesa) e a frase ja traz valor: a frase vira o lancamento.
+      await this.prisma.conversationSession.deleteMany({ where: { id: session.id, userId } });
+      return this.startDraft({ input, intent });
     }
     if (intent) {
       // Comando de escrita com rascunho em coleta: não substitui o rascunho em silencio.
@@ -1663,7 +2136,16 @@ export class ConversationService {
       return this.answerEnvelope(userId, draft, value);
     }
     if (draft.kind === 'CARD_CREATE') {
-      return this.answerCardCreate(draft, value);
+      return this.answerCardCreate(userId, draft, value);
+    }
+    if (draft.kind === 'CARD_PICK') {
+      return this.answerCardPick(userId, draft, value);
+    }
+    if (draft.kind === 'CATEGORY_CREATE') {
+      return this.answerCategoryCreate(userId, draft, value);
+    }
+    if (draft.kind === 'CATEGORY_CHANGE') {
+      return this.answerCategoryChange(userId, draft, value);
     }
     if (draft.kind === 'CARD_RENAME') {
       return { status: 'ERROR', text: REPLIES.collectingReminder };
@@ -1859,12 +2341,12 @@ export class ConversationService {
       const amount = parseAmountPrefix(value);
       if (amount.ok === false) {
         if (amount.reason === 'NOT_AMOUNT') {
-          return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: REPLIES.askCreditLimit, prefix: REPLIES.amountOnly };
+          return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: creditLimitQuestion(draft), prefix: REPLIES.amountOnly };
         }
         return { status: 'ERROR', text: amountErrorText(amount.reason) };
       }
       if (amount.rest !== '') {
-        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: REPLIES.askCreditLimit, prefix: REPLIES.amountOnly };
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: creditLimitQuestion(draft), prefix: REPLIES.amountOnly };
       }
       draft.ceilingCents = amount.cents;
       draft.pendingField = null;
@@ -2085,6 +2567,15 @@ export class ConversationService {
     if (draft.kind === 'CARD_CREATE') {
       return this.applyCardCreate(userId, draft);
     }
+    if (draft.kind === 'CARD_PICK') {
+      throw new Error('rascunho de escolha de cartao nao se confirma');
+    }
+    if (draft.kind === 'CATEGORY_CREATE') {
+      return this.applyCategoryCreate(userId, draft);
+    }
+    if (draft.kind === 'CATEGORY_CHANGE') {
+      return this.applyCategoryChange(userId, draft);
+    }
     if (draft.kind === 'CREDIT_LIMIT') {
       return this.applyCreditLimit(userId, draft);
     }
@@ -2300,6 +2791,19 @@ export class ConversationService {
         return this.reply('INFO', 'IDLE', this.targetNotFoundText(kind));
       }
       draft.candidateIds = found.map((candidate) => candidate.id);
+    } else if (kind === 'GOAL_CHANGE') {
+      const goals = await this.prisma.goal.findMany({
+        where: { userId: input.userId },
+        select: { id: true },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        take: TARGET_LIST_MAX + 1,
+      });
+      if (goals.length === 0) {
+        await this.recordEvent(input, intent, ConversationOutcome.RECOGNIZED);
+        return this.reply('INFO', 'IDLE', TG_REPLIES.goalListEmpty);
+      }
+      draft.candidateIds = goals.slice(0, TARGET_LIST_MAX).map((goal) => goal.id);
+      draft.hasMore = goals.length > TARGET_LIST_MAX;
     }
     const today = await this.todayYmd(input.userId, input.receivedAt);
     return this.saveNewDraft({ input, intent, draft, today });
@@ -2384,7 +2888,7 @@ export class ConversationService {
   }
 
   /** Lista numerada dos candidatos que ainda existem (sumido sai da lista, numeracao preserva a ordem). */
-  private async targetListText(userId: string, kind: TargetChangeDraft['kind'], ids: string[]): Promise<string> {
+  private async targetListText(userId: string, kind: TargetChangeDraft['kind'], ids: string[], hasMore = false): Promise<string> {
     const header =
       kind === 'GOAL_CHANGE'
         ? TG_REPLIES.pickHeaderGoal
@@ -2424,7 +2928,7 @@ export class ConversationService {
           return candidate ? formatGoalLine(index, candidate) : null;
         })
         .filter((line): line is string => line !== null);
-      return [header, ...lines].join('\n');
+      return [header, ...lines, ...(hasMore ? [TG_REPLIES.goalListMore] : [])].join('\n');
     }
     const rows = await this.prisma.envelope.findMany({ where: { userId, id: { in: ids } }, select: ENVELOPE_CHANGE_SELECT });
     const byId = new Map(rows.map((row) => [row.id, toEnvelopeCandidateRow(row)]));
@@ -2455,12 +2959,12 @@ export class ConversationService {
         draft.candidateIds = found.map((candidate) => candidate.id);
         return { status: 'UPDATED' };
       }
-      const chosen = /^[1-5]$/.test(value) ? draft.candidateIds[Number(value) - 1] : undefined;
+      const chosen = /^\d{1,2}$/.test(value) ? draft.candidateIds[Number(value) - 1] : undefined;
       if (chosen === undefined) {
         return {
           status: 'ASK',
           outcome: ConversationOutcome.UNRECOGNIZED,
-          question: await this.targetListText(userId, draft.kind, draft.candidateIds),
+          question: await this.targetListText(userId, draft.kind, draft.candidateIds, draft.hasMore === true),
         };
       }
       const row = await this.loadTargetCandidate(userId, draft.kind, chosen);
@@ -2977,11 +3481,42 @@ export class ConversationService {
         return this.creditCardReply(userId, intent.cardTerm);
       case 'list_cards':
         return this.listCardsReply(userId);
+      case 'categories':
+        return this.categoriesReply(userId);
       case 'help':
         return this.reply('HELP', 'IDLE', REPLIES.help);
       default:
         return this.reply('ERROR', 'IDLE', REPLIES.unrecognized);
     }
+  }
+
+  /** Categorias de despesa com o total do mes de cada uma (maior primeiro) e o que ficou sem categoria. */
+  private async categoriesReply(userId: string): Promise<ConversationReply> {
+    const { timezone } = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { timezone: true } });
+    const month = monthToDateUtc(new Date(), timezone);
+    const [grouped, categories] = await Promise.all([
+      this.prisma.transaction.groupBy({
+        by: ['categoryId'],
+        where: { userId, type: TransactionType.EXPENSE, date: { gte: month.start, lt: month.end } },
+        _sum: { amount: true },
+      }),
+      this.prisma.financeCategory.findMany({
+        where: { userId, type: TransactionType.EXPENSE },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+    if (categories.length === 0) {
+      return this.infoReply(CATEGORIES_EMPTY, { categories: [] });
+    }
+    const centsById = new Map(grouped.map((row) => [row.categoryId, toCents(row._sum.amount ?? 0)]));
+    const rows = categories
+      .map((category) => ({ name: truncate(category.name), cents: centsById.get(category.id) ?? 0 }))
+      .sort((a, b) => b.cents - a.cents || a.name.localeCompare(b.name));
+    const shown = rows.slice(0, CATEGORIES_LIST_MAX);
+    const uncategorizedCents = centsById.get(null) ?? 0;
+    const text = categoriesListText({ rows: shown, hidden: rows.length - shown.length, uncategorizedCents });
+    return this.infoReply(text, { categories: shown.map((row) => ({ name: row.name, amountCents: row.cents })) });
   }
 
   private async spendByCategory(userId: string, query: string): Promise<ConversationReply> {
@@ -3229,7 +3764,7 @@ export class ConversationService {
     return this.prisma.creditCard.findMany({
       where: { userId, archivedAt: null },
       orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
-      select: { id: true, name: true },
+      select: { id: true, name: true, isDefault: true },
     });
   }
 
@@ -3245,6 +3780,7 @@ export class ConversationService {
     const categories = await this.prisma.financeCategory.findMany({
       where: { userId, type: draft.type },
       select: { id: true, name: true },
+      orderBy: { name: 'asc' },
     });
     const matched = matchCategory(query, categories);
     if (matched.length === 1) {
@@ -3255,7 +3791,10 @@ export class ConversationService {
     }
     draft.categoryId = null;
     draft.pendingField = 'category';
-    draft.categoryOptions = matched.slice(0, MAX_CATEGORY_OPTIONS).map((category) => category.id);
+    draft.categoryOptions =
+      matched.length > 0
+        ? matched.slice(0, MAX_CATEGORY_OPTIONS).map((category) => category.id)
+        : categories.slice(0, MAX_CATEGORY_LIST).map((category) => category.id);
   }
 
   /** Resposta da pergunta de categoria. Não casou = sem categoria (não fica em loop). */
@@ -3264,7 +3803,7 @@ export class ConversationService {
     if (normalized === 'sem categoria') {
       return null;
     }
-    if (/^[1-5]$/.test(normalized) && draft.categoryOptions[Number(normalized) - 1]) {
+    if (/^\d{1,2}$/.test(normalized) && draft.categoryOptions[Number(normalized) - 1]) {
       return draft.categoryOptions[Number(normalized) - 1];
     }
     const categories = await this.prisma.financeCategory.findMany({
@@ -3274,8 +3813,11 @@ export class ConversationService {
     const pool = draft.categoryOptions.length > 0
       ? categories.filter((category) => draft.categoryOptions.includes(category.id))
       : categories;
-    const matched = matchCategory(answer, pool);
-    return matched.length === 1 ? matched[0].id : null;
+    const inOptions = matchCategory(answer, pool);
+    if (inOptions.length === 1) return inOptions[0].id;
+    // Fora das opcoes mostradas (lista cortada em 10): o nome inteiro ainda vale.
+    const anywhere = matchCategory(answer, categories);
+    return anywhere.length === 1 ? anywhere[0].id : null;
   }
 
   /** Resposta com o rascunho atual. prefix vai antes do texto; question troca a pergunta de campo. */
@@ -3368,6 +3910,15 @@ export class ConversationService {
         toneSeed: toneSeedOf(draft),
       });
     }
+    if (draft.kind === 'CARD_PICK') {
+      return CARD_WRITE_REPLIES.pickHeader;
+    }
+    if (draft.kind === 'CATEGORY_CREATE') {
+      return categoryCreateDraftText({ name: draft.name, type: draft.type });
+    }
+    if (draft.kind === 'CATEGORY_CHANGE') {
+      return this.categoryChangeDraftText(session.userId, draft);
+    }
     return draftText({
       type: draft.type,
       amountCents: draft.amountCents,
@@ -3385,7 +3936,7 @@ export class ConversationService {
     if (isTransactionChangeDraft(draft)) {
       if (draft.pendingField === 'change') return TX_REPLIES.askChange;
       if (draft.candidateIds.length === 0) return TX_REPLIES.askWhich;
-      return this.transactionListText(userId, draft.candidateIds);
+      return this.transactionListText(userId, draft);
     }
     if (isTargetChangeDraft(draft)) {
       if (draft.pendingField === 'change') {
@@ -3404,7 +3955,7 @@ export class ConversationService {
               ? RC_REPLIES.askWhichRecurring
               : RC_REPLIES.askWhichInstallment;
       }
-      return this.targetListText(userId, draft.kind, draft.candidateIds);
+      return this.targetListText(userId, draft.kind, draft.candidateIds, draft.hasMore === true);
     }
     if (draft.kind === 'RECURRING') {
       if (draft.pendingField === 'description') return REPLIES.askDraftDescription;
@@ -3421,13 +3972,24 @@ export class ConversationService {
       return draft.pendingField === 'name' ? REPLIES.askEnvelopeName : REPLIES.askEnvelopeAmount;
     }
     if (draft.kind === 'CARD_CREATE') {
-      return CARD_WRITE_REPLIES.askClosingDay(draft.name);
+      return draft.pendingField === 'name' ? CARD_WRITE_REPLIES.askName : CARD_WRITE_REPLIES.askClosingDay(draft.name ?? '');
+    }
+    if (draft.kind === 'CARD_PICK') {
+      return draft.pendingField === 'card' ? this.cardPickText(userId, draft) : CARD_WRITE_REPLIES.askNewName(draft.cardName ?? '');
+    }
+    if (draft.kind === 'CATEGORY_CREATE') {
+      return draft.pendingField === 'type' ? CATEGORY_REPLIES.askType : CATEGORY_REPLIES.askName;
+    }
+    if (draft.kind === 'CATEGORY_CHANGE') {
+      if (draft.pendingField === 'category') return this.categoryPickText(userId, draft);
+      const target = draft.targetId === null ? null : await this.prisma.financeCategory.findFirst({ where: { id: draft.targetId, userId }, select: { name: true } });
+      return CATEGORY_REPLIES.askNewName(target?.name ?? '');
     }
     if (draft.kind === 'CARD_RENAME') {
       return REPLIES.collectingReminder;
     }
     if (draft.kind === 'CREDIT_LIMIT') {
-      return REPLIES.askCreditLimit;
+      return creditLimitQuestion(draft);
     }
     if (draft.kind === 'GOAL') {
       return draft.pendingField === 'title' ? REPLIES.askGoalTitle : REPLIES.askGoalTarget;
@@ -3547,6 +4109,41 @@ export class ConversationService {
           { label: 'Início', value: `${monthYearUtc(draft.provisionMonth)} (UTC)` },
           { label: 'Aviso', value: REPLIES.envelopeProvisionWarning },
           ...reviewRows(draft.reviewReason),
+        ],
+      };
+    }
+    if (draft.kind === 'CARD_PICK') {
+      return {
+        ...base,
+        kind: 'CARD_PICK',
+        title: draft.purpose === 'RENAME' ? 'Renomear cartão' : draft.purpose === 'SET_LIMIT' ? 'Definir limite' : 'Limpar limite',
+        pendingField: null,
+        rows: [{ label: 'Cartão', value: draft.cardName ?? 'a escolher' }],
+      };
+    }
+    if (draft.kind === 'CATEGORY_CREATE') {
+      return {
+        ...base,
+        kind: 'CATEGORY_CREATE',
+        title: 'Criar categoria',
+        pendingField: null,
+        rows: [
+          { label: 'Nome', value: draft.name ?? 'a informar' },
+          { label: 'Tipo', value: draft.type === null ? 'a informar' : categoryTypeLabel(draft.type) },
+        ],
+      };
+    }
+    if (draft.kind === 'CATEGORY_CHANGE') {
+      const target = draft.targetId === null ? null : await this.prisma.financeCategory.findFirst({ where: { id: draft.targetId, userId: session.userId }, select: { name: true } });
+      return {
+        ...base,
+        kind: 'CATEGORY_CHANGE',
+        title: draft.action === 'DELETE' ? 'Excluir categoria' : 'Editar categoria',
+        changeAction: draft.action,
+        pendingField: null,
+        rows: [
+          { label: 'Categoria', value: target?.name ?? 'a escolher' },
+          ...(draft.action === 'EDIT' ? [{ label: 'Novo nome', value: draft.newName ?? 'a informar' }] : [{ label: 'Aviso', value: 'Os lançamentos dela ficam sem categoria.' }]),
         ],
       };
     }
@@ -3763,6 +4360,11 @@ export class ConversationService {
 
   private async loadSession(userId: string, channel: ConversationChannel): Promise<SessionRow | null> {
     return this.prisma.conversationSession.findFirst({ where: { userId, channel } });
+  }
+
+  private async greetingOf(userId: string, now: Date): Promise<string> {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { timezone: true } });
+    return greetingFor(now, user.timezone);
   }
 
   private async todayYmd(userId: string, now: Date): Promise<string> {
@@ -4050,7 +4652,7 @@ function numberedOptions(draft: SessionDraft): string[] {
   if (isTargetChangeDraft(draft)) {
     return [];
   }
-  if (draft.kind === 'GOAL' || draft.kind === 'ENVELOPE' || draft.kind === 'CREDIT_LIMIT' || draft.kind === 'RECURRING' || draft.kind === 'INSTALLMENT' || draft.kind === 'CARD_RENAME' || draft.kind === 'CARD_CREATE') {
+  if (draft.kind === 'GOAL' || draft.kind === 'ENVELOPE' || draft.kind === 'CREDIT_LIMIT' || draft.kind === 'RECURRING' || draft.kind === 'INSTALLMENT' || draft.kind === 'CARD_RENAME' || draft.kind === 'CARD_CREATE' || draft.kind === 'CATEGORY_CREATE' || draft.kind === 'CATEGORY_CHANGE' || draft.kind === 'CARD_PICK') {
     return [];
   }
   if (draft.kind === 'CONTRIBUTION') {
@@ -4127,7 +4729,10 @@ function goalTargetValue(draft: GoalDraft): string {
 
 /** Texto que começa com número é a resposta pedida (nome, descrição, quantidade ou data), não um comando (contrato 4). */
 function startsWithNumericAnswer(draft: SessionDraft): boolean {
-  if (draft.kind === 'CARD_CREATE') return draft.pendingField === 'closingDay';
+  if (draft.kind === 'CARD_CREATE') return draft.pendingField === 'closingDay' || draft.pendingField === 'name';
+  if (draft.kind === 'CARD_PICK') return true;
+  if (draft.kind === 'CATEGORY_CREATE') return draft.pendingField !== null;
+  if (draft.kind === 'CATEGORY_CHANGE') return draft.pendingField === 'name';
   if (draft.kind === 'ENVELOPE') return draft.pendingField === 'name';
   if (draft.kind === 'RECURRING') return draft.pendingField === 'description' || draft.pendingField === 'firstDueDate';
   if (draft.kind === 'INSTALLMENT') {
@@ -4236,13 +4841,44 @@ function dueWarningRows(firstDueDate: string | null, today: string, todayWarning
 }
 
 /** Erro de commit desconhecido, vindo de qualquer um dos quatro domínios de gravação. */
+/** Resposta de nome ou tipo da categoria nova: palavras como "Metas" ou "gastos" valem como resposta, nao como consulta. */
+function isCategoryCreateAnswer(draft: SessionDraft, text: string, intent: IntentMatch | null): boolean {
+  const looksLikeName = intent === null || isReadIntent(intent);
+  if (draft.kind === 'CATEGORY_CREATE') {
+    if (draft.pendingField === 'type') return parseCategoryType(text) !== null;
+    return draft.pendingField === 'name' && looksLikeName;
+  }
+  if (draft.kind === 'CARD_CREATE') return draft.pendingField === 'name' && looksLikeName;
+  if (draft.kind === 'CARD_PICK') return draft.pendingField === 'name' ? looksLikeName : looksLikeName || /^\d/.test(text);
+  return false;
+}
+
+/** Pergunta do valor do teto; com cartao escolhido, diz qual. */
+function creditLimitQuestion(draft: CreditLimitDraft): string {
+  return draft.cardName ? `Qual o limite para este ciclo do cartão ${draft.cardName}?` : REPLIES.askCreditLimit;
+}
+
+/** Troca o conteudo do rascunho por outro tipo, mantendo o mesmo objeto (a sessao salva o que ficou nele). */
+function replaceDraft(target: object, next: object): void {
+  for (const key of Object.keys(target)) delete (target as Record<string, unknown>)[key];
+  Object.assign(target, next);
+}
+
+/** Rascunho de gasto/receita que ainda nao recebeu nada alem do pedido do valor. */
+function isAwaitingFirstAmount(draft: SessionDraft): boolean {
+  const candidate = draft as Partial<ExpenseOrIncomeDraft>;
+  const isTransaction = candidate.kind === undefined || candidate.kind === 'TRANSACTION';
+  return isTransaction && candidate.pendingField === 'amount' && candidate.amountCents === 0 && candidate.description === null;
+}
+
 function isWriteUncertain(error: unknown): boolean {
   return (
     error instanceof EnvelopeWriteUncertainError ||
     error instanceof CreditLimitWriteUncertainError ||
     error instanceof RecurringWriteUncertainError ||
     error instanceof InstallmentWriteUncertainError ||
-    error instanceof CreditCardWriteUncertainError
+    error instanceof CreditCardWriteUncertainError ||
+    error instanceof CategoryWriteUncertainError
   );
 }
 
@@ -4279,6 +4915,9 @@ function discardText(kind: DraftKind, error: unknown): string {
   if (kind === 'TRANSACTION_CHANGE') {
     // Lançamento sumiu ou mudou (404/409): a mensagem do motor já diz o que fazer.
     return error instanceof HttpException ? error.message : TX_REPLIES.gone;
+  }
+  if (kind === 'CATEGORY_CHANGE' || kind === 'CATEGORY_CREATE') {
+    return error instanceof HttpException ? error.message : CATEGORY_REPLIES.gone;
   }
   if (kind === 'GOAL_CHANGE' || kind === 'ENVELOPE_CHANGE' || kind === 'RECURRING_CHANGE' || kind === 'INSTALLMENT_CHANGE') {
     // Alvo sumiu, mudou ou o dominio recusou (nome repetido etc.): mensagem conhecida passa; o resto e a do alvo sumido.
@@ -4335,6 +4974,9 @@ function discardText(kind: DraftKind, error: unknown): string {
 function saveFailedText(kind: DraftKind, restored: boolean): string {
   if (kind === 'ENVELOPE') {
     return restored ? REPLIES.envelopeSaveFailed : REPLIES.envelopeSaveFailedRestoreLost;
+  }
+  if (kind === 'CATEGORY_CREATE' || kind === 'CATEGORY_CHANGE') {
+    return restored ? CATEGORY_REPLIES.createSaveFailed : CATEGORY_REPLIES.createSaveFailedRestoreLost;
   }
   if (kind === 'CARD_CREATE') {
     return restored ? CARD_WRITE_REPLIES.createSaveFailed : CARD_WRITE_REPLIES.createSaveFailedRestoreLost;

@@ -198,13 +198,53 @@ describe('limite do cartao por nome e limpar teto (8d)', () => {
     expect(sessions).toHaveLength(0);
   });
 
-  it('limpar sem nome resolve o cartao padrao e grava o cartao no rascunho', async () => {
+  it('limpar sem nome lista os cartoes ativos do usuario; o numero escolhe e grava o cartao no rascunho', async () => {
     const { send, sessions, removeCeiling } = buildService();
-    const preview = await send('limpar limite');
+    const list = await send('limpar limite');
+    expect(list.text).toBe(['Qual cartão? Responda com o número:', '1. Nubank (padrão)', '2. Itaú', '3. Vivo', '4. Vivo Pad'].join('\n'));
+    const preview = await send('1');
     expect(preview.draft?.rows.some((row) => row.label === 'Cartão' && row.value === 'Nubank')).toBe(true);
+    expect((sessions[0].draft as Row).kind).toBe('CREDIT_LIMIT');
     expect((sessions[0].draft as Row).cardId).toBe('cr-nubank');
     await send('limpar');
     expect(removeCeiling).toHaveBeenCalledTimes(1);
+  });
+
+  it('limpar sem nome com um cartao so: segue direto para o rascunho, sem lista', async () => {
+    const { send, sessions } = buildService();
+    const preview = await send('limpar limite', 'B');
+    expect(preview.draft?.rows.some((row) => row.label === 'Cartão' && row.value === 'Nubank')).toBe(true);
+    expect((sessions[0].draft as Row).kind).toBe('CREDIT_LIMIT');
+    expect((sessions[0].draft as Row).cardId).toBe('cr-nubank-b');
+  });
+
+  it('definir limite sem nome: um cartao so pergunta o valor direto; varios listam, e o numero escolhe', async () => {
+    const { send, sessions } = buildService();
+    const single = await send('definir limite', 'B');
+    expect(single.text).toBe('Qual o limite para este ciclo do cartão?');
+    await send('cancelar', 'B');
+    const list = await send('definir limite');
+    expect(list.text.split('\n')[0]).toBe('Qual cartão? Responda com o número:');
+    const ask = await send('3');
+    expect(ask.text).toBe('Qual o limite para este ciclo do cartão Vivo?');
+    expect((sessions[0].draft as Row).cardId).toBe('cr-vivo');
+  });
+
+  it('na lista de limpar, outro numero escolhe outro cartao; numero fora da lista repete a lista', async () => {
+    const { send, sessions } = buildService();
+    await send('limpar limite');
+    const again = await send('9');
+    expect(again.text).toContain('Qual cartão? Responda com o número:');
+    await send('2');
+    expect((sessions[0].draft as Row).cardId).toBe('cr-itau');
+  });
+
+  it('na lista de limpar, cartao sem teto avisa e deixa escolher outro', async () => {
+    const { send, sessions } = buildService({ ...CYCLE, ceiling: null });
+    await send('limpar limite');
+    const reply = await send('1');
+    expect(reply.text).toContain('Esse cartão já está sem limite. Escolha outro número ou responda cancelar.');
+    expect((sessions[0].draft as Row).kind).toBe('CARD_PICK');
   });
 
   it('ciclo sem teto: recusa curta, sem sessao', async () => {

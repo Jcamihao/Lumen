@@ -13,6 +13,20 @@ function clone(node: MenuNode): MenuNode {
 }
 
 describe('arvore do menu', () => {
+  it('toda area (grupo abaixo da raiz) tem frase de abertura', () => {
+    for (const area of MENU_ROOT.children ?? []) {
+      if (area.children) expect({ id: area.id, intro: !!area.intro }).toEqual({ id: area.id, intro: true });
+    }
+  });
+
+  it('toda opcao abaixo da raiz tem guia curto (ate 45 caracteres)', () => {
+    const walk = (node: MenuNode): MenuNode[] => [node, ...(node.children ?? []).flatMap(walk)];
+    const options = walk(MENU_ROOT).filter((node) => node.id !== MENU_ROOT_ID);
+    for (const node of options) {
+      expect({ id: node.id, ok: !!node.guide && node.guide.length <= 45 }).toEqual({ id: node.id, ok: true });
+    }
+  });
+
   it('e valida: ids unicos, formato, grupo x folha, sem ciclo', () => {
     expect(validateMenuTree(MENU_ROOT)).toEqual([]);
   });
@@ -52,7 +66,7 @@ describe('arvore do menu', () => {
   });
 
   it('getMenuNode, listChildren e parentOf: pai para Voltar, raiz sem pai, id desconhecido vazio', () => {
-    expect(getMenuNode('financas.despesa')?.title).toBe('Lançar despesa');
+    expect(getMenuNode('financas.despesa')?.title).toBe('🛒 Lançar despesa');
     expect(getMenuNode('nao.existe')).toBeUndefined();
     expect(listChildren('nao.existe')).toEqual([]);
     expect(listChildren('financas.despesa')).toEqual([]);

@@ -12,6 +12,10 @@ export const CARD_NAME_MAX = 40;
 
 export const CARD_WRITE_REPLIES = {
   createNeedsName: 'Diga o nome do cartão, ex.: criar cartão Nubank fecha dia 10.',
+  askName: 'Qual o nome do novo cartão? Ex.: Nubank',
+  pickHeader: 'Qual cartão? Responda com o número:',
+  askNewName: (current: string): string => `Qual o novo nome para o cartão ${current}? Ex.: Roxinho`,
+  alreadyClear: 'Esse cartão já está sem limite. Escolha outro número ou responda cancelar.',
   createUnknownWord: 'Não entendi. Use: criar cartão Nubank fecha dia 10 vence dia 17 (o vencimento é opcional).',
   createBadDay: (label: 'fechamento' | 'vencimento'): string => `O dia de ${label} deve ser de 1 a 31. Nada foi criado.`,
   createLimit: (max: number): string => `Você já tem ${max} cartões ativos (limite técnico). Nada foi criado.`,
@@ -121,10 +125,14 @@ export function nameTakenBy(cards: Array<{ id: string; name: string }>, name: st
   );
 }
 
-export function cardCreateDraftText(input: { name: string; closingDay: number | null; dueDay: number | null }): string {
+export function cardPickLine(index: number, card: { name: string; isDefault?: boolean }): string {
+  return `${index + 1}. ${card.name}${card.isDefault ? ' (padrão)' : ''}`;
+}
+
+export function cardCreateDraftText(input: { name: string | null; closingDay: number | null; dueDay: number | null }): string {
   const closing = input.closingDay === null ? 'a informar' : `dia ${input.closingDay}`;
   const due = input.dueDay === null ? 'sem vencimento' : `dia ${input.dueDay}`;
-  return `Criar o cartão ${input.name}. Fecha: ${closing}. Vence: ${due}. Não será o cartão padrão.`;
+  return `Criar o cartão ${input.name ?? 'a informar'}. Fecha: ${closing}. Vence: ${due}. Não será o cartão padrão.`;
 }
 
 export function cardCreatedText(input: { name: string; closingDay: number; dueDay: number | null }): string {

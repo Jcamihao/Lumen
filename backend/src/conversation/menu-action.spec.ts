@@ -30,7 +30,9 @@ describe('menu por botao e saida universal (12.1a)', () => {
     it('raiz: menu inicial com as cinco areas, sem Voltar nem Menu, e registra menu_open', async () => {
       const reply = await click('A', 'menu');
 
-      expect(reply).toMatchObject({ kind: 'MENU', state: 'IDLE', menu: { nodeId: 'menu', title: 'Menu' } });
+      expect(reply).toMatchObject({ kind: 'MENU', state: 'IDLE', menu: { nodeId: 'menu' } });
+      expect(reply.menu?.title).toMatch(/^(Bom dia|Boa tarde|Boa noite)! ✨ Lumen · o que vamos fazer hoje\?\n/);
+      expect(reply.menu?.title).toContain('💰 Finanças: lançar, consultar, editar e apagar');
       expect(reply.menu?.options.map((option) => option.id)).toEqual(['inicio', 'financas', 'cartao', 'metas', 'ajuda']);
       expect(reply.menu?.backId).toBeUndefined();
       expect(reply.menu?.topId).toBeUndefined();
@@ -43,8 +45,8 @@ describe('menu por botao e saida universal (12.1a)', () => {
 
       expect(reply).toMatchObject({ kind: 'MENU', menu: { nodeId: 'financas', backId: 'menu', topId: 'menu' } });
       expect(reply.menu?.options).toHaveLength(8);
-      expect(reply.text).toContain('1. Lançar despesa: "gastei 50 no mercado"');
-      expect(reply.text).toContain('3. Gastos por categoria: "gastos com mercado"');
+      expect(reply.text).toContain('1. 🛒 Lançar despesa: registrar um gasto — "gastei 50 no mercado"');
+      expect(reply.text).toContain('3. 🏷️ Categorias: ver, criar, editar e excluir');
       expect(lastEventOf('A')).toMatchObject({ intent: 'menu_nav:financas' });
     });
 
@@ -97,24 +99,69 @@ describe('menu por botao e saida universal (12.1a)', () => {
     });
 
     it('folha de instrucao responde a frase pronta com a dica, sem sessao e sem gravar', async () => {
-      const reply = await click('A', 'cartao.criar');
+      const reply = await click('A', 'financas.categorias.ver');
 
-      expect(reply.kind).toBe('HELP');
-      expect(reply.state).toBe('IDLE');
-      expect(reply.text).toContain('Para criar um cartão, diga: criar cartão Nubank.');
-      expect(reply.text).toContain('Dica: da próxima vez, é só dizer: criar cartão Nubank');
+      expect(reply.kind).toBe('INFO');
+      expect(reply.text).toContain('Dica: da próxima vez, é só dizer: minhas categorias');
       expect(world.sessions).toHaveLength(0);
       expect(world.writeCount).toBe(0);
-      expect(lastEventOf('A')).toMatchObject({ intent: 'menu_nav:cartao.criar' });
     });
 
-    it('folha de instrucao de meta nao grava (guardar nao abre rascunho sozinho)', async () => {
+    it('Lancar despesa e Lancar receita guiam campo a campo ate a confirmacao, sem gravar', async () => {
+      const expense = await click('A', 'financas.despesa');
+      expect(expense.text).toContain('Quanto foi?');
+      expect((await say('A', '3')).text).toContain('Qual a descrição do lançamento?');
+      expect((await say('A', 'café na padaria')).text).toContain('Qual a categoria?');
+      const confirm = await say('A', 'sem categoria');
+      expect(confirm.kind).toBe('CONFIRM_DRAFT');
+      await say('A', 'cancelar');
+
+      const income = await click('A', 'financas.receita');
+      expect(income.text).toContain('Quanto foi?');
+      expect((await say('A', '500')).text).toContain('Qual a descrição do lançamento?');
+      expect(world.writeCount).toBe(0);
+    });
+
+    it('Criar meta e Definir limite guiam campo a campo ate a confirmacao, sem gravar', async () => {
+      const goal = await click('A', 'metas.criar');
+      expect(goal.text).toContain('Qual o nome da meta?');
+      expect((await say('A', 'Viagem')).text).toContain('Qual o valor-alvo?');
+      const goalConfirm = await say('A', '3000');
+      expect(goalConfirm.kind).toBe('CONFIRM_DRAFT');
+      expect(goalConfirm.text.replace(/\s/g, ' ')).toContain('Alvo: R$ 3.000,00');
+      await say('A', 'cancelar');
+
+      const limit = await click('A', 'cartao.definir');
+      expect(limit.text).toContain('Qual o limite para este ciclo do cartão?');
+      expect((await say('A', '5000')).kind).toBe('CONFIRM_DRAFT');
+      expect(world.writeCount).toBe(0);
+    });
+
+    it('Criar cartao abre o rascunho guiado: pergunta o nome, depois o dia de fechamento, e nao grava', async () => {
+      const ask = await click('A', 'cartao.criar');
+
+      expect(ask.kind).toBe('ASK_FIELD');
+      expect(ask.text).toContain('Qual o nome do novo cartão?');
+      const closing = await say('A', 'Roxinho');
+      expect(closing.text).toContain('Qual o dia de fechamento do Roxinho (1 a 31)?');
+      expect(world.writeCount).toBe(0);
+    });
+
+    it('botao de leitura com rascunho de nome aberto nao vira o nome (viaMenu)', async () => {
+      await click('A', 'cartao.criar');
+      const reply = await click('A', 'inicio.saldo');
+
+      expect(reply.kind).toBe('INFO');
+      expect((world.sessions.find((row) => row.userId === USER_ID.A)?.draft as { name: string | null }).name).toBeNull();
+    });
+
+    it('Guardar numa meta abre o rascunho guiado: lista as metas e nao grava', async () => {
       const reply = await click('B', 'metas.guardar');
 
-      expect(reply.kind).toBe('HELP');
-      expect(reply.text).toContain('coloquei 200 na minha caixinha');
+      expect(reply.kind).toBe('ASK_FIELD');
+      expect(reply.text).toMatch(/Qual meta\? Responda com o número:|Quanto quer guardar\?/);
       expect(world.writeCount).toBe(0);
-      expect(world.sessions).toHaveLength(0);
+      expect(world.sessions).toHaveLength(1);
     });
   });
 
@@ -156,9 +203,11 @@ describe('menu por botao e saida universal (12.1a)', () => {
       await click('B', 'financas');
       await click('B', 'cartao.criar');
       await click('B', 'inicio.saldo');
+      await click('B', 'cartao.renomear');
 
       expect(JSON.stringify(world.sessions.filter((row) => row.userId === USER_ID.A))).toBe(aBefore);
-      expect(world.sessions.filter((row) => row.userId === USER_ID.B)).toHaveLength(0);
+      expect(world.sessions.filter((row) => row.userId === USER_ID.B).length).toBe(1);
+      expect(world.sessions.filter((row) => row.userId === USER_ID.A)).toHaveLength(1);
     });
   });
 
@@ -167,7 +216,7 @@ describe('menu por botao e saida universal (12.1a)', () => {
       const reply = await say('A', 'voltar');
 
       expect(reply).toMatchObject({ kind: 'MENU', state: 'IDLE', menu: { nodeId: 'menu' } });
-      expect(reply.text.startsWith('Menu')).toBe(true);
+      expect(reply.text).toMatch(/^(Bom dia|Boa tarde|Boa noite)! ✨ Lumen · o que vamos fazer hoje\?/);
       expect(lastEventOf('A')).toMatchObject({ intent: 'menu_open' });
     });
 
@@ -177,11 +226,53 @@ describe('menu por botao e saida universal (12.1a)', () => {
       }
     });
 
+    it('Categorias e um submenu com quatro opcoes; criar categoria abre o rascunho guiado', async () => {
+      const area = await click('A', 'financas.categorias');
+      expect(area.menu?.options.map((option) => option.id)).toEqual([
+        'financas.categorias.ver',
+        'financas.categorias.criar',
+        'financas.categorias.editar',
+        'financas.categorias.excluir',
+      ]);
+      expect(area.menu?.backId).toBe('financas');
+      expect(area.menu?.title).toContain('Aqui você organiza as categorias');
+      const created = await click('A', 'financas.categorias.criar');
+      expect(created.kind).toBe('ASK_FIELD');
+      expect(created.text).toContain('Qual o nome da nova categoria?');
+      expect(world.writeCount).toBe(0);
+    });
+
+    it('apos tocar em Lancar despesa, frase completa com 3$ preenche valor e descricao', async () => {
+      await click('A', 'financas.despesa');
+
+      const reply = await say('A', 'Gastei 3$ tomando café na padaria');
+
+      expect(reply.text).not.toContain('Não encontrei o valor');
+      expect(world.sessions).toHaveLength(1);
+      expect(world.sessions[0].draft).toMatchObject({ amountCents: 300 });
+      expect(String((world.sessions[0].draft as { description: string }).description).toLowerCase()).toContain('padaria');
+    });
+
+    it('saudacoes sem rascunho mostram o menu', async () => {
+      for (const word of ['oi', 'Oiieee', 'bom dia', 'opa', 'olá']) {
+        expect({ word, kind: (await say('A', word)).kind }).toEqual({ word, kind: 'MENU' });
+      }
+    });
+
+    it('saudacao com rascunho aberto nao cancela o rascunho', async () => {
+      await say('A', '50 mercado');
+
+      const reply = await say('A', 'oi');
+
+      expect(reply.kind).not.toBe('MENU');
+      expect(world.sessions).toHaveLength(1);
+    });
+
     it('"cancelar" sem nada aberto responde "Nada para cancelar." e mostra o menu', async () => {
       const reply = await say('A', 'cancelar');
 
       expect(reply.kind).toBe('MENU');
-      expect(reply.text.startsWith('Nada para cancelar.\n\nMenu')).toBe(true);
+      expect(reply.text.startsWith('Nada para cancelar.\n\n')).toBe(true);
       expect(reply.menu?.lead).toBe('Nada para cancelar.');
       expect(world.writeCount).toBe(0);
     });
@@ -193,7 +284,7 @@ describe('menu por botao e saida universal (12.1a)', () => {
 
       expect(reply.kind).toBe('CANCELLED');
       expect(reply.text).toContain('Rascunho cancelado. Nada foi gravado.');
-      expect(reply.text).toContain('Menu');
+      expect(reply.text).toContain('✨ Lumen · o que vamos fazer hoje?');
       expect(reply.menu?.nodeId).toBe('menu');
       expect(reply.menu?.lead).toBe('Rascunho cancelado. Nada foi gravado.');
       expect(world.sessions).toHaveLength(0);
