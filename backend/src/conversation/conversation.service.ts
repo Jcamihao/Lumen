@@ -56,7 +56,7 @@ import {
 import { normalize } from './parsers/normalize';
 import { MENU_ROOT, MENU_ROOT_ID } from './menu/menu.tree';
 import { getMenuNode } from './menu/menu.tree.queries';
-import { ExitKind, exitKindOf } from './menu/exit-words';
+import { ExitKind, exitKindOf, isGreeting } from './menu/exit-words';
 import { MENU_REPLIES, menuText, menuViewOf, withDica } from './menu/menu.view';
 import { MenuActionInput, MenuNode } from './menu/menu.types';
 import type { TargetChangeDraft, TransactionChangeDraft } from './conversation.types';
@@ -506,6 +506,9 @@ export class ConversationService {
     const exit = exitKindOf(text);
     if (exit) {
       return this.leaveWithoutDraft(input, exit);
+    }
+    if (isGreeting(text)) {
+      return this.leaveWithoutDraft(input, 'MENU');
     }
     const intent = await this.resolveLooseCardRead(input.userId, text.length > 0 ? matchIntent(text) : null);
 

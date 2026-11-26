@@ -177,6 +177,21 @@ describe('menu por botao e saida universal (12.1a)', () => {
       }
     });
 
+    it('saudacoes sem rascunho mostram o menu', async () => {
+      for (const word of ['oi', 'Oiieee', 'bom dia', 'opa', 'olá']) {
+        expect({ word, kind: (await say('A', word)).kind }).toEqual({ word, kind: 'MENU' });
+      }
+    });
+
+    it('saudacao com rascunho aberto nao cancela o rascunho', async () => {
+      await say('A', '50 mercado');
+
+      const reply = await say('A', 'oi');
+
+      expect(reply.kind).not.toBe('MENU');
+      expect(world.sessions).toHaveLength(1);
+    });
+
     it('"cancelar" sem nada aberto responde "Nada para cancelar." e mostra o menu', async () => {
       const reply = await say('A', 'cancelar');
 
