@@ -194,7 +194,7 @@ export interface CardCreateDraft {
  */
 export interface CardPickDraft {
   kind: 'CARD_PICK';
-  purpose: 'CLEAR_LIMIT' | 'RENAME';
+  purpose: 'CLEAR_LIMIT' | 'SET_LIMIT' | 'RENAME';
   cardIds: string[];
   cardId: string | null;
   cardName: string | null;

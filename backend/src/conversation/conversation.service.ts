@@ -565,6 +565,9 @@ export class ConversationService {
     if (intent.intent === 'create_envelope') {
       return this.startEnvelopeDraft({ input, body: intent.body });
     }
+    if (intent.intent === 'set_credit_limit' && intent.body.trim() === '') {
+      return this.startCardPick({ input, purpose: 'SET_LIMIT' });
+    }
     if (intent.intent === 'set_credit_limit') {
       return this.startCreditLimitDraft({ input, body: intent.body });
     }
@@ -1019,6 +1022,31 @@ export class ConversationService {
     return this.saveNewDraft({ input, intent: 'clear_credit_limit', draft: prepared.draft, today: await this.todayYmd(userId, receivedAt) });
   }
 
+  /** Cartao escolhido para definir o teto: le o ciclo atual e monta o rascunho que pergunta o valor. Nao grava nada. */
+  private async prepareSetLimitDraft(userId: string, card: { id: string; name: string }): Promise<{ draft: CreditLimitDraft } | { errorText: string }> {
+    let cycle: Awaited<ReturnType<CreditCycleService['getCurrent']>>;
+    try {
+      cycle = await this.creditCycle.getCycleForCard(userId, card.id);
+    } catch (error) {
+      this.logger.warn(`Leitura falhou: intent=set_credit_limit erro=${error instanceof Error ? error.name : typeof error}`);
+      return { errorText: REPLIES.consultError };
+    }
+    return {
+      draft: {
+        kind: 'CREDIT_LIMIT',
+        action: 'set',
+        ceilingCents: null,
+        cardId: card.id,
+        cardName: card.name,
+        cycleStart: toYmd(new Date(cycle.cycleStart)),
+        cycleEnd: toYmd(new Date(cycle.cycleEnd)),
+        previousCeilingCents: cycle.ceiling === null ? null : toCents(cycle.ceiling),
+        countAllPayments: cycle.countAllPayments,
+        pendingField: 'amount',
+      },
+    };
+  }
+
   /** Cartao escolhido: le o ciclo atual e monta o rascunho de limpar o teto (ou diz que nao ha teto). Nao grava nada. */
   private async prepareClearLimitDraft(
     userId: string,
@@ -1262,10 +1290,10 @@ export class ConversationService {
   }
 
   /** Botao do menu (limpar teto ou renomear) sem nome na frase: um cartao so segue direto; varios, lista numerada. */
-  private async startCardPick(args: { input: ConversationInput; purpose: 'CLEAR_LIMIT' | 'RENAME' }): Promise<ConversationReply> {
+  private async startCardPick(args: { input: ConversationInput; purpose: 'CLEAR_LIMIT' | 'SET_LIMIT' | 'RENAME' }): Promise<ConversationReply> {
     const { input, purpose } = args;
     const { userId, receivedAt } = input;
-    const intent = purpose === 'RENAME' ? 'rename_card' : 'clear_credit_limit';
+    const intent = purpose === 'RENAME' ? 'rename_card' : purpose === 'SET_LIMIT' ? 'set_credit_limit' : 'clear_credit_limit';
     const cards = await this.activeCards(userId);
     if (cards.length === 0) {
       await this.recordEvent(input, intent, ConversationOutcome.ERROR);
@@ -1273,6 +1301,9 @@ export class ConversationService {
     }
     if (cards.length === 1 && purpose === 'CLEAR_LIMIT') {
       return this.startCreditLimitClearDraft({ input, body: cards[0].name });
+    }
+    if (cards.length === 1 && purpose === 'SET_LIMIT') {
+      return this.startCreditLimitDraft({ input, body: '' });
     }
     const single = cards.length === 1 ? cards[0] : null;
     const draft: CardPickDraft = {
@@ -1312,6 +1343,12 @@ export class ConversationService {
         draft.cardName = card.name;
         draft.cardIds = [];
         draft.pendingField = 'name';
+        return { status: 'UPDATED' };
+      }
+      if (draft.purpose === 'SET_LIMIT') {
+        const setting = await this.prepareSetLimitDraft(userId, card);
+        if ('errorText' in setting) return { status: 'ERROR', text: setting.errorText };
+        replaceDraft(draft, setting.draft);
         return { status: 'UPDATED' };
       }
       const prepared = await this.prepareClearLimitDraft(userId, card);
@@ -2300,12 +2337,12 @@ export class ConversationService {
       const amount = parseAmountPrefix(value);
       if (amount.ok === false) {
         if (amount.reason === 'NOT_AMOUNT') {
-          return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: REPLIES.askCreditLimit, prefix: REPLIES.amountOnly };
+          return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: creditLimitQuestion(draft), prefix: REPLIES.amountOnly };
         }
         return { status: 'ERROR', text: amountErrorText(amount.reason) };
       }
       if (amount.rest !== '') {
-        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: REPLIES.askCreditLimit, prefix: REPLIES.amountOnly };
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: creditLimitQuestion(draft), prefix: REPLIES.amountOnly };
       }
       draft.ceilingCents = amount.cents;
       draft.pendingField = null;
@@ -3947,7 +3984,7 @@ export class ConversationService {
       return REPLIES.collectingReminder;
     }
     if (draft.kind === 'CREDIT_LIMIT') {
-      return REPLIES.askCreditLimit;
+      return creditLimitQuestion(draft);
     }
     if (draft.kind === 'GOAL') {
       return draft.pendingField === 'title' ? REPLIES.askGoalTitle : REPLIES.askGoalTarget;
@@ -4074,7 +4111,7 @@ export class ConversationService {
       return {
         ...base,
         kind: 'CARD_PICK',
-        title: draft.purpose === 'RENAME' ? 'Renomear cartão' : 'Limpar limite',
+        title: draft.purpose === 'RENAME' ? 'Renomear cartão' : draft.purpose === 'SET_LIMIT' ? 'Definir limite' : 'Limpar limite',
         pendingField: null,
         rows: [{ label: 'Cartão', value: draft.cardName ?? 'a escolher' }],
       };
@@ -4809,6 +4846,11 @@ function isCategoryCreateAnswer(draft: SessionDraft, text: string, intent: Inten
   if (draft.kind === 'CARD_CREATE') return draft.pendingField === 'name' && looksLikeName;
   if (draft.kind === 'CARD_PICK') return draft.pendingField === 'name' ? looksLikeName : looksLikeName || /^\d/.test(text);
   return false;
+}
+
+/** Pergunta do valor do teto; com cartao escolhido, diz qual. */
+function creditLimitQuestion(draft: CreditLimitDraft): string {
+  return draft.cardName ? `Qual o limite para este ciclo do cartão ${draft.cardName}?` : REPLIES.askCreditLimit;
 }
 
 /** Troca o conteudo do rascunho por outro tipo, mantendo o mesmo objeto (a sessao salva o que ficou nele). */

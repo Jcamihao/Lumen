@@ -107,6 +107,36 @@ describe('menu por botao e saida universal (12.1a)', () => {
       expect(world.writeCount).toBe(0);
     });
 
+    it('Lancar despesa e Lancar receita guiam campo a campo ate a confirmacao, sem gravar', async () => {
+      const expense = await click('A', 'financas.despesa');
+      expect(expense.text).toContain('Quanto foi?');
+      expect((await say('A', '3')).text).toContain('Qual a descrição do lançamento?');
+      expect((await say('A', 'café na padaria')).text).toContain('Qual a categoria?');
+      const confirm = await say('A', 'sem categoria');
+      expect(confirm.kind).toBe('CONFIRM_DRAFT');
+      await say('A', 'cancelar');
+
+      const income = await click('A', 'financas.receita');
+      expect(income.text).toContain('Quanto foi?');
+      expect((await say('A', '500')).text).toContain('Qual a descrição do lançamento?');
+      expect(world.writeCount).toBe(0);
+    });
+
+    it('Criar meta e Definir limite guiam campo a campo ate a confirmacao, sem gravar', async () => {
+      const goal = await click('A', 'metas.criar');
+      expect(goal.text).toContain('Qual o nome da meta?');
+      expect((await say('A', 'Viagem')).text).toContain('Qual o valor-alvo?');
+      const goalConfirm = await say('A', '3000');
+      expect(goalConfirm.kind).toBe('CONFIRM_DRAFT');
+      expect(goalConfirm.text.replace(/\s/g, ' ')).toContain('Alvo: R$ 3.000,00');
+      await say('A', 'cancelar');
+
+      const limit = await click('A', 'cartao.definir');
+      expect(limit.text).toContain('Qual o limite para este ciclo do cartão?');
+      expect((await say('A', '5000')).kind).toBe('CONFIRM_DRAFT');
+      expect(world.writeCount).toBe(0);
+    });
+
     it('Criar cartao abre o rascunho guiado: pergunta o nome, depois o dia de fechamento, e nao grava', async () => {
       const ask = await click('A', 'cartao.criar');
 

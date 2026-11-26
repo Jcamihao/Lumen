@@ -218,6 +218,18 @@ describe('limite do cartao por nome e limpar teto (8d)', () => {
     expect((sessions[0].draft as Row).cardId).toBe('cr-nubank-b');
   });
 
+  it('definir limite sem nome: um cartao so pergunta o valor direto; varios listam, e o numero escolhe', async () => {
+    const { send, sessions } = buildService();
+    const single = await send('definir limite', 'B');
+    expect(single.text).toBe('Qual o limite para este ciclo do cartão?');
+    await send('cancelar', 'B');
+    const list = await send('definir limite');
+    expect(list.text.split('\n')[0]).toBe('Qual cartão? Responda com o número:');
+    const ask = await send('3');
+    expect(ask.text).toBe('Qual o limite para este ciclo do cartão Vivo?');
+    expect((sessions[0].draft as Row).cardId).toBe('cr-vivo');
+  });
+
   it('na lista de limpar, outro numero escolhe outro cartao; numero fora da lista repete a lista', async () => {
     const { send, sessions } = buildService();
     await send('limpar limite');

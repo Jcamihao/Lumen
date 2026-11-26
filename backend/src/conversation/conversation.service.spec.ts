@@ -2522,14 +2522,15 @@ describe('ConversationService', () => {
       });
 
       it('leitura do ciclo falha com corpo vazio: também ERROR genérico, sem 500', async () => {
-        creditCycle.getCurrent = jest.fn(async () => {
+        await send('A', 'definir limite');
+        const failing = jest.fn(async () => {
           throw new Error('x');
         });
+        (creditCycle as Record<string, unknown>).getCycleForCard = failing;
+        const reply = await send('A', '1');
 
-        const reply = await send('A', 'definir limite');
-
-        expect(reply).toMatchObject({ kind: 'ERROR', state: 'IDLE', text: REPLIES.consultError });
-        expect(db.sessions).toHaveLength(0);
+        expect(reply).toMatchObject({ kind: 'ERROR', text: REPLIES.consultError });
+        expect(failing).toHaveBeenCalled();
       });
 
       it('confirmar grava com o ciclo do rascunho e devolve DONE com resultRef do teto', async () => {
@@ -2637,11 +2638,14 @@ describe('ConversationService', () => {
     });
 
     describe('valor do limite', () => {
-      it('corpo vazio pergunta o valor', async () => {
-        const reply = await send('A', 'definir limite do cartão');
+      it('corpo vazio com varios cartoes lista os cartoes; o numero escolhe e o motor pergunta o valor desse cartao', async () => {
+        const list = await send('A', 'definir limite do cartão');
+        expect(list).toMatchObject({ kind: 'ASK_FIELD', text: ['Qual cartão? Responda com o número:', '1. Nubank (padrão)', '2. Itaú'].join('\n') });
 
-        expect(reply).toMatchObject({ kind: 'ASK_FIELD', text: REPLIES.askCreditLimit });
-        expect(db.sessions[0].draft).toMatchObject({ ceilingCents: null, pendingField: 'amount' });
+        const reply = await send('A', '2');
+
+        expect(reply).toMatchObject({ kind: 'ASK_FIELD', text: 'Qual o limite para este ciclo do cartão Itaú?' });
+        expect(db.sessions[0].draft).toMatchObject({ kind: 'CREDIT_LIMIT', ceilingCents: null, pendingField: 'amount', cardId: 'cr-itau', cardName: 'Itaú' });
       });
 
       it('"definir limite 5000 Nubank" escolhe o cartao pelo nome e pega o valor (8d)', async () => {
@@ -2673,10 +2677,11 @@ describe('ConversationService', () => {
 
       it('resposta ao pedido de valor precisa ser só o valor', async () => {
         await send('A', 'definir limite do cartão');
+        await send('A', '1');
 
         expect(await send('A', '5000 Nubank')).toMatchObject({
           kind: 'ASK_FIELD',
-          text: `${REPLIES.amountOnly}\n${REPLIES.askCreditLimit}`,
+          text: `${REPLIES.amountOnly}\nQual o limite para este ciclo do cartão Nubank?`,
         });
         expect(await send('A', '5000')).toMatchObject({ kind: 'CONFIRM_DRAFT' });
       });
