@@ -46,7 +46,7 @@ describe('menu por botao e saida universal (12.1a)', () => {
       expect(reply).toMatchObject({ kind: 'MENU', menu: { nodeId: 'financas', backId: 'menu', topId: 'menu' } });
       expect(reply.menu?.options).toHaveLength(8);
       expect(reply.text).toContain('1. 🛒 Lançar despesa: registrar um gasto — "gastei 50 no mercado"');
-      expect(reply.text).toContain('3. 🏷️ Gastos por categoria: ver gastos de uma categoria — "gastos com mercado"');
+      expect(reply.text).toContain('3. 🏷️ Categorias: ver, criar, editar e excluir');
       expect(lastEventOf('A')).toMatchObject({ intent: 'menu_nav:financas' });
     });
 
@@ -177,6 +177,22 @@ describe('menu por botao e saida universal (12.1a)', () => {
       for (const word of ['menu', 'Início', 'começar', 'start']) {
         expect({ word, kind: (await say('A', word)).kind }).toEqual({ word, kind: 'MENU' });
       }
+    });
+
+    it('Categorias e um submenu com quatro opcoes; criar categoria abre o rascunho guiado', async () => {
+      const area = await click('A', 'financas.categorias');
+      expect(area.menu?.options.map((option) => option.id)).toEqual([
+        'financas.categorias.ver',
+        'financas.categorias.criar',
+        'financas.categorias.editar',
+        'financas.categorias.excluir',
+      ]);
+      expect(area.menu?.backId).toBe('financas');
+      expect(area.menu?.title).toContain('Aqui você organiza as categorias');
+      const created = await click('A', 'financas.categorias.criar');
+      expect(created.kind).toBe('ASK_FIELD');
+      expect(created.text).toContain('Qual o nome da nova categoria?');
+      expect(world.writeCount).toBe(0);
     });
 
     it('apos tocar em Lancar despesa, frase completa com 3$ preenche valor e descricao', async () => {

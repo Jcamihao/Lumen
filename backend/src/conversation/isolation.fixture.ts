@@ -579,6 +579,7 @@ export function buildEngine(world: World, writesEnabled = true, telegramWritesEn
     config as unknown as Deps[9],
     { tryFallbackAnswer: jest.fn(async () => ({ status: 'unavailable' })) } as unknown as Deps[10],
     s.creditCards as unknown as Deps[11],
+    {} as unknown as Deps[12],
   );
   return { service, settings };
 }

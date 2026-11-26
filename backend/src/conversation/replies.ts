@@ -152,6 +152,21 @@ export function spendTotalText(expenseCents: number): string {
   return `Gastos do mês: ${formatBrl(expenseCents)}.`;
 }
 
+export function categoriesListText(input: { rows: Array<{ name: string; cents: number }>; hidden: number; uncategorizedCents: number }): string {
+  const lines = input.rows.map((row, index) => `${index + 1}. ${row.name}: ${formatBrl(row.cents)}`);
+  return [
+    '🏷️ Seus gastos por categoria neste mês:',
+    ...lines,
+    ...(input.hidden > 0 ? [`... e mais ${input.hidden}.`] : []),
+    ...(input.uncategorizedCents > 0 ? [`Sem categoria: ${formatBrl(input.uncategorizedCents)}`] : []),
+    'Para ver uma só, diga: gastos com mercado.',
+    'Criar, editar ou excluir: Menu → Finanças → Categorias.',
+  ].join('\n');
+}
+
+export const CATEGORIES_EMPTY =
+  'Você ainda não tem categorias de despesa. Crie a primeira em Menu → Finanças → Categorias → Criar categoria.';
+
 export function categoryTotalText(name: string, cents: number): string {
   return `Gastos com ${name} no mês: ${formatBrl(cents)}.`;
 }

@@ -41,7 +41,9 @@ export type DraftKind =
   | 'RECURRING_CHANGE'
   | 'INSTALLMENT_CHANGE'
   | 'CARD_RENAME'
-  | 'CARD_CREATE';
+  | 'CARD_CREATE'
+  | 'CATEGORY_CREATE'
+  | 'CATEGORY_CHANGE';
 
 /**
  * Rascunho para a tela: valores formatados, sem ids internos alem de draftId/draftVersion.
@@ -183,6 +185,24 @@ export interface CardCreateDraft {
   pendingField: 'closingDay' | null;
 }
 
+/** Criar categoria por conversa (menu guiado, fatia 2): nome e tipo; cor automatica, sem icone nem orcamento. */
+export interface CategoryCreateDraft {
+  kind: 'CATEGORY_CREATE';
+  name: string | null;
+  type: 'EXPENSE' | 'INCOME' | null;
+  pendingField: 'name' | 'type' | null;
+}
+
+/** Editar (so o nome) ou excluir categoria propria por conversa: lista, escolha pelo numero e confirmacao. */
+export interface CategoryChangeDraft {
+  kind: 'CATEGORY_CHANGE';
+  action: 'EDIT' | 'DELETE';
+  candidateIds: string[];
+  targetId: string | null;
+  newName: string | null;
+  pendingField: 'category' | 'name' | null;
+}
+
 /** Conta fixa (contrato 3b2b, secao 5): só despesa; categoria e pagamento ficam não informados. */
 export interface RecurringDraft {
   kind: 'RECURRING';
@@ -266,7 +286,9 @@ export type SessionDraft =
   | TransactionChangeDraft
   | TargetChangeDraft
   | CardRenameDraft
-  | CardCreateDraft;
+  | CardCreateDraft
+  | CategoryCreateDraft
+  | CategoryChangeDraft;
 
 /** Dados numericos para a tela (centavos). Presentes em INFO e DONE. */
 export interface ReplyData {
@@ -291,6 +313,8 @@ export interface ReplyData {
     dueDay: number | null;
   };
   transactionId?: string;
+  /** Categoria criada, renomeada ou excluida por conversa (DONE). */
+  categoryId?: string;
   /** 9b-3: cartao renomeado (DONE). */
   cardId?: string;
   /** Consultas do item 3a (contrato secao 4). Centavos; datas 'AAAA-MM-DD'. */

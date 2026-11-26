@@ -153,7 +153,8 @@ export function isDeleteChange(draft: unknown): boolean {
     kind === 'GOAL_CHANGE' ||
     kind === 'ENVELOPE_CHANGE' ||
     kind === 'RECURRING_CHANGE' ||
-    kind === 'INSTALLMENT_CHANGE'
+    kind === 'INSTALLMENT_CHANGE' ||
+    kind === 'CATEGORY_CHANGE'
   ) && value?.action === 'DELETE';
 }
 

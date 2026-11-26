@@ -123,6 +123,20 @@ import {
   parseCardRename,
   parseClosingDayAnswer,
 } from './card-write';
+import { FinanceCategoriesService } from '../finance-categories/finance-categories.service';
+import {
+  CATEGORY_PICK_MAX,
+  CATEGORY_REPLIES,
+  categoryCreateDraftText,
+  categoryNameTaken,
+  categoryPickLine,
+  categoryTypeLabel,
+  checkCategoryName,
+  isCategoryChangeDraft,
+  nextCategoryColor,
+  parseCategoryCreateBody,
+  parseCategoryType,
+} from './category-write';
 import { MAX_ACTIVE_CARDS_PER_USER, CreditCardsService, CreditCardWriteUncertainError } from '../credit-cards/credit-cards.service';
 import { CARD_ARCHIVED_MESSAGE, CARD_NEEDS_CREDIT_MESSAGE, CARD_NOT_FOUND_MESSAGE } from '../credit-cards/card-link';
 import { parseEnvelopeBody } from './parsers/envelope.parser';
@@ -132,6 +146,8 @@ import {
   balanceText,
   cardText,
   categoryOptionsText,
+  categoriesListText,
+  CATEGORIES_EMPTY,
   categoryTotalText,
   contributionDoneText,
   contributionDraftText,
@@ -173,6 +189,8 @@ import {
   CreditLimitDraft,
   CardRenameDraft,
   CardCreateDraft,
+  CategoryChangeDraft,
+  CategoryCreateDraft,
   DraftKind,
   DraftView,
   EnvelopeDraft,
@@ -218,6 +236,7 @@ const READ_INTENTS: Array<ReadIntent | 'credit_card'> = [
   'envelopes',
   'credit_card',
   'list_cards',
+  'categories',
 ];
 /** Janela de "o que vence" em dias, a partir de hoje no fuso do usuário (contrato D4). */
 const UPCOMING_WINDOW_DAYS = 30;
@@ -225,6 +244,8 @@ const UPCOMING_WINDOW_DAYS = 30;
 const UPCOMING_MAX_ITEMS = 8;
 /** Limite de linhas nas demais listas (contrato D5). */
 const LIST_MAX_ITEMS = 5;
+/** Linhas na lista de categorias com totais do mes. */
+const CATEGORIES_LIST_MAX = 15;
 /** Tamanho máximo de descrição/título em uma linha da resposta (contrato secao 5). */
 const LINE_MAX_CHARS = 60;
 const MAX_GOAL_PERCENT = 100;
@@ -354,6 +375,7 @@ export class ConversationService {
     private readonly configService: ConfigService,
     private readonly assistant: AssistantService,
     private readonly creditCards: CreditCardsService,
+    private readonly financeCategories: FinanceCategoriesService,
   ) {}
 
   /** Mensagem digitada (canal APP ou WhatsApp). Ordem de decisao: contrato secao 6 e motor. */
@@ -545,6 +567,12 @@ export class ConversationService {
     }
     if (intent.intent === 'create_card') {
       return this.startCardCreateDraft({ input, body: intent.body });
+    }
+    if (intent.intent === 'create_category') {
+      return this.startCategoryCreateDraft({ input, body: intent.body });
+    }
+    if (intent.intent === 'edit_category' || intent.intent === 'delete_category') {
+      return this.startCategoryChangeDraft({ input, action: intent.intent === 'delete_category' ? 'DELETE' : 'EDIT', body: intent.body });
     }
     if (intent.intent === 'rename_card') {
       return this.startCardRenameDraft({ input, body: intent.body });
@@ -998,6 +1026,196 @@ export class ConversationService {
       pendingField: null,
     };
     return this.saveNewDraft({ input, intent: 'clear_credit_limit', draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  /** Criar categoria: nome e tipo (despesa ou receita); o que faltar e perguntado. Cor automatica, sem icone nem orcamento. */
+  private async startCategoryCreateDraft(args: { input: ConversationInput; body: string }): Promise<ConversationReply> {
+    const { input, body } = args;
+    const { userId, receivedAt } = input;
+    const parsed = parseCategoryCreateBody(body);
+    let name: string | null = null;
+    if (parsed.name !== null) {
+      const checked = checkCategoryName(parsed.name);
+      if (checked.ok === false) {
+        await this.recordEvent(input, 'create_category', ConversationOutcome.ERROR);
+        return this.reply('ERROR', 'IDLE', checked.text);
+      }
+      name = checked.name;
+    }
+    if (name !== null && parsed.type !== null && (await this.isCategoryNameTaken(userId, name, parsed.type))) {
+      await this.recordEvent(input, 'create_category', ConversationOutcome.ERROR);
+      return this.reply('ERROR', 'IDLE', CATEGORY_REPLIES.nameTaken);
+    }
+    const draft: CategoryCreateDraft = {
+      kind: 'CATEGORY_CREATE',
+      name,
+      type: parsed.type,
+      pendingField: name === null ? 'name' : parsed.type === null ? 'type' : null,
+    };
+    return this.saveNewDraft({ input, intent: 'create_category', draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  private async isCategoryNameTaken(userId: string, name: string, type: string, exceptId = ''): Promise<boolean> {
+    const own = await this.prisma.financeCategory.findMany({ where: { userId, type: type as TransactionType }, select: { id: true, name: true, type: true } });
+    return categoryNameTaken(own, name, type, exceptId);
+  }
+
+  private async answerCategoryCreate(userId: string, draft: CategoryCreateDraft, value: string): Promise<PendingAnswer> {
+    if (draft.pendingField === 'name') {
+      const checked = checkCategoryName(value);
+      if (checked.ok === false) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: CATEGORY_REPLIES.askName, prefix: checked.text };
+      }
+      draft.name = checked.name;
+      draft.pendingField = draft.type === null ? 'type' : null;
+    } else if (draft.pendingField === 'type') {
+      const type = parseCategoryType(value);
+      if (type === null) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: CATEGORY_REPLIES.askType };
+      }
+      draft.type = type;
+      draft.pendingField = null;
+    } else {
+      return { status: 'ERROR', text: REPLIES.collectingReminder };
+    }
+    if (draft.name !== null && draft.type !== null && (await this.isCategoryNameTaken(userId, draft.name, draft.type))) {
+      draft.name = null;
+      draft.pendingField = 'name';
+      return { status: 'ASK', outcome: ConversationOutcome.ERROR, question: CATEGORY_REPLIES.askName, prefix: CATEGORY_REPLIES.nameTaken };
+    }
+    return { status: 'UPDATED' };
+  }
+
+  /** Criar categoria: o FinanceCategoriesService grava (nome unico por tipo sob o indice); o texto sai do recibo. */
+  private async applyCategoryCreate(userId: string, draft: CategoryCreateDraft): Promise<AppliedAction> {
+    if (draft.name === null || draft.type === null) {
+      throw new Error('rascunho de criar categoria incompleto');
+    }
+    const count = await this.prisma.financeCategory.count({ where: { userId } });
+    const receipt = await this.financeCategories.create(userId, { name: draft.name, color: nextCategoryColor(count), type: draft.type });
+    return {
+      text: `Categoria criada: ${receipt.name} (${categoryTypeLabel(draft.type)}). Ela já aparece quando você lançar um gasto ou receita. 🎉`,
+      data: { categoryId: receipt.id },
+      resultRef: receipt.id,
+    };
+  }
+
+  /** Editar (so o nome) ou excluir categoria propria: lista numerada, escolha pelo numero, confirmacao. */
+  private async startCategoryChangeDraft(args: { input: ConversationInput; action: 'EDIT' | 'DELETE'; body: string }): Promise<ConversationReply> {
+    const { input, action, body } = args;
+    const { userId, receivedAt } = input;
+    const intent = action === 'DELETE' ? 'delete_category' : 'edit_category';
+    const own = await this.ownCategories(userId);
+    if (own.length === 0) {
+      await this.recordEvent(input, intent, ConversationOutcome.RECOGNIZED);
+      return this.reply('INFO', 'IDLE', CATEGORY_REPLIES.none);
+    }
+    let pool = own;
+    if (body.length > 0) {
+      const matchedIds = new Set(matchCategory(body, own).map((category) => category.id));
+      pool = own.filter((category) => matchedIds.has(category.id));
+      if (pool.length === 0) {
+        await this.recordEvent(input, intent, ConversationOutcome.RECOGNIZED);
+        return this.reply('INFO', 'IDLE', REPLIES.noCategoryMatch(body));
+      }
+    }
+    const draft: CategoryChangeDraft = {
+      kind: 'CATEGORY_CHANGE',
+      action,
+      candidateIds: pool.slice(0, CATEGORY_PICK_MAX).map((category) => category.id),
+      targetId: null,
+      newName: null,
+      pendingField: 'category',
+    };
+    if (body.length > 0 && pool.length === 1) {
+      draft.targetId = pool[0].id;
+      draft.candidateIds = [];
+      draft.pendingField = action === 'EDIT' ? 'name' : null;
+    }
+    return this.saveNewDraft({ input, intent, draft, today: await this.todayYmd(userId, receivedAt) });
+  }
+
+  /** Categorias do proprio usuario (nunca as do parceiro), despesas antes de receitas, por nome. */
+  private async ownCategories(userId: string): Promise<Array<{ id: string; name: string; type: string }>> {
+    return this.prisma.financeCategory.findMany({
+      where: { userId },
+      select: { id: true, name: true, type: true },
+      orderBy: [{ type: 'asc' }, { name: 'asc' }],
+      take: CATEGORY_PICK_MAX + 1,
+    });
+  }
+
+  private async categoryPickText(userId: string, draft: CategoryChangeDraft): Promise<string> {
+    const rows = await this.prisma.financeCategory.findMany({ where: { userId, id: { in: draft.candidateIds } }, select: { id: true, name: true, type: true } });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const lines = draft.candidateIds.flatMap((id, index) => {
+      const row = byId.get(id);
+      return row ? [categoryPickLine(index, row)] : [];
+    });
+    return [CATEGORY_REPLIES.pickHeader, ...lines].join('\n');
+  }
+
+  private async answerCategoryChange(userId: string, draft: CategoryChangeDraft, value: string): Promise<PendingAnswer> {
+    if (draft.pendingField === 'category') {
+      const chosen = /^\d{1,2}$/.test(value) ? draft.candidateIds[Number(value) - 1] : undefined;
+      if (chosen === undefined) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: await this.categoryPickText(userId, draft) };
+      }
+      const row = await this.prisma.financeCategory.findFirst({ where: { id: chosen, userId }, select: { id: true } });
+      if (row === null) {
+        return { status: 'ERROR', text: CATEGORY_REPLIES.gone };
+      }
+      draft.targetId = row.id;
+      draft.candidateIds = [];
+      draft.pendingField = draft.action === 'EDIT' ? 'name' : null;
+      return { status: 'UPDATED' };
+    }
+    if (draft.pendingField === 'name' && draft.targetId !== null) {
+      const target = await this.prisma.financeCategory.findFirst({ where: { id: draft.targetId, userId }, select: { id: true, name: true, type: true } });
+      if (target === null) {
+        return { status: 'ERROR', text: CATEGORY_REPLIES.gone };
+      }
+      const checked = checkCategoryName(value);
+      if (checked.ok === false) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: CATEGORY_REPLIES.askNewName(target.name), prefix: checked.text };
+      }
+      if (normalize(checked.name) === normalize(target.name) && checked.name === target.name) {
+        return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: CATEGORY_REPLIES.askNewName(target.name), prefix: CATEGORY_REPLIES.sameName };
+      }
+      if (await this.isCategoryNameTaken(userId, checked.name, target.type, target.id)) {
+        return { status: 'ASK', outcome: ConversationOutcome.ERROR, question: CATEGORY_REPLIES.askNewName(target.name), prefix: CATEGORY_REPLIES.nameTaken };
+      }
+      draft.newName = checked.name;
+      draft.pendingField = null;
+      return { status: 'UPDATED' };
+    }
+    return { status: 'ERROR', text: REPLIES.collectingReminder };
+  }
+
+  private async categoryChangeDraftText(userId: string, draft: CategoryChangeDraft): Promise<string> {
+    const target = draft.targetId === null ? null : await this.prisma.financeCategory.findFirst({ where: { id: draft.targetId, userId }, select: { name: true } });
+    const name = target?.name ?? 'a escolher';
+    if (draft.action === 'DELETE') {
+      return `Excluir a categoria "${name}"? ${CATEGORY_REPLIES.deleteWarning}`;
+    }
+    return `Renomear "${name}" para "${draft.newName ?? 'a informar'}". Responda confirmar para salvar ou cancelar.`;
+  }
+
+  /** Aplica na confirmacao: relê a categoria com id + userId; sumida = recusa sem gravar. */
+  private async applyCategoryChange(userId: string, draft: CategoryChangeDraft): Promise<AppliedAction> {
+    const target = draft.targetId === null ? null : await this.prisma.financeCategory.findFirst({ where: { id: draft.targetId, userId }, select: { id: true, name: true } });
+    if (target === null) {
+      throw new NotFoundException(CATEGORY_REPLIES.gone);
+    }
+    if (draft.action === 'DELETE') {
+      await this.financeCategories.remove(userId, target.id);
+      return { text: `Excluí a categoria "${target.name}". Os lançamentos dela ficaram sem categoria.`, data: { categoryId: target.id }, resultRef: target.id };
+    }
+    if (draft.newName === null) {
+      throw new Error('rascunho de editar categoria sem nome novo');
+    }
+    await this.financeCategories.update(userId, target.id, { name: draft.newName });
+    return { text: `Renomeei "${target.name}" para "${draft.newName}".`, data: { categoryId: target.id }, resultRef: target.id };
   }
 
   /**
@@ -1618,6 +1836,9 @@ export class ConversationService {
       // Edição: "valor 45", "descrição padaria" etc. (também depois da prévia, para mudar mais de um campo).
       return this.fillPendingField({ input, session, text });
     }
+    if (isCategoryChangeDraft(pendingDraft) && pendingDraft.pendingField === 'category' && !awaiting && (intent === null || /^\d/.test(text))) {
+      return this.fillPendingField({ input, session, text });
+    }
     if (isTargetChangeDraft(pendingDraft) && pendingDraft.pendingField === 'targetChoice' && !awaiting && (intent === null || /^\d/.test(text))) {
       // Meta/reserva: número escolhe; texto vira busca (contrato 8b, secao 3). Comando conhecido segue a regra do motor.
       return this.fillPendingField({ input, session, text });
@@ -1734,6 +1955,12 @@ export class ConversationService {
     }
     if (draft.kind === 'CARD_CREATE') {
       return this.answerCardCreate(draft, value);
+    }
+    if (draft.kind === 'CATEGORY_CREATE') {
+      return this.answerCategoryCreate(userId, draft, value);
+    }
+    if (draft.kind === 'CATEGORY_CHANGE') {
+      return this.answerCategoryChange(userId, draft, value);
     }
     if (draft.kind === 'CARD_RENAME') {
       return { status: 'ERROR', text: REPLIES.collectingReminder };
@@ -2154,6 +2381,12 @@ export class ConversationService {
     }
     if (draft.kind === 'CARD_CREATE') {
       return this.applyCardCreate(userId, draft);
+    }
+    if (draft.kind === 'CATEGORY_CREATE') {
+      return this.applyCategoryCreate(userId, draft);
+    }
+    if (draft.kind === 'CATEGORY_CHANGE') {
+      return this.applyCategoryChange(userId, draft);
     }
     if (draft.kind === 'CREDIT_LIMIT') {
       return this.applyCreditLimit(userId, draft);
@@ -3047,11 +3280,42 @@ export class ConversationService {
         return this.creditCardReply(userId, intent.cardTerm);
       case 'list_cards':
         return this.listCardsReply(userId);
+      case 'categories':
+        return this.categoriesReply(userId);
       case 'help':
         return this.reply('HELP', 'IDLE', REPLIES.help);
       default:
         return this.reply('ERROR', 'IDLE', REPLIES.unrecognized);
     }
+  }
+
+  /** Categorias de despesa com o total do mes de cada uma (maior primeiro) e o que ficou sem categoria. */
+  private async categoriesReply(userId: string): Promise<ConversationReply> {
+    const { timezone } = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { timezone: true } });
+    const month = monthToDateUtc(new Date(), timezone);
+    const [grouped, categories] = await Promise.all([
+      this.prisma.transaction.groupBy({
+        by: ['categoryId'],
+        where: { userId, type: TransactionType.EXPENSE, date: { gte: month.start, lt: month.end } },
+        _sum: { amount: true },
+      }),
+      this.prisma.financeCategory.findMany({
+        where: { userId, type: TransactionType.EXPENSE },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+    if (categories.length === 0) {
+      return this.infoReply(CATEGORIES_EMPTY, { categories: [] });
+    }
+    const centsById = new Map(grouped.map((row) => [row.categoryId, toCents(row._sum.amount ?? 0)]));
+    const rows = categories
+      .map((category) => ({ name: truncate(category.name), cents: centsById.get(category.id) ?? 0 }))
+      .sort((a, b) => b.cents - a.cents || a.name.localeCompare(b.name));
+    const shown = rows.slice(0, CATEGORIES_LIST_MAX);
+    const uncategorizedCents = centsById.get(null) ?? 0;
+    const text = categoriesListText({ rows: shown, hidden: rows.length - shown.length, uncategorizedCents });
+    return this.infoReply(text, { categories: shown.map((row) => ({ name: row.name, amountCents: row.cents })) });
   }
 
   private async spendByCategory(userId: string, query: string): Promise<ConversationReply> {
@@ -3445,6 +3709,12 @@ export class ConversationService {
         toneSeed: toneSeedOf(draft),
       });
     }
+    if (draft.kind === 'CATEGORY_CREATE') {
+      return categoryCreateDraftText({ name: draft.name, type: draft.type });
+    }
+    if (draft.kind === 'CATEGORY_CHANGE') {
+      return this.categoryChangeDraftText(session.userId, draft);
+    }
     return draftText({
       type: draft.type,
       amountCents: draft.amountCents,
@@ -3499,6 +3769,14 @@ export class ConversationService {
     }
     if (draft.kind === 'CARD_CREATE') {
       return CARD_WRITE_REPLIES.askClosingDay(draft.name);
+    }
+    if (draft.kind === 'CATEGORY_CREATE') {
+      return draft.pendingField === 'type' ? CATEGORY_REPLIES.askType : CATEGORY_REPLIES.askName;
+    }
+    if (draft.kind === 'CATEGORY_CHANGE') {
+      if (draft.pendingField === 'category') return this.categoryPickText(userId, draft);
+      const target = draft.targetId === null ? null : await this.prisma.financeCategory.findFirst({ where: { id: draft.targetId, userId }, select: { name: true } });
+      return CATEGORY_REPLIES.askNewName(target?.name ?? '');
     }
     if (draft.kind === 'CARD_RENAME') {
       return REPLIES.collectingReminder;
@@ -3624,6 +3902,32 @@ export class ConversationService {
           { label: 'Início', value: `${monthYearUtc(draft.provisionMonth)} (UTC)` },
           { label: 'Aviso', value: REPLIES.envelopeProvisionWarning },
           ...reviewRows(draft.reviewReason),
+        ],
+      };
+    }
+    if (draft.kind === 'CATEGORY_CREATE') {
+      return {
+        ...base,
+        kind: 'CATEGORY_CREATE',
+        title: 'Criar categoria',
+        pendingField: null,
+        rows: [
+          { label: 'Nome', value: draft.name ?? 'a informar' },
+          { label: 'Tipo', value: draft.type === null ? 'a informar' : categoryTypeLabel(draft.type) },
+        ],
+      };
+    }
+    if (draft.kind === 'CATEGORY_CHANGE') {
+      const target = draft.targetId === null ? null : await this.prisma.financeCategory.findFirst({ where: { id: draft.targetId, userId: session.userId }, select: { name: true } });
+      return {
+        ...base,
+        kind: 'CATEGORY_CHANGE',
+        title: draft.action === 'DELETE' ? 'Excluir categoria' : 'Editar categoria',
+        changeAction: draft.action,
+        pendingField: null,
+        rows: [
+          { label: 'Categoria', value: target?.name ?? 'a escolher' },
+          ...(draft.action === 'EDIT' ? [{ label: 'Novo nome', value: draft.newName ?? 'a informar' }] : [{ label: 'Aviso', value: 'Os lançamentos dela ficam sem categoria.' }]),
         ],
       };
     }
@@ -4132,7 +4436,7 @@ function numberedOptions(draft: SessionDraft): string[] {
   if (isTargetChangeDraft(draft)) {
     return [];
   }
-  if (draft.kind === 'GOAL' || draft.kind === 'ENVELOPE' || draft.kind === 'CREDIT_LIMIT' || draft.kind === 'RECURRING' || draft.kind === 'INSTALLMENT' || draft.kind === 'CARD_RENAME' || draft.kind === 'CARD_CREATE') {
+  if (draft.kind === 'GOAL' || draft.kind === 'ENVELOPE' || draft.kind === 'CREDIT_LIMIT' || draft.kind === 'RECURRING' || draft.kind === 'INSTALLMENT' || draft.kind === 'CARD_RENAME' || draft.kind === 'CARD_CREATE' || draft.kind === 'CATEGORY_CREATE' || draft.kind === 'CATEGORY_CHANGE') {
     return [];
   }
   if (draft.kind === 'CONTRIBUTION') {
@@ -4210,6 +4514,8 @@ function goalTargetValue(draft: GoalDraft): string {
 /** Texto que começa com número é a resposta pedida (nome, descrição, quantidade ou data), não um comando (contrato 4). */
 function startsWithNumericAnswer(draft: SessionDraft): boolean {
   if (draft.kind === 'CARD_CREATE') return draft.pendingField === 'closingDay';
+  if (draft.kind === 'CATEGORY_CREATE') return draft.pendingField !== null;
+  if (draft.kind === 'CATEGORY_CHANGE') return draft.pendingField === 'name';
   if (draft.kind === 'ENVELOPE') return draft.pendingField === 'name';
   if (draft.kind === 'RECURRING') return draft.pendingField === 'description' || draft.pendingField === 'firstDueDate';
   if (draft.kind === 'INSTALLMENT') {
@@ -4404,6 +4710,10 @@ function discardText(kind: DraftKind, error: unknown): string {
     }
     return CARD_WRITE_REPLIES.renameRejected;
   }
+  if (kind === 'CATEGORY_CREATE' || kind === 'CATEGORY_CHANGE') {
+    if (error instanceof HttpException && error.message === CATEGORY_REPLIES.nameTaken) return CATEGORY_REPLIES.nameTaken;
+    return kind === 'CATEGORY_CREATE' ? CATEGORY_REPLIES.createRejected : CATEGORY_REPLIES.changeRejected;
+  }
   if (kind === 'CREDIT_LIMIT') {
     return REPLIES.creditLimitRejected;
   }
@@ -4424,6 +4734,9 @@ function discardText(kind: DraftKind, error: unknown): string {
 function saveFailedText(kind: DraftKind, restored: boolean): string {
   if (kind === 'ENVELOPE') {
     return restored ? REPLIES.envelopeSaveFailed : REPLIES.envelopeSaveFailedRestoreLost;
+  }
+  if (kind === 'CATEGORY_CREATE' || kind === 'CATEGORY_CHANGE') {
+    return restored ? CATEGORY_REPLIES.createSaveFailed : CATEGORY_REPLIES.createSaveFailedRestoreLost;
   }
   if (kind === 'CARD_CREATE') {
     return restored ? CARD_WRITE_REPLIES.createSaveFailed : CARD_WRITE_REPLIES.createSaveFailedRestoreLost;
