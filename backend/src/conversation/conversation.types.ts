@@ -222,6 +222,10 @@ export interface TransactionChangeDraft {
   changes: { amountCents?: number; description?: string; categoryId?: string | null; date?: string };
   pendingField: 'transaction' | 'change' | null;
   reviewReason?: string;
+  /** Lista dos ultimos lancamentos (menu): quantos ja foram mostrados antes da pagina atual. Ausente = busca por termo. */
+  listOffset?: number;
+  /** Na lista dos ultimos: ha pagina seguinte. */
+  hasMore?: boolean;
 }
 
 /**

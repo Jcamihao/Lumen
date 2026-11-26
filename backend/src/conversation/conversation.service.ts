@@ -93,6 +93,8 @@ import {
 } from './target-change';
 import {
   TX_CHANGE_MAX_CANDIDATES,
+  TX_LIST_PAGE_SIZE,
+  formatCompactLine,
   TX_CHANGE_WINDOW_DAYS,
   TX_DAY_MS,
   TX_REPLIES,
@@ -1278,6 +1280,15 @@ export class ConversationService {
         return this.reply('INFO', 'IDLE', found.status === 'NONE' ? TX_REPLIES.notFound : TX_REPLIES.onlyNonEditable);
       }
       draft.candidateIds = found.ids;
+    } else {
+      const page = await this.recentTransactionsPage(input.userId, 0);
+      if (page.ids.length === 0) {
+        await this.recordEvent(input, intent, ConversationOutcome.RECOGNIZED);
+        return this.reply('INFO', 'IDLE', TX_REPLIES.emptyList);
+      }
+      draft.candidateIds = page.ids;
+      draft.listOffset = 0;
+      draft.hasMore = page.hasMore;
     }
     const today = await this.todayYmd(input.userId, input.receivedAt);
     return this.saveNewDraft({ input, intent, draft, today });
@@ -1309,6 +1320,25 @@ export class ConversationService {
     return { status: 'FOUND', ids: editable.map((candidate) => candidate.id) };
   }
 
+  /** Pagina dos lancamentos mais recentes que se pode mudar por conversa (so manuais, sem transferencia). */
+  private async recentTransactionsPage(userId: string, offset: number): Promise<{ ids: string[]; hasMore: boolean }> {
+    const rows = await this.prisma.transaction.findMany({
+      where: {
+        userId,
+        type: { not: TransactionType.TRANSFER },
+        recurringTransactionId: null,
+        installmentPurchaseId: null,
+        linkedGoalId: null,
+        receiptScan: null,
+      },
+      select: { id: true },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+      skip: offset,
+      take: TX_LIST_PAGE_SIZE + 1,
+    });
+    return { ids: rows.slice(0, TX_LIST_PAGE_SIZE).map((row) => row.id), hasMore: rows.length > TX_LIST_PAGE_SIZE };
+  }
+
   /** Lançamento do usuário pelo id (id + userId, nunca só o id). */
   private async loadTxCandidate(userId: string, id: string): Promise<TxCandidate | null> {
     const row = await this.prisma.transaction.findFirst({ where: { id, userId }, select: TX_SELECT });
@@ -1316,16 +1346,37 @@ export class ConversationService {
   }
 
   /** Lista numerada dos candidatos ainda existentes (a numeração segue a ordem original). */
-  private async transactionListText(userId: string, ids: string[]): Promise<string> {
+  private async transactionListText(userId: string, draft: TransactionChangeDraft): Promise<string> {
+    const ids = draft.candidateIds;
+    const compact = draft.listOffset !== undefined;
     const rows = await this.prisma.transaction.findMany({ where: { userId, id: { in: ids } }, select: TX_SELECT });
     const byId = new Map(rows.map((row) => [row.id, toTxCandidate(row)]));
     const lines = ids
       .map((id, index) => {
         const candidate = byId.get(id);
-        return candidate?.eligible ? formatCandidateLine(index, candidate) : null;
+        if (!candidate?.eligible) return null;
+        return compact ? formatCompactLine(index, candidate) : formatCandidateLine(index, candidate);
       })
       .filter((line): line is string => line !== null);
-    return [TX_REPLIES.pickHeader, ...lines].join('\n');
+    return [TX_REPLIES.pickHeader, ...lines, ...(draft.hasMore ? [TX_REPLIES.moreHint] : [])].join('\n');
+  }
+
+  /** "mais": mostra os proximos lancamentos; sem mais, avisa e repete a pagina atual. */
+  private async nextTransactionsPage(userId: string, draft: TransactionChangeDraft): Promise<PendingAnswer> {
+    if (!draft.hasMore) {
+      const list = await this.transactionListText(userId, draft);
+      return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: `${TX_REPLIES.noMore}\n${list}` };
+    }
+    const offset = (draft.listOffset ?? 0) + TX_LIST_PAGE_SIZE;
+    const page = await this.recentTransactionsPage(userId, offset);
+    if (page.ids.length === 0) {
+      draft.hasMore = false;
+      return { status: 'ASK', outcome: ConversationOutcome.UNRECOGNIZED, question: `${TX_REPLIES.noMore}\n${await this.transactionListText(userId, draft)}` };
+    }
+    draft.candidateIds = page.ids;
+    draft.listOffset = offset;
+    draft.hasMore = page.hasMore;
+    return { status: 'UPDATED' };
   }
 
   /** Resposta à lista: número escolhe; sem candidatos, o texto é a busca. Mudança de campo: etapa de editar. */
@@ -1345,12 +1396,15 @@ export class ConversationService {
         draft.candidateIds = found.ids;
         return { status: 'UPDATED' };
       }
-      const chosen = /^[1-5]$/.test(value) ? draft.candidateIds[Number(value) - 1] : undefined;
+      if (draft.listOffset !== undefined && normalize(value) === 'mais') {
+        return this.nextTransactionsPage(userId, draft);
+      }
+      const chosen = /^\d{1,2}$/.test(value) ? draft.candidateIds[Number(value) - 1] : undefined;
       if (chosen === undefined) {
         return {
           status: 'ASK',
           outcome: ConversationOutcome.UNRECOGNIZED,
-          question: await this.transactionListText(userId, draft.candidateIds),
+          question: await this.transactionListText(userId, draft),
         };
       }
       const row = await this.loadTxCandidate(userId, chosen);
@@ -1364,6 +1418,8 @@ export class ConversationService {
       draft.targetId = row.id;
       draft.targetUpdatedAt = row.updatedAt.toISOString();
       draft.candidateIds = [];
+      delete draft.listOffset;
+      delete draft.hasMore;
       draft.pendingField = draft.action === 'EDIT' ? 'change' : null;
       return { status: 'UPDATED' };
     }
@@ -3397,7 +3453,7 @@ export class ConversationService {
     if (isTransactionChangeDraft(draft)) {
       if (draft.pendingField === 'change') return TX_REPLIES.askChange;
       if (draft.candidateIds.length === 0) return TX_REPLIES.askWhich;
-      return this.transactionListText(userId, draft.candidateIds);
+      return this.transactionListText(userId, draft);
     }
     if (isTargetChangeDraft(draft)) {
       if (draft.pendingField === 'change') {

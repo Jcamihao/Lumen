@@ -46,6 +46,8 @@ function opMatches(actual: unknown, op: string, value: unknown): boolean {
   switch (op) {
     case 'in':
       return (value as unknown[]).includes(actual);
+    case 'not':
+      return actual !== value;
     case 'gt':
       return actual !== null && actual !== undefined && a > v;
     case 'gte':
@@ -186,9 +188,10 @@ export class World {
     },
     transaction: {
       // Busca e leitura de editar/apagar (8a): respeita o where; campos novos com default de lançamento manual.
-      findMany: jest.fn(async ({ where, take }: { where: Row; take?: number }) => {
+      findMany: jest.fn(async ({ where, take, skip }: { where: Row; take?: number; skip?: number }) => {
         let rows = this.transactions.filter((tx) => matches(tx, where));
         rows = [...rows].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        if (skip !== undefined) rows = rows.slice(skip);
         if (take !== undefined) rows = rows.slice(0, take);
         return clone(rows.map((tx) => this.transactionView(tx)));
       }),

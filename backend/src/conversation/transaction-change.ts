@@ -9,6 +9,8 @@ import { TransactionChangeDraft } from './conversation.types';
 /** Janela de busca e tamanho da lista (contrato 8a, secao 3). */
 export const TX_CHANGE_WINDOW_DAYS = 180;
 export const TX_CHANGE_MAX_CANDIDATES = 5;
+/** Lista dos ultimos lancamentos (menu): itens por pagina. */
+export const TX_LIST_PAGE_SIZE = 15;
 export const TX_DAY_MS = 86_400_000;
 /** Limites de descrição iguais aos do criar lançamento. */
 export const TX_DESCRIPTION_MIN = 2;
@@ -17,6 +19,9 @@ export const TX_DESCRIPTION_MAX = 120;
 export const TX_REPLIES = {
   askWhich: 'Qual lançamento? Diga parte da descrição, a categoria ou o valor. Ex.: apagar mercado',
   pickHeader: 'Qual lançamento? Responda com o número:',
+  moreHint: 'Para ver os próximos, diga mais.',
+  noMore: 'Não há mais lançamentos.',
+  emptyList: 'Você ainda não tem lançamentos que dê para mudar por aqui. Para registrar um, diga: gastei 50 no mercado.',
   askChange: 'O que mudar? valor, descrição, categoria ou data. Ex.: valor 45',
   deleteWarning: 'Isto apaga de vez e não dá para desfazer.',
   deleteNeedsWord: 'Para apagar, responda apagar.',
@@ -132,6 +137,11 @@ export function describeCandidate(candidate: TxCandidate): string {
 export function formatCandidateLine(index: number, candidate: TxCandidate): string {
   const category = candidate.categoryName ? ` · ${candidate.categoryName}` : '';
   return `${index + 1}) ${formatCents(candidate.amountCents)} · ${candidate.description}${category} · ${formatDayMonth(candidate.date)}`;
+}
+
+/** Linha compacta da lista dos ultimos: "1. 26/11 · Padaria · R$ 3,00". */
+export function formatCompactLine(index: number, candidate: TxCandidate): string {
+  return `${index + 1}. ${formatDayMonth(candidate.date)} · ${candidate.description} · R$ ${formatCents(candidate.amountCents)}`;
 }
 
 /** Rascunho de apagar (lançamento, meta ou reserva): a confirmação só vale com a palavra "apagar" ou a flag do cartão. */
