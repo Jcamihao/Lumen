@@ -57,11 +57,33 @@ export const REPLIES = {
   futureDueWarning: 'Os lançamentos serão gerados nos vencimentos.',
   catchUpWarning: 'Outros cadastros já vencidos também podem ser atualizados junto, como na tela.',
   help:
-    'Pode falar direto ou digitar "menu" para navegar por botões.\n' +
-    'Início: "como está o meu saldo?", "resumo do mês", "o que vence esta semana".\n' +
-    'Finanças: "gastei 50 no mercado", "recebi 3000 de salario", "caiu 500 do freela", "comprei um celular em 10x de 150", "gastos com mercado".\n' +
-    'Cartão: "como está meu cartão?", "meus cartões", "definir limite do cartão 5000".\n' +
-    'Metas: "minhas metas", "coloquei 200 na minha caixinha", "criar meta viagem".',
+    '❓ Ajuda do Lumen\n' +
+    'Fale do seu jeito ou digite "menu" para navegar por botões.\n' +
+    '\n' +
+    '🏠 Início\n' +
+    '• "como está o meu saldo?"\n' +
+    '• "resumo do mês"\n' +
+    '• "o que vence esta semana"\n' +
+    '\n' +
+    '💸 Finanças\n' +
+    '• "gastei 50 no mercado"\n' +
+    '• "recebi 3000 de salario"\n' +
+    '• "caiu 500 do freela"\n' +
+    '• "comprei um celular em 10x de 150"\n' +
+    '• "gastos com mercado"\n' +
+    '• "minhas categorias"\n' +
+    '\n' +
+    '💳 Cartão\n' +
+    '• "como está meu cartão?"\n' +
+    '• "meus cartões"\n' +
+    '• "definir limite do cartão 5000"\n' +
+    '\n' +
+    '🎯 Metas\n' +
+    '• "minhas metas"\n' +
+    '• "coloquei 200 na minha caixinha"\n' +
+    '• "criar meta viagem"\n' +
+    '\n' +
+    '💡 Dica: errou algo? Diga cancelar a qualquer momento.',
   importReceipt:
     'Para importar uma nota, abra Importações e envie a foto ou o PDF. ' +
     'A leitura é feita aqui no Lumen e você confere tudo antes de gravar.',
