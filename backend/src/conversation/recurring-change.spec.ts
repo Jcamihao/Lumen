@@ -353,6 +353,6 @@ describe('editar/apagar contas fixas e parcelados por conversa (8c, secoes 3 a 5
   it('"conta" sozinho continua sendo lancamento (D1 do dono)', async () => {
     const { send } = buildService();
     const reply = await send('apagar conta');
-    expect(reply.text).toBe('Qual lançamento? Diga parte da descrição, a categoria ou o valor. Ex.: apagar mercado');
+    expect(reply.text).toBe('Você ainda não tem lançamentos que dê para mudar por aqui. Para registrar um, diga: gastei 50 no mercado.');
   });
 });

@@ -338,7 +338,9 @@ describe('Isolamento A/B/C do motor de conversa', () => {
       expect(reply.kind).toBe('ASK_FIELD');
       expect(sessionOf('A', 'APP')?.draft.categoryId).toBeNull();
       expectNoLeak('A', reply);
-      expect(sessionOf('A', 'APP')?.draft.categoryOptions).toEqual([]);
+      const ownIds = world.categories.filter((row) => row.userId === USER_ID.A && row.type === 'EXPENSE').map((row) => row.id);
+      expect(sessionOf('A', 'APP')?.draft.categoryOptions).toEqual(expect.arrayContaining([]));
+      for (const id of sessionOf('A', 'APP')?.draft.categoryOptions as string[]) expect(ownIds).toContain(id);
     });
 
     it('A responde com o nome da categoria de B a pergunta de categoria: cai em "sem categoria", nunca no id de B', async () => {

@@ -5,6 +5,7 @@ import { CreditCardsModule } from '../credit-cards/credit-cards.module';
 import { CreditCycleModule } from '../credit-cycle/credit-cycle.module';
 import { DashboardModule } from '../dashboard/dashboard.module';
 import { EnvelopesModule } from '../envelopes/envelopes.module';
+import { FinanceCategoriesModule } from '../finance-categories/finance-categories.module';
 import { GoalsModule } from '../goals/goals.module';
 import { InstallmentsModule } from '../installments/installments.module';
 import { RecurringTransactionsModule } from '../recurring-transactions/recurring-transactions.module';
@@ -24,6 +25,7 @@ import { ConversationService } from './conversation.service';
     BillingModule,
     AssistantModule,
     CreditCardsModule,
+    FinanceCategoriesModule,
   ],
   controllers: [ConversationController],
   providers: [ConversationService],

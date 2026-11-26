@@ -14,6 +14,7 @@ export type ReadIntent =
   | 'goals'
   | 'envelopes'
   | 'list_cards'
+  | 'categories'
   | 'help';
 
 /**
@@ -27,6 +28,7 @@ const FINANCE_READ_PHRASES: Array<{ intent: ReadIntent; phrases: string[] }> = [
   { intent: 'upcoming_dues', phrases: ['o que vence', 'vencimentos', 'proximos vencimentos', 'contas a vencer'] },
   { intent: 'installments', phrases: ['minhas parcelas', 'parcelas', 'parcelados', 'compras parceladas'] },
   { intent: 'fixed_bills', phrases: ['contas fixas', 'despesas fixas', 'gastos recorrentes', 'recorrencias'] },
+  { intent: 'categories', phrases: ['minhas categorias', 'ver categorias', 'categorias'] },
   { intent: 'goals', phrases: ['minhas metas', 'metas', 'minhas caixinhas', 'caixinhas'] },
   {
     intent: 'envelopes',
@@ -46,6 +48,8 @@ export type IntentMatch =
   | { intent: 'create_envelope' | 'set_credit_limit' | 'create_recurring' | 'create_installment'; body: string }
   | { intent: 'clear_credit_limit'; body: string }
   // Cartao pela conversa (9b-3): criar (recusado por ora) e renomear (rascunho com confirmacao).
+  | { intent: 'create_category'; body: string }
+  | { intent: 'edit_category' | 'delete_category'; body: string }
   | { intent: 'create_card'; body: string }
   | { intent: 'rename_card'; body: string }
   | { intent: 'edit_transaction' | 'delete_transaction'; body: string }
@@ -86,6 +90,9 @@ export function matchIntent(rawText: string): IntentMatch | null {
 
   const cardWrite = matchCardWrite(raw, tokens, words);
   if (cardWrite) return cardWrite;
+
+  const categoryCreate = matchCategoryCreate(raw, tokens, words);
+  if (categoryCreate) return categoryCreate;
 
   const transactionChange = matchTransactionChange(raw, tokens, words);
   if (transactionChange) return transactionChange;
@@ -190,6 +197,9 @@ function matchCardWrite(raw: string, tokens: string[], words: string[]): IntentM
       return { intent: 'create_card', body: tokens.slice(expected.split(' ').length).join(' ') };
     }
   }
+  if (phrase === 'renomear cartao' || phrase === 'renomear um cartao' || phrase === 'renomear cartoes') {
+    return { intent: 'rename_card', body: '' };
+  }
   if (startsWithPhrase(phrase, 'renomear cartao') && words.includes('para')) {
     return { intent: 'rename_card', body: tokens.slice(2).join(' ') };
   }
@@ -199,6 +209,20 @@ function matchCardWrite(raw: string, tokens: string[], words: string[]): IntentM
   for (const expected of ['mudar nome do', 'mudar nome da']) {
     if (startsWithPhrase(phrase, expected) && words[3] === 'cartao' && words.includes('para')) {
       return { intent: 'rename_card', body: tokens.slice(3).join(' ') };
+    }
+  }
+  return null;
+}
+
+/** Criar categoria (menu guiado, fatia 2): "criar categoria Pets", "nova categoria". O nome e o tipo vem depois. */
+const CATEGORY_CREATE_PHRASES = ['criar categoria', 'nova categoria', 'adicionar categoria', 'cadastrar categoria', 'criar uma categoria'];
+
+function matchCategoryCreate(raw: string, tokens: string[], words: string[]): IntentMatch | null {
+  if (raw.length > RAW_MAX_CHARS || tokens.length > NEW_WRITE_MAX_WORDS || raw.includes('?')) return null;
+  const phrase = words.join(' ');
+  for (const expected of CATEGORY_CREATE_PHRASES) {
+    if (startsWithPhrase(phrase, expected)) {
+      return { intent: 'create_category', body: tokens.slice(expected.split(' ').length).join(' ') };
     }
   }
   return null;
@@ -234,6 +258,9 @@ function matchTransactionChange(raw: string, tokens: string[], words: string[]):
   // Conta fixa e parcelado (contrato 8c, secao 3): "conta fixa"/"fixa" e "parcela(s)"/"parcelado(s)"/
   // "compra(s) parcelada(s)". "conta" sozinho continua sendo lancamento (D1 do dono).
   const second = rest.length > 1 ? normalizeWord(rest[1]) : '';
+  if (noun === 'categoria' || noun === 'categorias') {
+    return { intent: action === 'delete' ? 'delete_category' : 'edit_category', body: rest.slice(1).join(' ').trim() };
+  }
   if (noun === 'fixa' || noun === 'fixas') {
     return { intent: action === 'delete' ? 'delete_recurring' : 'edit_recurring', body: rest.slice(1).join(' ').trim() };
   }
