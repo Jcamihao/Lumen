@@ -1754,7 +1754,7 @@ describe('ConversationService', () => {
         setGoals([goalRow({ id: 'goal-1', title: 'Viagem' }), goalRow({ id: 'goal-2', title: 'Casa', currentAmount: 0 })]);
         const ask = await service.handleMessage(msg('A', 'guardar 200'));
         expect(ask.kind).toBe('ASK_FIELD');
-        expect(text(ask)).toContain('Qual meta? 1) Viagem 2) Casa.');
+        expect(text(ask)).toContain('Qual meta? Responda com o número:\n1. Viagem\n2. Casa');
         expect(ask.draft?.pendingField).toBe('goal');
 
         const draft = await service.handleMessage(msg('A', '2'));
@@ -1774,13 +1774,24 @@ describe('ConversationService', () => {
         expect(draft.draft?.rows).toContainEqual({ label: 'Valor', value: 'R$ 200,00' });
       });
 
+      it('"guardar" sozinho (botao do menu) lista as metas ativas; sem metas, mostra o caminho para criar', async () => {
+        setGoals([goalRow({ id: 'goal-1', title: 'Viagem' }), goalRow({ id: 'goal-2', title: 'Casa' })]);
+        const ask = await service.handleMessage(msg('A', 'guardar'));
+        expect(ask.kind).toBe('ASK_FIELD');
+        expect(text(ask)).toContain('Qual meta? Responda com o número:\n1. Viagem\n2. Casa');
+        await service.handleMessage(msg('A', 'cancelar'));
+        setGoals([]);
+        const none = await service.handleMessage(msg('A', 'guardar'));
+        expect(none.text).toContain('Menu → Metas → Criar meta');
+      });
+
       it('opção removida não desloca o número para outra meta', async () => {
         setGoals([goalRow({ id: 'goal-1', title: 'Viagem' }), goalRow({ id: 'goal-2', title: 'Casa' })]);
         await service.handleMessage(msg('A', 'guardar 200'));
         setGoals([goalRow({ id: 'goal-2', title: 'Casa' })]);
         const first = await service.handleMessage(msg('A', '1'));
         expect(first.kind).toBe('ASK_FIELD');
-        expect(first.text).toContain('1) indisponível 2) Casa');
+        expect(first.text).toContain('1. indisponível\n2. Casa');
         expect(goals.contribute).not.toHaveBeenCalled();
         const second = await service.handleMessage(msg('A', '2'));
         expect(second.kind).toBe('CONFIRM_DRAFT');

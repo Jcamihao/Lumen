@@ -65,11 +65,12 @@ function buildService(rows: { goals?: Row[]; envelopes?: Row[] } = {}, writesEna
 
   const tableFor = (model: string): Row[] => (model === 'goal' ? goals : envelopes);
   const fakeTable = (model: string) => ({
-    findMany: jest.fn(async ({ where }: { where: Row }) =>
+    findMany: jest.fn(async ({ where, take }: { where: Row; take?: number }) =>
       clone(
         tableFor(model)
           .filter((row) => matchesWhere(row, where))
-          .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()),
+          .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+          .slice(0, take ?? Number.MAX_SAFE_INTEGER),
       ),
     ),
     findFirst: jest.fn(async ({ where }: { where: Row }) => clone(tableFor(model).find((row) => matchesWhere(row, where)) ?? null)),
@@ -182,10 +183,49 @@ describe('editar/apagar metas por conversa (8b, secoes 3 a 5)', () => {
     expect((sessions[0].draft as Row).candidateIds).toEqual(['g1', 'g2']);
   });
 
-  it('comando sem termo pergunta qual meta', async () => {
-    const { send } = buildService();
+  it('comando sem termo mostra a lista das metas do usuario com o progresso (menu guiado, fatia 3)', async () => {
+    const { send, sessions } = buildService();
     const reply = await send('apagar meta');
-    expect(reply.text).toBe('Qual meta? Diga parte do nome. Ex.: apagar meta viagem');
+    expect(reply.text.split('\n')[0]).toBe('Qual meta? Responda com o número:');
+    expect(reply.text).toContain('1) Viagem ao Japão · ativa · 1200,00 de 5000,00');
+    expect(reply.text).toContain('3) Casa nova');
+    expect((sessions[0].draft as Row).candidateIds).toHaveLength(3);
+  });
+
+  it('na lista, o numero escolhe a meta e abre a previa de apagar', async () => {
+    const { send, sessions } = buildService();
+    await send('apagar meta');
+    const picked = await send('3');
+    expect(picked.text).toContain('Casa nova');
+    expect((sessions[0].draft as Row).targetId).not.toBeNull();
+  });
+
+  it('sem metas: mensagem amigavel com o caminho do menu e sem sessao', async () => {
+    const { send, sessions } = buildService({ goals: [] });
+    const reply = await send('editar meta');
+    expect(reply.text).toBe('Você ainda não tem metas. Crie a primeira em Menu → Metas → Criar meta.');
+    expect(sessions).toHaveLength(0);
+  });
+
+  it('mais de 10 metas: a lista mostra 10 e o numero 10 escolhe a ultima', async () => {
+    const many = Array.from({ length: 12 }, (_, index) => ({
+      ...GOALS[0],
+      id: `g${index}`,
+      title: `Meta ${index}`,
+      updatedAt: new Date(2026, 10, 1, 0, 30 - index),
+    }));
+    const { send, sessions } = buildService({ goals: many });
+    const reply = await send('apagar meta');
+    expect(reply.text.split('\n')).toHaveLength(11);
+    await send('10');
+    expect((sessions[0].draft as Row).targetId).toBe('g9');
+  });
+
+  it('a lista so traz metas do proprio usuario', async () => {
+    const other = { ...GOALS[0], id: 'g-alheia', userId: 'B', title: 'Meta de B' };
+    const { send } = buildService({ goals: [...GOALS, other] });
+    const reply = await send('apagar meta');
+    expect(reply.text).not.toContain('Meta de B');
   });
 
   it('busca sem resultado: INFO e sem sessao', async () => {

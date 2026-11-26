@@ -79,6 +79,7 @@ import {
 import {
   TG_REPLIES,
   TARGET_CHANGE_MAX_CANDIDATES,
+  TARGET_LIST_MAX,
   type EnvelopeCandidate,
   type GoalCandidate,
   STATUS_PT,
@@ -2629,6 +2630,18 @@ export class ConversationService {
         return this.reply('INFO', 'IDLE', this.targetNotFoundText(kind));
       }
       draft.candidateIds = found.map((candidate) => candidate.id);
+    } else if (kind === 'GOAL_CHANGE') {
+      const goals = await this.prisma.goal.findMany({
+        where: { userId: input.userId },
+        select: { id: true },
+        orderBy: { updatedAt: 'desc' },
+        take: TARGET_LIST_MAX,
+      });
+      if (goals.length === 0) {
+        await this.recordEvent(input, intent, ConversationOutcome.RECOGNIZED);
+        return this.reply('INFO', 'IDLE', TG_REPLIES.goalListEmpty);
+      }
+      draft.candidateIds = goals.map((goal) => goal.id);
     }
     const today = await this.todayYmd(input.userId, input.receivedAt);
     return this.saveNewDraft({ input, intent, draft, today });
@@ -2784,7 +2797,7 @@ export class ConversationService {
         draft.candidateIds = found.map((candidate) => candidate.id);
         return { status: 'UPDATED' };
       }
-      const chosen = /^[1-5]$/.test(value) ? draft.candidateIds[Number(value) - 1] : undefined;
+      const chosen = /^\d{1,2}$/.test(value) ? draft.candidateIds[Number(value) - 1] : undefined;
       if (chosen === undefined) {
         return {
           status: 'ASK',

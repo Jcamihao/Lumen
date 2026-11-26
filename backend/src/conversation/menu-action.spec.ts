@@ -110,13 +110,13 @@ describe('menu por botao e saida universal (12.1a)', () => {
       expect(lastEventOf('A')).toMatchObject({ intent: 'menu_nav:cartao.criar' });
     });
 
-    it('folha de instrucao de meta nao grava (guardar nao abre rascunho sozinho)', async () => {
+    it('Guardar numa meta abre o rascunho guiado: lista as metas e nao grava', async () => {
       const reply = await click('B', 'metas.guardar');
 
-      expect(reply.kind).toBe('HELP');
-      expect(reply.text).toContain('coloquei 200 na minha caixinha');
+      expect(reply.kind).toBe('ASK_FIELD');
+      expect(reply.text).toMatch(/Qual meta\? Responda com o número:|Quanto quer guardar\?/);
       expect(world.writeCount).toBe(0);
-      expect(world.sessions).toHaveLength(0);
+      expect(world.sessions).toHaveLength(1);
     });
   });
 

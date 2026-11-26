@@ -107,7 +107,7 @@ export const REPLIES = {
   noDues: (days: number) => `Nada vence nos próximos ${days} dias.`,
   noGoals: 'Você ainda não tem metas ativas.',
   noEnvelopes: 'Você ainda não tem reservas.',
-  noActiveGoals: 'Você não tem metas ativas.',
+  noActiveGoals: 'Você não tem metas ativas. Crie a primeira em Menu → Metas → Criar meta.',
   askGoalTitle: 'Qual o nome da meta? Ex.: viagem.',
   askGoalTarget: 'Qual o valor-alvo? Responda o valor ou "sem alvo".',
   askContributionAmount: 'Quanto quer guardar? Responda só o valor. Ex.: 200 ou 32,90.',
@@ -430,7 +430,7 @@ export function contributionDraftText(input: {
 
 /** Pergunta de meta quando a escolha é ambígua (opções numeradas, como a categoria). */
 export function goalOptionsText(names: string[]): string {
-  return `Qual meta? ${names.map((name, index) => `${index + 1}) ${name}`).join(' ')}.`;
+  return ['Qual meta? Responda com o número:', ...names.map((name, index) => `${index + 1}. ${name}`)].join('\n');
 }
 
 /** 'AAAA-MM-DD' -> 'MM/AAAA' (mês da provisão, sempre UTC). */
