@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PaymentMethod, Prisma, TransactionType } from '@prisma/client';
+import { AccessScopeService } from '../access-scope/access-scope.service';
 import { lockUserForCredit } from '../credit-cycle/credit-cycle.util';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -80,6 +81,87 @@ export async function resolveCardForUpdate(
   const card = await findOwnedCardForLink(db, userId, dto.cardId);
   if (card.archivedAt) throw new BadRequestException(CARD_ARCHIVED_MESSAGE);
   return { cardId: card.id };
+}
+
+/**
+ * Vinculo que aceita o cartao compartilhado do parceiro (11b-1b, D6). Sem `access` o
+ * cartao alheio e 404 como sempre (contas fixas e parcelas so usam cartao proprio).
+ * Lancamento no cartao do parceiro nasce amarrado ao grupo: e o livro dele — sem
+ * compartilhar, ele nem ve o lancamento. Ordem de locks: autor do lancamento (guard),
+ * depois a linha do DONO do cartao (aqui, so quando e o cartao do parceiro).
+ */
+export interface CardLinkResult {
+  cardId: string;
+  sharedGroupOwnerId: string | null;
+}
+
+async function findUsableCard(
+  db: Db,
+  access: AccessScopeService | undefined,
+  userId: string,
+  cardId: string,
+) {
+  const card = await db.creditCard.findFirst({
+    where: { id: cardId },
+    select: { id: true, userId: true, archivedAt: true, sharedGroupOwnerId: true },
+  });
+  if (!card) throw new NotFoundException(CARD_NOT_FOUND_MESSAGE);
+  if (card.userId === userId) return { card, partner: false as const };
+  if (!access || card.archivedAt || !(await access.canSeeItem(userId, card, db))) {
+    throw new NotFoundException(CARD_NOT_FOUND_MESSAGE);
+  }
+  await lockUserForCredit(db, card.userId);
+  const fresh = await db.creditCard.findFirst({
+    where: { id: cardId },
+    select: { id: true, userId: true, archivedAt: true, sharedGroupOwnerId: true },
+  });
+  if (!fresh) throw new NotFoundException(CARD_NOT_FOUND_MESSAGE);
+  if (fresh.archivedAt) throw new BadRequestException(CARD_ARCHIVED_MESSAGE);
+  return { card: fresh, partner: true as const };
+}
+
+/** Criacao com compartilhamento (transactions): mesmo contrato de resolveCardForCreate + cartao do parceiro. */
+export async function resolveCardForCreateShared(
+  db: Db,
+  access: AccessScopeService,
+  userId: string,
+  cardId: string | null | undefined,
+  paymentMethod: PaymentMethod | null | undefined,
+  type?: TransactionType | null,
+): Promise<CardLinkResult | undefined> {
+  if (typeof cardId !== 'string') return undefined;
+  if (type === TransactionType.INCOME) throw new BadRequestException(CARD_ONLY_EXPENSE_MESSAGE);
+  if (paymentMethod !== PaymentMethod.CREDIT) throw new BadRequestException(CARD_NEEDS_CREDIT_MESSAGE);
+  const { card, partner } = await findUsableCard(db, access, userId, cardId);
+  if (!partner && card.archivedAt) throw new BadRequestException(CARD_ARCHIVED_MESSAGE);
+  return { cardId: card.id, sharedGroupOwnerId: partner ? card.sharedGroupOwnerId : null };
+}
+
+/** Edicao com compartilhamento (transactions): trocar para o cartao do parceiro amarra o lancamento ao grupo. */
+export async function resolveCardForUpdateShared(
+  db: Db,
+  access: AccessScopeService,
+  userId: string,
+  current: { cardId?: string | null; paymentMethod?: PaymentMethod | null; type?: TransactionType | null },
+  dto: { cardId?: string | null; paymentMethod?: PaymentMethod | null; type?: TransactionType | null },
+): Promise<{ cardId?: string | null; sharedGroupOwnerId?: string | null }> {
+  const effectiveType = dto.type !== undefined ? dto.type : current.type;
+  if (typeof dto.cardId === 'string' && effectiveType === TransactionType.INCOME) {
+    throw new BadRequestException(CARD_ONLY_EXPENSE_MESSAGE);
+  }
+  if (effectiveType === TransactionType.INCOME) return current.cardId ? { cardId: null } : {};
+  const effective = dto.paymentMethod !== undefined ? dto.paymentMethod : current.paymentMethod;
+  if (typeof dto.cardId === 'string' && effective !== PaymentMethod.CREDIT) {
+    throw new BadRequestException(CARD_NEEDS_CREDIT_MESSAGE);
+  }
+  if (effective !== PaymentMethod.CREDIT) return current.cardId ? { cardId: null } : {};
+  if (dto.cardId === undefined || dto.cardId === current.cardId) return {};
+  if (dto.cardId === null) return { cardId: null };
+  const { card, partner } = await findUsableCard(db, access, userId, dto.cardId);
+  if (!partner && card.archivedAt) throw new BadRequestException(CARD_ARCHIVED_MESSAGE);
+  return partner
+    ? { cardId: card.id, sharedGroupOwnerId: card.sharedGroupOwnerId }
+    : { cardId: card.id };
 }
 
 /**

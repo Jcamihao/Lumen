@@ -494,6 +494,11 @@ export function realCreditCardsService(world: World): CreditCardsService {
     {} as never,
     // Limite por plano (D7) e no-op neste fixture: o teto tecnico de 10 continua valendo.
     { assertCanCreate: jest.fn(async () => undefined) } as never,
+    // 11b-1b: nada aqui lista escopo compartilhado — o acesso e sempre "individuais".
+    {
+      resolve: async () => ({ groupOwnerId: null, memberIds: [] as string[] }),
+      canSeeItem: async () => false,
+    } as never,
   );
   // Spy que mantem a implementacao real: o teste conta chamadas e pode forcar uma falha pontual.
   jest.spyOn(service, 'update');

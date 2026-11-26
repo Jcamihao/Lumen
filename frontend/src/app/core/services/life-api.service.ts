@@ -38,7 +38,7 @@ import {
   User,
 } from "../models/domain.models";
 import { NetworkService } from "./network.service";
-import { OfflineLifeService } from "./offline-life.service";
+import { OfflineLifeService, stripLegacyUserPatchKeys } from "./offline-life.service";
 
 @Injectable({ providedIn: "root" })
 export class LifeApiService {
@@ -950,8 +950,12 @@ export class LifeApiService {
     }
 
     if (item.entity === "user" && item.action === "update") {
+      // Fila gravada por versao antiga pode trazer o espelho de ciclo (9c-2): sem sanitizar,
+      // o PATCH morreria em 400 do whitelist e travaria a fila inteira atras dele.
+      const payload = stripLegacyUserPatchKeys(item.payload);
+      if (Object.keys(payload).length === 0) return; // nada de verdade para enviar: item conclui.
       const user = await firstValueFrom(
-        this.http.patch<User>(`${environment.apiBaseUrl}/users/me`, item.payload ?? {}),
+        this.http.patch<User>(`${environment.apiBaseUrl}/users/me`, payload),
       );
       this.offlineLifeService.reconcileUser(user);
     }

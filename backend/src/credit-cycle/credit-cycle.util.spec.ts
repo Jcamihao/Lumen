@@ -68,22 +68,41 @@ describe('cardScopeWhere / cardSpendWhere (escopo de cartao, listagem e ciclo)',
     expect(cardScopeWhere({ id: 'c2', isDefault: false })).toEqual({ cardId: 'c2' });
   });
 
-  it('gasto do padrao com countAllPayments: toda EXPENSE do usuario, sem filtro de forma ou cartao', () => {
-    expect(cardSpendWhere('u1', { id: 'c1', isDefault: true, countAllPayments: true }, start, end)).toEqual({
-      userId: 'u1', type: 'EXPENSE', date: { gte: start, lte: end },
+  it('gasto do padrao com countAllPayments: toda EXPENSE do escopo (11b-1b: AND separado), sem forma ou cartao', () => {
+    expect(cardSpendWhere({ userId: 'u1' }, { id: 'c1', isDefault: true, countAllPayments: true }, start, end)).toEqual({
+      AND: [
+        { userId: 'u1' },
+        { type: 'EXPENSE', date: { gte: start, lte: end } },
+      ],
     });
   });
 
-  it('gasto do padrao sem countAllPayments: CREDIT + escopo do padrao', () => {
-    expect(cardSpendWhere('u1', { id: 'c1', isDefault: true, countAllPayments: false }, start, end)).toEqual({
-      userId: 'u1', type: 'EXPENSE', date: { gte: start, lte: end }, paymentMethod: 'CREDIT',
-      OR: [{ cardId: 'c1' }, { cardId: null, paymentMethod: 'CREDIT', type: 'EXPENSE' }],
+  it('gasto do padrao sem countAllPayments: CREDIT + escopo do padrao (AND, nunca OR sobrescrito)', () => {
+    expect(cardSpendWhere({ userId: 'u1' }, { id: 'c1', isDefault: true, countAllPayments: false }, start, end)).toEqual({
+      AND: [
+        { userId: 'u1' },
+        { type: 'EXPENSE', date: { gte: start, lte: end } },
+        { paymentMethod: 'CREDIT' },
+        { OR: [{ cardId: 'c1' }, { cardId: null, paymentMethod: 'CREDIT', type: 'EXPENSE' }] },
+      ],
     });
   });
 
   it('gasto do secundario: CREDIT + so o cardId dele', () => {
-    expect(cardSpendWhere('u1', { id: 'c2', isDefault: false, countAllPayments: true }, start, end)).toEqual({
-      userId: 'u1', type: 'EXPENSE', date: { gte: start, lte: end }, paymentMethod: 'CREDIT', cardId: 'c2',
+    expect(cardSpendWhere({ userId: 'u1' }, { id: 'c2', isDefault: false, countAllPayments: true }, start, end)).toEqual({
+      AND: [
+        { userId: 'u1' },
+        { type: 'EXPENSE', date: { gte: start, lte: end } },
+        { paymentMethod: 'CREDIT' },
+        { cardId: 'c2' },
+      ],
     });
+  });
+
+  it('where de escopo com OR (meu + compartilhado) nunca e sobrescrito pelo OR do cartao (regra 11b-1b)', () => {
+    const scope = { OR: [{ userId: 'u1' }, { sharedGroupOwnerId: 'owner', userId: { in: ['b'] } }] };
+    const where = cardSpendWhere(scope, { id: 'c2', isDefault: false, countAllPayments: false }, start, end) as any;
+    expect(where.AND[0]).toEqual(scope);
+    expect(where.AND).toHaveLength(4);
   });
 });

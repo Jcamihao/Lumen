@@ -376,5 +376,8 @@ export class GroupService {
     const where = { userId: memberUserId, sharedGroupOwnerId: ownerUserId };
     await tx.transaction.updateMany({ where, data: { sharedGroupOwnerId: null } });
     await tx.financeCategory.updateMany({ where, data: { sharedGroupOwnerId: null } });
+    // 11b-1b: cartoes do membro tambem. Os lancamentos dele no cartao do parceiro foram
+    // desmarcados junto (mesmo `where`); os do proprio dono do cartao nunca tiveram marca por aqui.
+    await tx.creditCard.updateMany({ where, data: { sharedGroupOwnerId: null } });
   }
 }

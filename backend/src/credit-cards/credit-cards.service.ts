@@ -12,6 +12,15 @@ import { CreditLimitChangedError, CreditLimitWriteUncertainError } from '../cred
 import { CreditCycleService } from '../credit-cycle/credit-cycle.service';
 import { lockUserForCredit } from '../credit-cycle/credit-cycle.util';
 import { SetCreditCycleCeilingDto } from '../credit-cycle/dto/set-credit-cycle-ceiling.dto';
+import { AccessScopeService } from '../access-scope/access-scope.service';
+import { isRecordNotFound } from '../access-scope/lock';
+import { ReadScope } from '../access-scope/read-scope';
+import {
+  partnerSharingFlags,
+  ownSharingFlags,
+  SharingReceipt,
+  toSharingReceipt,
+} from '../access-scope/shared-view';
 import { LifeEngineService } from '../life-engine/life-engine.service';
 import { EntitlementsService } from '../billing/entitlements.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -26,12 +35,14 @@ export const MAX_ACTIVE_CARDS_PER_USER = 10;
 
 const CARD_SELECT = {
   id: true,
+  userId: true,
   name: true,
   closingDay: true,
   dueDay: true,
   countAllPayments: true,
   isDefault: true,
   archivedAt: true,
+  sharedGroupOwnerId: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.CreditCardSelect;
@@ -76,9 +87,22 @@ function toReceipt(card: CardRow): CreditCardReceipt {
   };
 }
 
+/** Cartao proprio na lista: flags de compartilhamento (contrato 11b, shared-view). userId jamais sai. */
 function toCardView(card: CardRow) {
   return {
     ...toReceipt(card),
+    ...ownSharingFlags(card),
+    archivedAt: card.archivedAt ? card.archivedAt.toISOString() : null,
+    createdAt: card.createdAt.toISOString(),
+    updatedAt: card.updatedAt.toISOString(),
+  };
+}
+
+/** Cartao do parceiro (escopo shared/all): nunca arquivado, primeiro nome de quem o compartilhou. */
+function toPartnerCardView(card: CardRow, sharedByName: string | null) {
+  return {
+    ...toReceipt(card),
+    ...partnerSharingFlags(sharedByName),
     archivedAt: card.archivedAt ? card.archivedAt.toISOString() : null,
     createdAt: card.createdAt.toISOString(),
     updatedAt: card.updatedAt.toISOString(),
@@ -93,16 +117,42 @@ export class CreditCardsService {
     private readonly lifeEngineService: LifeEngineService,
     private readonly creditCycle: CreditCycleService,
     private readonly entitlements: EntitlementsService,
+    private readonly access: AccessScopeService,
   ) {}
 
-  /** Ativos por padrao; includeArchived traz o historico. Sempre so do proprio usuario. */
-  async list(userId: string, includeArchived: boolean) {
+  /**
+   * Ativos por padrao; includeArchived traz o historico (so do proprio — cartao
+   * arquivado nunca aparece no escopo compartilhado, 11b-1b D3).
+   * scope: mine (padrao), shared (so os cartoes marcados do parceiro), all (os dois).
+   */
+  async list(userId: string, includeArchived: boolean, scope: ReadScope = 'mine') {
+    const view = scope === 'mine' ? null : await this.access.resolve(userId);
+    const partnerIds = view ? view.memberIds.filter((id) => id !== userId) : [];
+    const partnerWhere: Prisma.CreditCardWhereInput | null =
+      view?.groupOwnerId && partnerIds.length > 0
+        ? { sharedGroupOwnerId: view.groupOwnerId, userId: { in: partnerIds }, archivedAt: null }
+        : null;
+
+    if (scope === 'shared' && !partnerWhere) return [];
+
+    const ownWhere: Prisma.CreditCardWhereInput = {
+      userId,
+      ...(includeArchived ? {} : { archivedAt: null }),
+    };
     const cards = await this.prisma.creditCard.findMany({
-      where: { userId, ...(includeArchived ? {} : { archivedAt: null }) },
+      where: scope === 'shared' ? partnerWhere! : scope === 'all' && partnerWhere ? { OR: [ownWhere, partnerWhere] } : ownWhere,
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
       select: CARD_SELECT,
     });
-    return cards.map(toCardView);
+    if (scope === 'mine' || cards.every((card) => card.userId === userId)) {
+      return cards.map(toCardView);
+    }
+    const names = await this.access.firstNamesById(
+      cards.filter((card) => card.userId !== userId).map((card) => card.userId),
+    );
+    return cards.map((card) =>
+      card.userId === userId ? toCardView(card) : toPartnerCardView(card, names.get(card.userId) ?? null),
+    );
   }
 
   async get(userId: string, id: string) {
@@ -198,6 +248,46 @@ export class CreditCardsService {
       });
       return toReceipt(updated);
     });
+  }
+
+  /**
+   * Marca/desmarca o cartao para o grupo (11b-1b, D2). So o autor; lock na linha do autor
+   * antes de conferir o grupo (ordem da casa: autor -> membership -> itens). Desmarcar o
+   * cartao desmarca tambem os lancamentos de outro membro que apontavam para ele: eles so
+   * eram visiveis por causa do cartao (privacidade primeiro).
+   */
+  async setSharing(userId: string, id: string, shared: boolean): Promise<SharingReceipt> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await lockUserForCredit(tx, userId);
+        const card = await tx.creditCard.findFirst({
+          where: { id, userId },
+          select: { id: true, sharedGroupOwnerId: true, archivedAt: true, updatedAt: true },
+        });
+        if (!card) throw new NotFoundException('Cartao nao encontrado.');
+        if (shared && card.archivedAt) {
+          throw new ConflictException('Cartao arquivado nao pode ser compartilhado.');
+        }
+        const groupOwnerId = shared ? await this.access.requireActiveGroupForSharing(userId, tx) : null;
+        if (card.sharedGroupOwnerId === groupOwnerId) {
+          return toSharingReceipt(card);
+        }
+        const updated = await tx.creditCard.update({
+          where: { id },
+          data: { sharedGroupOwnerId: groupOwnerId },
+          select: { id: true, sharedGroupOwnerId: true, updatedAt: true },
+        });
+        if (!shared && card.sharedGroupOwnerId) {
+          await tx.transaction.updateMany({
+            where: { cardId: id, userId: { not: userId }, sharedGroupOwnerId: card.sharedGroupOwnerId },
+            data: { sharedGroupOwnerId: null },
+          });
+        }
+        return toSharingReceipt(updated);
+      });
+    } catch (error) {
+      throw isRecordNotFound(error) ? new NotFoundException('Cartao nao encontrado.') : error;
+    }
   }
 
   /** Ciclo aberto do cartao (mesma forma de /credit-cycle/current). Cartao alheio: 404. */

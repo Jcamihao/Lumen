@@ -33,6 +33,7 @@ function makeDb() {
     subs: [] as Row[],
     transactions: [] as Row[],
     categories: [] as Row[],
+    cards: [] as Row[],
   };
 
   const withInclude = (row: Row, include?: Row): Row => {
@@ -135,6 +136,13 @@ function makeDb() {
     financeCategory: {
       updateMany: async ({ where, data }: any) => {
         const targets = state.categories.filter((c) => matches(c, where));
+        targets.forEach((c) => Object.assign(c, data));
+        return { count: targets.length };
+      },
+    },
+    creditCard: {
+      updateMany: async ({ where, data }: any) => {
+        const targets = state.cards.filter((c) => matches(c, where));
         targets.forEach((c) => Object.assign(c, data));
         return { count: targets.length };
       },

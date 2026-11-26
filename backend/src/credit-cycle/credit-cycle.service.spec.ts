@@ -15,6 +15,7 @@ describe('CreditCycleService', () => {
     spentSum?: number | null;
     timezone?: string;
     extraCards?: Array<Record<string, unknown>>;
+    access?: unknown;
   } = {}) => {
     // Cartao padrao do user-1 e uma lista de cartoes com dono (isolamento).
     const card: Record<string, unknown> = {
@@ -68,9 +69,14 @@ describe('CreditCycleService', () => {
       $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma)),
     });
     const lifeEngine = { touchUserData: jest.fn().mockResolvedValue(undefined) };
-    const service = new CreditCycleService(prisma as any, lifeEngine as any);
+    // Padrao: sem grupo compartilhado (resolve => so o proprio usuario), como antes da 11b-1b.
+    const access = options.access ?? {
+      resolve: jest.fn(async () => ({ groupOwnerId: null, memberIds: [] as string[] })),
+      canSeeItem: jest.fn(async () => false),
+    };
+    const service = new CreditCycleService(prisma as any, lifeEngine as any, access as any);
 
-    return { service, prisma, lifeEngine };
+    return { service, prisma, lifeEngine, access };
   };
 
   describe('getCurrent', () => {
@@ -90,11 +96,13 @@ describe('CreditCycleService', () => {
 
       await service.getCurrent('user-1');
 
-      expect(prisma.transaction.aggregate.mock.calls[0][0].where).toMatchObject({
-        userId: 'user-1',
-        type: 'EXPENSE',
-        paymentMethod: 'CREDIT',
-      });
+      const where = prisma.transaction.aggregate.mock.calls[0][0].where;
+      // 11b-1b: escopo em AND separado (userId sozinho neste teste, sem grupo).
+      expect(where.AND).toEqual(expect.arrayContaining([
+        { userId: 'user-1' },
+        expect.objectContaining({ type: 'EXPENSE' }),
+        { paymentMethod: 'CREDIT' },
+      ]));
     });
 
     it('com countAllPayments=true, busca toda EXPENSE do ciclo sem filtrar forma de pagamento', async () => {
@@ -103,7 +111,9 @@ describe('CreditCycleService', () => {
       await service.getCurrent('user-1');
 
       const where = prisma.transaction.aggregate.mock.calls[0][0].where;
-      expect(where).toMatchObject({ userId: 'user-1', type: 'EXPENSE' });
+      expect(where.AND).toHaveLength(2);
+      expect(where.AND[0]).toEqual({ userId: 'user-1' });
+      expect(where.AND[1]).toMatchObject({ type: 'EXPENSE' });
       expect(where.paymentMethod).toBeUndefined();
     });
 
@@ -451,7 +461,12 @@ describe('ciclo por cartao (9a-1)', () => {
       const result = await service.getCycleForCard('user-1', 'card-2');
 
       const where = prisma.transaction.aggregate.mock.calls[0][0].where;
-      expect(where).toMatchObject({ userId: 'user-1', type: 'EXPENSE', paymentMethod: 'CREDIT', cardId: 'card-2' });
+      expect(where.AND).toEqual(expect.arrayContaining([
+        { userId: 'user-1' },
+        expect.objectContaining({ type: 'EXPENSE' }),
+        { paymentMethod: 'CREDIT' },
+        { cardId: 'card-2' },
+      ]));
       expect(where.OR).toBeUndefined();
       expect(result.closingDay).toBe(20);
       expect(result.dueDay).toBe(27);
@@ -464,8 +479,10 @@ describe('ciclo por cartao (9a-1)', () => {
       await service.getCycleForCard('user-1', 'card-1');
 
       const where = prisma.transaction.aggregate.mock.calls[0][0].where;
-      expect(where).toMatchObject({ paymentMethod: 'CREDIT' });
-      expect(where.OR).toEqual([{ cardId: 'card-1' }, { cardId: null, paymentMethod: 'CREDIT', type: 'EXPENSE' }]);
+      expect(where.AND).toContainEqual({ paymentMethod: 'CREDIT' });
+      expect(where.AND).toContainEqual({
+        OR: [{ cardId: 'card-1' }, { cardId: null, paymentMethod: 'CREDIT', type: 'EXPENSE' }],
+      });
     });
 
     it('padrao com countAllPayments soma toda EXPENSE, sem filtro de cartao nem de forma de pagamento', async () => {
@@ -484,7 +501,8 @@ describe('ciclo por cartao (9a-1)', () => {
       const { service, prisma } = build({ extraCards: [alheio] });
 
       await expect(service.getCycleForCard('user-1', 'card-x')).rejects.toBeInstanceOf(NotFoundException);
-      expect(prisma.creditCard.findFirst.mock.calls[0][0].where).toMatchObject({ id: 'card-x', userId: 'user-1' });
+      // 11b-1b: a leitura e por id (a visibilidade decide depois); alheio nao compartilhado: 404 igual.
+      expect(prisma.creditCard.findFirst.mock.calls[0][0].where).toEqual({ id: 'card-x' });
       expect(prisma.transaction.aggregate).not.toHaveBeenCalled();
     });
 
@@ -617,6 +635,78 @@ describe('ciclo por cartao (9a-1)', () => {
       expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(prisma.creditCard.update.mock.invocationCallOrder[0]);
       expect(prisma.creditCard.update.mock.calls[0][0]).toMatchObject({ where: { id: 'card-1' }, data: { dueDay: 15, countAllPayments: true } });
       expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('ciclo com cartao compartilhado (11b-1b)', () => {
+    const partnerCard = {
+      id: 'card-parceiro', userId: 'dono-a', name: 'Itau da Bia', closingDay: 12, dueDay: 20,
+      countAllPayments: false, isDefault: true, archivedAt: null, sharedGroupOwnerId: 'dono-a',
+    };
+    const sharedAccess = (canSee = true) => ({
+      resolve: jest.fn(async () => ({ groupOwnerId: 'dono-a', memberIds: ['dono-a', 'user-1'] })),
+      canSeeItem: jest.fn(async () => canSee),
+    });
+
+    it('ciclo do cartao compartilhado: fuso do DONO do cartao e gasto no escopo (meu + compartilhado)', async () => {
+      const { service, prisma } = build({ extraCards: [partnerCard], access: sharedAccess() });
+
+      const result = await service.getCycleForCard('user-1', 'card-parceiro');
+
+      expect(result.closingDay).toBe(12);
+      expect(prisma.user.findUniqueOrThrow).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'dono-a' } }));
+      expect(prisma.transaction.aggregate.mock.calls[0][0].where.AND[0]).toEqual({
+        OR: [{ userId: 'user-1' }, { sharedGroupOwnerId: 'dono-a', userId: { in: ['dono-a'] } }],
+      });
+    });
+
+    it('getCurrent com grupo ativo: gasto do padrao soma os compartilhados no AND', async () => {
+      const { service, prisma } = build({ access: sharedAccess() });
+
+      await service.getCurrent('user-1');
+
+      expect(prisma.transaction.aggregate.mock.calls[0][0].where.AND[0]).toEqual({
+        OR: [{ userId: 'user-1' }, { sharedGroupOwnerId: 'dono-a', userId: { in: ['dono-a'] } }],
+      });
+    });
+
+    it('parceiro define teto no cartao compartilhado: linha com o dono, lock na linha do dono, engines dos dois', async () => {
+      const { service, prisma, lifeEngine } = build({ extraCards: [partnerCard], access: sharedAccess() });
+
+      await service.setCeilingForCard('user-1', 'card-parceiro', { ceiling: 120 });
+
+      expect(prisma.creditCycleCeiling.upsert.mock.calls[0][0].create).toMatchObject({ cardId: 'card-parceiro', userId: 'dono-a' });
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(prisma.$queryRaw.mock.calls[0][1]).toBe('dono-a');
+      expect(lifeEngine.touchUserData).toHaveBeenCalledWith('user-1');
+      expect(lifeEngine.touchUserData).toHaveBeenCalledWith('dono-a');
+    });
+
+    it('parceiro limpa o teto do cartao compartilhado', async () => {
+      const { service, prisma } = build({
+        extraCards: [partnerCard],
+        ceilingRow: { id: 'ceil-p', ceiling: decimal(90) },
+        access: sharedAccess(),
+      });
+
+      const receipt = await service.clearCeilingForCard('user-1', 'card-parceiro');
+
+      expect(receipt).toMatchObject({ id: 'ceil-p', removedCents: 9000 });
+      expect(prisma.creditCycleCeiling.delete).toHaveBeenCalledWith({ where: { id: 'ceil-p' } });
+    });
+
+    it('cartao do parceiro arquivado: 404 sem nem consultar a visibilidade (arquivado nunca entra no grupo)', async () => {
+      const access = sharedAccess();
+      const { service } = build({ extraCards: [{ ...partnerCard, archivedAt: new Date() }], access });
+
+      await expect(service.getCycleForCard('user-1', 'card-parceiro')).rejects.toBeInstanceOf(NotFoundException);
+      expect(access.canSeeItem).not.toHaveBeenCalled();
+    });
+
+    it('cartao do parceiro NAO compartilhado: 404 igual a antes (sem 403)', async () => {
+      const { service } = build({ extraCards: [{ ...partnerCard, sharedGroupOwnerId: null }], access: sharedAccess(false) });
+
+      await expect(service.getCycleForCard('user-1', 'card-parceiro')).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });

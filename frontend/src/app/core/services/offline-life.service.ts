@@ -34,6 +34,27 @@ type SyncAction = "create" | "update" | "delete" | "contribute" | "read";
 
 type SyncQueueItem = OfflineSyncQueueItem;
 
+/**
+ * Chaves do espelho de ciclo que `PATCH /users` nao aceita mais (9c-2: a fonte virou o
+ * cartao e o whitelist do backend responde 400). Payloads de fila gravados por versoes
+ * antigas do app ainda podem trazer essas chaves — ao reproduzir, um 400 travaria a
+ * fila inteira atras do item. Sanitizar no enfileirar e no reproduzir.
+ */
+export const LEGACY_USER_PATCH_KEYS = [
+  "monthClosingDay",
+  "creditDueDay",
+  "creditCycleCountAllPayments",
+] as const;
+
+export function stripLegacyUserPatchKeys(
+  payload: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (!payload) return {};
+  const clean: Record<string, unknown> = { ...payload };
+  for (const key of LEGACY_USER_PATCH_KEYS) delete clean[key];
+  return clean;
+}
+
 type DashboardCache = Pick<
   DashboardSummary,
   "reminders" | "insights" | "forecast" | "notifications"
@@ -575,9 +596,10 @@ export class OfflineLifeService {
 
   queueUserUpdate(payload: Record<string, unknown>) {
     const currentUser = this.authService.currentUser() ?? this.fallbackUser();
+    const cleanPayload = stripLegacyUserPatchKeys(payload);
     const nextUser: User = {
       ...currentUser,
-      ...payload,
+      ...cleanPayload,
     } as User;
 
     this.authService.updateStoredUser(nextUser);
@@ -594,7 +616,7 @@ export class OfflineLifeService {
                 ...item,
                 payload: {
                   ...(item.payload ?? {}),
-                  ...payload,
+                  ...cleanPayload,
                 },
               }
             : item,
@@ -606,7 +628,7 @@ export class OfflineLifeService {
     this.enqueue({
       entity: "user",
       action: "update",
-      payload,
+      payload: cleanPayload,
     });
     return nextUser;
   }
