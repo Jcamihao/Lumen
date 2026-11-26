@@ -7,6 +7,10 @@ export type MenuAction = { type: 'phrase'; phrase: string } | { type: 'instructi
 export interface MenuNode {
   id: string;
   title: string;
+  /** Uma frase curta do que a opcao faz; aparece no cabecalho do menu que a contem. */
+  guide?: string;
+  /** Frase de abertura do cabecalho de um grupo, logo abaixo do titulo. */
+  intro?: string;
   example?: string;
   children?: MenuNode[];
   action?: MenuAction;

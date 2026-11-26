@@ -30,7 +30,9 @@ describe('menu por botao e saida universal (12.1a)', () => {
     it('raiz: menu inicial com as cinco areas, sem Voltar nem Menu, e registra menu_open', async () => {
       const reply = await click('A', 'menu');
 
-      expect(reply).toMatchObject({ kind: 'MENU', state: 'IDLE', menu: { nodeId: 'menu', title: 'Menu' } });
+      expect(reply).toMatchObject({ kind: 'MENU', state: 'IDLE', menu: { nodeId: 'menu' } });
+      expect(reply.menu?.title).toMatch(/^(Bom dia|Boa tarde|Boa noite)! ✨ Lumen · o que vamos fazer hoje\?\n/);
+      expect(reply.menu?.title).toContain('💰 Finanças: lançar, consultar, editar e apagar');
       expect(reply.menu?.options.map((option) => option.id)).toEqual(['inicio', 'financas', 'cartao', 'metas', 'ajuda']);
       expect(reply.menu?.backId).toBeUndefined();
       expect(reply.menu?.topId).toBeUndefined();
@@ -43,8 +45,8 @@ describe('menu por botao e saida universal (12.1a)', () => {
 
       expect(reply).toMatchObject({ kind: 'MENU', menu: { nodeId: 'financas', backId: 'menu', topId: 'menu' } });
       expect(reply.menu?.options).toHaveLength(8);
-      expect(reply.text).toContain('1. Lançar despesa: "gastei 50 no mercado"');
-      expect(reply.text).toContain('3. Gastos por categoria: "gastos com mercado"');
+      expect(reply.text).toContain('1. 🛒 Lançar despesa: registrar um gasto — "gastei 50 no mercado"');
+      expect(reply.text).toContain('3. 🏷️ Gastos por categoria: ver gastos de uma categoria — "gastos com mercado"');
       expect(lastEventOf('A')).toMatchObject({ intent: 'menu_nav:financas' });
     });
 
@@ -167,7 +169,7 @@ describe('menu por botao e saida universal (12.1a)', () => {
       const reply = await say('A', 'voltar');
 
       expect(reply).toMatchObject({ kind: 'MENU', state: 'IDLE', menu: { nodeId: 'menu' } });
-      expect(reply.text.startsWith('Menu')).toBe(true);
+      expect(reply.text).toMatch(/^(Bom dia|Boa tarde|Boa noite)! ✨ Lumen · o que vamos fazer hoje\?/);
       expect(lastEventOf('A')).toMatchObject({ intent: 'menu_open' });
     });
 
@@ -177,11 +179,26 @@ describe('menu por botao e saida universal (12.1a)', () => {
       }
     });
 
+    it('saudacoes sem rascunho mostram o menu', async () => {
+      for (const word of ['oi', 'Oiieee', 'bom dia', 'opa', 'olá']) {
+        expect({ word, kind: (await say('A', word)).kind }).toEqual({ word, kind: 'MENU' });
+      }
+    });
+
+    it('saudacao com rascunho aberto nao cancela o rascunho', async () => {
+      await say('A', '50 mercado');
+
+      const reply = await say('A', 'oi');
+
+      expect(reply.kind).not.toBe('MENU');
+      expect(world.sessions).toHaveLength(1);
+    });
+
     it('"cancelar" sem nada aberto responde "Nada para cancelar." e mostra o menu', async () => {
       const reply = await say('A', 'cancelar');
 
       expect(reply.kind).toBe('MENU');
-      expect(reply.text.startsWith('Nada para cancelar.\n\nMenu')).toBe(true);
+      expect(reply.text.startsWith('Nada para cancelar.\n\n')).toBe(true);
       expect(reply.menu?.lead).toBe('Nada para cancelar.');
       expect(world.writeCount).toBe(0);
     });
@@ -193,7 +210,7 @@ describe('menu por botao e saida universal (12.1a)', () => {
 
       expect(reply.kind).toBe('CANCELLED');
       expect(reply.text).toContain('Rascunho cancelado. Nada foi gravado.');
-      expect(reply.text).toContain('Menu');
+      expect(reply.text).toContain('✨ Lumen · o que vamos fazer hoje?');
       expect(reply.menu?.nodeId).toBe('menu');
       expect(reply.menu?.lead).toBe('Rascunho cancelado. Nada foi gravado.');
       expect(world.sessions).toHaveLength(0);

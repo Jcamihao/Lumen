@@ -56,7 +56,8 @@ import {
 import { normalize } from './parsers/normalize';
 import { MENU_ROOT, MENU_ROOT_ID } from './menu/menu.tree';
 import { getMenuNode } from './menu/menu.tree.queries';
-import { ExitKind, exitKindOf } from './menu/exit-words';
+import { ExitKind, exitKindOf, isGreeting } from './menu/exit-words';
+import { greetingFor } from './menu/greeting';
 import { MENU_REPLIES, menuText, menuViewOf, withDica } from './menu/menu.view';
 import { MenuActionInput, MenuNode } from './menu/menu.types';
 import type { TargetChangeDraft, TransactionChangeDraft } from './conversation.types';
@@ -469,7 +470,8 @@ export class ConversationService {
   private async openMenuNode(input: MenuActionInput, session: SessionRow | null, node: MenuNode): Promise<ConversationReply> {
     const intent = node.id === MENU_ROOT_ID ? 'menu_open' : `menu_nav:${node.id}`;
     await this.recordEventRaw({ userId: input.userId, channel: input.channel, messageId: input.messageId, intent, outcome: ConversationOutcome.RECOGNIZED });
-    return { ...this.reply('MENU', this.stateView(session), menuText(node)), menu: menuViewOf(node) };
+    const greeting = node.id === MENU_ROOT_ID ? await this.greetingOf(input.userId, input.receivedAt) : undefined;
+    return { ...this.reply('MENU', this.stateView(session), menuText(node, greeting)), menu: menuViewOf(node, greeting) };
   }
 
   /** Folha de instrucao: a frase pronta para digitar. Nao grava nada. */
@@ -485,15 +487,17 @@ export class ConversationService {
   }
 
   /** Saida com rascunho aberto: cancela (texto de sempre) e mostra o menu inicial. */
-  private async leaveDraft(userId: string, session: SessionRow, messageId: string): Promise<ConversationReply> {
+  private async leaveDraft(userId: string, session: SessionRow, messageId: string, receivedAt: Date): Promise<ConversationReply> {
     const cancelled = await this.cancelSession(userId, session, messageId);
-    return { ...cancelled, text: `${cancelled.text}\n\n${menuText(MENU_ROOT)}`, menu: { ...menuViewOf(MENU_ROOT), lead: cancelled.text } };
+    const greeting = await this.greetingOf(userId, receivedAt);
+    return { ...cancelled, text: `${cancelled.text}\n\n${menuText(MENU_ROOT, greeting)}`, menu: { ...menuViewOf(MENU_ROOT, greeting), lead: cancelled.text } };
   }
 
   /** Saida sem rascunho: "voltar"/"menu" mostram o menu; cancelar sem nada aberto avisa antes. */
   private async leaveWithoutDraft(input: ConversationInput, kind: ExitKind): Promise<ConversationReply> {
     await this.recordEvent(input, 'menu_open', ConversationOutcome.RECOGNIZED);
-    const menu = { ...this.reply('MENU', 'IDLE', menuText(MENU_ROOT)), menu: menuViewOf(MENU_ROOT) };
+    const greeting = await this.greetingOf(input.userId, input.receivedAt);
+    const menu = { ...this.reply('MENU', 'IDLE', menuText(MENU_ROOT, greeting)), menu: menuViewOf(MENU_ROOT, greeting) };
     return kind === 'CANCEL'
       ? { ...menu, text: `${MENU_REPLIES.nothingToCancel}\n\n${menu.text}`, menu: { ...menu.menu, lead: MENU_REPLIES.nothingToCancel } }
       : menu;
@@ -506,6 +510,9 @@ export class ConversationService {
     const exit = exitKindOf(text);
     if (exit) {
       return this.leaveWithoutDraft(input, exit);
+    }
+    if (isGreeting(text)) {
+      return this.leaveWithoutDraft(input, 'MENU');
     }
     const intent = await this.resolveLooseCardRead(input.userId, text.length > 0 ? matchIntent(text) : null);
 
@@ -1509,7 +1516,7 @@ export class ConversationService {
     const awaiting = session.state === ConversationState.AWAITING_CONFIRMATION;
 
     if (exitKindOf(text)) {
-      return this.leaveDraft(userId, session, input.messageId);
+      return this.leaveDraft(userId, session, input.messageId, input.receivedAt);
     }
     const deleteAwaiting = awaiting && isDeleteChange(session.draft);
     const clearAwaiting = awaiting && isClearLimitDraft(session.draft);
@@ -3763,6 +3770,11 @@ export class ConversationService {
 
   private async loadSession(userId: string, channel: ConversationChannel): Promise<SessionRow | null> {
     return this.prisma.conversationSession.findFirst({ where: { userId, channel } });
+  }
+
+  private async greetingOf(userId: string, now: Date): Promise<string> {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { timezone: true } });
+    return greetingFor(now, user.timezone);
   }
 
   private async todayYmd(userId: string, now: Date): Promise<string> {
