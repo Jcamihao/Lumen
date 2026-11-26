@@ -165,6 +165,7 @@ NÃO verificado:
 - Dispositivo físico e queda real de Postgres/Redis não foram testados. As falhas financeiras foram injetadas dentro de transações reais, sem derrubar serviços.
 - `POST /checkouts` do Asaas com `chargeTypes:['RECURRENT']` e `subscription:{cycle,value}` contra o sandbox real. O `85392c3` sugere que houve uma passada real, mas a spec ainda lista isso como pendência.
 - Estado atual do remoto: não houve `git fetch`; os commits desta rodada continuam somente locais, sem push.
+- **Ajuda do bot (2026-11-26, develop `merge feat/bot-ajuda-texto`):** texto de `REPLIES.help` reescrito com título, seções (Início, Finanças, Cartão, Metas), emojis e um exemplo por linha. Só texto; 2210 testes verdes (UTC). Não enviado ao remoto.
 
 ## 7. O que falta
 
