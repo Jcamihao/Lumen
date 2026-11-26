@@ -25,6 +25,8 @@ export interface ConversationInput {
   messageId: string;
   text: string;
   receivedAt: Date;
+  /** Frase vinda de um botao do menu: nunca vale como resposta de nome ou tipo de um rascunho aberto. */
+  viaMenu?: true;
 }
 
 export type DraftKind =
@@ -43,7 +45,8 @@ export type DraftKind =
   | 'CARD_RENAME'
   | 'CARD_CREATE'
   | 'CATEGORY_CREATE'
-  | 'CATEGORY_CHANGE';
+  | 'CATEGORY_CHANGE'
+  | 'CARD_PICK';
 
 /**
  * Rascunho para a tela: valores formatados, sem ids internos alem de draftId/draftVersion.
@@ -179,10 +182,23 @@ export interface CardRenameDraft {
  */
 export interface CardCreateDraft {
   kind: 'CARD_CREATE';
-  name: string;
+  name: string | null;
   closingDay: number | null;
   dueDay: number | null;
-  pendingField: 'closingDay' | null;
+  pendingField: 'name' | 'closingDay' | null;
+}
+
+/**
+ * Escolha de cartao pelo menu (menu guiado, fatia 4): lista numerada dos cartoes ativos e, para renomear, o novo nome.
+ * Ao terminar vira o rascunho de sempre (limpar teto ou renomear) no mesmo lugar.
+ */
+export interface CardPickDraft {
+  kind: 'CARD_PICK';
+  purpose: 'CLEAR_LIMIT' | 'RENAME';
+  cardIds: string[];
+  cardId: string | null;
+  cardName: string | null;
+  pendingField: 'card' | 'name';
 }
 
 /** Criar categoria por conversa (menu guiado, fatia 2): nome e tipo; cor automatica, sem icone nem orcamento. */
@@ -292,7 +308,8 @@ export type SessionDraft =
   | CardRenameDraft
   | CardCreateDraft
   | CategoryCreateDraft
-  | CategoryChangeDraft;
+  | CategoryChangeDraft
+  | CardPickDraft;
 
 /** Dados numericos para a tela (centavos). Presentes em INFO e DONE. */
 export interface ReplyData {

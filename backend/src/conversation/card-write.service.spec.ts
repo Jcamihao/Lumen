@@ -493,3 +493,81 @@ describe('Criar cartao pela conversa (9b-3b)', () => {
     expect(list.text).toContain('Roxinho');
   });
 });
+
+describe('cartao guiado pelo menu (menu guiado, fatia 4)', () => {
+  it('renomear com um cartao so: pergunta o novo nome, confirma e grava pelo servico real', async () => {
+    const ask = await say('A', 'renomear cartao');
+    expect(ask.kind).toBe('ASK_FIELD');
+    expect(ask.text).toBe('Qual o novo nome para o cartão Nubank? Ex.: Roxinho');
+    const draft = await say('A', 'Roxinho');
+    expect(draft.kind).toBe('CONFIRM_DRAFT');
+    expect(draft.text).toBe('Renomear o cartão Nubank para Roxinho.');
+    const done = await say('A', 'confirmar');
+    expect(done.kind).toBe('DONE');
+    expect(cardRow('cr-A-nubank')?.name).toBe('Roxinho');
+  });
+
+  it('renomear com varios cartoes: lista so os do usuario, o numero escolhe e o nome novo segue', async () => {
+    const list = await say('B', 'renomear cartao');
+    expect(list.text).toBe(['Qual cartão? Responda com o número:', '1. Itaú (padrão)', '2. Bradesco'].join('\n'));
+    const ask = await say('B', '2');
+    expect(ask.text).toBe('Qual o novo nome para o cartão Bradesco? Ex.: Roxinho');
+    const draft = await say('B', 'Verde');
+    expect(draft.text).toBe('Renomear o cartão Bradesco para Verde.');
+    await say('B', 'confirmar');
+    expect(cardRow('cr-B-bradesco')?.name).toBe('Verde');
+    expect(cardRow('cr-A-nubank')?.name).toBe('Nubank');
+  });
+
+  it('renomear com 7 cartoes: o numero 7 (dois digitos nao, mas acima de 5) escolhe o setimo', async () => {
+    for (const name of ['Cartao 3', 'Cartao 4', 'Cartao 5', 'Cartao 6', 'Cartao 7', 'Cartao 8']) {
+      world.cards.push({ id: `cr-A-${name}`, userId: USER_ID.A, name, isDefault: false, archivedAt: null, closingDay: 5, dueDay: null });
+    }
+    const list = await say('A', 'renomear cartao');
+    expect(list.text.split('\n')).toHaveLength(1 + 7);
+    const ask = await say('A', '7');
+    expect(ask.text).toContain('Qual o novo nome para o cartão');
+    expect(world.sessions[0].draft).toMatchObject({ kind: 'CARD_PICK', pendingField: 'name' });
+  });
+
+  it('renomear: nome igual ao atual, nome de outro cartao ou longo demais repetem a pergunta sem gravar', async () => {
+    await say('B', 'renomear cartao');
+    await say('B', '2');
+    expect((await say('B', 'Bradesco')).text).toContain(CARD_WRITE_REPLIES.sameName);
+    expect((await say('B', 'itaú')).text).toContain(CARD_WRITE_REPLIES.nameTaken);
+    expect((await say('B', 'x'.repeat(41))).text).toContain(CARD_WRITE_REPLIES.nameLength);
+    expect(cardRow('cr-B-bradesco')?.name).toBe('Bradesco');
+  });
+
+  it('renomear sem nenhum cartao ativo: recusa curta e sem sessao', async () => {
+    const reply = await say('C', 'renomear cartao');
+    expect(reply.text).toBe(CARD_READ_REPLIES.none);
+    expect(world.sessions).toHaveLength(0);
+  });
+
+  it('criar cartao sem nome: pergunta o nome, depois o fechamento, confirma e cria', async () => {
+    const ask = await say('A', 'criar cartao');
+    expect(ask.text).toBe(CARD_WRITE_REPLIES.askName);
+    const closing = await say('A', 'Roxinho');
+    expect(closing.text).toContain('Qual o dia de fechamento do Roxinho (1 a 31)?');
+    const draft = await say('A', '10');
+    expect(draft.kind).toBe('CONFIRM_DRAFT');
+    expect(draft.text).toContain('Criar o cartão Roxinho. Fecha: dia 10.');
+    const done = await say('A', 'confirmar');
+    expect(done.kind).toBe('DONE');
+    expect(world.cards.some((card) => card.userId === USER_ID.A && card.name === 'Roxinho' && card.closingDay === 10)).toBe(true);
+  });
+
+  it('criar cartao sem nome: nome repetido ou longo demais repete a pergunta', async () => {
+    await say('A', 'criar cartao');
+    expect((await say('A', 'nubank')).text).toContain(CARD_WRITE_REPLIES.createNameTaken);
+    expect((await say('A', 'x'.repeat(41))).text).toContain(CARD_WRITE_REPLIES.nameLength);
+    expect(world.sessions).toHaveLength(1);
+  });
+
+  it('palavra que parece consulta vale como nome do cartao (Saldo), mas o botao de leitura nao', async () => {
+    await say('A', 'criar cartao');
+    const named = await say('A', 'Saldo');
+    expect(named.text).toContain('Qual o dia de fechamento do Saldo (1 a 31)?');
+  });
+});

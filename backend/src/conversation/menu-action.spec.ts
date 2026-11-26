@@ -99,15 +99,30 @@ describe('menu por botao e saida universal (12.1a)', () => {
     });
 
     it('folha de instrucao responde a frase pronta com a dica, sem sessao e sem gravar', async () => {
-      const reply = await click('A', 'cartao.criar');
+      const reply = await click('A', 'financas.categorias.ver');
 
-      expect(reply.kind).toBe('HELP');
-      expect(reply.state).toBe('IDLE');
-      expect(reply.text).toContain('Para criar um cartão, diga: criar cartão Nubank.');
-      expect(reply.text).toContain('Dica: da próxima vez, é só dizer: criar cartão Nubank');
+      expect(reply.kind).toBe('INFO');
+      expect(reply.text).toContain('Dica: da próxima vez, é só dizer: minhas categorias');
       expect(world.sessions).toHaveLength(0);
       expect(world.writeCount).toBe(0);
-      expect(lastEventOf('A')).toMatchObject({ intent: 'menu_nav:cartao.criar' });
+    });
+
+    it('Criar cartao abre o rascunho guiado: pergunta o nome, depois o dia de fechamento, e nao grava', async () => {
+      const ask = await click('A', 'cartao.criar');
+
+      expect(ask.kind).toBe('ASK_FIELD');
+      expect(ask.text).toContain('Qual o nome do novo cartão?');
+      const closing = await say('A', 'Roxinho');
+      expect(closing.text).toContain('Qual o dia de fechamento do Roxinho (1 a 31)?');
+      expect(world.writeCount).toBe(0);
+    });
+
+    it('botao de leitura com rascunho de nome aberto nao vira o nome (viaMenu)', async () => {
+      await click('A', 'cartao.criar');
+      const reply = await click('A', 'inicio.saldo');
+
+      expect(reply.kind).toBe('INFO');
+      expect((world.sessions.find((row) => row.userId === USER_ID.A)?.draft as { name: string | null }).name).toBeNull();
     });
 
     it('Guardar numa meta abre o rascunho guiado: lista as metas e nao grava', async () => {
@@ -158,9 +173,11 @@ describe('menu por botao e saida universal (12.1a)', () => {
       await click('B', 'financas');
       await click('B', 'cartao.criar');
       await click('B', 'inicio.saldo');
+      await click('B', 'cartao.renomear');
 
       expect(JSON.stringify(world.sessions.filter((row) => row.userId === USER_ID.A))).toBe(aBefore);
-      expect(world.sessions.filter((row) => row.userId === USER_ID.B)).toHaveLength(0);
+      expect(world.sessions.filter((row) => row.userId === USER_ID.B).length).toBe(1);
+      expect(world.sessions.filter((row) => row.userId === USER_ID.A)).toHaveLength(1);
     });
   });
 

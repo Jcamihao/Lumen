@@ -197,6 +197,9 @@ function matchCardWrite(raw: string, tokens: string[], words: string[]): IntentM
       return { intent: 'create_card', body: tokens.slice(expected.split(' ').length).join(' ') };
     }
   }
+  if (phrase === 'renomear cartao' || phrase === 'renomear um cartao' || phrase === 'renomear cartoes') {
+    return { intent: 'rename_card', body: '' };
+  }
   if (startsWithPhrase(phrase, 'renomear cartao') && words.includes('para')) {
     return { intent: 'rename_card', body: tokens.slice(2).join(' ') };
   }
