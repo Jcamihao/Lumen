@@ -2,6 +2,13 @@ import { TransactionType } from '@prisma/client';
 import { CategoryChangeDraft } from './conversation.types';
 import { normalize } from './parsers/normalize';
 
+/** Resultado desconhecido: a gravacao pode ter ocorrido. Nao repetir; conferir a tela. */
+export class CategoryWriteUncertainError extends Error {
+  constructor() {
+    super('Resultado da alteracao da categoria desconhecido.');
+  }
+}
+
 export function isCategoryChangeDraft(draft: unknown): draft is CategoryChangeDraft {
   return (draft as { kind?: string } | null)?.kind === 'CATEGORY_CHANGE';
 }
@@ -27,15 +34,14 @@ export const CATEGORY_REPLIES = {
   nameLong: 'O nome passou de 40 letras. Use um menor.',
   nameTaken: 'Você já tem uma categoria com este nome.',
   pickHeader: 'Qual categoria? Responda com o número:',
-  pickMoreInApp: 'Tem mais categorias: as outras ficam no app.',
+  pickMoreInApp: 'Tem mais categorias; as outras ficam no app.',
   askNewName: (current: string) => `Qual o novo nome para "${current}"? Ex.: Animais`,
   none: 'Você ainda não tem categorias. Crie a primeira em Menu → Finanças → Categorias → Criar categoria.',
   gone: 'Não encontrei mais essa categoria.',
   sameName: 'Esse já é o nome dela. Diga outro nome ou responda cancelar.',
   deleteWarning: 'Os lançamentos dela ficam sem categoria. Isto não dá para desfazer. Responda apagar para excluir ou cancelar.',
-  sharedNotYours: 'Só quem criou a categoria pode mudar ou excluir; ela fica como está.',
-  createRejected: 'Não consegui criar a categoria agora. Nada foi gravado.',
-  changeRejected: 'Não consegui mudar a categoria agora. Nada foi gravado.',
+  sharedWarning: 'Ela é compartilhada: o lançamento da outra pessoa também fica sem categoria.',
+  changedMeanwhile: 'Essa categoria mudou desde que você escolheu. Refaça o pedido.',
   createSaveFailed: 'Não consegui salvar. Nada foi gravado; tente de novo.',
   createSaveFailedRestoreLost: 'Não consegui confirmar se a categoria foi salva. Confira em Finanças antes de tentar de novo.',
 } as const;

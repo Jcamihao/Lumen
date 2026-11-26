@@ -488,6 +488,51 @@ describe('ConversationService', () => {
       expect(db.sessions).toHaveLength(0);
     });
 
+    it('falha 5xx ao gravar categoria: resultado desconhecido, nao restaura nem repete', async () => {
+      await service.handleMessage(msg('A', 'criar categoria receita Freela'));
+      financeCategories.create.mockRejectedValueOnce(new Error('queda no meio do commit'));
+      const reply = await service.handleMessage(msg('A', 'confirmar'));
+      expect(reply.kind).toBe('ERROR');
+      expect(reply.text).toContain('Confira a tela de Finanças');
+      expect(db.sessions).toHaveLength(0);
+      expect(financeCategories.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('categoria renomeada no app entre a escolha e a confirmacao: nada e aplicado', async () => {
+      await service.handleMessage(msg('A', 'excluir categoria Mercado'));
+      (db.categories.find((row) => row.id === 'cat-mercado') as Row).name = 'Supermercado';
+      const reply = await service.handleMessage(msg('A', 'apagar'));
+      expect(reply.text).toContain('mudou desde que você escolheu');
+      expect(financeCategories.remove).not.toHaveBeenCalled();
+    });
+
+    it('categoria compartilhada: o aviso de excluir cita a outra pessoa', async () => {
+      (db.categories.find((row) => row.id === 'cat-mercado') as Row).sharedGroupOwnerId = 'A';
+      const reply = await service.handleMessage(msg('A', 'excluir categoria Mercado'));
+      expect(reply.text).toContain('compartilhada');
+    });
+
+    it('nomes que parecem consulta ou tipo valem como resposta ao criar categoria', async () => {
+      await service.handleMessage(msg('A', 'criar categoria'));
+      const type = await service.handleMessage(msg('A', 'Metas'));
+      expect(type.text).toContain('despesa ou de receita');
+      const confirm = await service.handleMessage(msg('A', 'receita'));
+      expect(confirm.kind).toBe('CONFIRM_DRAFT');
+      expect(confirm.text).toContain('Metas (receita)');
+    });
+
+    it('mais de 15 categorias: lista corta em 15, avisa do app e a busca por nome ainda acha as do fim', async () => {
+      for (let index = 0; index < 18; index += 1) {
+        db.categories.push({ id: `cat-x${index}`, userId: 'A', name: `Zeta ${String(index).padStart(2, '0')}`, type: 'EXPENSE' });
+      }
+      const list = await service.handleMessage(msg('A', 'excluir categoria'));
+      expect(list.text.split('\n').filter((line) => /^\d+\. /.test(line))).toHaveLength(15);
+      expect(list.text).toContain('as outras ficam no app');
+      await service.handleMessage(msg('A', 'cancelar'));
+      const direct = await service.handleMessage(msg('A', 'excluir categoria Zeta 17'));
+      expect(direct.text).toContain('Excluir a categoria "Zeta 17"?');
+    });
+
     it('usuario sem categorias recebe o caminho para criar', async () => {
       const reply = await service.handleMessage(msg('C', 'editar categoria'));
       expect(reply.text).toContain('Menu → Finanças → Categorias → Criar categoria');

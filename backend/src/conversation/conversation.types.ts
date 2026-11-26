@@ -198,7 +198,11 @@ export interface CategoryChangeDraft {
   kind: 'CATEGORY_CHANGE';
   action: 'EDIT' | 'DELETE';
   candidateIds: string[];
+  /** A lista foi cortada em 15: as demais categorias ficam no app. */
+  hasMore?: boolean;
   targetId: string | null;
+  /** Nome da categoria quando foi escolhida: se mudar antes da confirmacao, nada e aplicado. */
+  targetName: string | null;
   newName: string | null;
   pendingField: 'category' | 'name' | null;
 }
