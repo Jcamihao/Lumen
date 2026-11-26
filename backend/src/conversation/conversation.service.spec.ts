@@ -347,8 +347,30 @@ describe('ConversationService', () => {
       db.categories.push({ id: 'cat-mercadinho', userId: 'A', name: 'Mercadinho', type: 'EXPENSE' });
       const reply = await service.handleMessage(msg('A', '50 merc'));
       expect(reply.kind).toBe('ASK_FIELD');
-      expect(reply.text).toContain('1) Mercado');
-      expect(reply.text).toContain('2) Mercadinho');
+      expect(reply.text).toContain('1. Mercado');
+      expect(reply.text).toContain('2. Mercadinho');
+      expect(reply.text).toContain('Menu → Finanças → Categorias');
+    });
+  });
+
+  describe('categoria sem casar com nenhuma', () => {
+    it('lista todas as categorias do tipo (por nome) e o caminho para criar outra', async () => {
+      db.categories.push({ id: 'cat-transporte', userId: 'A', name: 'Transporte', type: 'EXPENSE' });
+      const reply = await service.handleMessage(msg('A', '50 xyzabc'));
+      expect(reply.kind).toBe('ASK_FIELD');
+      expect(reply.text).toContain('Qual a categoria?');
+      expect(reply.text).toContain('Mercado');
+      expect(reply.text).toMatch(/\d+\. Transporte/);
+      expect(reply.text).toContain('Menu → Finanças → Categorias');
+    });
+
+    it('o numero da lista escolhe a categoria', async () => {
+      db.categories.push({ id: 'cat-transporte', userId: 'A', name: 'Transporte', type: 'EXPENSE' });
+      const asked = await service.handleMessage(msg('A', '50 xyzabc'));
+      const number = /(\d+)\. Transporte/.exec(asked.text)?.[1] ?? '0';
+      const reply = await service.handleMessage(msg('A', number));
+      expect(reply.kind).toBe('CONFIRM_DRAFT');
+      expect(reply.draft?.category).toBe('Transporte');
     });
   });
 

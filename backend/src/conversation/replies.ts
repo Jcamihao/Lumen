@@ -97,7 +97,7 @@ export const REPLIES = {
   descriptionTooLong: 'A descrição passa de 120 caracteres.',
   askAmount: 'Quanto foi? Responda só o valor. Ex.: 50 ou 32,90.',
   askDescription: 'Qual a descrição do lançamento? Ex.: mercado.',
-  askCategoryNoOptions: 'Qual a categoria? Responda o nome ou "sem categoria".',
+  askCategoryNoOptions: 'Qual a categoria? Você ainda não tem nenhuma. Responda "sem categoria" ou crie em Menu → Finanças → Categorias.',
   noCeiling: 'Não há limite definido neste ciclo do cartão.',
   futureDate: 'A data é futura. Confira antes de confirmar.',
   noCategoryMatch: (query: string) => `Não encontrei a categoria "${query}" neste mês.`,
@@ -235,8 +235,16 @@ export function doneText(
   });
 }
 
+export const CATEGORY_MENU_HINT = 'Quer outra? Em Menu → Finanças → Categorias você cria, edita ou exclui.';
+
+/** Pergunta de categoria: uma linha por opcao, como responder e onde criar categoria nova. */
 export function categoryOptionsText(names: string[]): string {
-  return `Qual a categoria? ${names.map((name, index) => `${index + 1}) ${name}`).join(' ')} ou "sem categoria".`;
+  return [
+    'Qual a categoria?',
+    ...names.map((name, index) => `${index + 1}. ${name}`),
+    'Responda o número ou o nome, ou "sem categoria".',
+    CATEGORY_MENU_HINT,
+  ].join('\n');
 }
 
 /** 'AAAA-MM-DD' -> 'dd/mm' (texto curto da consulta). */

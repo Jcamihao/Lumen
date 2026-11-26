@@ -193,6 +193,8 @@ const TTL_MS: Record<'COLLECTING_FIELDS' | 'AWAITING_CONFIRMATION', number> = {
 const CONFIRM_WORDS = new Set(['confirmar', 'sim', 'ok']);
 const CONNECTORS = new Set(['na', 'no', 'em', 'de', 'do', 'da', 'com', 'pra', 'para']);
 const MAX_CATEGORY_OPTIONS = 5;
+/** Lista completa de categorias oferecida quando a descricao nao casa com nenhuma. */
+const MAX_CATEGORY_LIST = 10;
 /** Reserva criada pelo bot: cor da primeira opção do formulário; sem ícone (contrato 3b2, seção 4). */
 const ENVELOPE_COLOR = '#f18f01';
 const ENVELOPE_NAME_MIN = 2;
@@ -3313,6 +3315,7 @@ export class ConversationService {
     const categories = await this.prisma.financeCategory.findMany({
       where: { userId, type: draft.type },
       select: { id: true, name: true },
+      orderBy: { name: 'asc' },
     });
     const matched = matchCategory(query, categories);
     if (matched.length === 1) {
@@ -3323,7 +3326,10 @@ export class ConversationService {
     }
     draft.categoryId = null;
     draft.pendingField = 'category';
-    draft.categoryOptions = matched.slice(0, MAX_CATEGORY_OPTIONS).map((category) => category.id);
+    draft.categoryOptions =
+      matched.length > 0
+        ? matched.slice(0, MAX_CATEGORY_OPTIONS).map((category) => category.id)
+        : categories.slice(0, MAX_CATEGORY_LIST).map((category) => category.id);
   }
 
   /** Resposta da pergunta de categoria. Não casou = sem categoria (não fica em loop). */
@@ -3332,7 +3338,7 @@ export class ConversationService {
     if (normalized === 'sem categoria') {
       return null;
     }
-    if (/^[1-5]$/.test(normalized) && draft.categoryOptions[Number(normalized) - 1]) {
+    if (/^\d{1,2}$/.test(normalized) && draft.categoryOptions[Number(normalized) - 1]) {
       return draft.categoryOptions[Number(normalized) - 1];
     }
     const categories = await this.prisma.financeCategory.findMany({
@@ -3342,8 +3348,11 @@ export class ConversationService {
     const pool = draft.categoryOptions.length > 0
       ? categories.filter((category) => draft.categoryOptions.includes(category.id))
       : categories;
-    const matched = matchCategory(answer, pool);
-    return matched.length === 1 ? matched[0].id : null;
+    const inOptions = matchCategory(answer, pool);
+    if (inOptions.length === 1) return inOptions[0].id;
+    // Fora das opcoes mostradas (lista cortada em 10): o nome inteiro ainda vale.
+    const anywhere = matchCategory(answer, categories);
+    return anywhere.length === 1 ? anywhere[0].id : null;
   }
 
   /** Resposta com o rascunho atual. prefix vai antes do texto; question troca a pergunta de campo. */
