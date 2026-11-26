@@ -13,6 +13,14 @@ function clone(node: MenuNode): MenuNode {
 }
 
 describe('arvore do menu', () => {
+  it('toda opcao abaixo da raiz tem guia curto (ate 45 caracteres)', () => {
+    const walk = (node: MenuNode): MenuNode[] => [node, ...(node.children ?? []).flatMap(walk)];
+    const options = walk(MENU_ROOT).filter((node) => node.id !== MENU_ROOT_ID);
+    for (const node of options) {
+      expect({ id: node.id, ok: !!node.guide && node.guide.length <= 45 }).toEqual({ id: node.id, ok: true });
+    }
+  });
+
   it('e valida: ids unicos, formato, grupo x folha, sem ciclo', () => {
     expect(validateMenuTree(MENU_ROOT)).toEqual([]);
   });
