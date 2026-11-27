@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { ForecastRiskLevel, TransactionType } from '@prisma/client';
-import { addDays, getDaysInMonth, startOfDay } from 'date-fns';
 import { PrismaService } from '../prisma/prisma.service';
+import { calculateForecast } from './calculation/forecast-calculator';
+import { loadForecastInputs } from './calculation/forecast-inputs';
+import { persistForecast } from './calculation/forecast-persistence';
+import { errorPercentOf } from './calculation/snapshot-error';
+import { sumSignedAmounts } from './calculation/signed-amount';
+import { forecastWindow } from './calculation/forecast-window';
 
 @Injectable()
 export class ForecastsService {
@@ -24,122 +28,11 @@ export class ForecastsService {
   }
 
   async recalculateForUser(userId: string) {
-    const now = new Date();
-    const horizon = addDays(now, 30);
-    const todayStart = startOfDay(now);
+    const window = forecastWindow(new Date());
+    const inputs = await loadForecastInputs(this.prisma, userId, window);
+    const calculation = calculateForecast(inputs, window.now);
 
-    const [user, currentTransactions, futureTransactions, pendingCostTasks] =
-      await Promise.all([
-        this.prisma.user.findUniqueOrThrow({
-          where: { id: userId },
-        }),
-        this.prisma.transaction.findMany({
-          where: {
-            userId,
-            date: {
-              lte: now,
-            },
-          },
-        }),
-        this.prisma.transaction.findMany({
-          where: {
-            userId,
-            date: {
-              gte: todayStart,
-              lte: horizon,
-            },
-          },
-        }),
-        this.prisma.task.findMany({
-          where: {
-            userId,
-            hasFinancialImpact: true,
-            status: {
-              in: ['PENDING', 'IN_PROGRESS'],
-            },
-            dueDate: {
-              gte: todayStart,
-              lte: horizon,
-            },
-            estimatedAmount: {
-              not: null,
-            },
-          },
-        }),
-      ]);
-
-    const currentBalance = currentTransactions.reduce(
-      (total, transaction) =>
-        total +
-        this.getSignedAmount(transaction.type, Number(transaction.amount)),
-      0,
-    );
-
-    const futureCashFlow = futureTransactions.reduce(
-      (total, transaction) =>
-        total +
-        this.getSignedAmount(transaction.type, Number(transaction.amount)),
-      0,
-    );
-    const taskCosts = pendingCostTasks.reduce(
-      (total, task) => total + Number(task.estimatedAmount ?? 0),
-      0,
-    );
-
-    const monthlyIncome = Number(user.monthlyIncome ?? 0);
-    const daysInMonth = getDaysInMonth(now);
-    const remainingDays = daysInMonth - now.getDate();
-    const projectedMonthlyIncome =
-      monthlyIncome > 0 ? (monthlyIncome / daysInMonth) * remainingDays : 0;
-
-    const predictedBalance =
-      currentBalance + futureCashFlow - taskCosts + projectedMonthlyIncome;
-    const exposure = Math.abs(futureCashFlow) + taskCosts;
-
-    let riskLevel: ForecastRiskLevel = ForecastRiskLevel.LOW;
-
-    if (predictedBalance < 0 || (monthlyIncome > 0 && exposure >= monthlyIncome)) {
-      riskLevel = ForecastRiskLevel.HIGH;
-    } else if (
-      predictedBalance < monthlyIncome * 0.25 ||
-      (monthlyIncome > 0 && exposure >= monthlyIncome * 0.6)
-    ) {
-      riskLevel = ForecastRiskLevel.MEDIUM;
-    }
-
-    const forecast = await this.prisma.forecast.create({
-      data: {
-        userId,
-        predictedBalance,
-        riskLevel,
-        referenceDate: now,
-        factors: {
-          currentBalance,
-          futureCashFlow,
-          taskCosts,
-          monthlyIncome,
-          projectedMonthlyIncome,
-          remainingDays,
-        },
-      },
-    });
-
-    // Retrato pra conferir depois (resolveMatureSnapshots, quando horizon
-    // chegar) se a previsao bateu com o saldo real — Forecast sozinho so
-    // guarda a ultima leitura, sem historico de acerto.
-    await this.prisma.forecastSnapshot.create({
-      data: {
-        userId,
-        predictedBalance,
-        predictedAt: now,
-        targetDate: horizon,
-      },
-    });
-
-    return {
-      ...forecast,
-      predictedBalance: Number(forecast.predictedBalance),
-    };
+    return persistForecast(this.prisma, userId, calculation, window);
   }
 
   /**
@@ -150,24 +43,14 @@ export class ForecastsService {
    */
   async resolveMatureSnapshots(userId: string): Promise<number> {
     const now = new Date();
-
     const due = await this.prisma.forecastSnapshot.findMany({
       where: { userId, targetDate: { lte: now }, resolvedAt: null },
     });
-
     if (due.length === 0) return 0;
 
     const actualBalance = await this.computeBalanceAsOf(userId, now);
-
     for (const snapshot of due) {
-      const predicted = Number(snapshot.predictedBalance);
-      const errorPercent =
-        predicted !== 0
-          ? ((actualBalance - predicted) / Math.abs(predicted)) * 100
-          : actualBalance === 0
-            ? 0
-            : 100;
-
+      const errorPercent = errorPercentOf(Number(snapshot.predictedBalance), actualBalance);
       await this.prisma.forecastSnapshot.update({
         where: { id: snapshot.id },
         data: { actualBalance, errorPercent, resolvedAt: now },
@@ -204,18 +87,6 @@ export class ForecastsService {
       where: { userId, date: { lte: asOf } },
     });
 
-    return transactions.reduce(
-      (total, transaction) =>
-        total + this.getSignedAmount(transaction.type, Number(transaction.amount)),
-      0,
-    );
-  }
-
-  private getSignedAmount(type: TransactionType, amount: number) {
-    if (type === TransactionType.INCOME) {
-      return amount;
-    }
-
-    return -amount;
+    return sumSignedAmounts(transactions);
   }
 }
