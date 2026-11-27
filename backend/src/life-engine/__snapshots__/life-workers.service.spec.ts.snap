@@ -1,0 +1,97 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`LifeWorkersService: registro e ciclo de vida bootstrap reagenda lembretes pendentes e loga a contagem 1`] = `
+[
+  [
+    {
+      "select": {
+        "id": true,
+        "remindAt": true,
+      },
+      "where": {
+        "remindAt": {
+          "gt": 2026-03-02T10:00:00.000Z,
+        },
+        "status": "SCHEDULED",
+      },
+    },
+  ],
+]
+`;
+
+exports[`LifeWorkersService: registro e ciclo de vida bootstrap reagenda lembretes pendentes e loga a contagem 2`] = `
+[
+  [
+    "rem-1",
+    2026-03-02T12:00:00.000Z,
+  ],
+]
+`;
+
+exports[`LifeWorkersService: registro e ciclo de vida bootstrap reagenda lembretes pendentes e loga a contagem 3`] = `
+[
+  [
+    "log",
+    "LifeWorkersService",
+    "bootstrap_reminders count=1",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: registro e ciclo de vida falha no bootstrap e logada e nao impede o registro 1`] = `
+[
+  [
+    "warn",
+    "LifeWorkersService",
+    "bootstrap_reminders_failed reason=db caiu",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: registro e ciclo de vida registra os 4 workers na ordem, com a conexao Redis, depois do bootstrap e do agendamento 1`] = `
+[
+  {
+    "options": {
+      "connection": {
+        "host": "redis-fake",
+      },
+    },
+    "queue": "lumen-reminders",
+  },
+  {
+    "options": {
+      "connection": {
+        "host": "redis-fake",
+      },
+    },
+    "queue": "lumen-insights",
+  },
+  {
+    "options": {
+      "connection": {
+        "host": "redis-fake",
+      },
+    },
+    "queue": "lumen-forecasts",
+  },
+  {
+    "options": {
+      "connection": {
+        "host": "redis-fake",
+      },
+    },
+    "queue": "lumen-pulse-scan",
+  },
+]
+`;
+
+exports[`LifeWorkersService: registro e ciclo de vida sem Redis nao registra workers nem agenda o pulso 1`] = `
+[
+  [
+    "warn",
+    "LifeWorkersService",
+    "Workers desativados porque o Redis nao esta disponivel.",
+  ],
+]
+`;
+

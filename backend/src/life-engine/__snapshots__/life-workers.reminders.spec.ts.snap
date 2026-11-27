@@ -1,0 +1,97 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`LifeWorkersService: registro e ciclo de vida reminders worker agendado com tarefa: marca SENT, notifica com contexto e envia email 1`] = `
+[
+  [
+    {
+      "include": {
+        "goal": true,
+        "task": true,
+        "transaction": true,
+        "user": {
+          "select": {
+            "email": true,
+            "emailReminders": true,
+            "emailVerifiedAt": true,
+            "name": true,
+            "timezone": true,
+          },
+        },
+      },
+      "where": {
+        "id": "42",
+      },
+    },
+  ],
+]
+`;
+
+exports[`LifeWorkersService: registro e ciclo de vida reminders worker agendado com tarefa: marca SENT, notifica com contexto e envia email 2`] = `
+[
+  [
+    {
+      "data": {
+        "sentAt": 2026-03-02T10:00:00.000Z,
+        "status": "SENT",
+      },
+      "where": {
+        "id": "rem-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`LifeWorkersService: registro e ciclo de vida reminders worker agendado com tarefa: marca SENT, notifica com contexto e envia email 3`] = `
+[
+  [
+    "user-1",
+    "REMINDER",
+    "Pagar conta",
+    "Lembrete disparado: Pagar conta. Contexto: Pagar luz.",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: registro e ciclo de vida reminders worker agendado com tarefa: marca SENT, notifica com contexto e envia email 4`] = `
+[
+  [
+    {
+      "contextTitle": "Pagar luz",
+      "email": "marina@exemplo.com",
+      "name": "Marina Souza",
+      "remindAt": 2026-03-02T12:00:00.000Z,
+      "timezone": "America/Sao_Paulo",
+      "title": "Pagar conta",
+      "unsubscribe": {
+        "oneClickUrl": "https://api/unsub",
+        "pageUrl": "https://app/unsub",
+      },
+    },
+  ],
+]
+`;
+
+exports[`LifeWorkersService: registro e ciclo de vida reminders worker agendado com tarefa: marca SENT, notifica com contexto e envia email 5`] = `[]`;
+
+exports[`LifeWorkersService: registro e ciclo de vida reminders worker falha no email e logada com contexto e nao propaga 1`] = `
+[
+  [
+    "warn",
+    "LifeWorkersService",
+    "reminder_email_failed reminderId=rem-1 userId=user-1 reason=smtp off",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: registro e ciclo de vida reminders worker sem contexto relacionado usa a mensagem curta e nao envia email nao elegivel 1`] = `
+[
+  [
+    "user-1",
+    "REMINDER",
+    "Pagar conta",
+    "Lembrete disparado: Pagar conta.",
+  ],
+]
+`;
+

@@ -1,0 +1,407 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) consultas: usuario, transacoes passadas, futuras no horizonte e tarefas com custo 1`] = `
+[
+  [
+    {
+      "where": {
+        "id": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) consultas: usuario, transacoes passadas, futuras no horizonte e tarefas com custo 2`] = `
+[
+  [
+    {
+      "where": {
+        "date": {
+          "lte": "<now>",
+        },
+        "userId": "user-1",
+      },
+    },
+  ],
+  [
+    {
+      "where": {
+        "date": {
+          "gte": "<todayStart>",
+          "lte": "<horizon>",
+        },
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) consultas: usuario, transacoes passadas, futuras no horizonte e tarefas com custo 3`] = `
+[
+  [
+    {
+      "where": {
+        "dueDate": {
+          "gte": "<todayStart>",
+          "lte": "<horizon>",
+        },
+        "estimatedAmount": {
+          "not": null,
+        },
+        "hasFinancialImpact": true,
+        "status": {
+          "in": [
+            "PENDING",
+            "IN_PROGRESS",
+          ],
+        },
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) exposicao >= renda: HIGH 1`] = `
+{
+  "createdAt": "<now>",
+  "factors": {
+    "currentBalance": 2000,
+    "futureCashFlow": -1200,
+    "monthlyIncome": 1000,
+    "projectedMonthlyIncome": 516.1290322580645,
+    "remainingDays": 16,
+    "taskCosts": 0,
+  },
+  "id": "fc-1",
+  "predictedBalance": 1316.1290322580644,
+  "referenceDate": "<now>",
+  "riskLevel": "HIGH",
+  "userId": "user-1",
+}
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) exposicao >= renda: HIGH 2`] = `
+[
+  [
+    {
+      "data": {
+        "factors": {
+          "currentBalance": 2000,
+          "futureCashFlow": -1200,
+          "monthlyIncome": 1000,
+          "projectedMonthlyIncome": 516.1290322580645,
+          "remainingDays": 16,
+          "taskCosts": 0,
+        },
+        "predictedBalance": 1316.1290322580644,
+        "referenceDate": "<now>",
+        "riskLevel": "HIGH",
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) exposicao >= renda: HIGH 3`] = `
+[
+  [
+    {
+      "data": {
+        "predictedAt": "<now>",
+        "predictedBalance": 1316.1290322580644,
+        "targetDate": "<horizon>",
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) exposicao entre 60% e 100% da renda: MEDIUM 1`] = `
+{
+  "createdAt": "<now>",
+  "factors": {
+    "currentBalance": 2000,
+    "futureCashFlow": -700,
+    "monthlyIncome": 1000,
+    "projectedMonthlyIncome": 516.1290322580645,
+    "remainingDays": 16,
+    "taskCosts": 0,
+  },
+  "id": "fc-1",
+  "predictedBalance": 1816.1290322580644,
+  "referenceDate": "<now>",
+  "riskLevel": "MEDIUM",
+  "userId": "user-1",
+}
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) exposicao entre 60% e 100% da renda: MEDIUM 2`] = `
+[
+  [
+    {
+      "data": {
+        "factors": {
+          "currentBalance": 2000,
+          "futureCashFlow": -700,
+          "monthlyIncome": 1000,
+          "projectedMonthlyIncome": 516.1290322580645,
+          "remainingDays": 16,
+          "taskCosts": 0,
+        },
+        "predictedBalance": 1816.1290322580644,
+        "referenceDate": "<now>",
+        "riskLevel": "MEDIUM",
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) exposicao entre 60% e 100% da renda: MEDIUM 3`] = `
+[
+  [
+    {
+      "data": {
+        "predictedAt": "<now>",
+        "predictedBalance": 1816.1290322580644,
+        "targetDate": "<horizon>",
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) renda zero nao projeta renda e so olha o saldo: LOW 1`] = `
+{
+  "createdAt": "<now>",
+  "factors": {
+    "currentBalance": 100,
+    "futureCashFlow": 0,
+    "monthlyIncome": 0,
+    "projectedMonthlyIncome": 0,
+    "remainingDays": 16,
+    "taskCosts": 0,
+  },
+  "id": "fc-1",
+  "predictedBalance": 100,
+  "referenceDate": "<now>",
+  "riskLevel": "LOW",
+  "userId": "user-1",
+}
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) renda zero nao projeta renda e so olha o saldo: LOW 2`] = `
+[
+  [
+    {
+      "data": {
+        "factors": {
+          "currentBalance": 100,
+          "futureCashFlow": 0,
+          "monthlyIncome": 0,
+          "projectedMonthlyIncome": 0,
+          "remainingDays": 16,
+          "taskCosts": 0,
+        },
+        "predictedBalance": 100,
+        "referenceDate": "<now>",
+        "riskLevel": "LOW",
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) renda zero nao projeta renda e so olha o saldo: LOW 3`] = `
+[
+  [
+    {
+      "data": {
+        "predictedAt": "<now>",
+        "predictedBalance": 100,
+        "targetDate": "<horizon>",
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) saldo positivo com custo de tarefa: LOW 1`] = `
+{
+  "createdAt": "<now>",
+  "factors": {
+    "currentBalance": 800,
+    "futureCashFlow": -100,
+    "monthlyIncome": 3000,
+    "projectedMonthlyIncome": 1548.3870967741937,
+    "remainingDays": 16,
+    "taskCosts": 75.5,
+  },
+  "id": "fc-1",
+  "predictedBalance": 2172.8870967741937,
+  "referenceDate": "<now>",
+  "riskLevel": "LOW",
+  "userId": "user-1",
+}
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) saldo positivo com custo de tarefa: LOW 2`] = `
+[
+  [
+    {
+      "data": {
+        "factors": {
+          "currentBalance": 800,
+          "futureCashFlow": -100,
+          "monthlyIncome": 3000,
+          "projectedMonthlyIncome": 1548.3870967741937,
+          "remainingDays": 16,
+          "taskCosts": 75.5,
+        },
+        "predictedBalance": 2172.8870967741937,
+        "referenceDate": "<now>",
+        "riskLevel": "LOW",
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) saldo positivo com custo de tarefa: LOW 3`] = `
+[
+  [
+    {
+      "data": {
+        "predictedAt": "<now>",
+        "predictedBalance": 2172.8870967741937,
+        "targetDate": "<horizon>",
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) saldo previsto abaixo de 25% da renda: MEDIUM 1`] = `
+{
+  "createdAt": "<now>",
+  "factors": {
+    "currentBalance": 0,
+    "futureCashFlow": -400,
+    "monthlyIncome": 1000,
+    "projectedMonthlyIncome": 516.1290322580645,
+    "remainingDays": 16,
+    "taskCosts": 0,
+  },
+  "id": "fc-1",
+  "predictedBalance": 116.12903225806451,
+  "referenceDate": "<now>",
+  "riskLevel": "MEDIUM",
+  "userId": "user-1",
+}
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) saldo previsto abaixo de 25% da renda: MEDIUM 2`] = `
+[
+  [
+    {
+      "data": {
+        "factors": {
+          "currentBalance": 0,
+          "futureCashFlow": -400,
+          "monthlyIncome": 1000,
+          "projectedMonthlyIncome": 516.1290322580645,
+          "remainingDays": 16,
+          "taskCosts": 0,
+        },
+        "predictedBalance": 116.12903225806451,
+        "referenceDate": "<now>",
+        "riskLevel": "MEDIUM",
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) saldo previsto abaixo de 25% da renda: MEDIUM 3`] = `
+[
+  [
+    {
+      "data": {
+        "predictedAt": "<now>",
+        "predictedBalance": 116.12903225806451,
+        "targetDate": "<horizon>",
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) saldo previsto negativo: HIGH 1`] = `
+{
+  "createdAt": "<now>",
+  "factors": {
+    "currentBalance": -100,
+    "futureCashFlow": 0,
+    "monthlyIncome": 0,
+    "projectedMonthlyIncome": 0,
+    "remainingDays": 16,
+    "taskCosts": 0,
+  },
+  "id": "fc-1",
+  "predictedBalance": -100,
+  "referenceDate": "<now>",
+  "riskLevel": "HIGH",
+  "userId": "user-1",
+}
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) saldo previsto negativo: HIGH 2`] = `
+[
+  [
+    {
+      "data": {
+        "factors": {
+          "currentBalance": -100,
+          "futureCashFlow": 0,
+          "monthlyIncome": 0,
+          "projectedMonthlyIncome": 0,
+          "remainingDays": 16,
+          "taskCosts": 0,
+        },
+        "predictedBalance": -100,
+        "referenceDate": "<now>",
+        "riskLevel": "HIGH",
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService.recalculateForUser (caracterizacao) saldo previsto negativo: HIGH 3`] = `
+[
+  [
+    {
+      "data": {
+        "predictedAt": "<now>",
+        "predictedBalance": -100,
+        "targetDate": "<horizon>",
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;

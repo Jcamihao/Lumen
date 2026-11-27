@@ -1,0 +1,161 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`LifeWorkersService: pulse scan dia 1 do mes: aporte recorrente de meta e disparado (recurringDay 1) 1`] = `
+[
+  [
+    {
+      "where": {
+        "recurringAmount": {
+          "not": null,
+        },
+        "recurringDay": 1,
+        "status": "ACTIVE",
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`LifeWorkersService: pulse scan dia 1 do mes: aporte recorrente de meta e disparado (recurringDay 1) 2`] = `
+[
+  {
+    "data": {
+      "currentAmount": "1150",
+      "status": "ACHIEVED",
+    },
+    "where": {
+      "id": "goal-1",
+    },
+  },
+  {
+    "data": {
+      "currentAmount": "255",
+      "status": "ACTIVE",
+    },
+    "where": {
+      "id": "goal-2",
+    },
+  },
+]
+`;
+
+exports[`LifeWorkersService: pulse scan dia 1 do mes: aporte recorrente de meta e disparado (recurringDay 1) 3`] = `
+[
+  [
+    "user-1",
+    "SYSTEM",
+    "Meta concluída",
+    "O aporte automático de R$ 250,00 concluiu a meta "Reserva".",
+  ],
+  [
+    "user-1",
+    "SYSTEM",
+    "Aporte automático realizado",
+    "Aporte automático de R$ 250,00 aplicado na meta "Cofrinho".",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: pulse scan dia 1 do mes: aporte recorrente de meta e disparado (recurringDay 1) 4`] = `
+[
+  [
+    "log",
+    "LifeWorkersService",
+    "goal_recurring_contribution goalId=goal-1 userId=user-1 amount=250",
+  ],
+  [
+    "log",
+    "LifeWorkersService",
+    "goal_recurring_contribution goalId=goal-2 userId=user-1 amount=250",
+  ],
+  [
+    "log",
+    "LifeWorkersService",
+    "pulse_scan touched=1 digests=0 billReminders=0 autoContributions=2 forecastsResolved=0 targetHour=7",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: pulse scan falhas auxiliares sao logadas com o nome da etapa e nao derrubam o scan 1`] = `
+[
+  [
+    "warn",
+    "LifeWorkersService",
+    "recurring_materialize_failed userId=user-1 reason=rec off",
+  ],
+  [
+    "warn",
+    "LifeWorkersService",
+    "installments_materialize_failed userId=user-1 reason=parc off",
+  ],
+  [
+    "warn",
+    "LifeWorkersService",
+    "bill_due_reminder_failed userId=user-1 reason=bill off",
+  ],
+  [
+    "log",
+    "LifeWorkersService",
+    "pulse_scan touched=1 digests=0 billReminders=0 autoContributions=0 forecastsResolved=0 targetHour=7",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: pulse scan so processa quem esta na hora local alvo e materializa todos antes do filtro 1`] = `
+[
+  [
+    "user-1",
+  ],
+  [
+    "user-utc",
+  ],
+  [
+    "user-bad",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: pulse scan so processa quem esta na hora local alvo e materializa todos antes do filtro 2`] = `
+[
+  [
+    "user-1",
+  ],
+  [
+    "user-utc",
+  ],
+  [
+    "user-bad",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: pulse scan so processa quem esta na hora local alvo e materializa todos antes do filtro 3`] = `
+[
+  [
+    "user-1",
+  ],
+  [
+    "user-1",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: pulse scan so processa quem esta na hora local alvo e materializa todos antes do filtro 4`] = `
+[
+  [
+    "user-1",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: pulse scan so processa quem esta na hora local alvo e materializa todos antes do filtro 5`] = `
+[
+  [
+    "log",
+    "LifeWorkersService",
+    "pulse_scan touched=1 digests=0 billReminders=0 autoContributions=0 forecastsResolved=0 targetHour=7",
+  ],
+]
+`;
+

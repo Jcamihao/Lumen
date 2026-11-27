@@ -1,0 +1,62 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`LifeWorkersService: pulse scan segunda-feira local com digest vencido envia resumo e avanca lastWeeklyDigestAt 1`] = `
+[
+  [
+    "user-1",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: pulse scan segunda-feira local com digest vencido envia resumo e avanca lastWeeklyDigestAt 2`] = `
+[
+  [
+    {
+      "balance": 1000,
+      "email": "marina@exemplo.com",
+      "goals": [
+        {
+          "currentAmount": 300,
+          "targetAmount": 1000,
+          "title": "Viagem",
+        },
+      ],
+      "monthlyExpenses": 500,
+      "monthlyIncome": 3000,
+      "name": "Marina Souza",
+      "overdueTasksCount": 2,
+      "preferredCurrency": "BRL",
+      "unsubscribe": {
+        "oneClickUrl": "https://api/unsub",
+        "pageUrl": "https://app/unsub",
+      },
+    },
+  ],
+]
+`;
+
+exports[`LifeWorkersService: pulse scan segunda-feira local com digest vencido envia resumo e avanca lastWeeklyDigestAt 3`] = `
+[
+  [
+    {
+      "data": {
+        "lastWeeklyDigestAt": 2026-03-02T10:00:00.000Z,
+      },
+      "where": {
+        "id": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`LifeWorkersService: pulse scan segunda-feira local com digest vencido envia resumo e avanca lastWeeklyDigestAt 4`] = `
+[
+  [
+    "log",
+    "LifeWorkersService",
+    "pulse_scan touched=1 digests=1 billReminders=1 autoContributions=0 forecastsResolved=0 targetHour=7",
+  ],
+]
+`;
+

@@ -1,0 +1,88 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`LifeWorkersService: processors de insights e previsao insights worker atualiza insights, notifica so os pendentes e usa a persona como titulo 1`] = `
+[
+  [
+    "7",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: processors de insights e previsao insights worker atualiza insights, notifica so os pendentes e usa a persona como titulo 2`] = `
+[
+  [
+    "7",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: processors de insights e previsao insights worker atualiza insights, notifica so os pendentes e usa a persona como titulo 3`] = `
+[
+  [
+    "7",
+    "INSIGHT",
+    "Ana encontrou algo",
+    "Fatura do cartao vence amanha",
+  ],
+  [
+    "7",
+    "INSIGHT",
+    "Alerta importante do LUMEN",
+    "Gasto acima da media",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: processors de insights e previsao insights worker escala insight critico ha dias sem resolucao por email, uma vez, e marca escalatedAt 1`] = `
+[
+  [
+    {
+      "where": {
+        "escalatedAt": null,
+        "notifiedAt": {
+          "lte": 2026-02-27T10:00:00.000Z,
+          "not": null,
+        },
+        "severity": "CRITICAL",
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`LifeWorkersService: processors de insights e previsao insights worker escala insight critico ha dias sem resolucao por email, uma vez, e marca escalatedAt 2`] = `
+[
+  [
+    {
+      "email": "marina@exemplo.com",
+      "message": "Fatura do cartao vence amanha",
+      "name": "Marina Souza",
+      "unsubscribe": {
+        "oneClickUrl": "https://api/unsub",
+        "pageUrl": "https://app/unsub",
+      },
+    },
+  ],
+]
+`;
+
+exports[`LifeWorkersService: processors de insights e previsao insights worker escala insight critico ha dias sem resolucao por email, uma vez, e marca escalatedAt 3`] = `
+[
+  [
+    {
+      "data": {
+        "escalatedAt": 2026-03-02T10:00:00.000Z,
+      },
+      "where": {
+        "id": {
+          "in": [
+            "ins-1",
+          ],
+        },
+      },
+    },
+  ],
+]
+`;
+

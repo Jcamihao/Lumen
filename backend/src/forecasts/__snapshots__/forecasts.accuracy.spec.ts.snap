@@ -1,0 +1,98 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`ForecastsService: conferencia de snapshots (caracterizacao) calcula erro percentual com saldo real e grava resolvedAt 1`] = `
+[
+  [
+    {
+      "where": {
+        "date": {
+          "lte": 2026-03-15T12:00:00.000Z,
+        },
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService: conferencia de snapshots (caracterizacao) calcula erro percentual com saldo real e grava resolvedAt 2`] = `
+[
+  [
+    {
+      "data": {
+        "actualBalance": 1100,
+        "errorPercent": 10,
+        "resolvedAt": 2026-03-15T12:00:00.000Z,
+      },
+      "where": {
+        "id": "s-1",
+      },
+    },
+  ],
+  [
+    {
+      "data": {
+        "actualBalance": 1100,
+        "errorPercent": 100,
+        "resolvedAt": 2026-03-15T12:00:00.000Z,
+      },
+      "where": {
+        "id": "s-2",
+      },
+    },
+  ],
+  [
+    {
+      "data": {
+        "actualBalance": 1100,
+        "errorPercent": 650,
+        "resolvedAt": 2026-03-15T12:00:00.000Z,
+      },
+      "where": {
+        "id": "s-3",
+      },
+    },
+  ],
+]
+`;
+
+exports[`ForecastsService: conferencia de snapshots (caracterizacao) getLatestAccuracy: null sem snapshot conferido; mapeia campos quando existe 1`] = `
+{
+  "actualBalance": 1000,
+  "errorPercent": 11.11,
+  "predictedBalance": 900,
+  "resolvedAt": 2026-03-15T12:00:00.000Z,
+  "targetDate": 2026-03-10T00:00:00.000Z,
+}
+`;
+
+exports[`ForecastsService: conferencia de snapshots (caracterizacao) getLatestAccuracy: null sem snapshot conferido; mapeia campos quando existe 2`] = `
+[
+  [
+    {
+      "orderBy": {
+        "resolvedAt": "desc",
+      },
+      "where": {
+        "resolvedAt": {
+          "not": null,
+        },
+        "userId": "user-1",
+      },
+    },
+  ],
+  [
+    {
+      "orderBy": {
+        "resolvedAt": "desc",
+      },
+      "where": {
+        "resolvedAt": {
+          "not": null,
+        },
+        "userId": "user-1",
+      },
+    },
+  ],
+]
+`;

@@ -1,0 +1,21 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`LifeWorkersService: processors de insights e previsao forecasts worker risco HIGH gera notificacao FORECAST 1`] = `
+[
+  [
+    "3",
+  ],
+]
+`;
+
+exports[`LifeWorkersService: processors de insights e previsao forecasts worker risco HIGH gera notificacao FORECAST 2`] = `
+[
+  [
+    "3",
+    "FORECAST",
+    "Risco financeiro elevado",
+    "Sua previsao financeira indica risco alto para os proximos 30 dias.",
+  ],
+]
+`;
+
