@@ -1,0 +1,220 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`buildSimulations (caracterizacao) aporte: 15% do saldo previsto limitado ao que falta 1`] = `
+[
+  {
+    "assumptions": [
+      "Considera uso de uma parte do saldo previsto, não do saldo histórico inteiro.",
+      "Não substitui revisão das prioridades básicas do mês.",
+    ],
+    "confidence": "medium",
+    "id": "goal-contribution",
+    "monthlyDelta": -10,
+    "projectedBalance": 90,
+    "summary": "Separando R$ 10,00 para Viagem, a projeção de caixa cairia para R$ 90,00, mas a meta ganharia tração imediata.",
+    "title": "Aporte tático em Viagem",
+  },
+]
+`;
+
+exports[`buildSimulations (caracterizacao) aporte: saldo previsto negativo nao gera aporte 1`] = `[]`;
+
+exports[`buildSimulations (caracterizacao) categoria variavel, divida com sobra e meta com alvo 1`] = `
+[
+  {
+    "assumptions": [
+      "Baseado no histórico real de transações da categoria nos últimos 3 meses, não numa média genérica.",
+      "Categoria considerada variável por oscilar de mês a mês — gastos fixos como aluguel ficam de fora.",
+    ],
+    "confidence": "medium",
+    "id": "expense-trim-category",
+    "monthlyDelta": 60,
+    "projectedBalance": 2060,
+    "summary": ""Lazer" foi sua categoria de maior gasto variável nos últimos 3 meses (R$ 600,00 no total). Enxugando 10% dela, a projeção vai para R$ 2.060,00.",
+    "title": "Corte em Lazer",
+  },
+  {
+    "assumptions": [
+      "Baseado na sobra média real (entradas menos saídas) dos últimos 3 meses, não num prazo fixo de 8 meses.",
+      "Cálculo simplificado, sem juros, multas ou descontos de negociação.",
+    ],
+    "confidence": "medium",
+    "id": "debt-personalized",
+    "monthlyDelta": -1500,
+    "projectedBalance": 500,
+    "summary": "Para uma dívida aproximada de R$ 10.500,00, usando sua sobra média real dos últimos 3 meses (R$ 1.500,00/mês), uma quitação em 7 meses sugere parcela perto de R$ 1.500,00.",
+    "title": "Parcelamento em 7 meses",
+  },
+  {
+    "assumptions": [
+      "Considera uso de uma parte do saldo previsto, não do saldo histórico inteiro.",
+      "Não substitui revisão das prioridades básicas do mês.",
+    ],
+    "confidence": "medium",
+    "id": "goal-contribution",
+    "monthlyDelta": -300,
+    "projectedBalance": 1700,
+    "summary": "Separando R$ 300,00 para Viagem, a projeção de caixa cairia para R$ 1.700,00, mas a meta ganharia tração imediata.",
+    "title": "Aporte tático em Viagem",
+  },
+]
+`;
+
+exports[`buildSimulations (caracterizacao) divida com sobra negativa: cai no linear 1`] = `
+[
+  {
+    "assumptions": [
+      "Sem sobra mensal positiva nos últimos 3 meses pra personalizar o prazo — usando 8 meses como referência neutra.",
+      "Cálculo simplificado, sem juros, multas ou descontos de negociação.",
+    ],
+    "confidence": "low",
+    "id": "debt-8x",
+    "monthlyDelta": -150,
+    "projectedBalance": 1850,
+    "summary": "Para uma dívida aproximada de R$ 1.200,00, uma divisão linear em 8 meses sugere parcela perto de R$ 150,00.",
+    "title": "Parcelamento linear em 8 meses",
+  },
+]
+`;
+
+exports[`buildSimulations (caracterizacao) divida com sobra zero: parcelamento linear em 8 meses 1`] = `
+[
+  {
+    "assumptions": [
+      "Sem sobra mensal positiva nos últimos 3 meses pra personalizar o prazo — usando 8 meses como referência neutra.",
+      "Cálculo simplificado, sem juros, multas ou descontos de negociação.",
+    ],
+    "confidence": "low",
+    "id": "debt-8x",
+    "monthlyDelta": -100,
+    "projectedBalance": 1900,
+    "summary": "Para uma dívida aproximada de R$ 800,00, uma divisão linear em 8 meses sugere parcela perto de R$ 100,00.",
+    "title": "Parcelamento linear em 8 meses",
+  },
+]
+`;
+
+exports[`buildSimulations (caracterizacao) divida enorme: teto de 60 meses 1`] = `
+[
+  {
+    "assumptions": [
+      "Baseado na sobra média real (entradas menos saídas) dos últimos 3 meses, não num prazo fixo de 8 meses.",
+      "Cálculo simplificado, sem juros, multas ou descontos de negociação.",
+    ],
+    "confidence": "medium",
+    "id": "debt-personalized",
+    "monthlyDelta": -16666.67,
+    "projectedBalance": -14666.669999999998,
+    "summary": "Para uma dívida aproximada de R$ 1.000.000,00, usando sua sobra média real dos últimos 3 meses (R$ 1,00/mês), uma quitação em 60 meses sugere parcela perto de R$ 16.666,67.",
+    "title": "Parcelamento em 60 meses",
+  },
+]
+`;
+
+exports[`buildSimulations (caracterizacao) divida pequena: 1 mes no singular 1`] = `
+[
+  {
+    "assumptions": [
+      "Baseado na sobra média real (entradas menos saídas) dos últimos 3 meses, não num prazo fixo de 8 meses.",
+      "Cálculo simplificado, sem juros, multas ou descontos de negociação.",
+    ],
+    "confidence": "medium",
+    "id": "debt-personalized",
+    "monthlyDelta": -500,
+    "projectedBalance": 1500,
+    "summary": "Para uma dívida aproximada de R$ 500,00, usando sua sobra média real dos últimos 3 meses (R$ 1.000,00/mês), uma quitação em 1 mês sugere parcela perto de R$ 500,00.",
+    "title": "Parcelamento em 1 mês",
+  },
+]
+`;
+
+exports[`buildSimulations (caracterizacao) divida sem sobra (null): parcelamento linear em 8 meses 1`] = `
+[
+  {
+    "assumptions": [
+      "Sem sobra mensal positiva nos últimos 3 meses pra personalizar o prazo — usando 8 meses como referência neutra.",
+      "Cálculo simplificado, sem juros, multas ou descontos de negociação.",
+    ],
+    "confidence": "low",
+    "id": "debt-8x",
+    "monthlyDelta": -100,
+    "projectedBalance": -50,
+    "summary": "Para uma dívida aproximada de R$ 800,00, uma divisão linear em 8 meses sugere parcela perto de R$ 100,00.",
+    "title": "Parcelamento linear em 8 meses",
+  },
+]
+`;
+
+exports[`buildSimulations (caracterizacao) meta ja concluida nao gera aporte 1`] = `[]`;
+
+exports[`buildSimulations (caracterizacao) meta sem alvo nao gera aporte 1`] = `[]`;
+
+exports[`buildSimulations (caracterizacao) moeda USD vale no formato 1`] = `
+[
+  {
+    "assumptions": [
+      "Estimativa baseada nas despesas registradas neste mês.",
+      "Sem categorias com histórico suficiente nos últimos 3 meses pra apontar uma específica.",
+    ],
+    "confidence": "medium",
+    "id": "expense-trim-10",
+    "monthlyDelta": 80,
+    "projectedBalance": 2080,
+    "summary": "Se você enxugar perto de 10% das saídas variáveis do mês, a projeção vai para US$ 2.080,00.",
+    "title": "Ajuste leve de gastos",
+  },
+]
+`;
+
+exports[`buildSimulations (caracterizacao) moeda vazia cai para BRL 1`] = `
+[
+  {
+    "assumptions": [
+      "Estimativa baseada nas despesas registradas neste mês.",
+      "Sem categorias com histórico suficiente nos últimos 3 meses pra apontar uma específica.",
+    ],
+    "confidence": "medium",
+    "id": "expense-trim-10",
+    "monthlyDelta": 80,
+    "projectedBalance": 2080,
+    "summary": "Se você enxugar perto de 10% das saídas variáveis do mês, a projeção vai para R$ 2.080,00.",
+    "title": "Ajuste leve de gastos",
+  },
+]
+`;
+
+exports[`buildSimulations (caracterizacao) saldo previsto nulo vira zero 1`] = `
+[
+  {
+    "assumptions": [
+      "Estimativa baseada nas despesas registradas neste mês.",
+      "Sem categorias com histórico suficiente nos últimos 3 meses pra apontar uma específica.",
+    ],
+    "confidence": "medium",
+    "id": "expense-trim-10",
+    "monthlyDelta": 40,
+    "projectedBalance": 40,
+    "summary": "Se você enxugar perto de 10% das saídas variáveis do mês, a projeção vai para R$ 40,00.",
+    "title": "Ajuste leve de gastos",
+  },
+]
+`;
+
+exports[`buildSimulations (caracterizacao) sem categoria: ajuste linear pelas despesas do mes 1`] = `
+[
+  {
+    "assumptions": [
+      "Estimativa baseada nas despesas registradas neste mês.",
+      "Sem categorias com histórico suficiente nos últimos 3 meses pra apontar uma específica.",
+    ],
+    "confidence": "medium",
+    "id": "expense-trim-10",
+    "monthlyDelta": 100,
+    "projectedBalance": 200,
+    "summary": "Se você enxugar perto de 10% das saídas variáveis do mês, a projeção vai para R$ 200,00.",
+    "title": "Ajuste leve de gastos",
+  },
+]
+`;
+
+exports[`buildSimulations (caracterizacao) sem gasto e sem divida: nenhuma simulacao 1`] = `[]`;
