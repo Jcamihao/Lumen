@@ -1,123 +1,20 @@
-import { Logger, ValidationPipe } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { randomUUID } from 'crypto';
-import compression = require('compression');
-import { json, urlencoded } from 'express';
-import helmet from 'helmet';
+import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { REQUEST_ID_HEADER } from './common/constants/request-trace.constants';
-import { HttpExceptionLoggingFilter } from './common/filters/http-exception-logging.filter';
-import { RequestWithContext } from './common/interfaces/request-with-context.interface';
+import { readBootstrapSettings } from './bootstrap/bootstrap-settings';
+import { BOOTSTRAP_CONTEXT, GLOBAL_PREFIX, NEST_LOG_LEVELS } from './bootstrap/bootstrap.constants';
+import { configureApp } from './bootstrap/configure-app';
 
 async function bootstrap() {
-  const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn', 'log', 'debug', 'verbose'],
-  });
-  app.getHttpAdapter().getInstance().set('trust proxy', 1);
-  const configService = app.get(ConfigService);
-  const port = configService.get<number>('app.port', 3000);
-  const host = configService.get<string>('app.host', '0.0.0.0');
-  const appUrl =
-    configService.get<string>('app.appUrl') ?? `http://localhost:${port}`;
-  const corsAllowedOrigins =
-    configService.get<string[]>('app.corsAllowedOrigins') ?? [];
-  const swaggerEnabled =
-    configService.get<boolean>('app.swaggerEnabled') ?? false;
+  const logger = new Logger(BOOTSTRAP_CONTEXT);
+  const app = await NestFactory.create(AppModule, { logger: NEST_LOG_LEVELS });
+  const settings = readBootstrapSettings(app.get(ConfigService));
 
-  app.enableShutdownHooks();
+  configureApp(app, settings);
 
-  app.setGlobalPrefix('api/v1');
-  app.use((req: RequestWithContext, res, next) => {
-    const requestIdHeader = req.header(REQUEST_ID_HEADER);
-    const requestId = requestIdHeader?.trim() || randomUUID();
-    const startedAt = Date.now();
-
-    req.requestId = requestId;
-    req.startedAt = startedAt;
-    res.setHeader(REQUEST_ID_HEADER, requestId);
-
-    res.on('finish', () => {
-      const durationMs = Date.now() - startedAt;
-      const userId = req.user?.sub ?? 'anonymous';
-      const statusCode = res.statusCode;
-      const level = statusCode >= 500 ? 'error' : statusCode >= 400 ? 'warn' : 'log';
-      const logMessage =
-        `request_completed requestId=${requestId} method=${req.method} ` +
-        `path=${req.originalUrl ?? req.url} status=${statusCode} durationMs=${durationMs} userId=${userId}`;
-
-      if (level === 'error') {
-        logger.error(logMessage);
-        return;
-      }
-
-      if (level === 'warn') {
-        logger.warn(logMessage);
-        return;
-      }
-
-      logger.log(logMessage);
-    });
-
-    next();
-  });
-
-  app.enableCors({
-    origin: (origin, callback) => {
-      // Origem fora da lista: so nao envia os cabecalhos CORS (o navegador bloqueia).
-      // Passar um Error aqui virava HTTP 500 e poluia o monitoramento.
-      callback(null, !origin || corsAllowedOrigins.includes(origin));
-    },
-    credentials: true,
-  });
-  // Corpo bruto so para o webhook do WhatsApp (a assinatura exige os bytes originais).
-  app.use(
-    json({
-      limit: '5mb',
-      verify: (req: RequestWithContext & { rawBody?: Buffer }, _res, buf) => {
-        if ((req.originalUrl ?? req.url ?? '').startsWith('/api/v1/whatsapp/webhook')) {
-          req.rawBody = buf;
-        }
-      },
-    }),
-  );
-  app.use(urlencoded({ extended: true, limit: '5mb' }));
-  app.use(helmet());
-  app.use(compression());
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: true,
-      transformOptions: {
-        enableImplicitConversion: true,
-      },
-    }),
-  );
-  app.useGlobalFilters(new HttpExceptionLoggingFilter());
-
-  if (swaggerEnabled) {
-    const swaggerConfig = new DocumentBuilder()
-      .setTitle('LUMEN API')
-      .setDescription(
-        'API do SaaS LUMEN para gestao de vida, conectando tarefas, financas, metas e rotina.',
-      )
-      .setVersion('1.0.0')
-      .addBearerAuth()
-      .build();
-
-    const document = SwaggerModule.createDocument(app, swaggerConfig);
-    SwaggerModule.setup('api/docs', app, document, {
-      swaggerOptions: {
-        persistAuthorization: true,
-      },
-    });
-  }
-
-  await app.listen(port, host);
-  logger.log(`LUMEN API running at ${appUrl}/api/v1`);
+  await app.listen(settings.port, settings.host);
+  logger.log(`LUMEN API running at ${settings.appUrl}/${GLOBAL_PREFIX}`);
 }
 
 bootstrap();
