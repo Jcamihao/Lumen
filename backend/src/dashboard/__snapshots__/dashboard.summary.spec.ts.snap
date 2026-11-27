@@ -1,0 +1,113 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`DashboardService — caracterizacao do resumo monta o resumo completo com dados reais 1`] = `
+{
+  "finances": {
+    "balance": 1180.25,
+    "monthlyExpenses": 800,
+    "monthlyIncome": 2000,
+    "recentTransactions": [
+      {
+        "amount": 320.25,
+        "category": "Comida",
+        "date": 2026-11-15T16:00:00.000Z,
+        "description": "Mercado",
+        "id": "tx1",
+        "type": "EXPENSE",
+      },
+      {
+        "amount": 1500.5,
+        "category": "Renda",
+        "date": 2026-11-15T16:00:00.000Z,
+        "description": "Salario",
+        "id": "tx2",
+        "type": "INCOME",
+      },
+    ],
+  },
+  "forecast": {
+    "id": "f1",
+    "predictedBalance": 1200,
+  },
+  "goals": [
+    {
+      "currentAmount": 2500,
+      "id": "g1",
+      "status": "ACTIVE",
+      "targetAmount": 10000,
+      "title": "Reserva",
+    },
+    {
+      "currentAmount": 0,
+      "id": "g2",
+      "status": "PLANNED",
+      "targetAmount": null,
+      "title": "Viagem",
+    },
+  ],
+  "insights": [
+    {
+      "id": "i1",
+      "kind": "SAVINGS",
+    },
+  ],
+  "notifications": [
+    {
+      "createdAt": 2026-11-15T16:00:00.000Z,
+      "id": "n1",
+      "isRead": false,
+      "message": "Amanha",
+      "title": "Conta vence",
+    },
+  ],
+  "onboarding": {
+    "goals": true,
+    "recurring": true,
+    "selah": true,
+    "tasks": true,
+    "transactions": false,
+  },
+  "reminders": [
+    {
+      "id": "r1",
+      "remindAt": 2026-11-15T16:00:00.000Z,
+      "title": "Cartao",
+    },
+  ],
+  "tasks": {
+    "items": [
+      {
+        "category": {
+          "id": "c1",
+        },
+        "dueDate": 2026-11-15T16:00:00.000Z,
+        "estimatedAmount": 250.75,
+        "id": "t1",
+        "priority": "HIGH",
+        "status": "PENDING",
+        "title": "Pagar boleto",
+      },
+      {
+        "category": null,
+        "dueDate": 2026-11-15T16:00:00.000Z,
+        "estimatedAmount": null,
+        "id": "t2",
+        "priority": "LOW",
+        "status": "IN_PROGRESS",
+        "title": "Ligar",
+      },
+    ],
+    "overdueCount": 1,
+    "todayCount": 2,
+  },
+  "user": {
+    "birthDate": null,
+    "id": "user-1",
+    "monthlyIncome": 5000,
+    "name": "Marina",
+    "occupation": null,
+    "preferredCurrency": "BRL",
+    "primaryGoal": "SAVE",
+  },
+}
+`;
