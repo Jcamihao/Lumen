@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import * as bcrypt from "bcryptjs";
 import { BadRequestException } from "@nestjs/common";
-import { AuthService } from "./auth.service";
+import { buildAuthService } from "./auth-service.fixture";
 
 describe("AuthService — email flows (reset de senha e confirmacao de email)", () => {
   type Challenge = {
@@ -77,7 +77,7 @@ describe("AuthService — email flows (reset de senha e confirmacao de email)", 
       getOrThrow: jest.fn((key: string) => configValues[key]),
     };
 
-    const service = new AuthService(
+    const service = buildAuthService(
       usersService as any,
       {} as any,
       configService as any,

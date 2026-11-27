@@ -1,7 +1,8 @@
 import * as bcrypt from "bcryptjs";
 import { createHash } from "crypto";
 import { UnauthorizedException } from "@nestjs/common";
-import { AuthService } from "./auth.service";
+import { buildAuthService } from "./auth-service.fixture";
+import { MfaCodeVerifier } from "./mfa/mfa-code-verifier.service";
 import { MfaService } from "./mfa.service";
 
 describe("AuthService", () => {
@@ -75,7 +76,7 @@ describe("AuthService", () => {
         );
     const prisma = buildPrismaService(options.session);
 
-    const service = new AuthService(
+    const service = buildAuthService(
       buildUsersService(),
       jwtService,
       buildConfigService(),
@@ -192,7 +193,7 @@ describe("AuthService", () => {
           create: jest.fn(),
         },
       } as any;
-      const service = new AuthService(buildUsersService(), jwtService, buildConfigService(), {} as any, prisma, {} as any);
+      const service = buildAuthService(buildUsersService(), jwtService, buildConfigService(), {} as any, prisma, {} as any);
 
       const result = await service.refresh({ refreshToken: tokenB });
 
@@ -301,7 +302,7 @@ describe("AuthService", () => {
 
   describe("login (nao revela por tempo quais emails tem conta)", () => {
     const buildLoginService = (foundUser: any) =>
-      new AuthService(
+      buildAuthService(
         { findByEmail: jest.fn().mockResolvedValue(foundUser) } as any,
         {} as any,
         buildConfigService(),
@@ -355,14 +356,14 @@ describe("AuthService", () => {
     });
     const build = (claimedCount: number) => {
       const prisma = { user: { updateMany: jest.fn().mockResolvedValue({ count: claimedCount }), update: jest.fn() } } as any;
-      const service = new AuthService({} as any, {} as any, buildConfigService(), {} as any, prisma, mfa);
+      const service = new MfaCodeVerifier(prisma, mfa);
       return { service, prisma };
     };
 
     it("primeiro uso: grava o passo com UPDATE condicional (so avanca, nunca repete)", async () => {
       const { service, prisma } = build(1);
 
-      await (service as any).verifyAndPersistMfaCode(user(), codeFor(0));
+      await service.verifyAndPersist(user(), codeFor(0));
 
       const call = prisma.user.updateMany.mock.calls[0][0];
       expect(call.where).toEqual({
@@ -375,7 +376,7 @@ describe("AuthService", () => {
     it("reuso do mesmo codigo: 401, porque o passo ja foi consumido", async () => {
       const { service } = build(0);
 
-      await expect((service as any).verifyAndPersistMfaCode(user(), codeFor(0))).rejects.toThrow(
+      await expect(service.verifyAndPersist(user(), codeFor(0))).rejects.toThrow(
         "Esse codigo ja foi usado",
       );
     });
@@ -384,7 +385,7 @@ describe("AuthService", () => {
       const { service, prisma } = build(1);
       const wrong = codeFor(0) === "123456" ? "654321" : "123456";
 
-      await expect((service as any).verifyAndPersistMfaCode(user(), wrong)).rejects.toThrow(
+      await expect(service.verifyAndPersist(user(), wrong)).rejects.toThrow(
         "Codigo MFA invalido",
       );
       expect(prisma.user.updateMany).not.toHaveBeenCalled();
