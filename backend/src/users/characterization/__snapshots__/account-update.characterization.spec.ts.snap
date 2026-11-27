@@ -1,0 +1,153 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`updateMe e sanitizeUser - caracterizacao da conta ativar IA com aceite agora preserva a data de consentimento anterior 1`] = `
+{
+  "data": {
+    "aiAssistantConsentAt": 2025-06-02T00:00:00.000Z,
+    "aiAssistantConsentVersion": "2026-03-26",
+    "aiAssistantEnabled": true,
+    "avatarUrl": undefined,
+    "birthDate": undefined,
+    "emailBillReminders": undefined,
+    "emailInsightAlerts": undefined,
+    "emailReminders": undefined,
+    "emailWeeklyDigest": undefined,
+    "monthlyIncome": undefined,
+    "name": undefined,
+    "occupation": undefined,
+    "phone": undefined,
+    "preferredCurrency": undefined,
+    "primaryGoal": undefined,
+    "timezone": undefined,
+  },
+  "where": {
+    "id": "user-1",
+  },
+}
+`;
+
+exports[`updateMe e sanitizeUser - caracterizacao da conta ativar IA e aceitar o aviso no mesmo pedido grava as duas datas agora 1`] = `
+{
+  "data": {
+    "aiAssistantConsentAt": 2026-02-01T12:00:00.000Z,
+    "aiAssistantConsentVersion": "2026-03-26",
+    "aiAssistantEnabled": true,
+    "avatarUrl": undefined,
+    "birthDate": undefined,
+    "emailBillReminders": undefined,
+    "emailInsightAlerts": undefined,
+    "emailReminders": undefined,
+    "emailWeeklyDigest": undefined,
+    "monthlyIncome": undefined,
+    "name": undefined,
+    "occupation": undefined,
+    "phone": undefined,
+    "preferredCurrency": undefined,
+    "primaryGoal": undefined,
+    "privacyNoticeAcceptedAt": 2026-02-01T12:00:00.000Z,
+    "privacyNoticeVersion": "2026-03-26",
+    "timezone": undefined,
+  },
+  "where": {
+    "id": "user-1",
+  },
+}
+`;
+
+exports[`updateMe e sanitizeUser - caracterizacao da conta dados comuns, emails e renda 1`] = `
+{
+  "data": {
+    "avatarUrl": "x.png",
+    "birthDate": 1991-01-02T00:00:00.000Z,
+    "emailBillReminders": true,
+    "emailInsightAlerts": false,
+    "emailReminders": true,
+    "emailWeeklyDigest": false,
+    "monthlyIncome": "100",
+    "name": "Ana",
+    "occupation": "Dev",
+    "phone": "1",
+    "preferredCurrency": "USD",
+    "primaryGoal": "Casa",
+    "timezone": "UTC",
+  },
+  "where": {
+    "id": "user-1",
+  },
+}
+`;
+
+exports[`updateMe e sanitizeUser - caracterizacao da conta desligar IA limpa consentimento; sem campo de IA nao toca nela 1`] = `
+{
+  "data": {
+    "aiAssistantConsentAt": null,
+    "aiAssistantConsentVersion": null,
+    "aiAssistantEnabled": false,
+    "avatarUrl": undefined,
+    "birthDate": undefined,
+    "emailBillReminders": undefined,
+    "emailInsightAlerts": undefined,
+    "emailReminders": undefined,
+    "emailWeeklyDigest": undefined,
+    "monthlyIncome": undefined,
+    "name": undefined,
+    "occupation": undefined,
+    "phone": undefined,
+    "preferredCurrency": undefined,
+    "primaryGoal": undefined,
+    "timezone": undefined,
+  },
+  "where": {
+    "id": "user-1",
+  },
+}
+`;
+
+exports[`updateMe e sanitizeUser - caracterizacao da conta desligar IA limpa consentimento; sem campo de IA nao toca nela 2`] = `
+{
+  "data": {
+    "avatarUrl": undefined,
+    "birthDate": undefined,
+    "emailBillReminders": undefined,
+    "emailInsightAlerts": undefined,
+    "emailReminders": undefined,
+    "emailWeeklyDigest": undefined,
+    "monthlyIncome": undefined,
+    "name": "So nome",
+    "occupation": undefined,
+    "phone": undefined,
+    "preferredCurrency": undefined,
+    "primaryGoal": undefined,
+    "timezone": undefined,
+  },
+  "where": {
+    "id": "user-1",
+  },
+}
+`;
+
+exports[`updateMe e sanitizeUser - caracterizacao da conta sanitizeUser: sem segredos de MFA, com flags conforme a feature 1`] = `
+{
+  "financeCategories": [],
+  "id": "user-1",
+  "mfaEnabled": true,
+  "mfaEnabledAt": 2026-01-03T00:00:00.000Z,
+  "mfaLastVerifiedAt": null,
+  "mfaRecoveryCodesRemaining": 1,
+  "mfaSetupPending": true,
+  "monthlyIncome": 3000,
+}
+`;
+
+exports[`updateMe e sanitizeUser - caracterizacao da conta sanitizeUser: sem segredos de MFA, com flags conforme a feature 2`] = `
+{
+  "financeCategories": [],
+  "id": "user-1",
+  "mfaEnabled": false,
+  "mfaEnabledAt": null,
+  "mfaLastVerifiedAt": null,
+  "mfaRecoveryCodesRemaining": 0,
+  "mfaSetupPending": false,
+  "monthlyIncome": 3000,
+}
+`;

@@ -1,0 +1,1475 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`exportMe - caracterizacao da exportacao LGPD consentimento de IA sem aceite do aviso nao conta como processamento ativo 1`] = `
+{
+  "controller": {
+    "company": "codeStage Solucoes",
+    "product": "LUMEN",
+  },
+  "datasets": {
+    "assistantTurns": [
+      {
+        "answer": "Bem.",
+        "createdAt": 2026-01-29T00:00:00.000Z,
+        "id": "at-1",
+        "question": "Como estou?",
+      },
+    ],
+    "authSessions": [
+      {
+        "createdAt": 2026-01-01T00:00:00.000Z,
+        "expiresAt": 2026-03-01T00:00:00.000Z,
+        "id": "s-1",
+        "ipAddress": "10.0.0.1",
+        "lastUsedAt": null,
+        "revokeReason": null,
+        "revokedAt": null,
+        "userAgent": "Chrome",
+      },
+    ],
+    "financeCategories": [
+      {
+        "budget": "1500",
+        "id": "fc-1",
+        "monthlyBudget": null,
+        "name": "Moradia",
+        "shared": false,
+        "type": "EXPENSE",
+        "userId": "user-1",
+      },
+      {
+        "budget": null,
+        "id": "fc-2",
+        "monthlyBudget": null,
+        "name": "Salario",
+        "shared": false,
+        "type": "INCOME",
+        "userId": "user-1",
+      },
+    ],
+    "forecastSnapshots": [
+      {
+        "actualBalance": 900,
+        "errorPercent": 10,
+        "id": "fs-1",
+        "predictedBalance": 1000,
+        "targetDate": 2026-02-10T00:00:00.000Z,
+      },
+      {
+        "actualBalance": null,
+        "errorPercent": null,
+        "id": "fs-2",
+        "predictedBalance": 500,
+        "targetDate": 2026-01-10T00:00:00.000Z,
+      },
+    ],
+    "forecasts": [
+      {
+        "id": "f-1",
+        "predictedBalance": 1200.75,
+        "referenceDate": 2026-02-01T00:00:00.000Z,
+      },
+    ],
+    "goals": [
+      {
+        "currentAmount": 2500,
+        "id": "g-1",
+        "targetAmount": 10000,
+        "title": "Reserva",
+      },
+      {
+        "currentAmount": 0,
+        "id": "g-2",
+        "targetAmount": null,
+        "title": "Viagem",
+      },
+    ],
+    "importJobs": [
+      {
+        "createdAt": 2026-01-10T00:00:00.000Z,
+        "id": "ij-1",
+        "status": "DONE",
+      },
+    ],
+    "insights": [
+      {
+        "createdAt": 2026-01-15T00:00:00.000Z,
+        "id": "i-1",
+        "kind": "SPENDING",
+      },
+    ],
+    "notifications": [
+      {
+        "createdAt": 2026-01-28T00:00:00.000Z,
+        "id": "n-1",
+        "title": "Oi",
+      },
+    ],
+    "receiptScans": [
+      {
+        "createdAt": 2026-01-12T00:00:00.000Z,
+        "id": "rs-1",
+        "items": [
+          {
+            "id": "ri-1",
+            "quantity": 2,
+            "sortOrder": 0,
+            "totalPrice": 40,
+            "unitPrice": null,
+          },
+          {
+            "id": "ri-2",
+            "quantity": 1,
+            "sortOrder": 1,
+            "totalPrice": 20,
+            "unitPrice": 20,
+          },
+        ],
+        "subtotalAmount": null,
+        "taxAmount": 3.2,
+        "totalAmount": 60,
+      },
+      {
+        "createdAt": 2026-01-13T00:00:00.000Z,
+        "id": "rs-2",
+        "items": [
+          {
+            "id": "ri-3",
+            "quantity": 1,
+            "sortOrder": 0,
+            "totalPrice": 55,
+            "unitPrice": 55,
+          },
+        ],
+        "subtotalAmount": 55,
+        "taxAmount": null,
+        "totalAmount": 55,
+      },
+    ],
+    "recurringTransactions": [
+      {
+        "amount": 1200,
+        "createdAt": 2026-01-02T00:00:00.000Z,
+        "description": "Aluguel",
+        "id": "rr-1",
+      },
+    ],
+    "reminders": [
+      {
+        "id": "r-1",
+        "remindAt": 2026-02-05T00:00:00.000Z,
+        "title": "Conta",
+      },
+    ],
+    "supportRequests": [
+      {
+        "createdAt": 2026-01-25T00:00:00.000Z,
+        "id": "sr-1",
+        "message": "Preciso de ajuda",
+        "subject": "Ajuda",
+      },
+    ],
+    "tagGroups": [
+      {
+        "id": "tg-1",
+        "name": "Casa",
+        "sortOrder": 0,
+      },
+    ],
+    "taskCategories": [
+      {
+        "color": "#000",
+        "icon": "home",
+        "id": "tc-1",
+        "name": "Casa",
+      },
+    ],
+    "tasks": [
+      {
+        "category": null,
+        "estimatedAmount": 180.5,
+        "goal": null,
+        "id": "t-1",
+        "subtasks": [],
+        "title": "Pagar luz",
+      },
+      {
+        "category": null,
+        "estimatedAmount": null,
+        "goal": null,
+        "id": "t-2",
+        "subtasks": [],
+        "title": "Revisar plano",
+      },
+    ],
+    "transactions": [
+      {
+        "amount": 42.5,
+        "category": {
+          "budget": null,
+          "color": "#f00",
+          "icon": "home",
+          "id": "fc-1",
+          "name": "Moradia",
+          "type": "EXPENSE",
+        },
+        "date": 2026-01-20T00:00:00.000Z,
+        "description": "Mercado",
+        "goal": null,
+        "id": "tx-1",
+        "shared": false,
+        "task": {
+          "id": "t-1",
+          "title": "Pagar luz",
+        },
+      },
+    ],
+  },
+  "exportedAt": "2026-02-01T12:00:00.000Z",
+  "privacy": {
+    "aiAssistantConsentAt": 2026-01-01T00:00:00.000Z,
+    "aiAssistantConsentVersion": "2026-03-26",
+    "aiAssistantEnabled": true,
+    "aiConsentVersionCurrent": "2026-03-26",
+    "externalProcessing": {
+      "active": false,
+      "processor": null,
+      "purpose": "Nenhum provedor externo de IA habilitado neste momento.",
+      "sharedDataCategories": [],
+    },
+    "privacyNoticeAcceptedAt": null,
+    "privacyNoticeVersion": "2026-03-26",
+    "privacyNoticeVersionCurrent": "2026-03-26",
+  },
+  "profile": {
+    "aiAssistantConsentAt": 2026-01-01T00:00:00.000Z,
+    "aiAssistantConsentVersion": "2026-03-26",
+    "aiAssistantEnabled": true,
+    "avatarUrl": null,
+    "birthDate": 1990-05-10T00:00:00.000Z,
+    "createdAt": 2025-12-01T00:00:00.000Z,
+    "email": "marina@example.com",
+    "emailBillReminders": true,
+    "emailInsightAlerts": false,
+    "emailReminders": true,
+    "emailVerifiedAt": 2026-01-01T00:00:00.000Z,
+    "emailWeeklyDigest": true,
+    "id": "user-1",
+    "lastLoginAt": 2026-01-30T00:00:00.000Z,
+    "mfaEnabled": false,
+    "mfaEnabledAt": null,
+    "mfaLastTotpStep": 4321,
+    "mfaLastVerifiedAt": null,
+    "mfaRecoveryCodesRemaining": 0,
+    "mfaSetupPending": false,
+    "monthlyIncome": 5000,
+    "name": "Marina",
+    "occupation": "Engenheira",
+    "phone": "11999990000",
+    "preferredCurrency": "BRL",
+    "primaryGoal": "Juntar reserva",
+    "privacyNoticeAcceptedAt": null,
+    "privacyNoticeVersion": "2026-03-26",
+    "role": "USER",
+    "timezone": "America/Sao_Paulo",
+    "updatedAt": 2026-01-30T00:00:00.000Z,
+  },
+  "rights": [
+    "confirmacao e acesso aos dados",
+    "correcao de dados pessoais",
+    "revogacao do consentimento para IA externa",
+    "portabilidade via exportacao estruturada",
+    "eliminacao da conta e dos dados associados, salvo obrigacoes legais",
+  ],
+}
+`;
+
+exports[`exportMe - caracterizacao da exportacao LGPD exporta tudo com mfa=false (consulta, objeto e JSON na mesma ordem) 1`] = `
+{
+  "include": {
+    "assistantTurns": {
+      "orderBy": {
+        "createdAt": "desc",
+      },
+    },
+    "authSessions": {
+      "orderBy": {
+        "createdAt": "desc",
+      },
+      "select": {
+        "createdAt": true,
+        "expiresAt": true,
+        "id": true,
+        "ipAddress": true,
+        "lastUsedAt": true,
+        "revokeReason": true,
+        "revokedAt": true,
+        "userAgent": true,
+      },
+    },
+    "financeCategories": {
+      "orderBy": [
+        {
+          "type": "asc",
+        },
+        {
+          "name": "asc",
+        },
+      ],
+    },
+    "forecastSnapshots": {
+      "orderBy": {
+        "targetDate": "desc",
+      },
+    },
+    "forecasts": {
+      "orderBy": {
+        "referenceDate": "desc",
+      },
+    },
+    "goals": {
+      "orderBy": [
+        {
+          "status": "asc",
+        },
+        {
+          "targetDate": "asc",
+        },
+      ],
+    },
+    "importJobs": {
+      "orderBy": {
+        "createdAt": "desc",
+      },
+    },
+    "insights": {
+      "orderBy": {
+        "createdAt": "desc",
+      },
+    },
+    "notifications": {
+      "orderBy": {
+        "createdAt": "desc",
+      },
+    },
+    "receiptScans": {
+      "include": {
+        "items": {
+          "orderBy": {
+            "sortOrder": "asc",
+          },
+        },
+      },
+      "orderBy": {
+        "createdAt": "desc",
+      },
+    },
+    "recurringTransactions": {
+      "orderBy": {
+        "createdAt": "desc",
+      },
+    },
+    "reminders": {
+      "orderBy": {
+        "remindAt": "asc",
+      },
+    },
+    "supportRequests": {
+      "orderBy": {
+        "createdAt": "desc",
+      },
+    },
+    "tagGroups": {
+      "orderBy": [
+        {
+          "sortOrder": "asc",
+        },
+        {
+          "name": "asc",
+        },
+      ],
+    },
+    "taskCategories": {
+      "orderBy": {
+        "name": "asc",
+      },
+    },
+    "tasks": {
+      "include": {
+        "category": true,
+        "goal": true,
+        "subtasks": {
+          "orderBy": {
+            "sortOrder": "asc",
+          },
+        },
+      },
+      "orderBy": [
+        {
+          "dueDate": "asc",
+        },
+        {
+          "createdAt": "desc",
+        },
+      ],
+    },
+    "transactions": {
+      "include": {
+        "category": true,
+        "goal": {
+          "select": {
+            "id": true,
+            "title": true,
+          },
+        },
+        "task": {
+          "select": {
+            "id": true,
+            "title": true,
+          },
+        },
+      },
+      "orderBy": [
+        {
+          "date": "desc",
+        },
+        {
+          "createdAt": "desc",
+        },
+      ],
+    },
+  },
+  "where": {
+    "id": "user-1",
+  },
+}
+`;
+
+exports[`exportMe - caracterizacao da exportacao LGPD exporta tudo com mfa=false (consulta, objeto e JSON na mesma ordem) 2`] = `
+{
+  "controller": {
+    "company": "codeStage Solucoes",
+    "product": "LUMEN",
+  },
+  "datasets": {
+    "assistantTurns": [
+      {
+        "answer": "Bem.",
+        "createdAt": 2026-01-29T00:00:00.000Z,
+        "id": "at-1",
+        "question": "Como estou?",
+      },
+    ],
+    "authSessions": [
+      {
+        "createdAt": 2026-01-01T00:00:00.000Z,
+        "expiresAt": 2026-03-01T00:00:00.000Z,
+        "id": "s-1",
+        "ipAddress": "10.0.0.1",
+        "lastUsedAt": null,
+        "revokeReason": null,
+        "revokedAt": null,
+        "userAgent": "Chrome",
+      },
+    ],
+    "financeCategories": [
+      {
+        "budget": "1500",
+        "id": "fc-1",
+        "monthlyBudget": null,
+        "name": "Moradia",
+        "shared": false,
+        "type": "EXPENSE",
+        "userId": "user-1",
+      },
+      {
+        "budget": null,
+        "id": "fc-2",
+        "monthlyBudget": null,
+        "name": "Salario",
+        "shared": false,
+        "type": "INCOME",
+        "userId": "user-1",
+      },
+    ],
+    "forecastSnapshots": [
+      {
+        "actualBalance": 900,
+        "errorPercent": 10,
+        "id": "fs-1",
+        "predictedBalance": 1000,
+        "targetDate": 2026-02-10T00:00:00.000Z,
+      },
+      {
+        "actualBalance": null,
+        "errorPercent": null,
+        "id": "fs-2",
+        "predictedBalance": 500,
+        "targetDate": 2026-01-10T00:00:00.000Z,
+      },
+    ],
+    "forecasts": [
+      {
+        "id": "f-1",
+        "predictedBalance": 1200.75,
+        "referenceDate": 2026-02-01T00:00:00.000Z,
+      },
+    ],
+    "goals": [
+      {
+        "currentAmount": 2500,
+        "id": "g-1",
+        "targetAmount": 10000,
+        "title": "Reserva",
+      },
+      {
+        "currentAmount": 0,
+        "id": "g-2",
+        "targetAmount": null,
+        "title": "Viagem",
+      },
+    ],
+    "importJobs": [
+      {
+        "createdAt": 2026-01-10T00:00:00.000Z,
+        "id": "ij-1",
+        "status": "DONE",
+      },
+    ],
+    "insights": [
+      {
+        "createdAt": 2026-01-15T00:00:00.000Z,
+        "id": "i-1",
+        "kind": "SPENDING",
+      },
+    ],
+    "notifications": [
+      {
+        "createdAt": 2026-01-28T00:00:00.000Z,
+        "id": "n-1",
+        "title": "Oi",
+      },
+    ],
+    "receiptScans": [
+      {
+        "createdAt": 2026-01-12T00:00:00.000Z,
+        "id": "rs-1",
+        "items": [
+          {
+            "id": "ri-1",
+            "quantity": 2,
+            "sortOrder": 0,
+            "totalPrice": 40,
+            "unitPrice": null,
+          },
+          {
+            "id": "ri-2",
+            "quantity": 1,
+            "sortOrder": 1,
+            "totalPrice": 20,
+            "unitPrice": 20,
+          },
+        ],
+        "subtotalAmount": null,
+        "taxAmount": 3.2,
+        "totalAmount": 60,
+      },
+      {
+        "createdAt": 2026-01-13T00:00:00.000Z,
+        "id": "rs-2",
+        "items": [
+          {
+            "id": "ri-3",
+            "quantity": 1,
+            "sortOrder": 0,
+            "totalPrice": 55,
+            "unitPrice": 55,
+          },
+        ],
+        "subtotalAmount": 55,
+        "taxAmount": null,
+        "totalAmount": 55,
+      },
+    ],
+    "recurringTransactions": [
+      {
+        "amount": 1200,
+        "createdAt": 2026-01-02T00:00:00.000Z,
+        "description": "Aluguel",
+        "id": "rr-1",
+      },
+    ],
+    "reminders": [
+      {
+        "id": "r-1",
+        "remindAt": 2026-02-05T00:00:00.000Z,
+        "title": "Conta",
+      },
+    ],
+    "supportRequests": [
+      {
+        "createdAt": 2026-01-25T00:00:00.000Z,
+        "id": "sr-1",
+        "message": "Preciso de ajuda",
+        "subject": "Ajuda",
+      },
+    ],
+    "tagGroups": [
+      {
+        "id": "tg-1",
+        "name": "Casa",
+        "sortOrder": 0,
+      },
+    ],
+    "taskCategories": [
+      {
+        "color": "#000",
+        "icon": "home",
+        "id": "tc-1",
+        "name": "Casa",
+      },
+    ],
+    "tasks": [
+      {
+        "category": null,
+        "estimatedAmount": 180.5,
+        "goal": null,
+        "id": "t-1",
+        "subtasks": [],
+        "title": "Pagar luz",
+      },
+      {
+        "category": null,
+        "estimatedAmount": null,
+        "goal": null,
+        "id": "t-2",
+        "subtasks": [],
+        "title": "Revisar plano",
+      },
+    ],
+    "transactions": [
+      {
+        "amount": 42.5,
+        "category": {
+          "budget": null,
+          "color": "#f00",
+          "icon": "home",
+          "id": "fc-1",
+          "name": "Moradia",
+          "type": "EXPENSE",
+        },
+        "date": 2026-01-20T00:00:00.000Z,
+        "description": "Mercado",
+        "goal": null,
+        "id": "tx-1",
+        "shared": false,
+        "task": {
+          "id": "t-1",
+          "title": "Pagar luz",
+        },
+      },
+    ],
+  },
+  "exportedAt": "2026-02-01T12:00:00.000Z",
+  "privacy": {
+    "aiAssistantConsentAt": 2026-01-01T00:00:00.000Z,
+    "aiAssistantConsentVersion": "2026-03-26",
+    "aiAssistantEnabled": true,
+    "aiConsentVersionCurrent": "2026-03-26",
+    "externalProcessing": {
+      "active": true,
+      "processor": "SelahIA",
+      "purpose": "Responder perguntas do assistente de vida com contexto minimizado.",
+      "sharedDataCategories": [
+        "primeiro nome",
+        "pergunta do usuario com redacao de padroes sensiveis",
+        "resumo de tarefas relevantes",
+        "resumo de transacoes recentes",
+        "resumo de metas, lembretes, insights e previsao",
+      ],
+    },
+    "privacyNoticeAcceptedAt": 2026-01-01T00:00:00.000Z,
+    "privacyNoticeVersion": "2026-03-26",
+    "privacyNoticeVersionCurrent": "2026-03-26",
+  },
+  "profile": {
+    "aiAssistantConsentAt": 2026-01-01T00:00:00.000Z,
+    "aiAssistantConsentVersion": "2026-03-26",
+    "aiAssistantEnabled": true,
+    "avatarUrl": null,
+    "birthDate": 1990-05-10T00:00:00.000Z,
+    "createdAt": 2025-12-01T00:00:00.000Z,
+    "email": "marina@example.com",
+    "emailBillReminders": true,
+    "emailInsightAlerts": false,
+    "emailReminders": true,
+    "emailVerifiedAt": 2026-01-01T00:00:00.000Z,
+    "emailWeeklyDigest": true,
+    "id": "user-1",
+    "lastLoginAt": 2026-01-30T00:00:00.000Z,
+    "mfaEnabled": false,
+    "mfaEnabledAt": null,
+    "mfaLastTotpStep": 4321,
+    "mfaLastVerifiedAt": null,
+    "mfaRecoveryCodesRemaining": 0,
+    "mfaSetupPending": false,
+    "monthlyIncome": 5000,
+    "name": "Marina",
+    "occupation": "Engenheira",
+    "phone": "11999990000",
+    "preferredCurrency": "BRL",
+    "primaryGoal": "Juntar reserva",
+    "privacyNoticeAcceptedAt": 2026-01-01T00:00:00.000Z,
+    "privacyNoticeVersion": "2026-03-26",
+    "role": "USER",
+    "timezone": "America/Sao_Paulo",
+    "updatedAt": 2026-01-30T00:00:00.000Z,
+  },
+  "rights": [
+    "confirmacao e acesso aos dados",
+    "correcao de dados pessoais",
+    "revogacao do consentimento para IA externa",
+    "portabilidade via exportacao estruturada",
+    "eliminacao da conta e dos dados associados, salvo obrigacoes legais",
+  ],
+}
+`;
+
+exports[`exportMe - caracterizacao da exportacao LGPD exporta tudo com mfa=false (consulta, objeto e JSON na mesma ordem) 3`] = `"{"exportedAt":"2026-02-01T12:00:00.000Z","controller":{"company":"codeStage Solucoes","product":"LUMEN"},"privacy":{"privacyNoticeVersionCurrent":"2026-03-26","aiConsentVersionCurrent":"2026-03-26","privacyNoticeAcceptedAt":"2026-01-01T00:00:00.000Z","privacyNoticeVersion":"2026-03-26","aiAssistantEnabled":true,"aiAssistantConsentAt":"2026-01-01T00:00:00.000Z","aiAssistantConsentVersion":"2026-03-26","externalProcessing":{"active":true,"processor":"SelahIA","purpose":"Responder perguntas do assistente de vida com contexto minimizado.","sharedDataCategories":["primeiro nome","pergunta do usuario com redacao de padroes sensiveis","resumo de tarefas relevantes","resumo de transacoes recentes","resumo de metas, lembretes, insights e previsao"]}},"rights":["confirmacao e acesso aos dados","correcao de dados pessoais","revogacao do consentimento para IA externa","portabilidade via exportacao estruturada","eliminacao da conta e dos dados associados, salvo obrigacoes legais"],"profile":{"id":"user-1","name":"Marina","email":"marina@example.com","avatarUrl":null,"phone":"11999990000","birthDate":"1990-05-10T00:00:00.000Z","occupation":"Engenheira","primaryGoal":"Juntar reserva","role":"USER","preferredCurrency":"BRL","monthlyIncome":5000,"timezone":"America/Sao_Paulo","emailWeeklyDigest":true,"emailReminders":true,"emailInsightAlerts":false,"emailBillReminders":true,"emailVerifiedAt":"2026-01-01T00:00:00.000Z","lastLoginAt":"2026-01-30T00:00:00.000Z","createdAt":"2025-12-01T00:00:00.000Z","updatedAt":"2026-01-30T00:00:00.000Z","mfaEnabledAt":null,"mfaLastVerifiedAt":null,"mfaLastTotpStep":4321,"privacyNoticeAcceptedAt":"2026-01-01T00:00:00.000Z","privacyNoticeVersion":"2026-03-26","aiAssistantEnabled":true,"aiAssistantConsentAt":"2026-01-01T00:00:00.000Z","aiAssistantConsentVersion":"2026-03-26","mfaEnabled":false,"mfaSetupPending":false,"mfaRecoveryCodesRemaining":0},"datasets":{"taskCategories":[{"id":"tc-1","name":"Casa","color":"#000","icon":"home"}],"financeCategories":[{"id":"fc-1","name":"Moradia","type":"EXPENSE","budget":"1500","userId":"user-1","monthlyBudget":null,"shared":false},{"id":"fc-2","name":"Salario","type":"INCOME","budget":null,"userId":"user-1","monthlyBudget":null,"shared":false}],"tasks":[{"id":"t-1","title":"Pagar luz","estimatedAmount":180.5,"category":null,"goal":null,"subtasks":[]},{"id":"t-2","title":"Revisar plano","estimatedAmount":null,"category":null,"goal":null,"subtasks":[]}],"transactions":[{"id":"tx-1","description":"Mercado","task":{"id":"t-1","title":"Pagar luz"},"goal":null,"date":"2026-01-20T00:00:00.000Z","amount":42.5,"category":{"id":"fc-1","name":"Moradia","color":"#f00","icon":"home","type":"EXPENSE","budget":null},"shared":false}],"goals":[{"id":"g-1","title":"Reserva","targetAmount":10000,"currentAmount":2500},{"id":"g-2","title":"Viagem","targetAmount":null,"currentAmount":0}],"reminders":[{"id":"r-1","title":"Conta","remindAt":"2026-02-05T00:00:00.000Z"}],"insights":[{"id":"i-1","kind":"SPENDING","createdAt":"2026-01-15T00:00:00.000Z"}],"forecasts":[{"id":"f-1","referenceDate":"2026-02-01T00:00:00.000Z","predictedBalance":1200.75}],"importJobs":[{"id":"ij-1","status":"DONE","createdAt":"2026-01-10T00:00:00.000Z"}],"receiptScans":[{"id":"rs-1","totalAmount":60,"subtotalAmount":null,"taxAmount":3.2,"createdAt":"2026-01-12T00:00:00.000Z","items":[{"id":"ri-1","sortOrder":0,"quantity":2,"unitPrice":null,"totalPrice":40},{"id":"ri-2","sortOrder":1,"quantity":1,"unitPrice":20,"totalPrice":20}]},{"id":"rs-2","totalAmount":55,"subtotalAmount":55,"taxAmount":null,"createdAt":"2026-01-13T00:00:00.000Z","items":[{"id":"ri-3","sortOrder":0,"quantity":1,"unitPrice":55,"totalPrice":55}]}],"notifications":[{"id":"n-1","title":"Oi","createdAt":"2026-01-28T00:00:00.000Z"}],"tagGroups":[{"id":"tg-1","name":"Casa","sortOrder":0}],"forecastSnapshots":[{"id":"fs-1","targetDate":"2026-02-10T00:00:00.000Z","predictedBalance":1000,"actualBalance":900,"errorPercent":10},{"id":"fs-2","targetDate":"2026-01-10T00:00:00.000Z","predictedBalance":500,"actualBalance":null,"errorPercent":null}],"recurringTransactions":[{"id":"rr-1","description":"Aluguel","amount":1200,"createdAt":"2026-01-02T00:00:00.000Z"}],"assistantTurns":[{"id":"at-1","question":"Como estou?","answer":"Bem.","createdAt":"2026-01-29T00:00:00.000Z"}],"supportRequests":[{"id":"sr-1","subject":"Ajuda","message":"Preciso de ajuda","createdAt":"2026-01-25T00:00:00.000Z"}],"authSessions":[{"id":"s-1","userAgent":"Chrome","ipAddress":"10.0.0.1","lastUsedAt":null,"expiresAt":"2026-03-01T00:00:00.000Z","revokedAt":null,"revokeReason":null,"createdAt":"2026-01-01T00:00:00.000Z"}]}}"`;
+
+exports[`exportMe - caracterizacao da exportacao LGPD exporta tudo com mfa=true (consulta, objeto e JSON na mesma ordem) 1`] = `
+{
+  "include": {
+    "assistantTurns": {
+      "orderBy": {
+        "createdAt": "desc",
+      },
+    },
+    "authSessions": {
+      "orderBy": {
+        "createdAt": "desc",
+      },
+      "select": {
+        "createdAt": true,
+        "expiresAt": true,
+        "id": true,
+        "ipAddress": true,
+        "lastUsedAt": true,
+        "revokeReason": true,
+        "revokedAt": true,
+        "userAgent": true,
+      },
+    },
+    "financeCategories": {
+      "orderBy": [
+        {
+          "type": "asc",
+        },
+        {
+          "name": "asc",
+        },
+      ],
+    },
+    "forecastSnapshots": {
+      "orderBy": {
+        "targetDate": "desc",
+      },
+    },
+    "forecasts": {
+      "orderBy": {
+        "referenceDate": "desc",
+      },
+    },
+    "goals": {
+      "orderBy": [
+        {
+          "status": "asc",
+        },
+        {
+          "targetDate": "asc",
+        },
+      ],
+    },
+    "importJobs": {
+      "orderBy": {
+        "createdAt": "desc",
+      },
+    },
+    "insights": {
+      "orderBy": {
+        "createdAt": "desc",
+      },
+    },
+    "notifications": {
+      "orderBy": {
+        "createdAt": "desc",
+      },
+    },
+    "receiptScans": {
+      "include": {
+        "items": {
+          "orderBy": {
+            "sortOrder": "asc",
+          },
+        },
+      },
+      "orderBy": {
+        "createdAt": "desc",
+      },
+    },
+    "recurringTransactions": {
+      "orderBy": {
+        "createdAt": "desc",
+      },
+    },
+    "reminders": {
+      "orderBy": {
+        "remindAt": "asc",
+      },
+    },
+    "supportRequests": {
+      "orderBy": {
+        "createdAt": "desc",
+      },
+    },
+    "tagGroups": {
+      "orderBy": [
+        {
+          "sortOrder": "asc",
+        },
+        {
+          "name": "asc",
+        },
+      ],
+    },
+    "taskCategories": {
+      "orderBy": {
+        "name": "asc",
+      },
+    },
+    "tasks": {
+      "include": {
+        "category": true,
+        "goal": true,
+        "subtasks": {
+          "orderBy": {
+            "sortOrder": "asc",
+          },
+        },
+      },
+      "orderBy": [
+        {
+          "dueDate": "asc",
+        },
+        {
+          "createdAt": "desc",
+        },
+      ],
+    },
+    "transactions": {
+      "include": {
+        "category": true,
+        "goal": {
+          "select": {
+            "id": true,
+            "title": true,
+          },
+        },
+        "task": {
+          "select": {
+            "id": true,
+            "title": true,
+          },
+        },
+      },
+      "orderBy": [
+        {
+          "date": "desc",
+        },
+        {
+          "createdAt": "desc",
+        },
+      ],
+    },
+  },
+  "where": {
+    "id": "user-1",
+  },
+}
+`;
+
+exports[`exportMe - caracterizacao da exportacao LGPD exporta tudo com mfa=true (consulta, objeto e JSON na mesma ordem) 2`] = `
+{
+  "controller": {
+    "company": "codeStage Solucoes",
+    "product": "LUMEN",
+  },
+  "datasets": {
+    "assistantTurns": [
+      {
+        "answer": "Bem.",
+        "createdAt": 2026-01-29T00:00:00.000Z,
+        "id": "at-1",
+        "question": "Como estou?",
+      },
+    ],
+    "authSessions": [
+      {
+        "createdAt": 2026-01-01T00:00:00.000Z,
+        "expiresAt": 2026-03-01T00:00:00.000Z,
+        "id": "s-1",
+        "ipAddress": "10.0.0.1",
+        "lastUsedAt": null,
+        "revokeReason": null,
+        "revokedAt": null,
+        "userAgent": "Chrome",
+      },
+    ],
+    "financeCategories": [
+      {
+        "budget": "1500",
+        "id": "fc-1",
+        "monthlyBudget": null,
+        "name": "Moradia",
+        "shared": false,
+        "type": "EXPENSE",
+        "userId": "user-1",
+      },
+      {
+        "budget": null,
+        "id": "fc-2",
+        "monthlyBudget": null,
+        "name": "Salario",
+        "shared": false,
+        "type": "INCOME",
+        "userId": "user-1",
+      },
+    ],
+    "forecastSnapshots": [
+      {
+        "actualBalance": 900,
+        "errorPercent": 10,
+        "id": "fs-1",
+        "predictedBalance": 1000,
+        "targetDate": 2026-02-10T00:00:00.000Z,
+      },
+      {
+        "actualBalance": null,
+        "errorPercent": null,
+        "id": "fs-2",
+        "predictedBalance": 500,
+        "targetDate": 2026-01-10T00:00:00.000Z,
+      },
+    ],
+    "forecasts": [
+      {
+        "id": "f-1",
+        "predictedBalance": 1200.75,
+        "referenceDate": 2026-02-01T00:00:00.000Z,
+      },
+    ],
+    "goals": [
+      {
+        "currentAmount": 2500,
+        "id": "g-1",
+        "targetAmount": 10000,
+        "title": "Reserva",
+      },
+      {
+        "currentAmount": 0,
+        "id": "g-2",
+        "targetAmount": null,
+        "title": "Viagem",
+      },
+    ],
+    "importJobs": [
+      {
+        "createdAt": 2026-01-10T00:00:00.000Z,
+        "id": "ij-1",
+        "status": "DONE",
+      },
+    ],
+    "insights": [
+      {
+        "createdAt": 2026-01-15T00:00:00.000Z,
+        "id": "i-1",
+        "kind": "SPENDING",
+      },
+    ],
+    "notifications": [
+      {
+        "createdAt": 2026-01-28T00:00:00.000Z,
+        "id": "n-1",
+        "title": "Oi",
+      },
+    ],
+    "receiptScans": [
+      {
+        "createdAt": 2026-01-12T00:00:00.000Z,
+        "id": "rs-1",
+        "items": [
+          {
+            "id": "ri-1",
+            "quantity": 2,
+            "sortOrder": 0,
+            "totalPrice": 40,
+            "unitPrice": null,
+          },
+          {
+            "id": "ri-2",
+            "quantity": 1,
+            "sortOrder": 1,
+            "totalPrice": 20,
+            "unitPrice": 20,
+          },
+        ],
+        "subtotalAmount": null,
+        "taxAmount": 3.2,
+        "totalAmount": 60,
+      },
+      {
+        "createdAt": 2026-01-13T00:00:00.000Z,
+        "id": "rs-2",
+        "items": [
+          {
+            "id": "ri-3",
+            "quantity": 1,
+            "sortOrder": 0,
+            "totalPrice": 55,
+            "unitPrice": 55,
+          },
+        ],
+        "subtotalAmount": 55,
+        "taxAmount": null,
+        "totalAmount": 55,
+      },
+    ],
+    "recurringTransactions": [
+      {
+        "amount": 1200,
+        "createdAt": 2026-01-02T00:00:00.000Z,
+        "description": "Aluguel",
+        "id": "rr-1",
+      },
+    ],
+    "reminders": [
+      {
+        "id": "r-1",
+        "remindAt": 2026-02-05T00:00:00.000Z,
+        "title": "Conta",
+      },
+    ],
+    "supportRequests": [
+      {
+        "createdAt": 2026-01-25T00:00:00.000Z,
+        "id": "sr-1",
+        "message": "Preciso de ajuda",
+        "subject": "Ajuda",
+      },
+    ],
+    "tagGroups": [
+      {
+        "id": "tg-1",
+        "name": "Casa",
+        "sortOrder": 0,
+      },
+    ],
+    "taskCategories": [
+      {
+        "color": "#000",
+        "icon": "home",
+        "id": "tc-1",
+        "name": "Casa",
+      },
+    ],
+    "tasks": [
+      {
+        "category": null,
+        "estimatedAmount": 180.5,
+        "goal": null,
+        "id": "t-1",
+        "subtasks": [],
+        "title": "Pagar luz",
+      },
+      {
+        "category": null,
+        "estimatedAmount": null,
+        "goal": null,
+        "id": "t-2",
+        "subtasks": [],
+        "title": "Revisar plano",
+      },
+    ],
+    "transactions": [
+      {
+        "amount": 42.5,
+        "category": {
+          "budget": null,
+          "color": "#f00",
+          "icon": "home",
+          "id": "fc-1",
+          "name": "Moradia",
+          "type": "EXPENSE",
+        },
+        "date": 2026-01-20T00:00:00.000Z,
+        "description": "Mercado",
+        "goal": null,
+        "id": "tx-1",
+        "shared": false,
+        "task": {
+          "id": "t-1",
+          "title": "Pagar luz",
+        },
+      },
+    ],
+  },
+  "exportedAt": "2026-02-01T12:00:00.000Z",
+  "privacy": {
+    "aiAssistantConsentAt": 2026-01-01T00:00:00.000Z,
+    "aiAssistantConsentVersion": "2026-03-26",
+    "aiAssistantEnabled": true,
+    "aiConsentVersionCurrent": "2026-03-26",
+    "externalProcessing": {
+      "active": true,
+      "processor": "SelahIA",
+      "purpose": "Responder perguntas do assistente de vida com contexto minimizado.",
+      "sharedDataCategories": [
+        "primeiro nome",
+        "pergunta do usuario com redacao de padroes sensiveis",
+        "resumo de tarefas relevantes",
+        "resumo de transacoes recentes",
+        "resumo de metas, lembretes, insights e previsao",
+      ],
+    },
+    "privacyNoticeAcceptedAt": 2026-01-01T00:00:00.000Z,
+    "privacyNoticeVersion": "2026-03-26",
+    "privacyNoticeVersionCurrent": "2026-03-26",
+  },
+  "profile": {
+    "aiAssistantConsentAt": 2026-01-01T00:00:00.000Z,
+    "aiAssistantConsentVersion": "2026-03-26",
+    "aiAssistantEnabled": true,
+    "avatarUrl": null,
+    "birthDate": 1990-05-10T00:00:00.000Z,
+    "createdAt": 2025-12-01T00:00:00.000Z,
+    "email": "marina@example.com",
+    "emailBillReminders": true,
+    "emailInsightAlerts": false,
+    "emailReminders": true,
+    "emailVerifiedAt": 2026-01-01T00:00:00.000Z,
+    "emailWeeklyDigest": true,
+    "id": "user-1",
+    "lastLoginAt": 2026-01-30T00:00:00.000Z,
+    "mfaEnabled": true,
+    "mfaEnabledAt": 2026-01-03T00:00:00.000Z,
+    "mfaLastTotpStep": 4321,
+    "mfaLastVerifiedAt": 2026-01-04T00:00:00.000Z,
+    "mfaRecoveryCodesRemaining": 1,
+    "mfaSetupPending": true,
+    "monthlyIncome": 5000,
+    "name": "Marina",
+    "occupation": "Engenheira",
+    "phone": "11999990000",
+    "preferredCurrency": "BRL",
+    "primaryGoal": "Juntar reserva",
+    "privacyNoticeAcceptedAt": 2026-01-01T00:00:00.000Z,
+    "privacyNoticeVersion": "2026-03-26",
+    "role": "USER",
+    "timezone": "America/Sao_Paulo",
+    "updatedAt": 2026-01-30T00:00:00.000Z,
+  },
+  "rights": [
+    "confirmacao e acesso aos dados",
+    "correcao de dados pessoais",
+    "revogacao do consentimento para IA externa",
+    "portabilidade via exportacao estruturada",
+    "eliminacao da conta e dos dados associados, salvo obrigacoes legais",
+  ],
+}
+`;
+
+exports[`exportMe - caracterizacao da exportacao LGPD exporta tudo com mfa=true (consulta, objeto e JSON na mesma ordem) 3`] = `"{"exportedAt":"2026-02-01T12:00:00.000Z","controller":{"company":"codeStage Solucoes","product":"LUMEN"},"privacy":{"privacyNoticeVersionCurrent":"2026-03-26","aiConsentVersionCurrent":"2026-03-26","privacyNoticeAcceptedAt":"2026-01-01T00:00:00.000Z","privacyNoticeVersion":"2026-03-26","aiAssistantEnabled":true,"aiAssistantConsentAt":"2026-01-01T00:00:00.000Z","aiAssistantConsentVersion":"2026-03-26","externalProcessing":{"active":true,"processor":"SelahIA","purpose":"Responder perguntas do assistente de vida com contexto minimizado.","sharedDataCategories":["primeiro nome","pergunta do usuario com redacao de padroes sensiveis","resumo de tarefas relevantes","resumo de transacoes recentes","resumo de metas, lembretes, insights e previsao"]}},"rights":["confirmacao e acesso aos dados","correcao de dados pessoais","revogacao do consentimento para IA externa","portabilidade via exportacao estruturada","eliminacao da conta e dos dados associados, salvo obrigacoes legais"],"profile":{"id":"user-1","name":"Marina","email":"marina@example.com","avatarUrl":null,"phone":"11999990000","birthDate":"1990-05-10T00:00:00.000Z","occupation":"Engenheira","primaryGoal":"Juntar reserva","role":"USER","preferredCurrency":"BRL","monthlyIncome":5000,"timezone":"America/Sao_Paulo","emailWeeklyDigest":true,"emailReminders":true,"emailInsightAlerts":false,"emailBillReminders":true,"emailVerifiedAt":"2026-01-01T00:00:00.000Z","lastLoginAt":"2026-01-30T00:00:00.000Z","createdAt":"2025-12-01T00:00:00.000Z","updatedAt":"2026-01-30T00:00:00.000Z","mfaEnabledAt":"2026-01-03T00:00:00.000Z","mfaLastVerifiedAt":"2026-01-04T00:00:00.000Z","mfaLastTotpStep":4321,"privacyNoticeAcceptedAt":"2026-01-01T00:00:00.000Z","privacyNoticeVersion":"2026-03-26","aiAssistantEnabled":true,"aiAssistantConsentAt":"2026-01-01T00:00:00.000Z","aiAssistantConsentVersion":"2026-03-26","mfaEnabled":true,"mfaSetupPending":true,"mfaRecoveryCodesRemaining":1},"datasets":{"taskCategories":[{"id":"tc-1","name":"Casa","color":"#000","icon":"home"}],"financeCategories":[{"id":"fc-1","name":"Moradia","type":"EXPENSE","budget":"1500","userId":"user-1","monthlyBudget":null,"shared":false},{"id":"fc-2","name":"Salario","type":"INCOME","budget":null,"userId":"user-1","monthlyBudget":null,"shared":false}],"tasks":[{"id":"t-1","title":"Pagar luz","estimatedAmount":180.5,"category":null,"goal":null,"subtasks":[]},{"id":"t-2","title":"Revisar plano","estimatedAmount":null,"category":null,"goal":null,"subtasks":[]}],"transactions":[{"id":"tx-1","description":"Mercado","task":{"id":"t-1","title":"Pagar luz"},"goal":null,"date":"2026-01-20T00:00:00.000Z","amount":42.5,"category":{"id":"fc-1","name":"Moradia","color":"#f00","icon":"home","type":"EXPENSE","budget":null},"shared":false}],"goals":[{"id":"g-1","title":"Reserva","targetAmount":10000,"currentAmount":2500},{"id":"g-2","title":"Viagem","targetAmount":null,"currentAmount":0}],"reminders":[{"id":"r-1","title":"Conta","remindAt":"2026-02-05T00:00:00.000Z"}],"insights":[{"id":"i-1","kind":"SPENDING","createdAt":"2026-01-15T00:00:00.000Z"}],"forecasts":[{"id":"f-1","referenceDate":"2026-02-01T00:00:00.000Z","predictedBalance":1200.75}],"importJobs":[{"id":"ij-1","status":"DONE","createdAt":"2026-01-10T00:00:00.000Z"}],"receiptScans":[{"id":"rs-1","totalAmount":60,"subtotalAmount":null,"taxAmount":3.2,"createdAt":"2026-01-12T00:00:00.000Z","items":[{"id":"ri-1","sortOrder":0,"quantity":2,"unitPrice":null,"totalPrice":40},{"id":"ri-2","sortOrder":1,"quantity":1,"unitPrice":20,"totalPrice":20}]},{"id":"rs-2","totalAmount":55,"subtotalAmount":55,"taxAmount":null,"createdAt":"2026-01-13T00:00:00.000Z","items":[{"id":"ri-3","sortOrder":0,"quantity":1,"unitPrice":55,"totalPrice":55}]}],"notifications":[{"id":"n-1","title":"Oi","createdAt":"2026-01-28T00:00:00.000Z"}],"tagGroups":[{"id":"tg-1","name":"Casa","sortOrder":0}],"forecastSnapshots":[{"id":"fs-1","targetDate":"2026-02-10T00:00:00.000Z","predictedBalance":1000,"actualBalance":900,"errorPercent":10},{"id":"fs-2","targetDate":"2026-01-10T00:00:00.000Z","predictedBalance":500,"actualBalance":null,"errorPercent":null}],"recurringTransactions":[{"id":"rr-1","description":"Aluguel","amount":1200,"createdAt":"2026-01-02T00:00:00.000Z"}],"assistantTurns":[{"id":"at-1","question":"Como estou?","answer":"Bem.","createdAt":"2026-01-29T00:00:00.000Z"}],"supportRequests":[{"id":"sr-1","subject":"Ajuda","message":"Preciso de ajuda","createdAt":"2026-01-25T00:00:00.000Z"}],"authSessions":[{"id":"s-1","userAgent":"Chrome","ipAddress":"10.0.0.1","lastUsedAt":null,"expiresAt":"2026-03-01T00:00:00.000Z","revokedAt":null,"revokeReason":null,"createdAt":"2026-01-01T00:00:00.000Z"}]}}"`;
+
+exports[`exportMe - caracterizacao da exportacao LGPD sem IA ativa: externalProcessing inativo e sem categorias 1`] = `
+{
+  "controller": {
+    "company": "codeStage Solucoes",
+    "product": "LUMEN",
+  },
+  "datasets": {
+    "assistantTurns": [
+      {
+        "answer": "Bem.",
+        "createdAt": 2026-01-29T00:00:00.000Z,
+        "id": "at-1",
+        "question": "Como estou?",
+      },
+    ],
+    "authSessions": [
+      {
+        "createdAt": 2026-01-01T00:00:00.000Z,
+        "expiresAt": 2026-03-01T00:00:00.000Z,
+        "id": "s-1",
+        "ipAddress": "10.0.0.1",
+        "lastUsedAt": null,
+        "revokeReason": null,
+        "revokedAt": null,
+        "userAgent": "Chrome",
+      },
+    ],
+    "financeCategories": [
+      {
+        "budget": "1500",
+        "id": "fc-1",
+        "monthlyBudget": null,
+        "name": "Moradia",
+        "shared": false,
+        "type": "EXPENSE",
+        "userId": "user-1",
+      },
+      {
+        "budget": null,
+        "id": "fc-2",
+        "monthlyBudget": null,
+        "name": "Salario",
+        "shared": false,
+        "type": "INCOME",
+        "userId": "user-1",
+      },
+    ],
+    "forecastSnapshots": [
+      {
+        "actualBalance": 900,
+        "errorPercent": 10,
+        "id": "fs-1",
+        "predictedBalance": 1000,
+        "targetDate": 2026-02-10T00:00:00.000Z,
+      },
+      {
+        "actualBalance": null,
+        "errorPercent": null,
+        "id": "fs-2",
+        "predictedBalance": 500,
+        "targetDate": 2026-01-10T00:00:00.000Z,
+      },
+    ],
+    "forecasts": [
+      {
+        "id": "f-1",
+        "predictedBalance": 1200.75,
+        "referenceDate": 2026-02-01T00:00:00.000Z,
+      },
+    ],
+    "goals": [
+      {
+        "currentAmount": 2500,
+        "id": "g-1",
+        "targetAmount": 10000,
+        "title": "Reserva",
+      },
+      {
+        "currentAmount": 0,
+        "id": "g-2",
+        "targetAmount": null,
+        "title": "Viagem",
+      },
+    ],
+    "importJobs": [
+      {
+        "createdAt": 2026-01-10T00:00:00.000Z,
+        "id": "ij-1",
+        "status": "DONE",
+      },
+    ],
+    "insights": [
+      {
+        "createdAt": 2026-01-15T00:00:00.000Z,
+        "id": "i-1",
+        "kind": "SPENDING",
+      },
+    ],
+    "notifications": [
+      {
+        "createdAt": 2026-01-28T00:00:00.000Z,
+        "id": "n-1",
+        "title": "Oi",
+      },
+    ],
+    "receiptScans": [
+      {
+        "createdAt": 2026-01-12T00:00:00.000Z,
+        "id": "rs-1",
+        "items": [
+          {
+            "id": "ri-1",
+            "quantity": 2,
+            "sortOrder": 0,
+            "totalPrice": 40,
+            "unitPrice": null,
+          },
+          {
+            "id": "ri-2",
+            "quantity": 1,
+            "sortOrder": 1,
+            "totalPrice": 20,
+            "unitPrice": 20,
+          },
+        ],
+        "subtotalAmount": null,
+        "taxAmount": 3.2,
+        "totalAmount": 60,
+      },
+      {
+        "createdAt": 2026-01-13T00:00:00.000Z,
+        "id": "rs-2",
+        "items": [
+          {
+            "id": "ri-3",
+            "quantity": 1,
+            "sortOrder": 0,
+            "totalPrice": 55,
+            "unitPrice": 55,
+          },
+        ],
+        "subtotalAmount": 55,
+        "taxAmount": null,
+        "totalAmount": 55,
+      },
+    ],
+    "recurringTransactions": [
+      {
+        "amount": 1200,
+        "createdAt": 2026-01-02T00:00:00.000Z,
+        "description": "Aluguel",
+        "id": "rr-1",
+      },
+    ],
+    "reminders": [
+      {
+        "id": "r-1",
+        "remindAt": 2026-02-05T00:00:00.000Z,
+        "title": "Conta",
+      },
+    ],
+    "supportRequests": [
+      {
+        "createdAt": 2026-01-25T00:00:00.000Z,
+        "id": "sr-1",
+        "message": "Preciso de ajuda",
+        "subject": "Ajuda",
+      },
+    ],
+    "tagGroups": [
+      {
+        "id": "tg-1",
+        "name": "Casa",
+        "sortOrder": 0,
+      },
+    ],
+    "taskCategories": [
+      {
+        "color": "#000",
+        "icon": "home",
+        "id": "tc-1",
+        "name": "Casa",
+      },
+    ],
+    "tasks": [
+      {
+        "category": null,
+        "estimatedAmount": 180.5,
+        "goal": null,
+        "id": "t-1",
+        "subtasks": [],
+        "title": "Pagar luz",
+      },
+      {
+        "category": null,
+        "estimatedAmount": null,
+        "goal": null,
+        "id": "t-2",
+        "subtasks": [],
+        "title": "Revisar plano",
+      },
+    ],
+    "transactions": [
+      {
+        "amount": 42.5,
+        "category": {
+          "budget": null,
+          "color": "#f00",
+          "icon": "home",
+          "id": "fc-1",
+          "name": "Moradia",
+          "type": "EXPENSE",
+        },
+        "date": 2026-01-20T00:00:00.000Z,
+        "description": "Mercado",
+        "goal": null,
+        "id": "tx-1",
+        "shared": false,
+        "task": {
+          "id": "t-1",
+          "title": "Pagar luz",
+        },
+      },
+    ],
+  },
+  "exportedAt": "2026-02-01T12:00:00.000Z",
+  "privacy": {
+    "aiAssistantConsentAt": 2026-01-01T00:00:00.000Z,
+    "aiAssistantConsentVersion": "2026-03-26",
+    "aiAssistantEnabled": false,
+    "aiConsentVersionCurrent": "2026-03-26",
+    "externalProcessing": {
+      "active": false,
+      "processor": null,
+      "purpose": "Nenhum provedor externo de IA habilitado neste momento.",
+      "sharedDataCategories": [],
+    },
+    "privacyNoticeAcceptedAt": 2026-01-01T00:00:00.000Z,
+    "privacyNoticeVersion": "2026-03-26",
+    "privacyNoticeVersionCurrent": "2026-03-26",
+  },
+  "profile": {
+    "aiAssistantConsentAt": 2026-01-01T00:00:00.000Z,
+    "aiAssistantConsentVersion": "2026-03-26",
+    "aiAssistantEnabled": false,
+    "avatarUrl": null,
+    "birthDate": 1990-05-10T00:00:00.000Z,
+    "createdAt": 2025-12-01T00:00:00.000Z,
+    "email": "marina@example.com",
+    "emailBillReminders": true,
+    "emailInsightAlerts": false,
+    "emailReminders": true,
+    "emailVerifiedAt": 2026-01-01T00:00:00.000Z,
+    "emailWeeklyDigest": true,
+    "id": "user-1",
+    "lastLoginAt": 2026-01-30T00:00:00.000Z,
+    "mfaEnabled": true,
+    "mfaEnabledAt": 2026-01-03T00:00:00.000Z,
+    "mfaLastTotpStep": 4321,
+    "mfaLastVerifiedAt": 2026-01-04T00:00:00.000Z,
+    "mfaRecoveryCodesRemaining": 1,
+    "mfaSetupPending": true,
+    "monthlyIncome": 5000,
+    "name": "Marina",
+    "occupation": "Engenheira",
+    "phone": "11999990000",
+    "preferredCurrency": "BRL",
+    "primaryGoal": "Juntar reserva",
+    "privacyNoticeAcceptedAt": 2026-01-01T00:00:00.000Z,
+    "privacyNoticeVersion": "2026-03-26",
+    "role": "USER",
+    "timezone": "America/Sao_Paulo",
+    "updatedAt": 2026-01-30T00:00:00.000Z,
+  },
+  "rights": [
+    "confirmacao e acesso aos dados",
+    "correcao de dados pessoais",
+    "revogacao do consentimento para IA externa",
+    "portabilidade via exportacao estruturada",
+    "eliminacao da conta e dos dados associados, salvo obrigacoes legais",
+  ],
+}
+`;

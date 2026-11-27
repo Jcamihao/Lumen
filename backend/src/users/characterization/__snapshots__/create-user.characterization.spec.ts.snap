@@ -1,0 +1,219 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`createUser - caracterizacao do cadastro IA pedida sem aceitar o aviso fica desligada e sem data de consentimento 1`] = `
+[
+  [
+    {
+      "data": {
+        "aiAssistantConsentAt": null,
+        "aiAssistantConsentVersion": null,
+        "aiAssistantEnabled": false,
+        "avatarUrl": undefined,
+        "birthDate": undefined,
+        "email": "ana@example.com",
+        "monthlyIncome": "0",
+        "name": "Ana",
+        "occupation": undefined,
+        "passwordHash": "hash",
+        "phone": undefined,
+        "preferredCurrency": "BRL",
+        "primaryGoal": undefined,
+        "privacyNoticeAcceptedAt": null,
+        "privacyNoticeVersion": null,
+        "role": "USER",
+        "timezone": "America/Sao_Paulo",
+      },
+    },
+  ],
+]
+`;
+
+exports[`createUser - caracterizacao do cadastro cadastro completo com aceite e IA: gravacoes, transacao e retorno 1`] = `
+[
+  [
+    {
+      "data": {
+        "aiAssistantConsentAt": 2026-02-01T12:00:00.000Z,
+        "aiAssistantConsentVersion": "2026-03-26",
+        "aiAssistantEnabled": true,
+        "avatarUrl": "https://cdn.example.com/a.png",
+        "birthDate": 1990-05-10T00:00:00.000Z,
+        "email": "ana@example.com",
+        "monthlyIncome": "4200",
+        "name": "Ana",
+        "occupation": "Engenheira",
+        "passwordHash": "hash",
+        "phone": "11999990000",
+        "preferredCurrency": "USD",
+        "primaryGoal": "Reserva",
+        "privacyNoticeAcceptedAt": 2026-02-01T12:00:00.000Z,
+        "privacyNoticeVersion": "2026-03-26",
+        "role": "ADMIN",
+        "timezone": "Europe/Lisbon",
+      },
+    },
+  ],
+]
+`;
+
+exports[`createUser - caracterizacao do cadastro cadastro completo com aceite e IA: gravacoes, transacao e retorno 2`] = `
+[
+  [
+    {
+      "data": {
+        "closingDay": 12,
+        "countAllPayments": false,
+        "dueDay": null,
+        "isDefault": true,
+        "name": "Principal",
+        "userId": "user-new",
+      },
+    },
+  ],
+]
+`;
+
+exports[`createUser - caracterizacao do cadastro cadastro completo com aceite e IA: gravacoes, transacao e retorno 3`] = `
+[
+  [
+    {
+      "data": [
+        {
+          "color": "#7c5cff",
+          "icon": "self_improvement",
+          "name": "Pessoal",
+          "userId": "user-new",
+        },
+        {
+          "color": "#0f9d7a",
+          "icon": "work",
+          "name": "Trabalho",
+          "userId": "user-new",
+        },
+        {
+          "color": "#f18f01",
+          "icon": "home",
+          "name": "Casa",
+          "userId": "user-new",
+        },
+      ],
+    },
+  ],
+]
+`;
+
+exports[`createUser - caracterizacao do cadastro cadastro completo com aceite e IA: gravacoes, transacao e retorno 4`] = `
+[
+  [
+    {
+      "data": [
+        {
+          "color": "#f97316",
+          "icon": "home",
+          "name": "Moradia",
+          "type": "EXPENSE",
+          "userId": "user-new",
+        },
+        {
+          "color": "#ef4444",
+          "icon": "restaurant",
+          "name": "Alimentacao",
+          "type": "EXPENSE",
+          "userId": "user-new",
+        },
+        {
+          "color": "#10b981",
+          "icon": "payments",
+          "name": "Salario",
+          "type": "INCOME",
+          "userId": "user-new",
+        },
+      ],
+    },
+  ],
+]
+`;
+
+exports[`createUser - caracterizacao do cadastro cadastro completo com aceite e IA: gravacoes, transacao e retorno 5`] = `
+[
+  [
+    {
+      "data": [
+        {
+          "color": "#F4A261",
+          "isDefault": true,
+          "name": "Compras do mes",
+          "sortOrder": 0,
+          "userId": "user-new",
+        },
+        {
+          "color": "#E76F51",
+          "isDefault": true,
+          "name": "Padaria",
+          "sortOrder": 1,
+          "userId": "user-new",
+        },
+        {
+          "color": "#2A9D8F",
+          "isDefault": true,
+          "name": "Farmacia",
+          "sortOrder": 2,
+          "userId": "user-new",
+        },
+        {
+          "color": "#E9C46A",
+          "isDefault": true,
+          "name": "Restaurante",
+          "sortOrder": 3,
+          "userId": "user-new",
+        },
+      ],
+    },
+  ],
+]
+`;
+
+exports[`createUser - caracterizacao do cadastro cadastro minimo: padroes BRL, Sao Paulo, renda zero e cartao com dia 30 1`] = `
+[
+  [
+    {
+      "data": {
+        "aiAssistantConsentAt": null,
+        "aiAssistantConsentVersion": null,
+        "aiAssistantEnabled": false,
+        "avatarUrl": undefined,
+        "birthDate": undefined,
+        "email": "ana@example.com",
+        "monthlyIncome": "0",
+        "name": "Ana",
+        "occupation": undefined,
+        "passwordHash": "hash",
+        "phone": undefined,
+        "preferredCurrency": "BRL",
+        "primaryGoal": undefined,
+        "privacyNoticeAcceptedAt": null,
+        "privacyNoticeVersion": null,
+        "role": "USER",
+        "timezone": "America/Sao_Paulo",
+      },
+    },
+  ],
+]
+`;
+
+exports[`createUser - caracterizacao do cadastro cadastro minimo: padroes BRL, Sao Paulo, renda zero e cartao com dia 30 2`] = `
+[
+  [
+    {
+      "data": {
+        "closingDay": 30,
+        "countAllPayments": false,
+        "dueDay": null,
+        "isDefault": true,
+        "name": "Principal",
+        "userId": "user-new",
+      },
+    },
+  ],
+]
+`;
