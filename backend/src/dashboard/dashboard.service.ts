@@ -7,6 +7,20 @@ import { PrismaService } from '../prisma/prisma.service';
 import { monthToDateUtc } from '../recurring-transactions/recurrence.util';
 import { RecurringMaterializerService } from '../recurring-transactions/recurring-materializer.service';
 import { InstallmentMaterializerService } from '../installments/installment-materializer.service';
+import { findActiveGoals } from './queries/goals.query';
+import { findUnreadNotifications } from './queries/notifications.query';
+import { findOnboardingItems } from './queries/onboarding.query';
+import { findUpcomingReminders } from './queries/reminders.query';
+import { resolveAll } from './queries/resolve-all';
+import { countOverdueTasks, findTodayTasks } from './queries/tasks.query';
+import { findRecentTransactions, sumBalanceByType, sumMonthlyTransactions } from './queries/transactions.query';
+import { findUserProfile, findUserTimezone } from './queries/user.query';
+import { DashboardSummary } from './summary/dashboard-summary.type';
+import { buildSummary } from './summary/build-summary';
+import { SummarySources } from './summary/summary-sources.type';
+import { DateRange, todayWindow } from './today-window';
+
+const summaryCacheKey = (userId: string) => `dashboard:summary:${userId}`;
 
 @Injectable()
 export class DashboardService {
@@ -19,283 +33,57 @@ export class DashboardService {
     private readonly installmentMaterializer: InstallmentMaterializerService,
   ) {}
 
-  async getSummary(userId: string) {
-    const cacheKey = `dashboard:summary:${userId}`;
+  async getSummary(userId: string): Promise<DashboardSummary> {
+    await this.materializeDueEntries(userId);
 
-    // Conta fixa ou parcela que venceu desde a ultima leitura precisa entrar no
-    // saldo, e o resumo em cache ja nasceu sem ela.
-    const recurringCreated = await this.recurringMaterializer.materializeDue(userId);
-    const installmentsCreated = await this.installmentMaterializer.materializeDue(userId);
-    if (recurringCreated > 0 || installmentsCreated > 0) {
-      await this.cacheQueueService.del(cacheKey);
-    }
-
-    const cachedSummary = await this.cacheQueueService.getJson(cacheKey);
-
+    const cachedSummary = await this.cacheQueueService.getJson<DashboardSummary>(summaryCacheKey(userId));
     if (cachedSummary) {
       return cachedSummary;
     }
 
-    const now = new Date();
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(now);
-    todayEnd.setHours(23, 59, 59, 999);
-    const { timezone } = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: { timezone: true },
-    });
-    const month = monthToDateUtc(now, timezone);
-
-    const [
-      user,
-      tasksTodayCount,
-      tasksToday,
-      overdueTasksCount,
-      balanceAggregate,
-      recentTransactions,
-      monthlyExpenseAggregate,
-      monthlyIncomeAggregate,
-      goals,
-      reminders,
-      notifications,
-      insights,
-      forecast,
-      firstTask,
-      firstManualTransaction,
-      firstGoal,
-      firstRecurring,
-      firstAssistantTurn,
-    ] = await Promise.all([
-      this.prisma.user.findUniqueOrThrow({
-        where: { id: userId },
-        select: {
-          id: true,
-          name: true,
-          preferredCurrency: true,
-          monthlyIncome: true,
-          birthDate: true,
-          occupation: true,
-          primaryGoal: true,
-        },
-      }),
-      this.prisma.task.count({
-        where: {
-          userId,
-          dueDate: {
-            gte: todayStart,
-            lte: todayEnd,
-          },
-          status: {
-            in: ['PENDING', 'IN_PROGRESS'],
-          },
-        },
-      }),
-      this.prisma.task.findMany({
-        where: {
-          userId,
-          dueDate: {
-            gte: todayStart,
-            lte: todayEnd,
-          },
-          status: {
-            in: ['PENDING', 'IN_PROGRESS'],
-          },
-        },
-        include: {
-          category: true,
-        },
-        orderBy: [{ priority: 'desc' }, { dueDate: 'asc' }],
-        take: 5,
-      }),
-      this.prisma.task.count({
-        where: {
-          userId,
-          dueDate: {
-            lt: todayStart,
-          },
-          status: {
-            in: ['PENDING', 'IN_PROGRESS'],
-          },
-        },
-      }),
-      this.prisma.transaction.groupBy({
-        where: { userId },
-        by: ['type'],
-        _sum: {
-          amount: true,
-        },
-      }),
-      this.prisma.transaction.findMany({
-        where: { userId },
-        select: {
-          id: true,
-          description: true,
-          type: true,
-          amount: true,
-          date: true,
-          category: true,
-        },
-        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
-        take: 6,
-      }),
-      this.prisma.transaction.aggregate({
-        where: {
-          userId,
-          type: 'EXPENSE',
-          date: {
-            gte: month.start,
-            lt: month.end,
-          },
-        },
-        _sum: {
-          amount: true,
-        },
-      }),
-      this.prisma.transaction.aggregate({
-        where: {
-          userId,
-          type: 'INCOME',
-          date: {
-            gte: month.start,
-            lt: month.end,
-          },
-        },
-        _sum: {
-          amount: true,
-        },
-      }),
-      this.prisma.goal.findMany({
-        where: {
-          userId,
-          status: {
-            in: ['ACTIVE', 'PLANNED', 'ACHIEVED'],
-          },
-        },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          targetAmount: true,
-          currentAmount: true,
-          targetDate: true,
-          status: true,
-        },
-        orderBy: [{ status: 'asc' }, { targetDate: 'asc' }],
-        take: 4,
-      }),
-      this.prisma.reminder.findMany({
-        where: {
-          userId,
-          status: 'SCHEDULED',
-          remindAt: {
-            gte: now,
-          },
-        },
-        select: {
-          id: true,
-          title: true,
-          remindAt: true,
-        },
-        orderBy: { remindAt: 'asc' },
-        take: 4,
-      }),
-      this.prisma.notification.findMany({
-        where: {
-          userId,
-          isRead: false,
-        },
-        select: {
-          id: true,
-          title: true,
-          message: true,
-          isRead: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 4,
-      }),
-      this.insightsService.list(userId),
-      this.forecastsService.getCurrent(userId),
-      // Onboarding: so precisa saber se JA existe pelo menos um de cada (findFirst
-      // e barato e usa os indices de userId).
-      this.prisma.task.findFirst({ where: { userId }, select: { id: true } }),
-      // Lancamento gerado por conta fixa nao conta como "registrei um gasto".
-      this.prisma.transaction.findFirst({
-        where: { userId, recurringTransactionId: null },
-        select: { id: true },
-      }),
-      this.prisma.goal.findFirst({ where: { userId }, select: { id: true } }),
-      this.prisma.recurringTransaction.findFirst({ where: { userId }, select: { id: true } }),
-      this.prisma.assistantTurn.findFirst({ where: { userId }, select: { id: true } }),
-    ]);
-
-    const balance = balanceAggregate.reduce((total, item) => {
-      const signedAmount =
-        item.type === TransactionType.INCOME
-          ? Number(item._sum.amount ?? 0)
-          : -Number(item._sum.amount ?? 0);
-
-      return total + signedAmount;
-    }, 0);
-
-    const summary = {
-      user: {
-        id: user.id,
-        name: user.name,
-        preferredCurrency: user.preferredCurrency,
-        monthlyIncome: Number(user.monthlyIncome ?? 0),
-        birthDate: user.birthDate,
-        occupation: user.occupation,
-        primaryGoal: user.primaryGoal,
-      },
-      tasks: {
-        todayCount: tasksTodayCount,
-        overdueCount: overdueTasksCount,
-        items: tasksToday.map((task) => ({
-          ...task,
-          estimatedAmount:
-            task.estimatedAmount !== null && task.estimatedAmount !== undefined
-              ? Number(task.estimatedAmount)
-              : null,
-        })),
-      },
-      finances: {
-        balance,
-        monthlyExpenses: Number(monthlyExpenseAggregate._sum.amount ?? 0),
-        monthlyIncome: Number(monthlyIncomeAggregate._sum.amount ?? 0),
-        recentTransactions: recentTransactions.map((transaction) => ({
-          ...transaction,
-          amount: Number(transaction.amount),
-        })),
-      },
-      goals: goals.map((goal) => ({
-        ...goal,
-        targetAmount:
-          goal.targetAmount === null || goal.targetAmount === undefined
-            ? null
-            : Number(goal.targetAmount),
-        currentAmount: Number(goal.currentAmount),
-      })),
-      reminders,
-      insights,
-      forecast,
-      notifications,
-      onboarding: {
-        tasks: Boolean(firstTask),
-        transactions: Boolean(firstManualTransaction),
-        goals: Boolean(firstGoal),
-        recurring: Boolean(firstRecurring),
-        selah: Boolean(firstAssistantTurn),
-      },
-    };
-
-    await this.cacheQueueService.setJson(cacheKey, summary);
+    const summary = buildSummary(await this.loadSources(userId));
+    await this.cacheQueueService.setJson(summaryCacheKey(userId), summary);
     return summary;
   }
 
   /** Descarta o resumo em cache (ex.: apos uma conversa com o Selah, que nao passa pelo LifeEngine). */
   async invalidateSummary(userId: string) {
-    await this.cacheQueueService.del(`dashboard:summary:${userId}`);
+    await this.cacheQueueService.del(summaryCacheKey(userId));
+  }
+
+  // Conta fixa ou parcela que venceu desde a ultima leitura precisa entrar no
+  // saldo, e o resumo em cache ja nasceu sem ela.
+  private async materializeDueEntries(userId: string) {
+    const recurringCreated = await this.recurringMaterializer.materializeDue(userId);
+    const installmentsCreated = await this.installmentMaterializer.materializeDue(userId);
+    if (recurringCreated > 0 || installmentsCreated > 0) {
+      await this.cacheQueueService.del(summaryCacheKey(userId));
+    }
+  }
+
+  private async loadSources(userId: string): Promise<SummarySources> {
+    const now = new Date();
+    const { timezone } = await findUserTimezone(this.prisma, userId);
+    return this.queryAll(userId, now, monthToDateUtc(now, timezone));
+  }
+
+  private queryAll(userId: string, now: Date, month: DateRange): Promise<SummarySources> {
+    const today = todayWindow(now);
+
+    return resolveAll<SummarySources>({
+      user: findUserProfile(this.prisma, userId),
+      todayTasks: findTodayTasks(this.prisma, userId, today),
+      overdueTasksCount: countOverdueTasks(this.prisma, userId, today.start),
+      balanceRows: sumBalanceByType(this.prisma, userId),
+      recentTransactions: findRecentTransactions(this.prisma, userId),
+      monthlyExpenses: sumMonthlyTransactions(this.prisma, userId, TransactionType.EXPENSE, month),
+      monthlyIncome: sumMonthlyTransactions(this.prisma, userId, TransactionType.INCOME, month),
+      goals: findActiveGoals(this.prisma, userId),
+      reminders: findUpcomingReminders(this.prisma, userId, now),
+      notifications: findUnreadNotifications(this.prisma, userId),
+      insights: this.insightsService.list(userId),
+      forecast: this.forecastsService.getCurrent(userId),
+      onboarding: findOnboardingItems(this.prisma, userId),
+    });
   }
 }
