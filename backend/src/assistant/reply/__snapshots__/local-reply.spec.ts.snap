@@ -1,0 +1,246 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`buildLocalReply (caracterizacao) financas com risco alto, sete alertas criticos e meta sem alvo 1`] = `
+{
+  "actions": [],
+  "answer": "Seu saldo atual esta em R$ 1.200,40. Neste mes voce movimentou R$ 2.000,00 em entradas, R$ 900,00 em saidas e a previsao aponta risco high.",
+  "confidence": "medium",
+  "continuity": {
+    "followUpPrompt": null,
+    "historyCount": 0,
+    "memorySummary": null,
+    "nextQuestion": null,
+    "originModule": null,
+  },
+  "disclaimer": null,
+  "explainability": {
+    "confidenceReason": "",
+    "evidence": [],
+    "reasoning": [],
+  },
+  "focusArea": "Financeiro",
+  "generatedAt": "2026-11-15T12:00:00.000Z",
+  "highlights": [
+    "Alerta critico 1",
+    "Alerta critico 2",
+    "Alerta critico 3",
+    "Alerta critico 4",
+    "Alerta critico 5",
+    "Alerta critico 6",
+  ],
+  "proactiveSignals": [],
+  "provider": "LUMEN Local",
+  "simulations": [],
+  "source": "lumen_fallback",
+  "suggestedActions": [
+    "Revisar despesas futuras e congelar gastos nao essenciais.",
+    "Revisar o panorama do dia antes de abrir novas demandas.",
+  ],
+}
+`;
+
+exports[`buildLocalReply (caracterizacao) financas com risco medio e moeda USD 1`] = `
+{
+  "actions": [],
+  "answer": "Seu saldo atual esta em US$ 10,00. Neste mes voce movimentou US$ 0,00 em entradas, US$ 1.234,50 em saidas e a previsao aponta risco medium.",
+  "confidence": "medium",
+  "continuity": {
+    "followUpPrompt": null,
+    "historyCount": 0,
+    "memorySummary": null,
+    "nextQuestion": null,
+    "originModule": null,
+  },
+  "disclaimer": null,
+  "explainability": {
+    "confidenceReason": "",
+    "evidence": [],
+    "reasoning": [],
+  },
+  "focusArea": "Financeiro",
+  "generatedAt": "2026-11-15T12:00:00.000Z",
+  "highlights": [
+    "Nenhum alerta critico ativo neste momento.",
+  ],
+  "proactiveSignals": [],
+  "provider": "LUMEN Local",
+  "simulations": [],
+  "source": "lumen_fallback",
+  "suggestedActions": [
+    "Manter o ritmo atual e reforcar uma meta ativa.",
+    "Revisar o panorama do dia antes de abrir novas demandas.",
+  ],
+}
+`;
+
+exports[`buildLocalReply (caracterizacao) hoje com atraso, previsao nula e moeda vazia cai para BRL 1`] = `
+{
+  "actions": [],
+  "answer": "Hoje voce tem 2 tarefa(s) para o dia, 2 atrasada(s) e nenhum alerta critico. A previsao financeira atual esta em R$ 0,00.",
+  "confidence": "medium",
+  "continuity": {
+    "followUpPrompt": null,
+    "historyCount": 0,
+    "memorySummary": null,
+    "nextQuestion": null,
+    "originModule": null,
+  },
+  "disclaimer": "Dados parciais.",
+  "explainability": {
+    "confidenceReason": "",
+    "evidence": [],
+    "reasoning": [],
+  },
+  "focusArea": "Panorama",
+  "generatedAt": "2026-11-15T12:00:00.000Z",
+  "highlights": [
+    "Nenhum alerta critico ativo neste momento.",
+  ],
+  "proactiveSignals": [],
+  "provider": "LUMEN Local",
+  "simulations": [],
+  "source": "lumen_fallback",
+  "suggestedActions": [
+    "Fechar a tarefa "Revisar contas" hoje.",
+    "Eliminar pelo menos uma pendencia atrasada.",
+    "Revisar despesas futuras e congelar gastos nao essenciais.",
+  ],
+}
+`;
+
+exports[`buildLocalReply (caracterizacao) pergunta geral sem alertas: destaques e acoes padrao 1`] = `
+{
+  "actions": [],
+  "answer": "Hoje voce tem 0 tarefa(s) para o dia, 0 atrasada(s) e nenhum alerta critico. A previsao financeira atual esta em R$ 0,00.",
+  "confidence": "medium",
+  "continuity": {
+    "followUpPrompt": null,
+    "historyCount": 0,
+    "memorySummary": null,
+    "nextQuestion": null,
+    "originModule": null,
+  },
+  "disclaimer": null,
+  "explainability": {
+    "confidenceReason": "",
+    "evidence": [],
+    "reasoning": [],
+  },
+  "focusArea": "Panorama",
+  "generatedAt": "2026-11-15T12:00:00.000Z",
+  "highlights": [
+    "Meta Reserva: 100% concluida.",
+  ],
+  "proactiveSignals": [],
+  "provider": "LUMEN Local",
+  "simulations": [],
+  "source": "lumen_fallback",
+  "suggestedActions": [
+    "Manter o ritmo atual e reforcar uma meta ativa.",
+    "Revisar o panorama do dia antes de abrir novas demandas.",
+  ],
+}
+`;
+
+exports[`buildLocalReply (caracterizacao) pergunta geral sem metas nem insights 1`] = `
+{
+  "actions": [],
+  "answer": "Hoje voce tem 0 tarefa(s) para o dia, 0 atrasada(s) e nenhum alerta critico. A previsao financeira atual esta em R$ 0,00.",
+  "confidence": "medium",
+  "continuity": {
+    "followUpPrompt": null,
+    "historyCount": 0,
+    "memorySummary": null,
+    "nextQuestion": null,
+    "originModule": null,
+  },
+  "disclaimer": null,
+  "explainability": {
+    "confidenceReason": "",
+    "evidence": [],
+    "reasoning": [],
+  },
+  "focusArea": "Panorama",
+  "generatedAt": "2026-11-15T12:00:00.000Z",
+  "highlights": [
+    "Nenhum alerta critico ativo neste momento.",
+  ],
+  "proactiveSignals": [],
+  "provider": "LUMEN Local",
+  "simulations": [],
+  "source": "lumen_fallback",
+  "suggestedActions": [
+    "Manter o ritmo atual e reforcar uma meta ativa.",
+    "Revisar o panorama do dia antes de abrir novas demandas.",
+  ],
+}
+`;
+
+exports[`buildLocalReply (caracterizacao) prioridades com quatro tarefas: so tres entram, sem prazo na segunda 1`] = `
+{
+  "actions": [],
+  "answer": "Hoje voce tem 1 tarefa(s) para o dia, 1 atrasada(s) e nenhum alerta critico. A previsao financeira atual esta em R$ 0,00.",
+  "confidence": "medium",
+  "continuity": {
+    "followUpPrompt": null,
+    "historyCount": 0,
+    "memorySummary": null,
+    "nextQuestion": null,
+    "originModule": null,
+  },
+  "disclaimer": "Aviso de teste",
+  "explainability": {
+    "confidenceReason": "",
+    "evidence": [],
+    "reasoning": [],
+  },
+  "focusArea": "Panorama",
+  "generatedAt": "2026-11-15T12:00:00.000Z",
+  "highlights": [
+    "Nenhum alerta critico ativo neste momento.",
+  ],
+  "proactiveSignals": [],
+  "provider": "LUMEN Local",
+  "simulations": [],
+  "source": "lumen_fallback",
+  "suggestedActions": [
+    "Fechar a tarefa "Pagar boleto" hoje.",
+    "Eliminar pelo menos uma pendencia atrasada.",
+    "Manter o ritmo atual e reforcar uma meta ativa.",
+  ],
+}
+`;
+
+exports[`buildLocalReply (caracterizacao) prioridades sem tarefas 1`] = `
+{
+  "actions": [],
+  "answer": "Hoje eu puxaria a fila por tarefas sem prazo imediato. Comece pelo que vence antes, tem impacto financeiro ou destrava o resto do dia.",
+  "confidence": "medium",
+  "continuity": {
+    "followUpPrompt": null,
+    "historyCount": 0,
+    "memorySummary": null,
+    "nextQuestion": null,
+    "originModule": null,
+  },
+  "disclaimer": null,
+  "explainability": {
+    "confidenceReason": "",
+    "evidence": [],
+    "reasoning": [],
+  },
+  "focusArea": "Prioridades",
+  "generatedAt": "2026-11-15T12:00:00.000Z",
+  "highlights": [
+    "Nenhum alerta critico ativo neste momento.",
+  ],
+  "proactiveSignals": [],
+  "provider": "LUMEN Local",
+  "simulations": [],
+  "source": "lumen_fallback",
+  "suggestedActions": [
+    "Manter o ritmo atual e reforcar uma meta ativa.",
+    "Revisar o panorama do dia antes de abrir novas demandas.",
+  ],
+}
+`;

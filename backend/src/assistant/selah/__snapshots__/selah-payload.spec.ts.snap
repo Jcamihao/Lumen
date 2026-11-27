@@ -1,0 +1,438 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`buildSelahPayload (caracterizacao) listas longas cortam em top N com dados sensiveis 1`] = `
+{
+  "activeGoals": [
+    {
+      "progressPercent": 25,
+      "status": "Active",
+      "targetDateLabel": "01 de mar.",
+      "title": "Viagem",
+    },
+    {
+      "progressPercent": 0,
+      "status": "Active",
+      "title": "Cofrinho",
+    },
+    {
+      "progressPercent": 100,
+      "status": "Completed",
+      "title": "Reserva",
+    },
+    {
+      "progressPercent": 11,
+      "status": "Paused",
+      "title": "Carro",
+    },
+  ],
+  "activeInsights": [
+    {
+      "message": "Gasto subiu. Contato: [cpf removido].",
+      "severity": "Critical",
+      "type": "Spending Spike",
+    },
+    {
+      "message": "Saldo baixo.",
+      "severity": "Warning",
+      "type": "Low Balance",
+    },
+    {
+      "message": "Dica 3",
+      "severity": "Info",
+      "type": "Tip",
+    },
+    {
+      "message": "Dica 4",
+      "severity": "Info",
+      "type": "Tip",
+    },
+    {
+      "message": "Dica 5",
+      "severity": "Info",
+      "type": "Tip",
+    },
+  ],
+  "applicationPromptContext": "Intenção principal da resposta: finance_overview.
+Usuario em analise: Marina.
+Leitura do dia: 3 tarefa(s) para hoje, 2 atrasada(s), 1 insight(s) critico(s) e 1 insight(s) de atencao.
+Leitura financeira: saldo atual US$ 980,10, entradas no mes US$ 7.500,50, saidas no mes US$ 6.100,00, previsao US$ 1.543,25 e risco high.
+Âncoras concretas preferenciais:
+- Tarefa mais prioritária para citar pelo nome: Tarefa 1 [email removido], vence 14 de nov., prioridade High Priority.
+- Tarefa com impacto financeiro direto: Tarefa 2 [email removido], impacto estimado US$ 1.200,90.
+- Saída concreta para mencionar se fizer sentido: Lancamento 2 ([telefone removido], US$ 21,00 em 12 de nov..
+- Entrada concreta disponível: Lancamento 1 ([telefone removido], US$ 10,50 em 12 de nov..
+- Meta concreta para conectar na resposta: Viagem, 25% concluida.
+- Insight mais acionável no momento: Gasto subiu. Contato: [cpf removido]..
+Tarefas abertas relevantes:
+- Tarefa 1 [email removido] | prioridade High Priority | vence 14 de nov. | categoria Financas | sem impacto financeiro direto
+- Tarefa 2 [email removido] | prioridade High Priority | vence 14 de nov. | categoria Financas | impacto estimado US$ 1.200,90
+- Tarefa 3 [email removido] | prioridade High Priority | vence 14 de nov. | sem categoria | sem impacto financeiro direto
+- Tarefa 4 [email removido] | prioridade High Priority | vence 14 de nov. | categoria Financas | impacto estimado US$ 1.200,90
+- Tarefa 5 [email removido] | prioridade High Priority | vence 14 de nov. | categoria Financas | sem impacto financeiro direto
+Movimentacoes recentes:
+- Lancamento 1 ([telefone removido] | Income | US$ 10,50 | 12 de nov. | sem categoria
+- Lancamento 2 ([telefone removido] | Expense | US$ 21,00 | 12 de nov. | Mercado
+- Lancamento 3 ([telefone removido] | Income | US$ 31,50 | 12 de nov. | Mercado
+- Lancamento 4 ([telefone removido] | Expense | US$ 42,00 | 12 de nov. | Mercado
+- Lancamento 5 ([telefone removido] | Income | US$ 52,50 | 12 de nov. | Mercado
+Metas em andamento:
+- Viagem | status Active | progresso 25% | data alvo 01 de mar.
+- Cofrinho | status Active | guardado US$ 90,00 (sem valor-alvo) | sem data alvo
+- Reserva | status Completed | progresso 100% | sem data alvo
+- Carro | status Paused | progresso 11% | sem data alvo
+Insights atuais:
+- Critical | Spending Spike | Gasto subiu. Contato: [cpf removido].
+- Warning | Low Balance | Saldo baixo.
+- Info | Tip | Dica 3
+- Info | Tip | Dica 4
+- Info | Tip | Dica 5
+- Info | Tip | Dica 6
+Lembretes proximos:
+- Pagar conta 1 em <data-hora>
+- Pagar conta 2 em <data-hora>
+- Pagar conta 3 em <data-hora>
+- Pagar conta 4 em <data-hora>
+Notificacoes abertas:
+- Aviso 1: Mensagem 1
+- Aviso 2: Mensagem 2
+- Aviso 3: Mensagem 3
+- Aviso 4: Mensagem 4",
+  "conversationMemory": "1. Pergunta: foco Financeiro Como pago a divida?. Resposta anterior: Liste credores e juros.. 2. Pergunta: Oi. Resposta anterior: Ola! xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx. 3. Pergunta: foco Prioridades Prioridades?. Resposta anterior: Comece pelo que vence..",
+  "currentBalance": 980.1,
+  "currentDateLabel": "domingo, 15 de novembro",
+  "focusAreaHint": "Financeiro",
+  "forecast": {
+    "predictedBalance": 1543.25,
+    "riskLevel": "HIGH",
+  },
+  "intent": "finance_overview",
+  "lifeContextSummary": "Marina tem 3 tarefa(s) para hoje e 2 atrasada(s). 1 alerta(s) critico(s) ja foram detectados pelo motor de insights. Saldo atual em US$ 980,10 com previsao de US$ 1.543,25 e risco high. Meta em foco: Viagem, 25% concluida.",
+  "matchedQuestionTargets": [],
+  "message": "Como estou com a divida e os gastos?",
+  "monthlyExpenses": 6100,
+  "monthlyIncome": 7500.5,
+  "notificationLabels": [
+    "Aviso 1: Mensagem 1",
+    "Aviso 2: Mensagem 2",
+    "Aviso 3: Mensagem 3",
+    "Aviso 4: Mensagem 4",
+  ],
+  "openTasks": [
+    {
+      "category": "Financas",
+      "dueDateLabel": "14 de nov.",
+      "hasFinancialImpact": false,
+      "priority": "High Priority",
+      "title": "Tarefa 1 [email removido]",
+    },
+    {
+      "category": "Financas",
+      "dueDateLabel": "14 de nov.",
+      "estimatedAmount": 1200.9,
+      "hasFinancialImpact": true,
+      "priority": "High Priority",
+      "title": "Tarefa 2 [email removido]",
+    },
+    {
+      "dueDateLabel": "14 de nov.",
+      "hasFinancialImpact": false,
+      "priority": "High Priority",
+      "title": "Tarefa 3 [email removido]",
+    },
+    {
+      "category": "Financas",
+      "dueDateLabel": "14 de nov.",
+      "estimatedAmount": 1200.9,
+      "hasFinancialImpact": true,
+      "priority": "High Priority",
+      "title": "Tarefa 4 [email removido]",
+    },
+    {
+      "category": "Financas",
+      "dueDateLabel": "14 de nov.",
+      "hasFinancialImpact": false,
+      "priority": "High Priority",
+      "title": "Tarefa 5 [email removido]",
+    },
+  ],
+  "originModule": "general",
+  "questionContextSummary": "A resposta deve priorizar o que a pergunta pede de forma direta, sem cair em panorama padrão quando não for necessário. Sinais da pergunta: orientacao pratica, leitura financeira. Formato esperado: resposta mais detalhada, em 2 ou 3 blocos curtos, cobrindo resposta direta, contexto e próximos passos.",
+  "recentTransactions": [
+    {
+      "amount": 10.5,
+      "dateLabel": "12 de nov.",
+      "description": "Lancamento 1 ([telefone removido]",
+      "type": "Income",
+    },
+    {
+      "amount": 21,
+      "category": "Mercado",
+      "dateLabel": "12 de nov.",
+      "description": "Lancamento 2 ([telefone removido]",
+      "type": "Expense",
+    },
+    {
+      "amount": 31.5,
+      "category": "Mercado",
+      "dateLabel": "12 de nov.",
+      "description": "Lancamento 3 ([telefone removido]",
+      "type": "Income",
+    },
+    {
+      "amount": 42,
+      "category": "Mercado",
+      "dateLabel": "12 de nov.",
+      "description": "Lancamento 4 ([telefone removido]",
+      "type": "Expense",
+    },
+    {
+      "amount": 52.5,
+      "category": "Mercado",
+      "dateLabel": "12 de nov.",
+      "description": "Lancamento 5 ([telefone removido]",
+      "type": "Income",
+    },
+  ],
+  "reminderLabels": [
+    "Pagar conta 1 em <data-hora>",
+    "Pagar conta 2 em <data-hora>",
+    "Pagar conta 3 em <data-hora>",
+    "Pagar conta 4 em <data-hora>",
+  ],
+  "tasksOverdueCount": 2,
+  "tasksTodayCount": 3,
+  "user": {
+    "monthlyIncome": 7500.5,
+    "name": "Marina",
+    "preferredCurrency": "USD",
+  },
+}
+`;
+
+exports[`buildSelahPayload (caracterizacao) resumo vazio e pergunta curta 1`] = `
+{
+  "activeGoals": [],
+  "activeInsights": [],
+  "applicationPromptContext": "Intenção principal da resposta: general.
+Usuario em analise: Voce.
+Leitura do dia: 0 tarefa(s) para hoje, 0 atrasada(s), 0 insight(s) critico(s) e 0 insight(s) de atencao.
+Leitura financeira: saldo atual R$ 0,00, entradas no mes R$ 0,00, saidas no mes R$ 0,00, previsao R$ 0,00 e risco .
+Âncoras concretas: nenhum item nomeado relevante foi enviado.
+Tarefas abertas relevantes: nenhuma tarefa prioritaria aberta foi enviada.
+Movimentacoes recentes: nenhuma transacao recente enviada.
+Metas em andamento: nenhuma meta ativa foi enviada.
+Insights atuais: nenhum insight ativo foi enviado.
+Lembretes proximos: nenhum lembrete agendado enviado.
+Notificacoes abertas: nenhuma notificacao aberta enviada.",
+  "conversationMemory": null,
+  "currentBalance": 0,
+  "currentDateLabel": "domingo, 15 de novembro",
+  "focusAreaHint": "Panorama",
+  "forecast": {
+    "predictedBalance": 0,
+    "riskLevel": "MEDIUM",
+  },
+  "intent": "general",
+  "lifeContextSummary": "Voce tem 0 tarefa(s) para hoje e 0 atrasada(s). Nao ha alerta critico aberto neste momento. Saldo atual em R$ 0,00 com previsao de R$ 0,00 e risco . Nenhuma meta ativa precisa de destaque imediato agora.",
+  "matchedQuestionTargets": [],
+  "message": "oi",
+  "monthlyExpenses": 0,
+  "monthlyIncome": 0,
+  "notificationLabels": [],
+  "openTasks": [],
+  "originModule": "general",
+  "questionContextSummary": "A resposta deve priorizar o que a pergunta pede de forma direta, sem cair em panorama padrão quando não for necessário. Sinais da pergunta: leitura contextual. Formato esperado: resposta mais detalhada, em 2 ou 3 blocos curtos, cobrindo resposta direta, contexto e próximos passos.",
+  "recentTransactions": [],
+  "reminderLabels": [],
+  "tasksOverdueCount": 0,
+  "tasksTodayCount": 0,
+  "user": {
+    "monthlyIncome": 0,
+    "name": "Voce",
+    "preferredCurrency": "BRL",
+  },
+}
+`;
+
+exports[`buildSelahPayload (caracterizacao) saldo previsto nulo e risco vazio 1`] = `
+{
+  "activeGoals": [],
+  "activeInsights": [],
+  "applicationPromptContext": "Intenção principal da resposta: priorities.
+Usuario em analise: Voce.
+Leitura do dia: 0 tarefa(s) para hoje, 0 atrasada(s), 0 insight(s) critico(s) e 0 insight(s) de atencao.
+Leitura financeira: saldo atual R$ 0,00, entradas no mes R$ 0,00, saidas no mes R$ 0,00, previsao R$ 0,00 e risco .
+Âncoras concretas: nenhum item nomeado relevante foi enviado.
+Tarefas abertas relevantes: nenhuma tarefa prioritaria aberta foi enviada.
+Movimentacoes recentes: nenhuma transacao recente enviada.
+Metas em andamento: nenhuma meta ativa foi enviada.
+Insights atuais: nenhum insight ativo foi enviado.
+Lembretes proximos: nenhum lembrete agendado enviado.
+Notificacoes abertas: nenhuma notificacao aberta enviada.",
+  "conversationMemory": null,
+  "currentBalance": 0,
+  "currentDateLabel": "domingo, 15 de novembro",
+  "focusAreaHint": "Prioridades",
+  "forecast": {
+    "predictedBalance": 0,
+    "riskLevel": "MEDIUM",
+  },
+  "intent": "priorities",
+  "lifeContextSummary": "Voce tem 0 tarefa(s) para hoje e 0 atrasada(s). Nao ha alerta critico aberto neste momento. Saldo atual em R$ 0,00 com previsao de R$ 0,00 e risco . Nenhuma meta ativa precisa de destaque imediato agora.",
+  "matchedQuestionTargets": [],
+  "message": "prioriza minhas tarefas",
+  "monthlyExpenses": 0,
+  "monthlyIncome": 0,
+  "notificationLabels": [],
+  "openTasks": [],
+  "originModule": "general",
+  "questionContextSummary": "A resposta deve priorizar o que a pergunta pede de forma direta, sem cair em panorama padrão quando não for necessário. Sinais da pergunta: decisao de prioridade, execucao de tarefa. Formato esperado: resposta mais detalhada, em 2 ou 3 blocos curtos, cobrindo resposta direta, contexto e próximos passos.",
+  "recentTransactions": [],
+  "reminderLabels": [],
+  "tasksOverdueCount": 0,
+  "tasksTodayCount": 0,
+  "user": {
+    "monthlyIncome": 0,
+    "name": "Voce",
+    "preferredCurrency": "BRL",
+  },
+}
+`;
+
+exports[`buildSelahPayload (caracterizacao) sem tarefas nem metas, com transacoes 1`] = `
+{
+  "activeGoals": [],
+  "activeInsights": [
+    {
+      "message": "Gasto subiu. Contato: [cpf removido].",
+      "severity": "Critical",
+      "type": "Spending Spike",
+    },
+    {
+      "message": "Saldo baixo.",
+      "severity": "Warning",
+      "type": "Low Balance",
+    },
+    {
+      "message": "Dica 3",
+      "severity": "Info",
+      "type": "Tip",
+    },
+    {
+      "message": "Dica 4",
+      "severity": "Info",
+      "type": "Tip",
+    },
+    {
+      "message": "Dica 5",
+      "severity": "Info",
+      "type": "Tip",
+    },
+  ],
+  "applicationPromptContext": "Intenção principal da resposta: general.
+Usuario em analise: Marina.
+Leitura do dia: 0 tarefa(s) para hoje, 0 atrasada(s), 1 insight(s) critico(s) e 1 insight(s) de atencao.
+Leitura financeira: saldo atual US$ 980,10, entradas no mes US$ 7.500,50, saidas no mes US$ 6.100,00, previsao US$ 1.543,25 e risco high.
+Âncoras concretas preferenciais:
+- Saída concreta para mencionar se fizer sentido: Lancamento 2 ([telefone removido], US$ 21,00 em 12 de nov..
+- Entrada concreta disponível: Lancamento 1 ([telefone removido], US$ 10,50 em 12 de nov..
+- Insight mais acionável no momento: Gasto subiu. Contato: [cpf removido]..
+Tarefas abertas relevantes: nenhuma tarefa prioritaria aberta foi enviada.
+Movimentacoes recentes:
+- Lancamento 1 ([telefone removido] | Income | US$ 10,50 | 12 de nov. | sem categoria
+- Lancamento 2 ([telefone removido] | Expense | US$ 21,00 | 12 de nov. | Mercado
+- Lancamento 3 ([telefone removido] | Income | US$ 31,50 | 12 de nov. | Mercado
+- Lancamento 4 ([telefone removido] | Expense | US$ 42,00 | 12 de nov. | Mercado
+- Lancamento 5 ([telefone removido] | Income | US$ 52,50 | 12 de nov. | Mercado
+Metas em andamento: nenhuma meta ativa foi enviada.
+Insights atuais:
+- Critical | Spending Spike | Gasto subiu. Contato: [cpf removido].
+- Warning | Low Balance | Saldo baixo.
+- Info | Tip | Dica 3
+- Info | Tip | Dica 4
+- Info | Tip | Dica 5
+- Info | Tip | Dica 6
+Lembretes proximos:
+- Pagar conta 1 em <data-hora>
+- Pagar conta 2 em <data-hora>
+- Pagar conta 3 em <data-hora>
+- Pagar conta 4 em <data-hora>
+Notificacoes abertas:
+- Aviso 1: Mensagem 1
+- Aviso 2: Mensagem 2
+- Aviso 3: Mensagem 3
+- Aviso 4: Mensagem 4",
+  "conversationMemory": null,
+  "currentBalance": 980.1,
+  "currentDateLabel": "domingo, 15 de novembro",
+  "focusAreaHint": "Panorama",
+  "forecast": {
+    "predictedBalance": 1543.25,
+    "riskLevel": "HIGH",
+  },
+  "intent": "general",
+  "lifeContextSummary": "Marina tem 0 tarefa(s) para hoje e 0 atrasada(s). 1 alerta(s) critico(s) ja foram detectados pelo motor de insights. Saldo atual em US$ 980,10 com previsao de US$ 1.543,25 e risco high. Nenhuma meta ativa precisa de destaque imediato agora.",
+  "matchedQuestionTargets": [],
+  "message": "quero juntar",
+  "monthlyExpenses": 6100,
+  "monthlyIncome": 7500.5,
+  "notificationLabels": [
+    "Aviso 1: Mensagem 1",
+    "Aviso 2: Mensagem 2",
+    "Aviso 3: Mensagem 3",
+    "Aviso 4: Mensagem 4",
+  ],
+  "openTasks": [],
+  "originModule": "general",
+  "questionContextSummary": "A resposta deve priorizar o que a pergunta pede de forma direta, sem cair em panorama padrão quando não for necessário. Sinais da pergunta: leitura contextual. Formato esperado: resposta mais detalhada, em 2 ou 3 blocos curtos, cobrindo resposta direta, contexto e próximos passos.",
+  "recentTransactions": [
+    {
+      "amount": 10.5,
+      "dateLabel": "12 de nov.",
+      "description": "Lancamento 1 ([telefone removido]",
+      "type": "Income",
+    },
+    {
+      "amount": 21,
+      "category": "Mercado",
+      "dateLabel": "12 de nov.",
+      "description": "Lancamento 2 ([telefone removido]",
+      "type": "Expense",
+    },
+    {
+      "amount": 31.5,
+      "category": "Mercado",
+      "dateLabel": "12 de nov.",
+      "description": "Lancamento 3 ([telefone removido]",
+      "type": "Income",
+    },
+    {
+      "amount": 42,
+      "category": "Mercado",
+      "dateLabel": "12 de nov.",
+      "description": "Lancamento 4 ([telefone removido]",
+      "type": "Expense",
+    },
+    {
+      "amount": 52.5,
+      "category": "Mercado",
+      "dateLabel": "12 de nov.",
+      "description": "Lancamento 5 ([telefone removido]",
+      "type": "Income",
+    },
+  ],
+  "reminderLabels": [
+    "Pagar conta 1 em <data-hora>",
+    "Pagar conta 2 em <data-hora>",
+    "Pagar conta 3 em <data-hora>",
+    "Pagar conta 4 em <data-hora>",
+  ],
+  "tasksOverdueCount": 0,
+  "tasksTodayCount": 0,
+  "user": {
+    "monthlyIncome": 7500.5,
+    "name": "Marina",
+    "preferredCurrency": "USD",
+  },
+}
+`;

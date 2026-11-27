@@ -1,0 +1,89 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`analyzeSpending (caracterizacao) borda do dia 1 e meses fora da janela 1`] = `
+{
+  "avgMonthlySurplus": 310,
+  "topVariableCategory": {
+    "name": "Lazer",
+    "total": 70,
+  },
+}
+`;
+
+exports[`analyzeSpending (caracterizacao) empate no total: primeira categoria do mapa vence 1`] = `
+{
+  "avgMonthlySurplus": -200,
+  "topVariableCategory": {
+    "name": "Cinema",
+    "total": 300,
+  },
+}
+`;
+
+exports[`analyzeSpending (caracterizacao) fuso ausente usa Sao Paulo; fuso invalido cai em UTC 1`] = `
+{
+  "avgMonthlySurplus": -100,
+  "topVariableCategory": {
+    "name": "Lazer",
+    "total": 300,
+  },
+}
+`;
+
+exports[`analyzeSpending (caracterizacao) fuso ausente usa Sao Paulo; fuso invalido cai em UTC 2`] = `
+{
+  "avgMonthlySurplus": -66.66666666666667,
+  "topVariableCategory": {
+    "name": "Lazer",
+    "total": 200,
+  },
+}
+`;
+
+exports[`analyzeSpending (caracterizacao) gasto fixo igual todo mes fica fora do corte 1`] = `
+{
+  "avgMonthlySurplus": -1500,
+  "topVariableCategory": null,
+}
+`;
+
+exports[`analyzeSpending (caracterizacao) sem transacoes 1`] = `
+{
+  "avgMonthlySurplus": null,
+  "topVariableCategory": null,
+}
+`;
+
+exports[`analyzeSpending (caracterizacao) so receita: sobra positiva e sem categoria 1`] = `
+{
+  "avgMonthlySurplus": 2000,
+  "topVariableCategory": null,
+}
+`;
+
+exports[`analyzeSpending (caracterizacao) valor como texto decimal 1`] = `
+{
+  "avgMonthlySurplus": -87,
+  "topVariableCategory": {
+    "name": "Lazer",
+    "total": 261,
+  },
+}
+`;
+
+exports[`analyzeSpending (caracterizacao) valor zero e despesa sem categoria sao ignorados 1`] = `
+{
+  "avgMonthlySurplus": -166.66666666666666,
+  "topVariableCategory": null,
+}
+`;
+
+exports[`analyzeSpending (caracterizacao) variavel vence fixa e transferencia conta como saida 1`] = `
+{
+  "avgMonthlySurplus": -416.6666666666667,
+  "topVariableCategory": {
+    "name": "Lazer",
+    "total": 550,
+  },
+}
+`;
