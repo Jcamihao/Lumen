@@ -5,24 +5,17 @@ import { EmailPreferencesService } from "../email-preferences/email-preferences.
 import { MailService } from "../mail/mail.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
+  BILL_REMINDER_WINDOW_DAYS,
+  BillCandidate,
+  BillReminderUser,
+  errorMessage,
+  pendingBills,
+  toEmailBills,
+} from "./bill-reminder.rules";
+import {
   addDaysUtc,
   localToday,
 } from "../recurring-transactions/recurrence.util";
-
-// Mesma janela do insight de conta a vencer (UPCOMING_BILL_WINDOW_DAYS em
-// insights.service.ts): se uma mudar, a outra precisa acompanhar.
-const BILL_REMINDER_WINDOW_DAYS = 3;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-type BillReminderUser = {
-  id: string;
-  email: string;
-  name?: string | null;
-  timezone: string;
-  preferredCurrency: string;
-  emailVerifiedAt: Date | null;
-  emailBillReminders: boolean;
-};
 
 /**
  * Aviso por e-mail de conta fixa (despesa) que vence nos proximos dias.
@@ -46,11 +39,30 @@ export class BillReminderService {
     now = new Date(),
   ): Promise<boolean> {
     const userToday = localToday(now, user.timezone);
-    const windowEnd = addDaysUtc(userToday, BILL_REMINDER_WINDOW_DAYS);
+    const pending = pendingBills(
+      await this.findBillCandidates(user.id, userToday),
+    );
 
-    const candidates = await this.prisma.recurringTransaction.findMany({
+    if (pending.length === 0) return false;
+
+    // Sem elegibilidade nao envia e nao marca: se o usuario confirmar o e-mail
+    // ou religar a categoria enquanto a conta ainda esta na janela, ela sai.
+    if (!canSendAutomatedEmail(user, "bill_due")) return false;
+
+    if (!(await this.dispatchBillEmail(user, pending, userToday))) return false;
+
+    await this.markReminded(pending);
+    return true;
+  }
+
+  private async findBillCandidates(
+    userId: string,
+    userToday: Date,
+  ): Promise<BillCandidate[]> {
+    const windowEnd = addDaysUtc(userToday, BILL_REMINDER_WINDOW_DAYS);
+    return this.prisma.recurringTransaction.findMany({
       where: {
-        userId: user.id,
+        userId,
         type: TransactionType.EXPENSE,
         isActive: true,
         nextDueDate: { gt: userToday, lte: windowEnd },
@@ -65,34 +77,20 @@ export class BillReminderService {
         lastReminderForDate: true,
       },
     });
+  }
 
-    // Filtros em JS: endDate x nextDueDate compara dois campos da mesma linha
-    // (o Prisma nao faz isso no where) e lastReminderForDate pode ser nulo.
-    const pending = candidates.filter(
-      (bill) =>
-        (!bill.endDate || bill.endDate.getTime() >= bill.nextDueDate.getTime()) &&
-        bill.lastReminderForDate?.getTime() !== bill.nextDueDate.getTime(),
-    );
-
-    if (pending.length === 0) return false;
-
-    // Sem elegibilidade nao envia e nao marca: se o usuario confirmar o e-mail
-    // ou religar a categoria enquanto a conta ainda esta na janela, ela sai.
-    if (!canSendAutomatedEmail(user, "bill_due")) return false;
-
+  /** Devolve true se o e-mail foi enviado; falha vira aviso no log. */
+  private async dispatchBillEmail(
+    user: BillReminderUser,
+    pending: BillCandidate[],
+    userToday: Date,
+  ): Promise<boolean> {
     try {
       const result = await this.mailService.sendBillDueEmail({
         email: user.email,
         name: user.name,
         preferredCurrency: user.preferredCurrency,
-        bills: pending.map((bill) => ({
-          description: bill.description,
-          amount: Number(bill.amount),
-          dueDate: bill.nextDueDate,
-          daysUntil: Math.round(
-            (bill.nextDueDate.getTime() - userToday.getTime()) / DAY_MS,
-          ),
-        })),
+        bills: toEmailBills(pending, userToday),
         unsubscribe: this.emailPreferencesService.buildUnsubscribeLinks(
           user.id,
           "bill_due",
@@ -101,23 +99,21 @@ export class BillReminderService {
 
       // Resend desligado/mal configurado nao lanca: devolve skipped=true. Nao
       // marcar nesse caso, senao a conta nunca mais seria avisada.
-      if (result.skipped) return false;
+      return !result.skipped;
     } catch (error) {
       this.logger.warn(
-        `bill_due_email_failed userId=${user.id} reason=${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `bill_due_email_failed userId=${user.id} reason=${errorMessage(error)}`,
       );
       return false;
     }
+  }
 
+  private async markReminded(pending: BillCandidate[]): Promise<void> {
     for (const bill of pending) {
       await this.prisma.recurringTransaction.update({
         where: { id: bill.id },
         data: { lastReminderForDate: bill.nextDueDate },
       });
     }
-
-    return true;
   }
 }
