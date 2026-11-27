@@ -227,6 +227,14 @@ Decididas pelo dono em 2026-11-23 (registradas aqui para não pedirem de novo): 
 - Nunca pôr segredo, chave ou senha em chat, commit ou doc.
 - Commits separados, com caminhos explícitos, nunca amend ou reset. Se aparecer `index.lock`, esperar e repetir.
 - Respostas ao dono: curtas, objetivas, com recomendação clara (o dono tem TDAH).
+- **Arquitetura e qualidade de código (regra do dono, 2026-11-27, vale para todo código novo e para o que for tocado):** sempre seguir SOLID, Clean Code e uma arquitetura em camadas com responsabilidades bem separadas.
+  - SRP: cada classe, serviço e função tem um único motivo para mudar. Serviço que mistura entrada (HTTP, Telegram, WhatsApp), regra de negócio e gravação deve ser separado antes de crescer (ex.: o `ImportsService`, hoje com mais de 1.600 linhas, está fora desse padrão).
+  - OCP e DIP: depender de abstrações e injetar dependências. Canal novo, tipo de documento novo ou motor novo entram por extensão, sem editar o núcleo. Adaptadores de canal ficam finos e só traduzem entrada e saída; a regra vive no domínio.
+  - ISP e LSP: interfaces pequenas e específicas; implementações trocáveis sem quebrar quem as usa.
+  - Clean Code: nomes que dizem a intenção, funções curtas com um nível de abstração, sem número ou texto mágico, sem duplicação, sem comentário que repete o código. Erros tratados explicitamente, sem engolir exceção.
+  - Camadas: entrada/adaptadores, aplicação (casos de uso), domínio (regras puras e testáveis) e infraestrutura (banco, filas, serviços externos). Dependência aponta para dentro; o domínio não conhece Prisma, HTTP nem canal.
+  - Todo contrato novo (`docs/superpowers/specs/`) deve dizer quais são as camadas e as responsabilidades de cada uma. Revisão (`sonnet`) deve checar essas regras e apontar violação como achado.
+  - Ao tocar código antigo fora do padrão, não refatorar tudo de uma vez: separar só a fronteira necessária para a mudança, em commit próprio, e registrar a dívida restante aqui.
 - Subagentes: implementação com `haiku`, revisão e correção com `sonnet`, um por vez. Itens de segurança (auth, sessão, criptografia, dado clínico) exigem revisor.
 - Modelos nesta rodada: o 3b2a foi iniciado por outra sessão em que Haiku/Sonnet não estavam disponíveis (o backend parcial daquela etapa foi escrito por outro modelo e não validado). Na retomada de 2026-11-16, o fechamento do backend e o frontend foram desenvolvidos por subagentes `haiku` e a revisão por um subagente `sonnet`, com conferência independente do agente principal. O `sonnet` tem limite de uso de 5 horas: se um subagente parar por limite, ele avisa onde parou e a retomada continua dali.
 - Depois de alterar código, rodar `graphify update .`. Há grafo em `graphify-out/`.
