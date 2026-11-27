@@ -1,13 +1,14 @@
 import { BadRequestException } from "@nestjs/common";
-import { ImportsService } from "./imports.service";
+import { TransactionsImportService } from "./csv-import/transactions-import.service";
+import { ensureReceiptFile } from "./receipt-import/receipt-file.validation";
 
-describe("ImportsService — validacao de arquivo enviado", () => {
+describe("Importacoes — validacao de arquivo enviado", () => {
   // Estas validacoes rodam ANTES de qualquer acesso ao banco.
-  const service = new ImportsService({} as any, {} as any, {} as any, {} as any);
+  const service = new TransactionsImportService({} as any, {} as any, {} as any);
   const file = (buffer: Buffer, over: Record<string, unknown> = {}) =>
     ({ buffer, size: buffer.length, originalname: "arquivo", mimetype: "text/csv", ...over }) as any;
-  const preview = (f: any) => service.previewTransactionsImport("user-1", f);
-  const receipt = (f: any) => (service as any).ensureReceiptFile(f);
+  const preview = (f: any) => service.preview("user-1", f);
+  const receipt = (f: any) => ensureReceiptFile(f);
 
   const csv = (rows: number) => Buffer.from(["data,descricao,valor", ...Array.from({ length: rows }, (_, i) => `2026-09-01,item ${i},10`)].join("\n"));
 

@@ -3,6 +3,14 @@ import { Prisma } from '@prisma/client';
 import * as http from 'http';
 import * as https from 'https';
 import { ImportsService } from './imports.service';
+import { ImportHistoryService } from './import-history.service';
+import { TransactionsImportService } from './csv-import/transactions-import.service';
+import { ReceiptCommitService } from './receipt-import/receipt-commit.service';
+import { ReceiptDuplicateFinder } from './receipt-import/receipt-duplicate.finder';
+import { ReceiptImportService } from './receipt-import/receipt-import.service';
+import { ReceiptPreviewSerializer } from './receipt-import/receipt-preview.serializer';
+import { ReceiptPriceHistoryService } from './receipt-import/receipt-price-history.service';
+import { SelahReceiptClient } from './selah-receipt/selah-receipt.client';
 import { ReceiptExtraction } from './receipt-extractor.types';
 import { parseReceiptText } from './receipt-text.parser';
 
@@ -225,8 +233,15 @@ function setup() {
   const extractor = { extract: jest.fn() };
   const lifeEngine = { touchUserData: jest.fn(async () => undefined) };
   const notifications = { createNotification: jest.fn(async () => undefined) };
-  const service = new ImportsService(prisma as any, lifeEngine as any, notifications as any, extractor as any);
-  return { prisma, extractor, service };
+  const duplicates = new ReceiptDuplicateFinder(prisma as any);
+  const serializer = new ReceiptPreviewSerializer(new ReceiptPriceHistoryService(prisma as any));
+  const service = new ImportsService(
+    new ImportHistoryService(prisma as any),
+    new TransactionsImportService(prisma as any, notifications as any, lifeEngine as any),
+    new ReceiptImportService(prisma as any, extractor as any, duplicates, serializer),
+    new ReceiptCommitService(prisma as any, lifeEngine as any, notifications as any, duplicates),
+  );
+  return { prisma, extractor, service, serializer };
 }
 
 function file() {
@@ -267,7 +282,7 @@ describe('nota fiscal: previa sem IA e sem rede', () => {
 
   it('funciona sem consentimento de IA, sem SELAH_* e sem nenhuma chamada de rede', async () => {
     const ctx = setup();
-    const selahSpy = jest.spyOn(ctx.service as any, 'parseReceiptWithSelah');
+    const selahSpy = jest.spyOn(SelahReceiptClient.prototype, 'parse');
     const httpSpy = jest.spyOn(http, 'request');
     const httpsSpy = jest.spyOn(https, 'request');
     const originalFetch = (globalThis as any).fetch;
@@ -366,7 +381,7 @@ describe('nota fiscal: previa sem IA e sem rede', () => {
     });
     const row = await ctx.prisma.receiptScan.findFirst({ where: { id: 'scan-old', userId: 'user-a' }, include: { items: true } });
 
-    const response = await (ctx.service as any).serializeReceiptPreview(row);
+    const response = await ctx.serializer.serialize(row);
 
     expect(response.itemsSum).toBeNull();
     expect(response.totalMismatch).toBeNull();
