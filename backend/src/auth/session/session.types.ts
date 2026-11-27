@@ -14,6 +14,17 @@ export type AuthTokensResponse = {
   user: Awaited<ReturnType<UsersService["sanitizeUser"]>>;
 };
 
+export type MfaChallengeResponse = {
+  requiresMfa: true;
+  challengeId: string;
+  challengeExpiresAt: string;
+  availableMethods: Array<'totp' | 'recovery_code'>;
+};
+
+export type AuthResponse = AuthTokensResponse | MfaChallengeResponse;
+
+export type AuthResponseBody = Omit<AuthTokensResponse, 'refreshToken'> | MfaChallengeResponse;
+
 export type RetiredRefreshToken = { hash: string; retiredAt: number };
 
 /** Outra requisicao rotacionou o refresh token no meio desta: refazer a leitura. */

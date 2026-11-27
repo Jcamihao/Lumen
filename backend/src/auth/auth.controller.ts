@@ -1,12 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  Req,
-  Res,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Body, Controller, Get, Post, Req, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -14,23 +6,17 @@ import { Public } from '../common/decorators/public.decorator';
 import { AuthenticatedUser } from '../common/interfaces/authenticated-user.interface';
 import { RequestWithContext } from '../common/interfaces/request-with-context.interface';
 import { AuthService } from './auth.service';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
-import { MfaCodeDto } from './dto/mfa-code.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
-import { ResetPasswordDto } from './dto/reset-password.dto';
-import { RequestEmailMfaBypassDto } from './dto/request-email-mfa-bypass.dto';
-import { VerifyEmailDto } from './dto/verify-email.dto';
-import { VerifyEmailMfaBypassDto } from './dto/verify-email-mfa-bypass.dto';
-import { VerifyLoginMfaDto } from './dto/verify-login-mfa.dto';
+import { RefreshCookieService } from './session/refresh-cookie.service';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private readonly configService: ConfigService,
+    private readonly refreshCookie: RefreshCookieService,
   ) {}
 
   @Public()
@@ -42,7 +28,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const authResponse = await this.authService.register(dto, request);
-    return this.finalizeAuthResponse(authResponse, request, response);
+    return this.refreshCookie.attach(authResponse, request, response);
   }
 
   @Public()
@@ -54,112 +40,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const authResponse = await this.authService.login(dto, request);
-    return this.finalizeAuthResponse(authResponse, request, response);
-  }
-
-  @Public()
-  @Post('forgot-password')
-  @ApiOperation({ summary: 'Envia por email um link para redefinir a senha' })
-  forgotPassword(
-    @Body() dto: ForgotPasswordDto,
-    @Req() request: RequestWithContext,
-  ) {
-    return this.authService.forgotPassword(dto, request);
-  }
-
-  @Public()
-  @Post('reset-password')
-  @ApiOperation({ summary: 'Define uma nova senha a partir do link enviado por email' })
-  resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto);
-  }
-
-  @Public()
-  @Post('verify-email')
-  @ApiOperation({ summary: 'Confirma o email a partir do link enviado' })
-  verifyEmail(@Body() dto: VerifyEmailDto) {
-    return this.authService.verifyEmail(dto);
-  }
-
-  @Post('resend-verification')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Reenvia o email de confirmacao para o usuario logado' })
-  resendVerification(
-    @CurrentUser() user: AuthenticatedUser,
-    @Req() request: RequestWithContext,
-  ) {
-    return this.authService.resendEmailVerification(user.sub, request);
-  }
-
-  @Public()
-  @Post('mfa/verify-login')
-  @ApiOperation({ summary: 'Confirma o desafio MFA do login e emite os tokens da sessao' })
-  async verifyLoginMfa(
-    @Body() dto: VerifyLoginMfaDto,
-    @Req() request: RequestWithContext,
-    @Res({ passthrough: true }) response: Response,
-  ) {
-    const authResponse = await this.authService.verifyLoginMfa(dto, request);
-    return this.finalizeAuthResponse(authResponse, request, response);
-  }
-
-  @Public()
-  @Post('mfa/email-bypass/request')
-  @ApiOperation({ summary: 'Solicita codigo de recuperacao MFA por email' })
-  requestEmailMfaBypass(
-    @Body() dto: RequestEmailMfaBypassDto,
-    @Req() request: RequestWithContext,
-  ) {
-    return this.authService.requestEmailMfaBypass(dto, request);
-  }
-
-  @Public()
-  @Post('mfa/email-bypass/verify')
-  @ApiOperation({ summary: 'Verifica o codigo de recuperacao MFA enviado por email' })
-  async verifyEmailMfaBypass(
-    @Body() dto: VerifyEmailMfaBypassDto,
-    @Req() request: RequestWithContext,
-    @Res({ passthrough: true }) response: Response,
-  ) {
-    const authResponse = await this.authService.verifyEmailMfaBypass(dto, request);
-    return this.finalizeAuthResponse(authResponse, request, response);
-  }
-
-  @Post('mfa/setup')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Inicia a configuracao do MFA com TOTP' })
-  startMfaSetup(@CurrentUser() user: AuthenticatedUser) {
-    return this.authService.startMfaSetup(user.sub);
-  }
-
-  @Post('mfa/confirm-setup')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Confirma a ativacao do MFA com o primeiro codigo TOTP' })
-  confirmMfaSetup(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: MfaCodeDto,
-  ) {
-    return this.authService.confirmMfaSetup(user.sub, dto);
-  }
-
-  @Post('mfa/recovery-codes/regenerate')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Gera novos codigos de recuperacao para o MFA' })
-  regenerateRecoveryCodes(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: MfaCodeDto,
-  ) {
-    return this.authService.regenerateMfaRecoveryCodes(user.sub, dto);
-  }
-
-  @Post('mfa/disable')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Desativa o MFA da conta autenticada' })
-  disableMfa(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: MfaCodeDto,
-  ) {
-    return this.authService.disableMfa(user.sub, dto);
+    return this.refreshCookie.attach(authResponse, request, response);
   }
 
   @Public()
@@ -172,10 +53,10 @@ export class AuthController {
   ) {
     try {
       const authResponse = await this.authService.refresh(dto, request);
-      return this.finalizeAuthResponse(authResponse, request, response);
+      return this.refreshCookie.attach(authResponse, request, response);
     } catch (error) {
-      if (this.shouldUseRefreshCookie(request)) {
-        this.clearRefreshCookie(response);
+      if (this.refreshCookie.shouldUse(request)) {
+        this.refreshCookie.clear(response);
       }
 
       throw error;
@@ -189,7 +70,7 @@ export class AuthController {
     @CurrentUser() user: AuthenticatedUser,
     @Res({ passthrough: true }) response: Response,
   ) {
-    this.clearRefreshCookie(response);
+    this.refreshCookie.clear(response);
     return this.authService.logout(user.sub, user.sessionId);
   }
 
@@ -200,7 +81,7 @@ export class AuthController {
     @CurrentUser() user: AuthenticatedUser,
     @Res({ passthrough: true }) response: Response,
   ) {
-    this.clearRefreshCookie(response);
+    this.refreshCookie.clear(response);
     return this.authService.logoutAll(user.sub);
   }
 
@@ -209,107 +90,5 @@ export class AuthController {
   @ApiOperation({ summary: 'Retorna os dados do usuario autenticado' })
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.me(user.sub);
-  }
-
-  private finalizeAuthResponse(
-    authResponse:
-      | {
-          accessToken: string;
-          refreshToken: string;
-          user: unknown;
-        }
-      | {
-          requiresMfa: true;
-          challengeId: string;
-          challengeExpiresAt: string;
-          availableMethods: Array<'totp' | 'recovery_code'>;
-        },
-    request: RequestWithContext,
-    response: Response,
-  ) {
-    if (!('accessToken' in authResponse)) {
-      return authResponse;
-    }
-
-    if (!this.shouldUseRefreshCookie(request)) {
-      return authResponse;
-    }
-
-    response.cookie(
-      this.configService.getOrThrow<string>('auth.refreshCookieName'),
-      authResponse.refreshToken,
-      {
-        httpOnly: true,
-        secure:
-          this.configService.get<boolean>('auth.refreshCookieSecure') ?? false,
-        sameSite:
-          (this.configService.get<'lax' | 'strict' | 'none'>(
-            'auth.refreshCookieSameSite',
-          ) ?? 'lax'),
-        domain: this.configService.get<string>('auth.refreshCookieDomain'),
-        path:
-          this.configService.get<string>('auth.refreshCookiePath') ??
-          '/api/v1/auth',
-        maxAge: this.parseDurationToMs(
-          this.configService.get<string>('auth.refreshExpiresIn') ?? '7d',
-        ),
-      },
-    );
-
-    return {
-      accessToken: authResponse.accessToken,
-      user: authResponse.user,
-    };
-  }
-
-  private clearRefreshCookie(response: Response) {
-    response.clearCookie(
-      this.configService.getOrThrow<string>('auth.refreshCookieName'),
-      {
-        httpOnly: true,
-        secure:
-          this.configService.get<boolean>('auth.refreshCookieSecure') ?? false,
-        sameSite:
-          (this.configService.get<'lax' | 'strict' | 'none'>(
-            'auth.refreshCookieSameSite',
-          ) ?? 'lax'),
-        domain: this.configService.get<string>('auth.refreshCookieDomain'),
-        path:
-          this.configService.get<string>('auth.refreshCookiePath') ??
-          '/api/v1/auth',
-      },
-    );
-  }
-
-  private shouldUseRefreshCookie(request: RequestWithContext) {
-    const clientPlatform = request.header('x-lumen-client-platform');
-    return clientPlatform?.trim().toLowerCase() === 'web';
-  }
-
-  private parseDurationToMs(value: string) {
-    const normalizedValue = value.trim().toLowerCase();
-    const match = normalizedValue.match(/^(\d+)(ms|s|m|h|d)$/);
-
-    if (!match) {
-      return 7 * 24 * 60 * 60 * 1_000;
-    }
-
-    const amount = Number(match[1]);
-    const unit = match[2];
-
-    switch (unit) {
-      case 'ms':
-        return amount;
-      case 's':
-        return amount * 1_000;
-      case 'm':
-        return amount * 60_000;
-      case 'h':
-        return amount * 3_600_000;
-      case 'd':
-        return amount * 86_400_000;
-      default:
-        return 7 * 24 * 60 * 60 * 1_000;
-    }
   }
 }
