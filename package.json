@@ -16,7 +16,8 @@
     "mobile:open:ios": "npm --prefix frontend run cap:open:ios",
     "compose:up": "docker compose up --build",
     "compose:down": "docker compose down -v",
-    "db:seed": "npm --prefix backend run prisma:seed"
+    "db:seed": "npm --prefix backend run prisma:seed",
+    "audit": "node ./scripts/audit/index.mjs"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
