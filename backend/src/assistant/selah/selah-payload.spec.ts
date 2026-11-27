@@ -3,7 +3,7 @@ import { AskAssistantHistoryItemDto } from '../dto/ask-assistant.dto';
 import { buildSelahPayload } from './selah-payload';
 
 const NOW = new Date('2026-11-15T12:00:00.000Z');
-const HOUR_PATTERN = /\d{2}\/\d{2}, \d{2}:\d{2}/g;
+const HOUR_PATTERN = /(\d{2}\/\d{2}), \d{2}:\d{2}/g;
 
 type Payload = ReturnType<typeof buildSelahPayload>;
 
@@ -78,8 +78,8 @@ const cases: Array<[string, DashboardSummary, string, AskAssistantHistoryItemDto
   ['sem tarefas nem metas, com transacoes', { ...fullSummary(), tasks: { todayCount: 0, overdueCount: 0, items: [] }, goals: [] }, 'quero juntar', []],
 ];
 
-/** Troca o horario local (que depende do fuso do ambiente) por um marcador estavel. */
-const stable = (payload: Payload) => JSON.parse(JSON.stringify(payload).replace(HOUR_PATTERN, '<data-hora>'));
+/** Troca so a hora local (depende do fuso do ambiente) por um marcador; o dia/mes continua comparado. */
+const stable = (payload: Payload) => JSON.parse(JSON.stringify(payload).replace(HOUR_PATTERN, '$1, <hora>'));
 
 describe('buildSelahPayload (caracterizacao)', () => {
   beforeEach(() => jest.useFakeTimers({ now: NOW, doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] }));
@@ -91,6 +91,6 @@ describe('buildSelahPayload (caracterizacao)', () => {
 
   it('o horario do lembrete aparece no rotulo, mesmo que o fuso mude a hora', () => {
     const [label] = buildSelahPayload(fullSummary(), 'oi', [], 'general').reminderLabels;
-    expect(label).toMatch(/^Pagar conta 1 em \d{2}\/\d{2}, \d{2}:\d{2}$/);
+    expect(label).toMatch(/^Pagar conta 1 em 20\/11, \d{2}:\d{2}$/);
   });
 });

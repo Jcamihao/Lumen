@@ -88,10 +88,10 @@ Insights atuais:
 - Info | Tip | Dica 5
 - Info | Tip | Dica 6
 Lembretes proximos:
-- Pagar conta 1 em <data-hora>
-- Pagar conta 2 em <data-hora>
-- Pagar conta 3 em <data-hora>
-- Pagar conta 4 em <data-hora>
+- Pagar conta 1 em 20/11, <hora>
+- Pagar conta 2 em 20/11, <hora>
+- Pagar conta 3 em 20/11, <hora>
+- Pagar conta 4 em 20/11, <hora>
 Notificacoes abertas:
 - Aviso 1: Mensagem 1
 - Aviso 2: Mensagem 2
@@ -194,10 +194,10 @@ Notificacoes abertas:
     },
   ],
   "reminderLabels": [
-    "Pagar conta 1 em <data-hora>",
-    "Pagar conta 2 em <data-hora>",
-    "Pagar conta 3 em <data-hora>",
-    "Pagar conta 4 em <data-hora>",
+    "Pagar conta 1 em 20/11, <hora>",
+    "Pagar conta 2 em 20/11, <hora>",
+    "Pagar conta 3 em 20/11, <hora>",
+    "Pagar conta 4 em 20/11, <hora>",
   ],
   "tasksOverdueCount": 2,
   "tasksTodayCount": 3,
@@ -353,10 +353,10 @@ Insights atuais:
 - Info | Tip | Dica 5
 - Info | Tip | Dica 6
 Lembretes proximos:
-- Pagar conta 1 em <data-hora>
-- Pagar conta 2 em <data-hora>
-- Pagar conta 3 em <data-hora>
-- Pagar conta 4 em <data-hora>
+- Pagar conta 1 em 20/11, <hora>
+- Pagar conta 2 em 20/11, <hora>
+- Pagar conta 3 em 20/11, <hora>
+- Pagar conta 4 em 20/11, <hora>
 Notificacoes abertas:
 - Aviso 1: Mensagem 1
 - Aviso 2: Mensagem 2
@@ -422,10 +422,10 @@ Notificacoes abertas:
     },
   ],
   "reminderLabels": [
-    "Pagar conta 1 em <data-hora>",
-    "Pagar conta 2 em <data-hora>",
-    "Pagar conta 3 em <data-hora>",
-    "Pagar conta 4 em <data-hora>",
+    "Pagar conta 1 em 20/11, <hora>",
+    "Pagar conta 2 em 20/11, <hora>",
+    "Pagar conta 3 em 20/11, <hora>",
+    "Pagar conta 4 em 20/11, <hora>",
   ],
   "tasksOverdueCount": 0,
   "tasksTodayCount": 0,
