@@ -1,0 +1,1 @@
+export const RECEIPT_MAX_PIXELS = 25_000_000;
