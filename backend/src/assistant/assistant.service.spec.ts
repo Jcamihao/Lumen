@@ -1,5 +1,5 @@
 import { PlanLimitException } from "../billing/plan-limit.exception";
-import { AssistantService } from "./assistant.service";
+import { buildAssistantService, selahClientOf } from "./assistant-service.fixture";
 
 describe("AssistantService", () => {
   const buildDashboardService = (overrides: Record<string, unknown> = {}) =>
@@ -99,7 +99,7 @@ describe("AssistantService", () => {
     }) as any;
 
   it("builds a financial answer when asked about money and external AI is disabled", async () => {
-    const service = new AssistantService(
+    const service = buildAssistantService(
       buildDashboardService(),
       buildConfigService(),
       buildPrismaService({
@@ -126,7 +126,7 @@ describe("AssistantService", () => {
   });
 
   it("uses SelahIA when the integration is enabled and available", async () => {
-    const service = new AssistantService(
+    const service = buildAssistantService(
       buildDashboardService(),
       buildConfigService({
         SELAH_ASSISTANT_ENABLED: "true",
@@ -142,7 +142,7 @@ describe("AssistantService", () => {
       buildEntitlements(),
     );
 
-    const postJsonSpy = jest.spyOn(service as any, "postJson").mockResolvedValue({
+    const postJsonSpy = jest.spyOn(selahClientOf(service), "postJson").mockResolvedValue({
       statusCode: 200,
       body: JSON.stringify({
         answer:
@@ -189,7 +189,7 @@ describe("AssistantService", () => {
   });
 
   it("falls back to the local mode when SelahIA rate-limits this app (429)", async () => {
-    const service = new AssistantService(
+    const service = buildAssistantService(
       buildDashboardService(),
       buildConfigService({
         SELAH_ASSISTANT_ENABLED: "true",
@@ -203,7 +203,7 @@ describe("AssistantService", () => {
       buildEntitlements(),
     );
 
-    jest.spyOn(service as any, "postJson").mockResolvedValue({
+    jest.spyOn(selahClientOf(service), "postJson").mockResolvedValue({
       statusCode: 429,
       body: JSON.stringify({
         statusCode: 429,
@@ -225,7 +225,7 @@ describe("AssistantService", () => {
           .fn()
           .mockRejectedValue(new Error("PLAN_LIMIT")),
       });
-      const service = new AssistantService(
+      const service = buildAssistantService(
         buildDashboardService(),
         buildConfigService({
           SELAH_ASSISTANT_ENABLED: "true",
@@ -238,7 +238,7 @@ describe("AssistantService", () => {
         { create: jest.fn() } as any,
         entitlements,
       );
-      const postJsonSpy = jest.spyOn(service as any, "postJson");
+      const postJsonSpy = jest.spyOn(selahClientOf(service), "postJson");
 
       await expect(
         service.ask("user-1", "O que devo priorizar agora?"),
@@ -248,7 +248,7 @@ describe("AssistantService", () => {
 
     it("records the Selah question once when Selah actually answers", async () => {
       const entitlements = buildEntitlements();
-      const service = new AssistantService(
+      const service = buildAssistantService(
         buildDashboardService(),
         buildConfigService({
           SELAH_ASSISTANT_ENABLED: "true",
@@ -262,7 +262,7 @@ describe("AssistantService", () => {
         entitlements,
       );
 
-      jest.spyOn(service as any, "postJson").mockResolvedValue({
+      jest.spyOn(selahClientOf(service), "postJson").mockResolvedValue({
         statusCode: 200,
         body: JSON.stringify({
           answer: "Resposta de teste.",
@@ -284,7 +284,7 @@ describe("AssistantService", () => {
 
     it("does not record the Selah question when it falls back to the local reply", async () => {
       const entitlements = buildEntitlements();
-      const service = new AssistantService(
+      const service = buildAssistantService(
         buildDashboardService(),
         buildConfigService({
           SELAH_ASSISTANT_ENABLED: "true",
@@ -298,7 +298,7 @@ describe("AssistantService", () => {
         entitlements,
       );
 
-      jest.spyOn(service as any, "postJson").mockResolvedValue({
+      jest.spyOn(selahClientOf(service), "postJson").mockResolvedValue({
         statusCode: 429,
         body: JSON.stringify({
           statusCode: 429,
@@ -324,7 +324,7 @@ describe("AssistantService", () => {
     // (fuso local) em vez de getUTCMonth()/getUTCDate().
     const birthDate = new Date(Date.UTC(new Date().getUTCFullYear() - 30, 0, 1)).toISOString();
 
-    const service = new AssistantService(
+    const service = buildAssistantService(
       buildDashboardService({
         user: {
           name: "Marina Costa",
@@ -349,7 +349,7 @@ describe("AssistantService", () => {
       buildEntitlements(),
     );
 
-    const postJsonSpy = jest.spyOn(service as any, "postJson").mockResolvedValue({
+    const postJsonSpy = jest.spyOn(selahClientOf(service), "postJson").mockResolvedValue({
       statusCode: 200,
       body: JSON.stringify({
         answer: "Resposta de teste.",
@@ -393,7 +393,7 @@ describe("AssistantService", () => {
         { type: "EXPENSE", amount: 1200, date: monthDate(2), category: { name: "Aluguel" } },
       ];
 
-      const service = new AssistantService(
+      const service = buildAssistantService(
         buildDashboardService(),
         buildConfigService(),
         buildPrismaService({
@@ -452,7 +452,7 @@ describe("AssistantService", () => {
           transactions,
           timezone,
         });
-        const service = new AssistantService(
+        const service = buildAssistantService(
           buildDashboardService(),
           buildConfigService(),
           prisma,
@@ -537,7 +537,7 @@ describe("AssistantService", () => {
     });
 
     it("falls back to the flat 10% cut and 8-month split without transaction history", async () => {
-      const service = new AssistantService(
+      const service = buildAssistantService(
         buildDashboardService(),
         buildConfigService(),
         buildPrismaService({
@@ -562,7 +562,7 @@ describe("AssistantService", () => {
     });
 
     it("mantem os centavos na parcela da divida (nao arredonda pra inteiro)", async () => {
-      const service = new AssistantService(
+      const service = buildAssistantService(
         buildDashboardService(),
         buildConfigService(),
         buildPrismaService({
@@ -588,7 +588,7 @@ describe("AssistantService", () => {
     });
 
     it("meta com alvo definido: sugere aporte tatico", async () => {
-      const service = new AssistantService(
+      const service = buildAssistantService(
         buildDashboardService(),
         buildConfigService(),
         buildPrismaService({
@@ -609,7 +609,7 @@ describe("AssistantService", () => {
     });
 
     it("meta SEM alvo definido (cofrinho sem propósito): nunca sugere aporte tático (não há 'quanto falta')", async () => {
-      const service = new AssistantService(
+      const service = buildAssistantService(
         buildDashboardService({
           goals: [
             {
@@ -643,7 +643,7 @@ describe("AssistantService", () => {
   describe("applyAction — create_goal", () => {
     it("sem targetAmount no payload, cria a meta sem valor-alvo (cofrinho sem propósito)", async () => {
       const goalsService = { create: jest.fn().mockResolvedValue({ id: "goal-1" }) };
-      const service = new AssistantService(
+      const service = buildAssistantService(
         buildDashboardService(),
         buildConfigService(),
         buildPrismaService({
@@ -672,7 +672,7 @@ describe("AssistantService", () => {
 
     it("com targetAmount valido no payload, continua criando com o valor", async () => {
       const goalsService = { create: jest.fn().mockResolvedValue({ id: "goal-1" }) };
-      const service = new AssistantService(
+      const service = buildAssistantService(
         buildDashboardService(),
         buildConfigService(),
         buildPrismaService({
@@ -701,7 +701,7 @@ describe("AssistantService", () => {
 
     it("com targetAmount invalido (negativo ou zero) no payload, recusa", async () => {
       const goalsService = { create: jest.fn() };
-      const service = new AssistantService(
+      const service = buildAssistantService(
         buildDashboardService(),
         buildConfigService(),
         buildPrismaService({
@@ -729,7 +729,7 @@ describe("AssistantService", () => {
 
   describe("proactive signals", () => {
     const buildService = (dashboardOverrides: Record<string, unknown> = {}) =>
-      new AssistantService(
+      buildAssistantService(
         buildDashboardService(dashboardOverrides),
         buildConfigService(),
         buildPrismaService({
@@ -894,7 +894,7 @@ describe("AssistantService", () => {
         goals: { create: jest.fn() },
         reminders: { create: jest.fn() },
       };
-      const service = new AssistantService(
+      const service = buildAssistantService(
         dashboard,
         buildConfigService(config),
         prisma,
@@ -920,7 +920,7 @@ describe("AssistantService", () => {
         aiAssistantConsentAt: new Date("2026-03-26T12:00:00.000Z"),
       });
       const { service } = buildFallbackService({ prisma, entitlements });
-      const postJsonSpy = jest.spyOn(service as any, "postJson");
+      const postJsonSpy = jest.spyOn(selahClientOf(service), "postJson");
 
       await expect(service.tryFallbackAnswer("user-1", "Como estou?")).resolves.toEqual({ status: "no_consent" });
       expect(entitlements.assertCanAskSelah).not.toHaveBeenCalled();
@@ -934,7 +934,7 @@ describe("AssistantService", () => {
         prisma: buildPrismaService({ aiAssistantEnabled: false, aiAssistantConsentAt: null }),
         entitlements,
       });
-      const postJsonSpy = jest.spyOn(service as any, "postJson");
+      const postJsonSpy = jest.spyOn(selahClientOf(service), "postJson");
 
       await expect(service.tryFallbackAnswer("user-1", "Como estou?")).resolves.toEqual({ status: "no_consent" });
       expect(postJsonSpy).not.toHaveBeenCalled();
@@ -950,7 +950,7 @@ describe("AssistantService", () => {
         aiAssistantConsentAt: null,
       });
       const { service } = buildFallbackService({ prisma, entitlements });
-      const postJsonSpy = jest.spyOn(service as any, "postJson");
+      const postJsonSpy = jest.spyOn(selahClientOf(service), "postJson");
 
       await expect(service.tryFallbackAnswer("user-1", "Como estou?")).resolves.toEqual({ status: "no_consent" });
       expect(entitlements.assertCanAskSelah).not.toHaveBeenCalled();
@@ -963,7 +963,7 @@ describe("AssistantService", () => {
         assertCanAskSelah: jest.fn().mockRejectedValue(new Error("banco fora do ar")),
       });
       const { service } = buildFallbackService({ entitlements });
-      const postJsonSpy = jest.spyOn(service as any, "postJson");
+      const postJsonSpy = jest.spyOn(selahClientOf(service), "postJson");
 
       await expect(service.tryFallbackAnswer("user-1", "Como estou?")).rejects.toThrow("banco fora do ar");
       expect(postJsonSpy).not.toHaveBeenCalled();
@@ -977,7 +977,7 @@ describe("AssistantService", () => {
         ),
       });
       const { service } = buildFallbackService({ entitlements });
-      const postJsonSpy = jest.spyOn(service as any, "postJson");
+      const postJsonSpy = jest.spyOn(selahClientOf(service), "postJson");
 
       await expect(service.tryFallbackAnswer("user-1", "Como estou?")).resolves.toEqual({ status: "blocked_by_plan" });
       expect(postJsonSpy).not.toHaveBeenCalled();
@@ -988,7 +988,7 @@ describe("AssistantService", () => {
       const entitlements = buildEntitlements();
       const { service, writeServices } = buildFallbackService({ entitlements });
       const postJsonSpy = jest
-        .spyOn(service as any, "postJson")
+        .spyOn(selahClientOf(service), "postJson")
         .mockResolvedValue(selahAnswer("  Seu caixa fecha no azul.  "));
 
       await expect(service.tryFallbackAnswer("user-1", "Como estou?")).resolves.toEqual({
@@ -1013,7 +1013,7 @@ describe("AssistantService", () => {
     ])("%s: unavailable, sem inventar resposta e sem cobrar", async (_label, response) => {
       const entitlements = buildEntitlements();
       const { service } = buildFallbackService({ entitlements });
-      jest.spyOn(service as any, "postJson").mockResolvedValue(response);
+      jest.spyOn(selahClientOf(service), "postJson").mockResolvedValue(response);
 
       await expect(service.tryFallbackAnswer("user-1", "Como estou?")).resolves.toEqual({ status: "unavailable" });
       expect(entitlements.recordSelahQuestion).not.toHaveBeenCalled();
@@ -1025,7 +1025,7 @@ describe("AssistantService", () => {
         config: { ...SELAH_ON, SELAH_ASSISTANT_ENABLED: "false" },
         entitlements,
       });
-      const postJsonSpy = jest.spyOn(service as any, "postJson");
+      const postJsonSpy = jest.spyOn(selahClientOf(service), "postJson");
 
       await expect(service.tryFallbackAnswer("user-1", "Como estou?")).resolves.toEqual({ status: "unavailable" });
       expect(postJsonSpy).not.toHaveBeenCalled();
@@ -1034,12 +1034,12 @@ describe("AssistantService", () => {
 
     it("usa SELAH_FALLBACK_TIMEOUT_MS (padrão 15 s), e não o timeout do assistente legado", async () => {
       const { service } = buildFallbackService();
-      const postJsonSpy = jest.spyOn(service as any, "postJson").mockResolvedValue(selahAnswer("Ok."));
+      const postJsonSpy = jest.spyOn(selahClientOf(service), "postJson").mockResolvedValue(selahAnswer("Ok."));
       await service.tryFallbackAnswer("user-1", "Como estou?");
       expect(postJsonSpy.mock.calls[0][3]).toBe(15000);
 
       const custom = buildFallbackService({ config: { ...SELAH_ON, SELAH_FALLBACK_TIMEOUT_MS: "4000", SELAH_TIMEOUT_MS: "50000" } });
-      const customSpy = jest.spyOn(custom.service as any, "postJson").mockResolvedValue(selahAnswer("Ok."));
+      const customSpy = jest.spyOn(selahClientOf(custom.service), "postJson").mockResolvedValue(selahAnswer("Ok."));
       await custom.service.tryFallbackAnswer("user-1", "Como estou?");
       expect(customSpy.mock.calls[0][3]).toBe(4000);
     });
@@ -1055,7 +1055,7 @@ describe("AssistantService", () => {
       }
       const dashboard = { getSummary: jest.fn(async (id: string) => summaries[id]) };
       const { service } = buildFallbackService({ dashboard });
-      const postJsonSpy = jest.spyOn(service as any, "postJson").mockResolvedValue(selahAnswer("Ok."));
+      const postJsonSpy = jest.spyOn(selahClientOf(service), "postJson").mockResolvedValue(selahAnswer("Ok."));
 
       await service.tryFallbackAnswer("user-B", "Como estou?");
 
@@ -1070,7 +1070,7 @@ describe("AssistantService", () => {
 
     it.each(["abc", "0", "-5"])("SELAH_FALLBACK_TIMEOUT_MS inválido (%s) volta ao padrão de 15 s", async (invalid) => {
       const { service } = buildFallbackService({ config: { ...SELAH_ON, SELAH_FALLBACK_TIMEOUT_MS: invalid } });
-      const postJsonSpy = jest.spyOn(service as any, "postJson").mockResolvedValue(selahAnswer("Ok."));
+      const postJsonSpy = jest.spyOn(selahClientOf(service), "postJson").mockResolvedValue(selahAnswer("Ok."));
 
       await service.tryFallbackAnswer("user-1", "Como estou?");
 
@@ -1081,7 +1081,7 @@ describe("AssistantService", () => {
       const dashboard = buildDashboardService();
       const prisma = buildPrismaService();
       const { service } = buildFallbackService({ dashboard, prisma });
-      jest.spyOn(service as any, "postJson").mockResolvedValue(selahAnswer("Ok."));
+      jest.spyOn(selahClientOf(service), "postJson").mockResolvedValue(selahAnswer("Ok."));
 
       await service.tryFallbackAnswer("user-A", "Como estou?");
       await service.tryFallbackAnswer("user-B", "Como estou?");

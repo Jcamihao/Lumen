@@ -1,0 +1,1 @@
+export const ASSISTANT_REPLY_LIST_LIMIT = 6;
