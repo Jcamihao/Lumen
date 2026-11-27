@@ -1,4 +1,17 @@
 import { MailService } from "./mail.service";
+import { ResendSettings } from "./resend/resend.settings";
+import { ResendTransport } from "./resend/resend.transport";
+
+const transports = new WeakMap<MailService, ResendTransport>();
+
+/** MailService real com o transporte do Resend ligado, como no modulo. */
+const buildMail = (config: any): MailService => {
+  const transport = new ResendTransport(new ResendSettings(config));
+  const service = new MailService(config, transport);
+  transports.set(service, transport);
+  return service;
+};
+const transportOf = (service: MailService) => transports.get(service) as any;
 
 describe("MailService", () => {
   const buildConfigService = (overrides: Record<string, unknown> = {}) =>
@@ -21,12 +34,12 @@ describe("MailService", () => {
     }) as any;
 
   it("skips dispatch when Resend is disabled", async () => {
-    const service = new MailService(
+    const service = buildMail(
       buildConfigService({
         "mail.enabled": false,
       }),
     );
-    const postSpy = jest.spyOn(service as any, "postJson");
+    const postSpy = jest.spyOn(transportOf(service), "postJson");
 
     const result = await service.sendEmail({
       to: "marina@exemplo.com",
@@ -40,8 +53,8 @@ describe("MailService", () => {
   });
 
   it("builds a Resend request with headers and tags", async () => {
-    const service = new MailService(buildConfigService());
-    const postSpy = jest.spyOn(service as any, "postJson").mockResolvedValue({
+    const service = buildMail(buildConfigService());
+    const postSpy = jest.spyOn(transportOf(service), "postJson").mockResolvedValue({
       statusCode: 200,
       body: JSON.stringify({
         id: "49a3999c-0ce1-4ea6-ab68-afcd6dc2e794",
@@ -91,7 +104,7 @@ describe("MailService", () => {
     });
 
   it("creates a welcome email linking to the frontend and the verification link", async () => {
-    const service = new MailService(buildConfigService());
+    const service = buildMail(buildConfigService());
     const sendSpy = stubSend(service);
 
     await service.sendWelcomeEmail({
@@ -114,7 +127,7 @@ describe("MailService", () => {
   });
 
   it("sends the password reset link with its expiry and no unsubscribe headers", async () => {
-    const service = new MailService(buildConfigService());
+    const service = buildMail(buildConfigService());
     const sendSpy = stubSend(service);
 
     await service.sendPasswordResetEmail({
@@ -138,7 +151,7 @@ describe("MailService", () => {
     };
 
     it("adds the footer and the List-Unsubscribe headers to the weekly digest", async () => {
-      const service = new MailService(buildConfigService());
+      const service = buildMail(buildConfigService());
       const sendSpy = stubSend(service);
 
       await service.sendWeeklyDigestEmail({
@@ -163,7 +176,7 @@ describe("MailService", () => {
     });
 
     it("adds them to reminders and insight escalations too", async () => {
-      const service = new MailService(buildConfigService());
+      const service = buildMail(buildConfigService());
       const sendSpy = stubSend(service);
 
       await service.sendReminderEmail({
@@ -187,11 +200,11 @@ describe("MailService", () => {
     });
 
     it("keeps the Reply-To header alongside List-Unsubscribe", async () => {
-      const service = new MailService(
+      const service = buildMail(
         buildConfigService({ "mail.replyTo": "ajuda@lumen.local" }),
       );
       const postSpy = jest
-        .spyOn(service as any, "postJson")
+        .spyOn(transportOf(service), "postJson")
         .mockResolvedValue({ statusCode: 200, body: JSON.stringify({ id: "1" }) });
 
       await service.sendReminderEmail({
@@ -213,7 +226,7 @@ describe("MailService", () => {
   describe("branded header", () => {
     it("puts the LUMEN logo, from the public frontend URL, at the top of every email", async () => {
       const frontendUrl = "https://financelumen.tech";
-      const service = new MailService(
+      const service = buildMail(
         buildConfigService({ "app.frontendUrl": frontendUrl }),
       );
       const sendSpy = stubSend(service);
@@ -272,7 +285,7 @@ describe("MailService", () => {
     const person = { email: "marina@exemplo.com", name: "Marina Souza", preferredCurrency: "BRL" };
 
     it("uses the singular subject with the description and 'amanha' for one bill due tomorrow", async () => {
-      const service = new MailService(buildConfigService());
+      const service = buildMail(buildConfigService());
       const sendSpy = stubSend(service);
 
       await service.sendBillDueEmail({
@@ -292,7 +305,7 @@ describe("MailService", () => {
     });
 
     it("uses 'em N dias' for a single bill further out", async () => {
-      const service = new MailService(buildConfigService());
+      const service = buildMail(buildConfigService());
       const sendSpy = stubSend(service);
 
       await service.sendBillDueEmail({
@@ -304,7 +317,7 @@ describe("MailService", () => {
     });
 
     it("uses the plural subject, lists every bill and shows the total", async () => {
-      const service = new MailService(buildConfigService());
+      const service = buildMail(buildConfigService());
       const sendSpy = stubSend(service);
 
       await service.sendBillDueEmail({
@@ -323,7 +336,7 @@ describe("MailService", () => {
     });
 
     it("formats the date-only due date in UTC (never the previous day) and escapes user text", async () => {
-      const service = new MailService(buildConfigService());
+      const service = buildMail(buildConfigService());
       const sendSpy = stubSend(service);
       const originalTz = process.env.TZ;
 
@@ -349,7 +362,7 @@ describe("MailService", () => {
     });
 
     it("adds the unsubscribe footer and List-Unsubscribe headers", async () => {
-      const service = new MailService(buildConfigService());
+      const service = buildMail(buildConfigService());
       const sendSpy = stubSend(service);
 
       await service.sendBillDueEmail({
