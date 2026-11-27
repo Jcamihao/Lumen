@@ -1,0 +1,397 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`main.ts bootstrap (caracterizacao) production com APP_SWAGGER_ENABLED=true liga o swagger 1`] = `
+[
+  [
+    "httpAdapter.set",
+    "trust proxy",
+    1,
+  ],
+  [
+    "enableShutdownHooks",
+  ],
+  [
+    "setGlobalPrefix",
+    "api/v1",
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "enableCors",
+    {
+      "credentials": true,
+      "origin": [Function],
+    },
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "useGlobalPipes",
+    ValidationPipe {
+      "errorHttpStatusCode": 400,
+      "exceptionFactory": [Function],
+      "expectedType": undefined,
+      "isDetailedOutputDisabled": undefined,
+      "isTransformEnabled": true,
+      "transformOptions": {
+        "enableImplicitConversion": true,
+      },
+      "validateCustomDecorators": false,
+      "validatorOptions": {
+        "forbidNonWhitelisted": true,
+        "forbidUnknownValues": false,
+        "whitelist": true,
+      },
+    },
+  ],
+  [
+    "useGlobalFilters",
+    HttpExceptionLoggingFilter {
+      "logger": Logger {
+        "context": "HttpExceptionLoggingFilter",
+        "options": {},
+      },
+    },
+  ],
+  [
+    "DocumentBuilder.setTitle",
+    "LUMEN API",
+  ],
+  [
+    "DocumentBuilder.setDescription",
+    "API do SaaS LUMEN para gestao de vida, conectando tarefas, financas, metas e rotina.",
+  ],
+  [
+    "DocumentBuilder.setVersion",
+    "1.0.0",
+  ],
+  [
+    "DocumentBuilder.addBearerAuth",
+  ],
+  [
+    "DocumentBuilder.build",
+  ],
+  [
+    "SwaggerModule.createDocument",
+    {
+      "mockDocumentConfig": true,
+    },
+  ],
+  [
+    "SwaggerModule.setup",
+    "api/docs",
+    {
+      "mockDocument": true,
+    },
+    {
+      "swaggerOptions": {
+        "persistAuthorization": true,
+      },
+    },
+  ],
+  [
+    "listen",
+    3000,
+    "0.0.0.0",
+  ],
+  [
+    "logger.log",
+    "LUMEN API running at http://localhost:3000/api/v1",
+  ],
+]
+`;
+
+exports[`main.ts bootstrap (caracterizacao) sequencia de chamadas em development (swagger ligado por padrao) 1`] = `
+[
+  [
+    "httpAdapter.set",
+    "trust proxy",
+    1,
+  ],
+  [
+    "enableShutdownHooks",
+  ],
+  [
+    "setGlobalPrefix",
+    "api/v1",
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "enableCors",
+    {
+      "credentials": true,
+      "origin": [Function],
+    },
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "useGlobalPipes",
+    ValidationPipe {
+      "errorHttpStatusCode": 400,
+      "exceptionFactory": [Function],
+      "expectedType": undefined,
+      "isDetailedOutputDisabled": undefined,
+      "isTransformEnabled": true,
+      "transformOptions": {
+        "enableImplicitConversion": true,
+      },
+      "validateCustomDecorators": false,
+      "validatorOptions": {
+        "forbidNonWhitelisted": true,
+        "forbidUnknownValues": false,
+        "whitelist": true,
+      },
+    },
+  ],
+  [
+    "useGlobalFilters",
+    HttpExceptionLoggingFilter {
+      "logger": Logger {
+        "context": "HttpExceptionLoggingFilter",
+        "options": {},
+      },
+    },
+  ],
+  [
+    "DocumentBuilder.setTitle",
+    "LUMEN API",
+  ],
+  [
+    "DocumentBuilder.setDescription",
+    "API do SaaS LUMEN para gestao de vida, conectando tarefas, financas, metas e rotina.",
+  ],
+  [
+    "DocumentBuilder.setVersion",
+    "1.0.0",
+  ],
+  [
+    "DocumentBuilder.addBearerAuth",
+  ],
+  [
+    "DocumentBuilder.build",
+  ],
+  [
+    "SwaggerModule.createDocument",
+    {
+      "mockDocumentConfig": true,
+    },
+  ],
+  [
+    "SwaggerModule.setup",
+    "api/docs",
+    {
+      "mockDocument": true,
+    },
+    {
+      "swaggerOptions": {
+        "persistAuthorization": true,
+      },
+    },
+  ],
+  [
+    "listen",
+    3000,
+    "0.0.0.0",
+  ],
+  [
+    "logger.log",
+    "LUMEN API running at http://localhost:3000/api/v1",
+  ],
+]
+`;
+
+exports[`main.ts bootstrap (caracterizacao) sequencia de chamadas em production (swagger desligado por padrao) 1`] = `
+[
+  [
+    "httpAdapter.set",
+    "trust proxy",
+    1,
+  ],
+  [
+    "enableShutdownHooks",
+  ],
+  [
+    "setGlobalPrefix",
+    "api/v1",
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "enableCors",
+    {
+      "credentials": true,
+      "origin": [Function],
+    },
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "useGlobalPipes",
+    ValidationPipe {
+      "errorHttpStatusCode": 400,
+      "exceptionFactory": [Function],
+      "expectedType": undefined,
+      "isDetailedOutputDisabled": undefined,
+      "isTransformEnabled": true,
+      "transformOptions": {
+        "enableImplicitConversion": true,
+      },
+      "validateCustomDecorators": false,
+      "validatorOptions": {
+        "forbidNonWhitelisted": true,
+        "forbidUnknownValues": false,
+        "whitelist": true,
+      },
+    },
+  ],
+  [
+    "useGlobalFilters",
+    HttpExceptionLoggingFilter {
+      "logger": Logger {
+        "context": "HttpExceptionLoggingFilter",
+        "options": {},
+      },
+    },
+  ],
+  [
+    "listen",
+    3000,
+    "0.0.0.0",
+  ],
+  [
+    "logger.log",
+    "LUMEN API running at http://localhost:3000/api/v1",
+  ],
+]
+`;
+
+exports[`main.ts bootstrap (caracterizacao) usa PORT, HOST, APP_URL e lista de CORS do ambiente 1`] = `
+[
+  [
+    "httpAdapter.set",
+    "trust proxy",
+    1,
+  ],
+  [
+    "enableShutdownHooks",
+  ],
+  [
+    "setGlobalPrefix",
+    "api/v1",
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "enableCors",
+    {
+      "credentials": true,
+      "origin": [Function],
+    },
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "use",
+    [Function],
+  ],
+  [
+    "useGlobalPipes",
+    ValidationPipe {
+      "errorHttpStatusCode": 400,
+      "exceptionFactory": [Function],
+      "expectedType": undefined,
+      "isDetailedOutputDisabled": undefined,
+      "isTransformEnabled": true,
+      "transformOptions": {
+        "enableImplicitConversion": true,
+      },
+      "validateCustomDecorators": false,
+      "validatorOptions": {
+        "forbidNonWhitelisted": true,
+        "forbidUnknownValues": false,
+        "whitelist": true,
+      },
+    },
+  ],
+  [
+    "useGlobalFilters",
+    HttpExceptionLoggingFilter {
+      "logger": Logger {
+        "context": "HttpExceptionLoggingFilter",
+        "options": {},
+      },
+    },
+  ],
+  [
+    "listen",
+    8080,
+    "127.0.0.1",
+  ],
+  [
+    "logger.log",
+    "LUMEN API running at https://api.exemplo.com/api/v1",
+  ],
+]
+`;
