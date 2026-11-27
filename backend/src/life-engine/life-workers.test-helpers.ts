@@ -103,20 +103,10 @@ export function buildDeps() {
 export type Deps = ReturnType<typeof buildDeps>;
 
 export function buildService(deps: Deps = buildDeps()) {
+  const d: any = deps;
   const service = new LifeWorkersService(
-    deps.cacheQueue as any,
-    deps.prisma as any,
-    deps.insights as any,
-    deps.forecasts as any,
-    deps.notifications as any,
-    deps.mail as any,
-    deps.lifeEngine as any,
-    deps.config as any,
-    deps.dashboard as any,
-    deps.emailPreferences as any,
-    deps.recurring as any,
-    deps.installments as any,
-    deps.billReminders as any,
+    d.cacheQueue, d.prisma, d.insights, d.forecasts, d.notifications, d.mail, d.lifeEngine,
+    d.config, d.dashboard, d.emailPreferences, d.recurring, d.installments, d.billReminders,
   );
   return { service, deps };
 }
